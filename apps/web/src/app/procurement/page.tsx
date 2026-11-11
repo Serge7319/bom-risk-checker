@@ -119,6 +119,7 @@ function ProcurementPageInner() {
         actions={
           <div className="cv-page-head-actions">
             <PrimaryLink href="/bom-analyzer">Run new BOM analysis</PrimaryLink>
+            <SecondaryLink href={withAnalysisId("/cost-optimization", activeAnalysisId)}>Cost optimization</SecondaryLink>
             <SecondaryLink href={withAnalysisId("/compare-parts", activeAnalysisId)}>Compare alternatives</SecondaryLink>
           </div>
         }
@@ -215,7 +216,7 @@ function ProcurementPageInner() {
                         </td>
                         <td>{display(p.manufacturer, "Not provided")}</td>
                         <td className="cv-procurement-recommendation">
-                          <strong>{display(p.recommendation, "Complete sourcing data")}</strong>
+                          <strong>{display(p.recommendation, "Check an authorized source")}</strong>
                           {p.next_step ? <small>{String(p.next_step)}</small> : null}
                         </td>
                         <td>{display(p.quantity)}</td>
@@ -232,15 +233,27 @@ function ProcurementPageInner() {
                         <td>{display(p.stock, "Not reported")}</td>
                         <td>
                           {p.unit_price == null
-                            ? "Not reported"
+                            ? "Price absent"
                             : `${String(p.unit_price)}${p.currency ? ` ${String(p.currency)}` : " (currency not recorded)"}`}
+                          {p.price_type ? (
+                            <small className="cv-procurement-description">Type: {String(p.price_type)}</small>
+                          ) : null}
                         </td>
                         <td>{p.lead_time_weeks == null ? "Not reported" : `${String(p.lead_time_weeks)} weeks`}</td>
                         <td>
                           <span className="cv-badge gray">
                             {evidenceSourceLabel(p.price_source, "Not recorded")}
                           </span>
-                          {p.retrieved_at ? <small className="cv-procurement-timestamp">{String(p.retrieved_at)}</small> : null}
+                          {p.identity_source ? (
+                            <small className="cv-procurement-description">
+                              Identity: {evidenceSourceLabel(p.identity_source, "Not recorded")}
+                            </small>
+                          ) : null}
+                          {p.price_retrieved_at || p.retrieved_at ? (
+                            <small className="cv-procurement-timestamp">
+                              {String(p.price_retrieved_at || p.retrieved_at)}
+                            </small>
+                          ) : null}
                         </td>
                         <td>
                           {Array.isArray(p.supplier_offers) && p.supplier_offers.length ? (

@@ -67,6 +67,17 @@ function DetailedRiskPageInner() {
       />
       <AnalysisStageNavigation analysisId={activeAnalysisId} current="risks" />
       {<EvidenceNotice gap={data?.gap} />}
+      {!busy && data?.evidence_summary ? (
+        <p className="cv-small-note" style={{ marginBottom: 12 }} data-testid="detailed-risk-evidence-summary">
+          {(() => {
+            const summary = data.evidence_summary as Record<string, unknown>;
+            const live = Number(summary.live_count || 0);
+            const synthetic = Number(summary.synthetic_count || 0);
+            const missing = Number(summary.missing_count || 0);
+            return `Row evidence for this analysis: live-authorized ${live}; synthetic/preview ${synthetic}; no supplier match ${missing}. Mode: ${String(data.mode || "not reported")}.`;
+          })()}
+        </p>
+      ) : null}
       {busy ? <LoadingCard label="Loading detailed risk rows…" /> : null}
       {error ? <div className="cv-error" role="alert">Risk details could not load. {error}</div> : null}
       {!busy && data ? (

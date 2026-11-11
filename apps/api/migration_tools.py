@@ -24,7 +24,11 @@ from src.datasheet_qa import (
     suggest_datasheet_follow_ups,
 )
 from src.design_impact_analyzer import build_design_impact
-from apps.api.evidence_contract import annotate_report_parts, classify_part_evidence
+from apps.api.evidence_contract import (
+    annotate_report_parts,
+    classify_part_evidence,
+    evidence_mode_and_gap,
+)
 from apps.api.supplier_lookup import lookup_exact_part
 from apps.api import monitoring_store
 from src.monitoring_engine import build_alert_record
@@ -1312,25 +1316,38 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
         recommendation = recommendations_by_mpn.get(mpn.casefold()) or {}
         has_manual_price = "unit_price" in (part.get("_sourcing_override_fields") or ())
         reported_price = first_value(part, "Unit Price", "unit_price", "price")
+        fields = evidence.get("fields") if isinstance(evidence.get("fields"), dict) else {}
+        price_field = fields.get("price") if isinstance(fields.get("price"), dict) else {}
+        lifecycle_field = fields.get("lifecycle") if isinstance(fields.get("lifecycle"), dict) else {}
+        stock_field = fields.get("stock") if isinstance(fields.get("stock"), dict) else {}
+        identity_field = fields.get("identity") if isinstance(fields.get("identity"), dict) else {}
+        price_class = str(price_field.get("evidence_class") or "").strip() or "missing"
         price_source = (
             "user-entered"
             if has_manual_price
-            else evidence_class
-            if evidence_class in {"live-authorized-supplier", "synthetic-preview"}
+            else price_class
+            if price_class in {"live-authorized-supplier", "synthetic-preview"}
             else "not-recorded"
         )
-        trusted_saved_values = evidence_class in {
+        # Trust saved commercial values only when that field's own class allows it.
+        trusted_price = has_manual_price or price_class in {
             "live-authorized-supplier",
             "synthetic-preview",
-        } or has_manual_price
+        }
+        trusted_stock = str(stock_field.get("evidence_class") or evidence_class) in {
+            "live-authorized-supplier",
+            "synthetic-preview",
+        }
         saved_stock = first_value(
             part, "stock_available", "Stock Available", "Total Market Stock", "stock", "Stock"
         )
         display_price = recommendation.get("Unit Price")
-        if display_price is None and trusted_saved_values:
+        if display_price is None and trusted_price:
             display_price = reported_price
+        if display_price is None and not trusted_price:
+            display_price = None
         display_stock = recommendation.get("Available Stock")
-        if display_stock is None and trusted_saved_values:
+        if display_stock is None and trusted_stock:
             display_stock = saved_stock
         supplier_count = recommendation.get("Supplier Sources")
         if offers:
@@ -1342,6 +1359,11 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
         else:
             coverage = "No supplier offers recorded"
 
+        default_recommendation = (
+            "Check an authorized source"
+            if evidence_class == "missing" or price_class == "missing"
+            else "Confirm current supplier evidence"
+        )
         rows.append(
             {
                 "mpn": mpn,
@@ -1373,7 +1395,11 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
                 or first_value(part, "Lifecycle", "lifecycle_status", default="Unknown"),
                 "risk_level": first_value(part, "Risk Level", "risk_level", default="Needs verification"),
                 "risk_score": first_value(part, "Risk Score", "risk_score"),
-                "recommendation": recommendation.get("Recommendation") or "Complete sourcing data",
+                "recommendation": (
+                    "Check an authorized source"
+                    if str(recommendation.get("Recommendation") or "") == "Complete sourcing data"
+                    else (recommendation.get("Recommendation") or default_recommendation)
+                ),
                 "next_step": recommendation.get("Next Step")
                 or (
                     "Find and verify an authorized distributor source for this MPN before ordering."
@@ -1391,6 +1417,16 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
                 or normalized_evidence_part["unit_price_currency"],
                 "lead_time_weeks": recommendation.get("Lead Time (Weeks)"),
                 "price_source": price_source,
+                "price_type": price_field.get("price_type") or "not-recorded",
+                "price_retrieved_at": price_field.get("retrieved_at") or "",
+                "identity_source": identity_field.get("source") or evidence.get("source") or "",
+                "identity_retrieved_at": identity_field.get("retrieved_at")
+                or evidence.get("retrieved_at")
+                or "",
+                "lifecycle_source": lifecycle_field.get("source") or "",
+                "lifecycle_retrieved_at": lifecycle_field.get("retrieved_at") or "",
+                "stock_source": stock_field.get("source") or "",
+                "stock_retrieved_at": stock_field.get("retrieved_at") or "",
                 "evidence_class": evidence_class,
                 "supplier_offers": offers,
                 "offer_count": len(offers),
@@ -1411,26 +1447,13 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
     except Exception:  # noqa: BLE001
         configured_sources = 0
 
-    if counts["live"] and (counts["synthetic"] or counts["missing"]):
-        mode = "mixed-evidence"
-        gap = "Evidence varies by component. Check each row's source and timestamp before using sourcing values."
-    elif counts["live"]:
-        mode = "live-source-evidence"
-        gap = None
-    elif counts["synthetic"]:
-        mode = "synthetic-preview"
-        gap = (
-            "This saved analysis contains sample estimates, not distributor quotes. "
-            "No supplier credentials are configured on this API service."
-            if configured_sources == 0
-            else "This saved analysis contains sample estimates, not distributor quotes. Supplier integrations are configured; run the BOM again to retrieve current supplier evidence."
-        )
-    elif configured_sources == 0:
-        mode = "source-unavailable"
-        gap = "No supplier credentials are configured on this API service, so this analysis has no live distributor quotes."
-    else:
-        mode = "source-check-complete"
-        gap = "No verified supplier quotes are saved for this analysis. Supplier integrations are configured; run the BOM again to check current availability and pricing."
+    mode, gap = evidence_mode_and_gap(
+        live_count=counts["live"],
+        synthetic_count=counts["synthetic"],
+        missing_count=counts["missing"],
+        configured_sources=configured_sources,
+        analysis_mode=str(report.get("mode") or ""),
+    )
 
     return _json_safe(
         {
@@ -1450,6 +1473,13 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
                 "parts_without_verified_supplier_evidence": counts["missing"],
                 "parts_total": total,
                 "configured_supplier_sources": configured_sources,
+                "live_price_parts": sum(
+                    1 for row in rows if str(row.get("price_source") or "") == "live-authorized-supplier"
+                ),
+                "synthetic_price_parts": sum(
+                    1 for row in rows if str(row.get("price_source") or "") == "synthetic-preview"
+                ),
+                "missing_price_parts": sum(1 for row in rows if row.get("unit_price") is None),
             },
             "parts": rows,
         }
@@ -1497,12 +1527,45 @@ def cost_optimization_payload(
     optimization = build_cost_optimization(
         analyses, parts, build_quantity=max(1, int(build_quantity or 100))
     )
+    annotated = annotate_report_parts({"parts": list(parts or []), "mode": (analyses[0] or {}).get("mode")})
+    summary = annotated.get("evidence_summary") or {}
+    configured_sources = 0
+    try:
+        from apps.api.legacy_supplier_workflow import configured_supplier_count
+
+        configured_sources = configured_supplier_count()
+    except Exception:  # noqa: BLE001
+        configured_sources = 0
+    mode, gap = evidence_mode_and_gap(
+        live_count=int(summary.get("live_count") or 0),
+        synthetic_count=int(summary.get("synthetic_count") or 0),
+        missing_count=int(summary.get("missing_count") or 0),
+        configured_sources=configured_sources,
+        analysis_mode=str((analyses[0] or {}).get("mode") or ""),
+    )
+    missing_prices = int(summary.get("missing_price_count") or 0)
+    if missing_prices and not gap:
+        gap = (
+            f"{missing_prices} component(s) have no recorded unit price. "
+            "Cost opportunities only use parts with saved prices; absent prices stay blank."
+        )
+    elif missing_prices and gap:
+        gap = (
+            f"{gap} {missing_prices} component(s) have no recorded unit price and are excluded from priced opportunities."
+        )
+    selected = analyses[0] if analyses else {}
     return _json_safe(
         {
             "ok": True,
-            "mode": "synthetic-preview",
-            "gap": "Cost figures use synthetic-preview unit prices from analysis. They are not live contract or distributor quotes.",
+            "mode": mode,
+            "gap": gap,
+            "analysis_id": selected.get("id") or analysis_id,
+            "filename": selected.get("filename"),
+            "project_name": selected.get("project_name"),
+            "bom_name": selected.get("bom_name"),
+            "revision": selected.get("revision"),
             "build_quantity": max(1, int(build_quantity or 100)),
+            "evidence_summary": summary,
             "optimization": optimization,
         }
     )
@@ -1586,21 +1649,41 @@ def detailed_risk_payload(*, workspace_id: str, analysis_id: str | None = None) 
             "rows": [],
             "summary": {},
         }
-    rows = component_rows(report.get("parts") or [])
+    annotated = annotate_report_parts(report)
+    rows = component_rows(annotated.get("parts") or [])
     summary = report_exposure_summary(rows)
     high_risk_count = int(report.get("high_risk_count") or 0)
     if not high_risk_count:
         high_risk_count = int(summary.get("high_risk_component_count") or 0)
+    evidence_summary = annotated.get("evidence_summary") or {}
+    configured_sources = 0
+    try:
+        from apps.api.legacy_supplier_workflow import configured_supplier_count
+
+        configured_sources = configured_supplier_count()
+    except Exception:  # noqa: BLE001
+        configured_sources = 0
+    mode, gap = evidence_mode_and_gap(
+        live_count=int(evidence_summary.get("live_count") or 0),
+        synthetic_count=int(evidence_summary.get("synthetic_count") or 0),
+        missing_count=int(evidence_summary.get("missing_count") or 0),
+        configured_sources=configured_sources,
+        analysis_mode=str(report.get("mode") or ""),
+    )
     return _json_safe(
         {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": mode,
             "analysis_id": report["id"],
             "filename": report.get("filename"),
+            "project_name": report.get("project_name"),
+            "bom_name": report.get("bom_name"),
+            "revision": report.get("revision"),
             "health_score": report.get("health_score"),
             "health_status": report.get("health_status"),
             "high_risk_count": high_risk_count,
-            "gap": "Detailed risk rows come from the synthetic analysis. Extended costs use synthetic-preview unit prices when present.",
+            "gap": gap,
+            "evidence_summary": evidence_summary,
             "rows": rows,
             "summary": summary,
         }

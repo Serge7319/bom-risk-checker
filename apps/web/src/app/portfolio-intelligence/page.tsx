@@ -71,7 +71,11 @@ export default function PortfolioPage() {
                     {projects.slice(0, 20).map((r, i) => (
                       <tr key={i}>
                         <td data-label="Project"><strong>{String(r.Project || r.project || "")}</strong></td>
-                        <td className="cv-num" data-label="Health">{String(r.Health ?? r.health ?? "—")}</td>
+                        <td className="cv-num" data-label="Health">{String(
+                          r.Health == null || r.Health === "" || String(r.Health).toLowerCase() === "unknown"
+                            ? "Not scored"
+                            : (r.Health ?? r.health ?? "Not scored"),
+                        )}</td>
                         <td className="cv-num" data-label="Components">{String(r.Components ?? r.components ?? "—")}</td>
                         <td className="cv-num" data-label="High-risk">{String(r["High-Risk"] ?? r.high_risk ?? "—")}</td>
                       </tr>

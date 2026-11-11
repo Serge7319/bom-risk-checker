@@ -126,10 +126,57 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
     stock = part.get("total_market_stock")
     if stock is None:
         stock = part.get("stock_total")
-    price = part.get("unit_price") or part.get("price") or part.get("best_price") or part.get("minimum_price")
+    price = part.get("unit_price")
+    if price is None:
+        price = part.get("price")
+    if price is None:
+        price = part.get("best_price")
+    if price is None:
+        price = part.get("minimum_price")
     lifecycle = part.get("lifecycle_status") or "Unknown"
     supplier = part.get("source") or ""
     evidence_class = "live-authorized-supplier" if verified else "missing"
+    explicit_price_source = str(part.get("price_source") or "").strip()
+    offers = part.get("supplier_offers") if isinstance(part.get("supplier_offers"), list) else []
+    has_live_offer_price = any(
+        isinstance(offer, dict)
+        and (offer.get("unit_price") is not None or offer.get("price") is not None)
+        and str(offer.get("retrieved_at") or "").strip()
+        for offer in offers
+    )
+    if explicit_price_source:
+        price_source = explicit_price_source
+    elif price is None:
+        price_source = "missing"
+    elif verified and has_live_offer_price:
+        price_source = "live-authorized-supplier"
+    elif verified:
+        # Live identity must not wash an unlabeled/synthetic price into "live".
+        price_source = "synthetic-preview"
+    else:
+        price_source = "missing"
+    lifecycle_source = str(part.get("lifecycle_source") or evidence_class)
+    stock_sources = list(part.get("stock_data_sources") or [])
+    stock_source = (
+        ", ".join(str(item) for item in stock_sources if item)
+        if stock_sources
+        else (evidence_class if stock is not None and verified else ("missing" if stock is None else "synthetic-preview"))
+    )
+    price_type = str(part.get("price_type") or "").strip()
+    if not price_type:
+        if price is None:
+            price_type = "not-recorded"
+        elif "synthetic" in price_source.casefold() or "preview" in price_source.casefold():
+            price_type = "synthetic-estimate"
+        elif any(
+            isinstance(offer, dict) and offer.get("price_break_quantity") not in (None, "")
+            for offer in offers
+        ):
+            price_type = "quantity-break"
+        elif price_source == "live-authorized-supplier":
+            price_type = "distributor-list"
+        else:
+            price_type = "recorded"
     candidates = normalize_candidate_evidence(alternatives, original_mpn=normalized)
     candidate_mpns = [
         str(candidate.get("Alternative Part") or candidate.get("manufacturer_part_number") or "").strip()
@@ -161,8 +208,13 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
         "effective_quantity": row.get("effective_quantity", row.get("quantity", 0)),
         "Best Source": str(supplier),
         "source": str(supplier),
+        "identity_source": evidence_class,
         "evidence_source": evidence_class,
         "evidence_class": evidence_class,
+        "price_source": price_source,
+        "price_type": price_type,
+        "lifecycle_source": lifecycle_source,
+        "stock_source": stock_source,
         "Supplier Count": _number(part.get("supplier_count")),
         "supplier_count": _number(part.get("supplier_count")),
         "Supplier Coverage": coverage,
