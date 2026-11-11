@@ -391,7 +391,13 @@ def _run_bom(page: Page, cfg: dict) -> dict:
             )
         )
         report["steps"]["replacement"] = {
-            "ok": has_lead_buckets or has_provider_panel,
+            "ok": has_provider_panel and (
+                has_lead_buckets
+                or "Not configured" in repl
+                or "Returned" in repl
+                or "Searched" in repl
+                or "No results" in repl
+            ),
             "url": page.url,
             "has_unclassified_section": "Unclassified leads" in repl,
             "has_provider_panel": has_provider_panel,
@@ -497,14 +503,18 @@ def _run_bom(page: Page, cfg: dict) -> dict:
             and str(row.get("part_b") or "").casefold() == cfg["part_b"].casefold()
         ]
         snap = (matching[0].get("comparison_snapshot") if matching else {}) or {}
+        verified_primary = bool(matching and matching[0].get("verified_primary_evidence"))
         report["steps"]["decision_snapshot_api"] = {
             "ok": bool(matching)
             and isinstance(snap, dict)
-            and bool(snap.get("finding") or snap.get("rows") or snap.get("counts")),
+            and bool(snap.get("finding") or snap.get("rows") or snap.get("counts"))
+            # Synthetic preview decisions must not claim verified primary evidence.
+            and verified_primary is False,
             "record_count": len(matching),
             "has_finding": bool(snap.get("finding")),
             "has_rows": bool(snap.get("rows")),
             "has_counts": bool(snap.get("counts")),
+            "verified_primary_evidence": verified_primary,
             "decision_label": matching[0].get("decision_label") if matching else None,
         }
 

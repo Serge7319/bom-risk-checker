@@ -66,7 +66,10 @@ export function buildMultiCompareMatrix(
           current: text(row["Part A"] || row.part_a),
           currentSource: text(row["Part A source"], "Not stated"),
           currentClass: text(row["Part A value class"], "unknown"),
-          currentCondition: text(row["Test condition"], "Not stated"),
+          currentCondition: text(
+            row["Part A test condition"] || row["Test condition"],
+            "Not stated",
+          ),
           unit: text(row.Unit, ""),
           candidates: [],
         };
@@ -77,7 +80,7 @@ export function buildMultiCompareMatrix(
         value: text(row["Part B"] || row.part_b),
         source: text(row["Part B source"], "Not stated"),
         valueClass: text(row["Part B value class"], "unknown"),
-        condition: text(row["Test condition"], "Not stated"),
+        condition: text(row["Part B test condition"] || row["Test condition"], "Not stated"),
         assessment: text(row.Assessment || row.assessment || row.Status, "Needs data"),
         evidence: text(row.Evidence || row.evidence || row.Note, "No source note supplied."),
       });
@@ -149,7 +152,7 @@ export function buildMultiSourceRecords(
         value: text(row["Part A"] || row.part_a),
         source: text(row["Part A source"], "Not stated"),
         valueClass: text(row["Part A value class"], "unknown"),
-        condition: text(row["Test condition"], "Not stated"),
+        condition: text(row["Part A test condition"] || row["Test condition"], "Not stated"),
         assessment: text(row.Assessment || row.assessment || row.Status, "Needs data"),
         evidence: text(row.Evidence || row.evidence || row.Note, "No source note supplied."),
       })),
@@ -173,7 +176,7 @@ export function buildMultiSourceRecords(
         value: text(row["Part B"] || row.part_b),
         source: text(row["Part B source"], "Not stated"),
         valueClass: text(row["Part B value class"], "unknown"),
-        condition: text(row["Test condition"], "Not stated"),
+        condition: text(row["Part B test condition"] || row["Test condition"], "Not stated"),
         assessment: text(row.Assessment || row.assessment || row.Status, "Needs data"),
         evidence: text(row.Evidence || row.evidence || row.Note, "No source note supplied."),
       })),
@@ -189,24 +192,25 @@ export function buildMultiDecisionSnapshot(
   const matrix = buildMultiCompareMatrix(currentMpn, columns);
   const sourceRecords = buildMultiSourceRecords(currentMpn, columns);
   const primary = columns[0]?.result || {};
+  const candidateMpns = columns.map((column) => column.mpn);
+  // Keep each pairwise compare payload intact (including snapshot_token) so the
+  // decision API can verify every candidate server-side.
+  const candidateSnapshots = columns.map((column) => {
+    const result = { ...(column.result || {}) } as Record<string, unknown>;
+    result.mpn = column.mpn;
+    result.part_a = text(result.part_a || currentMpn, currentMpn);
+    result.part_b = text(result.part_b || column.mpn, column.mpn);
+    return result;
+  });
   return {
     ...primary,
+    ok: true,
     part_a: text(primary.part_a || currentMpn, currentMpn),
-    part_b: columns.map((column) => column.mpn).join(", "),
-    multi_candidate_mpns: columns.map((column) => column.mpn),
+    // Decision primary part_b is the first verified candidate.
+    part_b: text(primary.part_b || candidateMpns[0], candidateMpns[0] || ""),
+    multi_candidate_mpns: candidateMpns,
     multi_matrix: matrix,
     multi_source_records: sourceRecords,
-    candidate_snapshots: columns.map((column) => ({
-      mpn: column.mpn,
-      part_a: column.result.part_a,
-      part_b: column.result.part_b,
-      source_a: column.result.source_a,
-      source_b: column.result.source_b,
-      evidence_sources: column.result.evidence_sources,
-      finding: column.result.finding,
-      counts: column.result.counts,
-      rows: column.result.rows,
-      datasheet_identity: column.result.datasheet_identity,
-    })),
+    candidate_snapshots: candidateSnapshots,
   };
 }

@@ -36,6 +36,13 @@ SNAPSHOT_CONTENT_KEYS: tuple[str, ...] = (
     "gap",
 )
 
+# Multi-candidate assembly fields bound during multi-snapshot verification.
+MULTI_SNAPSHOT_CONTENT_KEYS: tuple[str, ...] = (
+    "multi_candidate_mpns",
+    "multi_matrix",
+    "multi_source_records",
+)
+
 _SNAPSHOT_TTL_SECONDS = 60 * 60 * 12  # 12h, aligned with sandbox JWT TTL
 
 
@@ -146,8 +153,8 @@ def attach_snapshot_token(
     return comparison
 
 
-def verify_snapshot_for_reuse(
-    snapshot: Mapping[str, Any] | None,
+def _verify_pairwise_snapshot_token(
+    snapshot: Mapping[str, Any],
     *,
     workspace_id: str,
     user_id: str | None,
@@ -156,9 +163,7 @@ def verify_snapshot_for_reuse(
     part_b: str,
     now: int | None = None,
 ) -> bool:
-    """True only when the snapshot token binds this caller and content digest."""
-    if not isinstance(snapshot, Mapping):
-        return False
+    """True only when the snapshot token binds this caller and pairwise content digest."""
     secret = snapshot_signing_secret()
     if not secret:
         return False
@@ -210,6 +215,140 @@ def verify_snapshot_for_reuse(
     if not claimed_digest or claimed_digest != snapshot_content_digest(snapshot):
         return False
     return True
+
+
+def _normalize_mpn_list(values: object) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    out: list[str] = []
+    for value in values:
+        text = _normalize_part(value)
+        if text:
+            out.append(text)
+    return out
+
+
+def _multi_assembly_consistent(snapshot: Mapping[str, Any], candidate_mpns: list[str]) -> bool:
+    """Require multi list/matrix/source records to reference only verified candidates."""
+    listed = _normalize_mpn_list(snapshot.get("multi_candidate_mpns"))
+    if [item.casefold() for item in listed] != [item.casefold() for item in candidate_mpns]:
+        return False
+    matrix = snapshot.get("multi_matrix")
+    if matrix is not None:
+        if not isinstance(matrix, list):
+            return False
+        allowed = {item.casefold() for item in candidate_mpns}
+        for row in matrix:
+            if not isinstance(row, dict):
+                return False
+            candidates = row.get("candidates")
+            if not isinstance(candidates, list):
+                return False
+            for cell in candidates:
+                if not isinstance(cell, dict):
+                    return False
+                mpn = _normalize_part(cell.get("mpn")).casefold()
+                if mpn and mpn not in allowed:
+                    return False
+    records = snapshot.get("multi_source_records")
+    if records is not None:
+        if not isinstance(records, list):
+            return False
+        allowed = {item.casefold() for item in candidate_mpns}
+        # First record is Part A; remaining candidate cards must match the verified set.
+        candidate_records = [
+            row for row in records
+            if isinstance(row, dict) and str(row.get("side") or "").casefold().startswith("candidate")
+        ]
+        record_mpns = [_normalize_part(row.get("mpn")).casefold() for row in candidate_records]
+        if set(record_mpns) - {""} != allowed:
+            return False
+    return True
+
+
+def verify_multi_candidate_snapshot(
+    snapshot: Mapping[str, Any],
+    *,
+    workspace_id: str,
+    user_id: str | None,
+    analysis_id: str | None,
+    part_a: str,
+    part_b: str,
+    now: int | None = None,
+) -> bool:
+    """Verify every candidate comparison token and multi-assembly binding."""
+    candidates = snapshot.get("candidate_snapshots")
+    if not isinstance(candidates, list) or len(candidates) < 2:
+        return False
+    candidate_mpns: list[str] = []
+    for entry in candidates:
+        if not isinstance(entry, Mapping):
+            return False
+        candidate_mpn = _normalize_part(entry.get("part_b") or entry.get("mpn"))
+        if not candidate_mpn:
+            return False
+        if not _verify_pairwise_snapshot_token(
+            entry,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            analysis_id=analysis_id,
+            part_a=part_a,
+            part_b=candidate_mpn,
+            now=now,
+        ):
+            return False
+        candidate_mpns.append(candidate_mpn)
+    # Decision primary part_b must be the first verified candidate.
+    if _normalize_part(part_b).casefold() != candidate_mpns[0].casefold():
+        return False
+    if _normalize_part(snapshot.get("part_a")).casefold() != _normalize_part(part_a).casefold():
+        return False
+    request_aid = _normalize_analysis_id(analysis_id)
+    snapshot_aid = _normalize_analysis_id(snapshot.get("analysis_id"))
+    if request_aid and snapshot_aid and request_aid != snapshot_aid:
+        return False
+    if not _multi_assembly_consistent(snapshot, candidate_mpns):
+        return False
+    # Presence of multi assembly keys is required so forged empty shells fail closed.
+    for key in MULTI_SNAPSHOT_CONTENT_KEYS:
+        if key not in snapshot:
+            return False
+    return True
+
+
+def verify_snapshot_for_reuse(
+    snapshot: Mapping[str, Any] | None,
+    *,
+    workspace_id: str,
+    user_id: str | None,
+    analysis_id: str | None,
+    part_a: str,
+    part_b: str,
+    now: int | None = None,
+) -> bool:
+    """True only when the snapshot token(s) bind this caller and evidence contents."""
+    if not isinstance(snapshot, Mapping):
+        return False
+    candidates = snapshot.get("candidate_snapshots")
+    if isinstance(candidates, list) and len(candidates) >= 2:
+        return verify_multi_candidate_snapshot(
+            snapshot,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            analysis_id=analysis_id,
+            part_a=part_a,
+            part_b=part_b,
+            now=now,
+        )
+    return _verify_pairwise_snapshot_token(
+        snapshot,
+        workspace_id=workspace_id,
+        user_id=user_id,
+        analysis_id=analysis_id,
+        part_a=part_a,
+        part_b=part_b,
+        now=now,
+    )
 
 
 def server_verified_primary_evidence(

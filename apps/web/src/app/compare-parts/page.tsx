@@ -319,7 +319,10 @@ function ComparePartsInner() {
               ok: true,
               part_a: decisionPartA.trim(),
               part_b: primaryCandidate,
-              analysis_id: decisionAnalysisId || multiColumns[0]?.result.analysis_id || null,
+              analysis_id:
+                decisionAnalysisId ||
+                String(multiColumns[0]?.result.analysis_id || "") ||
+                null,
             }
           : null;
       const resultMatchesDraft =
@@ -679,7 +682,12 @@ function ComparePartsInner() {
                           <div className="cv-small-note">
                             {text(row["Part A value class"], "unknown")} → {text(row["Part B value class"], "unknown")}
                           </div>
-                          <div className="cv-small-note">{text(row["Test condition"], "Not stated")}</div>
+                          <div className="cv-small-note">
+                            Part A: {text(row["Part A test condition"] || row["Test condition"], "Not stated")}
+                          </div>
+                          <div className="cv-small-note">
+                            Part B: {text(row["Part B test condition"], "Not stated")}
+                          </div>
                         </td>
                         <td>
                           <span className={`cv-compare-assessment${isUnknown(row) ? " unknown" : ""}`}>

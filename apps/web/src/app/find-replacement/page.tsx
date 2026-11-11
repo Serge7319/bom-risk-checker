@@ -10,18 +10,28 @@ import { findReplacement } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
-function providerOutcomeLabel(state: Record<string, unknown>, leadCount: number): string {
+function providerLeadCount(state: Record<string, unknown>): number {
+  const explicit = Number(state.explicit_count ?? state.lead_count ?? 0);
+  const catalog = Number(state.catalog_count ?? 0);
+  const total = (Number.isFinite(explicit) ? explicit : 0) + (Number.isFinite(catalog) ? catalog : 0);
+  if (total > 0) return total;
+  const single = Number(state.result_count ?? state.count ?? 0);
+  return Number.isFinite(single) && single > 0 ? single : 0;
+}
+
+function providerOutcomeLabel(state: Record<string, unknown>): string {
   const values = ["lookup", "catalog", "substitutions", "family_search", "parametric_search"].map(
     (key) => String(state[key] || "").toLowerCase(),
   );
+  const leadCount = providerLeadCount(state);
   if (values.some((value) => value === "not_configured")) return "Not configured";
   if (values.some((value) => value === "timeout")) return "Timed out";
   if (values.some((value) => value === "error" || value === "rate_limited")) return "Failed";
+  if (values.some((value) => value === "part_not_found" || value === "no_results")) {
+    return "No results";
+  }
   if (values.some((value) => value === "ok" || value === "available" || value === "searched")) {
     return leadCount > 0 ? `Returned ${leadCount} leads` : "Searched — no results";
-  }
-  if (values.some((value) => value === "part_not_found" || value === "no_results")) {
-    return "Searched — no results";
   }
   if (leadCount > 0) return `Returned ${leadCount} leads`;
   return "Searched";
@@ -108,11 +118,9 @@ function FindReplacementInner() {
     : Array.isArray(result?.provider_failures)
       ? (result?.provider_failures as Array<Record<string, unknown>>)
       : [];
-  const leadCount =
-    candidates.length + unclassifiedLeads.length + unfilteredLeads.length;
   const providerRows = Object.entries(providerStatus).map(([name, state]) => ({
     name,
-    outcome: providerOutcomeLabel(state || {}, leadCount),
+    outcome: providerOutcomeLabel(state || {}),
     message: String((state || {}).message || "").trim(),
   }));
 

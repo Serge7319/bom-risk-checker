@@ -1073,21 +1073,9 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 snapshot_in = json.loads(snapshot_in)
             except Exception:  # noqa: BLE001
                 snapshot_in = None
-        multi_candidates = (
-            snapshot_in.get("candidate_snapshots")
-            if isinstance(snapshot_in, dict)
-            else None
-        )
-        multi_reuse = (
-            isinstance(snapshot_in, dict)
-            and snapshot_in.get("ok") is not False
-            and not datasheet_uploads
-            and isinstance(multi_candidates, list)
-            and len(multi_candidates) >= 2
-            and str(snapshot_in.get("part_a") or "").strip().casefold() == part_a.casefold()
-            and str(snapshot_in.get("part_b") or "").strip().casefold() == part_b.casefold()
-        )
-        reuse_snapshot = multi_reuse or (
+        # Multi-candidate assemblies must verify every candidate token (and the
+        # multi list/matrix binding). Never reuse solely because 2+ candidates exist.
+        reuse_snapshot = (
             isinstance(snapshot_in, dict)
             and snapshot_in.get("ok") is not False
             and not datasheet_uploads

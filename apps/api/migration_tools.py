@@ -864,6 +864,46 @@ def find_replacement_payload(
         )
     )
 
+    # Always surface per-provider outcomes, even in synthetic preview when live
+    # credentials are absent. Counts stay provider-local (not the combined lead total).
+    offline_count = len(candidates)
+    provider_state = {
+        "lookup": "not_configured",
+        "catalog": "not_configured",
+        "substitutions": "not_configured",
+        "family_search": "not_configured",
+        "parametric_search": "not_configured",
+        "explicit_count": 0,
+        "catalog_count": 0,
+        "message": "Supplier credentials are not configured on this API service.",
+    }
+    discovery = {
+        "original_mpn": requested,
+        "providers": {
+            "DigiKey": dict(provider_state),
+            "Mouser": dict(provider_state),
+            "Newark": dict(provider_state),
+            "Offline catalog": {
+                "lookup": "searched",
+                "catalog": "ok" if offline_count else "no_results",
+                "substitutions": "not_requested",
+                "family_search": "not_requested",
+                "parametric_search": "not_requested",
+                "explicit_count": 0,
+                "catalog_count": offline_count,
+                "message": (
+                    f"Offline reference catalog returned {offline_count} lead(s)."
+                    if offline_count
+                    else "Offline reference catalog returned no leads for this MPN."
+                ),
+            },
+        },
+        "provider_failures": [],
+        "has_incomplete_evidence": True,
+        "explicit_count": 0,
+        "catalog_count": offline_count,
+    }
+
     return _json_safe(
         {
             "ok": True,
@@ -884,6 +924,8 @@ def find_replacement_payload(
             "bom_context": bom_context,
             "context_unavailable": context_notice,
             "candidates": candidates,
+            "discovery": discovery,
+            "provider_failures": [],
             "missing_evidence": missing,
             "gap": gap,
             "live_lookups_enabled": live_lookups_enabled(),

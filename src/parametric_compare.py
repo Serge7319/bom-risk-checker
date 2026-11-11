@@ -525,14 +525,19 @@ def compare_field_values(
 
 
 _SPAN_RE = re.compile(
-    r"([+-]?\d+(?:\.\d+)?)\s*v?\s*(?:~|–|—|-|to)\s*([+-]?\d+(?:\.\d+)?)",
+    r"([+-]?\d+(?:\.\d+)?)\s*(?:°?\s*[A-Za-zμµΩω]+)?\s*(?:~|–|—|-|to)\s*"
+    r"([+-]?\d+(?:\.\d+)?)",
     re.IGNORECASE,
 )
 
 
 def parse_supply_span(text: object) -> tuple[float, float] | None:
-    """Return the low and high ends of a supply span, in the text's voltage unit."""
-    raw = str(text or "").replace("–", "-").replace("—", "-")
+    """Return the low and high ends of a numeric span (voltage/temperature/etc.)."""
+    # Keep condition notes out of endpoint parsing, but do not drop them from
+    # honesty checks in `_comparable_range_status`.
+    raw = _strip_class_only_parentheticals(str(text or ""))
+    raw = re.sub(r"\s*\([^)]*\)", " ", raw)
+    raw = raw.replace("–", "-").replace("—", "-")
     match = _SPAN_RE.search(raw)
     if not match:
         return None
@@ -578,9 +583,25 @@ def supply_range_finding(original: object, candidate: object) -> tuple[str, str]
     )
 
 
-def _strip_range_parentheticals(text: object) -> str:
-    """Drop measurement-condition notes such as (TA) from temperature spans."""
-    return re.sub(r"\s*\([^)]*\)", "", str(text or "")).strip()
+def _strip_class_only_parentheticals(text: object) -> str:
+    """Drop class-only notes such as (typ)/(min)/(max) while keeping test conditions."""
+    raw = str(text or "")
+    return re.sub(
+        r"\s*\(\s*(?:typ(?:ical)?|min(?:imum)?|max(?:imum)?|guarant(?:eed)?)\.?\s*\)",
+        "",
+        raw,
+        flags=re.IGNORECASE,
+    ).strip()
+
+
+def _normalize_condition_token(condition: str) -> str:
+    folded = re.sub(r"\s+", " ", str(condition or "").casefold()).strip(" .,;")
+    folded = folded.replace("°", "")
+    folded = re.sub(r"\bdeg(?:rees?)?\b", "", folded)
+    folded = re.sub(r"\s+", " ", folded).strip(" .,;")
+    # Treat TA/ambient aliases as equivalent when only the label differs.
+    folded = re.sub(r"\b(?:ta|tamb|tambient|ambient)\b", "ambient", folded)
+    return folded
 
 
 def _comparable_range_status(
@@ -589,14 +610,45 @@ def _comparable_range_status(
     *,
     field_key: str,
 ) -> tuple[str, str] | None:
-    """Normalize equivalent range notation when both sources establish the same span."""
-    original_clean = _strip_range_parentheticals(original_text)
-    candidate_clean = _strip_range_parentheticals(candidate_text)
+    """Compare ranges only when Part A/B test conditions are both present and equivalent."""
+    original_condition = engineering_test_condition(original_text)
+    candidate_condition = engineering_test_condition(candidate_text)
+    original_has = original_condition != "Not stated"
+    candidate_has = candidate_condition != "Not stated"
+    if original_has != candidate_has:
+        return (
+            "Needs data",
+            (
+                "Part A and Part B do not both state comparable test conditions for this "
+                f"range (Part A: {original_condition}; Part B: {candidate_condition})."
+            ),
+        )
+    if original_has and candidate_has:
+        if _normalize_condition_token(original_condition) != _normalize_condition_token(
+            candidate_condition
+        ):
+            return (
+                "Needs data",
+                (
+                    "The stated test conditions differ for this range "
+                    f"(Part A: {original_condition}; Part B: {candidate_condition}), "
+                    "so the spans are not confirmed as comparable."
+                ),
+            )
+
+    # Preserve temperature/test qualifiers in the stored values; only strip
+    # class-only labels before parsing the numeric span endpoints.
+    original_clean = _strip_class_only_parentheticals(original_text)
+    candidate_clean = _strip_class_only_parentheticals(candidate_text)
     if original_clean and candidate_clean and original_clean.casefold() == candidate_clean.casefold():
         return (
             "Match",
-            "The ranges match after equivalent notation and measurement-condition notes "
-            "were normalized from both sources.",
+            "The ranges match after equivalent notation was established from both sources"
+            + (
+                f" under matching conditions ({original_condition})."
+                if original_has
+                else "."
+            ),
         )
     covered = supply_range_finding(original_clean or original_text, candidate_clean or candidate_text)
     if covered is None:
@@ -609,7 +661,12 @@ def _comparable_range_status(
         return (
             "Match",
             "The temperature ranges match after equivalent notation was established "
-            "from both sources.",
+            "from both sources"
+            + (
+                f" under matching conditions ({original_condition})."
+                if original_has
+                else "."
+            ),
         )
     return status, note
 
