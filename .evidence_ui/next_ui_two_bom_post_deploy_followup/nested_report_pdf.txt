@@ -1,0 +1,106 @@
+Cadivor · Evidence-linked engineering review
+Page 1
+Cadivor BOM Risk Report
+Project: PR Nov10 Nested Smoke — nested-product-hierarchy    BOM: nested-product-hierarchy    Revision: N1
+Health: 96 / 100    Status: Healthy    Components: 8    High / medium / low: 0 / 1 / 7
+This report uses synthetic preview analysis. Stock, price, and lifecycle values are not live supplier verification; confirm primary-source evidence before making a sourcing or release decision.
+Assembly risk roll-up
+ Assembly
+Parent
+Rolled risk
+Leaves
+Top contributors / evidence
+PROD-TOP
+Medium
+5 total · H 0 / M 1 / NV 0
+EPF10K20RC2404N (Medium) · EPF10K20RC2404N: synthetic-preview
+PSU-ASM
+PRODTOP
+Low
+3 total · H 0 / M 0 / NV 0
+MCU-ASM
+PRODTOP
+Medium
+2 total · H 0 / M 1 / NV 0
+EPF10K20RC2404N (Medium) · EPF10K20RC2404N: synthetic-preview
+MPN
+Manufacturer / description
+Parent
+Qty
+Lifecycle
+Risk
+Provenance
+Risk reasons
+PROD-TOP
+Acme · Top-level product
+1.0
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+PSU-ASM
+Acme · Power supply assembly
+PROD-TOP
+2.0
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+REG-5V
+Texas Instruments · 5V regulator
+NRND candidate
+PSU-ASM
+2.0
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+CAP-100U
+Murata · Bulk capacitor
+PSU-ASM
+8.0
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+LM358DR
+Texas Instruments · Op Amp
+PSU-ASM
+8.0
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+MCU-ASM
+Acme · Controller assembly
+PROD-TOP
+1.0
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+STM32F103
+STMicroelectronics · MCU
+MCU-ASM
+1.0
+Active
+Low
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate
+EPF10K20RC2404
+N
+Altera · Legacy FPGA NRND
+MCU-ASM
+1.0
+NRND
+Medium
+id synthetic-preview ·
+price synthetic-preview ·
+type synthetic-estimate

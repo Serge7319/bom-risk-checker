@@ -154,7 +154,7 @@ function FindReplacementInner() {
             />
           </div>
           <div className="cv-field">
-            <label htmlFor="replacement-mfr">Manufacturer (optional)</label>
+            <label htmlFor="replacement-mfr">Manufacturer (required for dual-source MPNs)</label>
             <input
               id="replacement-mfr"
               value={manufacturer}
@@ -175,6 +175,73 @@ function FindReplacementInner() {
 
       {result ? (
         <>
+          {String(result.status || result.outcome || result.identity_status || "")
+            .toLowerCase()
+            .includes("ambiguous") ||
+          Array.isArray(result.identity_choices) ? (
+            <section className="cv-card pad" style={{ marginBottom: 14 }} role="status" data-testid="identity-disambiguation">
+              <h3 className="cv-card-title">Manufacturer identity required</h3>
+              <p className="cv-card-subtitle">
+                {String(result.detail || result.gap || "") ||
+                  `${mpn} is offered by more than one manufacturer with official product evidence. Choose the intended brand before reviewing replacements.`}
+              </p>
+              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                {((result.identity_choices || []) as Array<Record<string, unknown>>).map((choice) => {
+                  const choiceMfr = String(choice.manufacturer || "");
+                  return (
+                    <div
+                      key={choiceMfr || String(choice.canonical || "")}
+                      className="cv-card pad"
+                      style={{ boxShadow: "none" }}
+                    >
+                      <strong>{choiceMfr || "Manufacturer"}</strong>
+                      <p className="cv-small-note" style={{ marginTop: 4 }}>
+                        {String(choice.note || "Official product evidence available.")}
+                      </p>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                        <button
+                          type="button"
+                          className="cv-button primary"
+                          onClick={() => {
+                            setManufacturer(choiceMfr);
+                            void (async () => {
+                              if (!session) return;
+                              setBusy(true);
+                              setError("");
+                              try {
+                                const data = await findReplacement(session.access_token, {
+                                  mpn,
+                                  manufacturer: choiceMfr,
+                                  analysis_id: bomAnalysisId || null,
+                                });
+                                setResult(data);
+                              } catch (err) {
+                                setError(err instanceof Error ? err.message : "Search failed");
+                              } finally {
+                                setBusy(false);
+                              }
+                            })();
+                          }}
+                        >
+                          Use {choiceMfr || "this manufacturer"}
+                        </button>
+                        {choice.product_url ? (
+                          <a
+                            className="cv-button"
+                            href={String(choice.product_url)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open product page
+                          </a>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
           <section className="cv-card pad" style={{ marginBottom: 14 }}>
             <h3 className="cv-card-title">Original part</h3>
             <p className="cv-card-subtitle">

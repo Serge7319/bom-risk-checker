@@ -564,8 +564,15 @@ def run_alternative_finder_search(
     original_lookup: Mapping[str, Any] | None = None,
     original_risk: Mapping[str, Any] | None = None,
     lookup_error: str = "",
+    requested_manufacturer: str = "",
 ) -> dict[str, Any]:
-    """Execute Alternative Finder search stages and persist durable session results."""
+    """Execute Alternative Finder search stages and persist durable session results.
+
+    ``requested_manufacturer`` constrains DigiKey identity resolution and is
+    verified after aggregator lookup. A mismatch or unresolved brand fails
+    closed with no candidates — the caller's selection is never stamped as
+    supplier-verified identity.
+    """
     from integrations.supplier_diagnostics import (
         new_alternative_finder_request_id,
         reset_alternative_finder_request_id,
@@ -597,10 +604,12 @@ def run_alternative_finder_search(
     except Exception:
         pass
     entered_mpn = str(searched_part or "").strip()
+    requested_mfr = str(requested_manufacturer or "").strip()
     safe_original: dict = dict(original_lookup or {})
     safe_risk: dict = dict(original_risk or {})
     safe_lookup_error = str(lookup_error or "")
     candidates: list = []
+    identity_blocked = False
 
     try:
         if not safe_original:
@@ -608,7 +617,17 @@ def run_alternative_finder_search(
                 with search_run.stage(STAGE_ORIGINAL_LOOKUP):
                     search_run.operation = "lookup"
                     search_run.provider = "aggregator"
-                    safe_original = get_best_part_data(entered_mpn) or {}
+                    # Pass manufacturer explicitly — DigiKey lookups run in a
+                    # ThreadPoolExecutor worker where parent ContextVars do not apply.
+                    try:
+                        safe_original = (
+                            get_best_part_data(
+                                entered_mpn, manufacturer=requested_mfr
+                            )
+                            or {}
+                        )
+                    except TypeError:
+                        safe_original = get_best_part_data(entered_mpn) or {}
                 if not isinstance(safe_original, dict):
                     safe_original = {}
                 if safe_original.get("stock_total") is not None:
@@ -627,6 +646,50 @@ def run_alternative_finder_search(
                     "You can still review the available replacement evidence."
                 )
                 search_run.log_stage_warning(original_exc, stage=STAGE_ORIGINAL_LOOKUP)
+
+        if requested_mfr:
+            try:
+                from apps.api.manufacturer_identity import manufacturers_match
+            except Exception:  # noqa: BLE001
+                manufacturers_match = None  # type: ignore[assignment]
+            resolved_mfr = str(
+                safe_original.get("manufacturer") or safe_original.get("Manufacturer") or ""
+            ).strip()
+            matched = bool(
+                resolved_mfr
+                and manufacturers_match
+                and manufacturers_match(requested_mfr, resolved_mfr)
+            )
+            if not matched and resolved_mfr and manufacturers_match is None:
+                matched = resolved_mfr.casefold() == requested_mfr.casefold()
+            if not resolved_mfr or not matched:
+                # Fail closed: do not stamp the caller's selection as verified.
+                identity_blocked = True
+                safe_original = {
+                    "manufacturer_part_number": entered_mpn,
+                    "manufacturer": "",
+                    "requested_manufacturer": requested_mfr,
+                    "resolved_manufacturer": resolved_mfr,
+                    "identity_status": (
+                        "manufacturer_mismatch" if resolved_mfr else "unresolved"
+                    ),
+                    "identity_verified": False,
+                    "supplier_data_verified": False,
+                    "all_supplier_results": list(
+                        safe_original.get("all_supplier_results") or []
+                    ),
+                }
+                safe_risk = {}
+                safe_lookup_error = (
+                    f"Could not verify manufacturer identity for {entered_mpn} as "
+                    f"{requested_mfr}. Replacement search paused until the selected "
+                    "brand is confirmed against supplier records."
+                )
+            else:
+                safe_original = dict(safe_original)
+                safe_original["identity_status"] = "matched"
+                safe_original["requested_manufacturer"] = requested_mfr
+                safe_original["identity_verified"] = True
 
         returned_mpn = str(safe_original.get("manufacturer_part_number") or "").strip()
         entered_key = re.sub(r"[^A-Za-z0-9]", "", entered_mpn).casefold()
@@ -660,10 +723,24 @@ def run_alternative_finder_search(
                     "Enter the complete manufacturer part number, including package or suffix where applicable."
                 )
 
-        safe_original = _supplement_resolved_part_evidence(safe_original)
+        if not identity_blocked:
+            safe_original = _supplement_resolved_part_evidence(safe_original)
         candidates: list = []
         discovery: dict = {}
-        if exact_source_match:
+        if identity_blocked:
+            discovery = {
+                "source_identity_verified": False,
+                "identity_status": str(safe_original.get("identity_status") or "unresolved"),
+                "requested_manufacturer": requested_mfr,
+                "resolved_manufacturer": str(
+                    safe_original.get("resolved_manufacturer") or ""
+                ),
+                "candidate_status": safe_lookup_error
+                or "Manufacturer identity could not be verified; no candidates returned.",
+                "has_incomplete_evidence": True,
+                "providers": {},
+            }
+        elif exact_source_match:
             with search_run.stage(STAGE_CANDIDATE_ENGINE):
                 search_run.operation = "suggest_alternatives_v2"
                 search_run.provider = "digikey"

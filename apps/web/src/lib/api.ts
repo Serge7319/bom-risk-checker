@@ -595,12 +595,16 @@ export async function fetchMonitoring(token: string, analysisId?: string) {
   return apiJson<Record<string, unknown>>(`/tools/monitoring${q}`, { token });
 }
 
+/** Default client bound for one pairwise compare (progress + fail-closed). */
+export const COMPARE_PARTS_TIMEOUT_MS = 60_000;
+
 export async function compareParts(
   token: string,
   partA: string,
   partB: string,
   analysisId?: string,
   datasheets?: { a?: File | null; b?: File | null },
+  options?: { signal?: AbortSignal; timeoutMs?: number },
 ) {
   const body = datasheets?.a || datasheets?.b ? new FormData() : null;
   if (body) {
@@ -610,15 +614,39 @@ export async function compareParts(
     if (datasheets?.a) body.append("datasheet_a", datasheets.a);
     if (datasheets?.b) body.append("datasheet_b", datasheets.b);
   }
-  return apiJson<Record<string, unknown>>("/tools/compare-parts", {
-    method: "POST",
-    token,
-    body: body || JSON.stringify({
-      part_a: partA,
-      part_b: partB,
-      analysis_id: analysisId || null,
-    }),
-  });
+  const timeoutMs = options?.timeoutMs ?? COMPARE_PARTS_TIMEOUT_MS;
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  if (options?.signal) {
+    if (options.signal.aborted) controller.abort();
+    else options.signal.addEventListener("abort", onAbort, { once: true });
+  }
+  const timer =
+    timeoutMs > 0
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+  try {
+    return await apiJson<Record<string, unknown>>("/tools/compare-parts", {
+      method: "POST",
+      token,
+      signal: controller.signal,
+      body: body || JSON.stringify({
+        part_a: partA,
+        part_b: partB,
+        analysis_id: analysisId || null,
+      }),
+    });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        `Comparison timed out after ${Math.round(timeoutMs / 1000)}s for ${partA} vs ${partB}. This is not a fit verdict and does not mean there are no candidates.`,
+      );
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (options?.signal) options.signal.removeEventListener("abort", onAbort);
+  }
 }
 
 export async function askDatasheet(

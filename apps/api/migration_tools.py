@@ -798,11 +798,76 @@ def find_replacement_payload(
         str(bom_context.get("analysis_id")) if bom_context else None
     )
 
+    from apps.api.manufacturer_identity import (
+        identity_ambiguity_payload,
+        manufacturers_match,
+        multi_brand_choices_for_mpn,
+        select_manufacturer_choice,
+    )
+
+    requested_manufacturer = str(manufacturer or "").strip()
+    dual_source_choices = multi_brand_choices_for_mpn(requested)
+    # Dual-source MPNs (e.g. LM358N TI vs onsemi) require an explicit manufacturer.
+    if dual_source_choices and not requested_manufacturer:
+        return _json_safe(
+            {
+                **identity_ambiguity_payload(
+                    mpn=requested,
+                    requested_manufacturer="",
+                    choices=dual_source_choices,
+                ),
+                "analysis_id": context_analysis_id,
+                "bom_context": bom_context,
+                "context_unavailable": context_notice,
+            }
+        )
+    if dual_source_choices and requested_manufacturer:
+        selected = select_manufacturer_choice(requested, requested_manufacturer)
+        if selected is None:
+            return _json_safe(
+                {
+                    **identity_ambiguity_payload(
+                        mpn=requested,
+                        requested_manufacturer=requested_manufacturer,
+                        choices=dual_source_choices,
+                    ),
+                    "analysis_id": context_analysis_id,
+                    "bom_context": bom_context,
+                    "context_unavailable": context_notice,
+                }
+            )
+
     if production_analysis_enabled():
-        result = find_replacements(requested)
+        result = find_replacements(requested, manufacturer=requested_manufacturer)
         original = result.get("original") if isinstance(result.get("original"), dict) else {}
-        if manufacturer and not original.get("manufacturer"):
-            original["manufacturer"] = manufacturer.strip()
+        resolved_mfr = str(
+            original.get("manufacturer")
+            or original.get("Manufacturer")
+            or ""
+        ).strip()
+        identity_status = str(original.get("identity_status") or "").strip()
+        if requested_manufacturer and (
+            identity_status in {"manufacturer_mismatch", "unresolved"}
+            or (
+                resolved_mfr
+                and not manufacturers_match(requested_manufacturer, resolved_mfr)
+            )
+            or not resolved_mfr
+        ):
+            return _json_safe(
+                {
+                    **identity_ambiguity_payload(
+                        mpn=requested,
+                        requested_manufacturer=requested_manufacturer,
+                        resolved_manufacturer=resolved_mfr
+                        or str(original.get("resolved_manufacturer") or ""),
+                        choices=dual_source_choices or None,
+                    ),
+                    "analysis_id": context_analysis_id,
+                    "bom_context": bom_context,
+                    "context_unavailable": context_notice,
+                }
+            )
         outcome = (
             "candidates_found"
             if result.get("candidates")
@@ -814,6 +879,8 @@ def find_replacement_payload(
             "outcome": outcome if outcome != "failure" else (
                 "unable_to_confirm" if not result.get("candidates") else outcome
             ),
+            "identity_status": original.get("identity_status") or "resolved",
+            "requested_manufacturer": requested_manufacturer,
             "analysis_id": context_analysis_id,
             "bom_context": bom_context,
             "context_unavailable": context_notice,
@@ -825,8 +892,41 @@ def find_replacement_payload(
         requested,
         from_report=(bom_context or {}).get("part") if bom_context else None,
     )
-    if manufacturer and not original.get("manufacturer"):
-        original["manufacturer"] = manufacturer.strip()
+    resolved_mfr = str(original.get("manufacturer") or "").strip()
+    if requested_manufacturer and resolved_mfr and not manufacturers_match(
+        requested_manufacturer, resolved_mfr
+    ):
+        return _json_safe(
+            {
+                **identity_ambiguity_payload(
+                    mpn=requested,
+                    requested_manufacturer=requested_manufacturer,
+                    resolved_manufacturer=resolved_mfr,
+                    choices=dual_source_choices or None,
+                ),
+                "analysis_id": context_analysis_id,
+                "bom_context": bom_context,
+                "context_unavailable": context_notice,
+            }
+        )
+    if requested_manufacturer and not resolved_mfr:
+        # Offline path cannot verify brand — fail closed rather than stamp selection.
+        return _json_safe(
+            {
+                **identity_ambiguity_payload(
+                    mpn=requested,
+                    requested_manufacturer=requested_manufacturer,
+                    resolved_manufacturer="",
+                    choices=dual_source_choices or None,
+                ),
+                "analysis_id": context_analysis_id,
+                "bom_context": bom_context,
+                "context_unavailable": context_notice,
+            }
+        )
+    if requested_manufacturer and resolved_mfr:
+        original["identity_status"] = "matched"
+        original["requested_manufacturer"] = requested_manufacturer
 
     candidates_raw = offline_replacement_candidates(requested)
     candidates: list[dict[str, Any]] = []
@@ -1581,14 +1681,34 @@ def supply_risk_payload(
     demand_growth_percent: int = 0,
     include_lifecycle_event: bool = False,
 ) -> dict[str, Any]:
-    analyses, parts = analyses_and_parts(workspace_id=workspace_id, analysis_id=analysis_id)
+    requested_analysis_id = str(analysis_id or "").strip() or None
+    analyses, parts = analyses_and_parts(
+        workspace_id=workspace_id, analysis_id=requested_analysis_id
+    )
     if not analyses:
         return {
             "ok": True,
             "mode": "synthetic-preview",
             "gap": "Analyze a BOM first.",
+            "scope": "empty",
+            "analysis_id": requested_analysis_id,
             "scenario": {},
         }
+    scoped = bool(requested_analysis_id)
+    # Defensive: when an analysis_id was requested, never silently widen to the
+    # whole workspace even if the store returns extra rows.
+    if scoped:
+        analyses = [
+            row
+            for row in analyses
+            if str(row.get("id") or "").strip() == requested_analysis_id
+        ]
+        parts = [
+            row
+            for row in parts
+            if str(row.get("analysis_id") or "").strip() == requested_analysis_id
+        ]
+    source_part_count = len(parts)
     scenario = build_supply_scenario(
         analyses,
         parts,
@@ -1598,11 +1718,38 @@ def supply_risk_payload(
         demand_growth_percent=int(demand_growth_percent or 0),
         include_lifecycle_event=bool(include_lifecycle_event),
     )
+    analysis_label = ""
+    if scoped and analyses:
+        analysis_label = str(
+            analyses[0].get("project_name")
+            or analyses[0].get("name")
+            or analyses[0].get("filename")
+            or requested_analysis_id
+        )
+    if scoped:
+        gap = (
+            f"Scenario scoped to analysis {analysis_label or requested_analysis_id} "
+            f"({source_part_count} BOM part records). Uses synthetic stock/lifecycle "
+            "fields from that analysis — not live supplier inventory."
+        )
+        scope = "analysis"
+    else:
+        gap = (
+            f"Portfolio-wide scenario across {len(analyses)} saved analyses "
+            f"({source_part_count} BOM part records). Uses synthetic stock/lifecycle "
+            "fields — not live supplier inventory."
+        )
+        scope = "portfolio"
     return _json_safe(
         {
             "ok": True,
             "mode": "synthetic-preview",
-            "gap": "Scenario uses synthetic stock/lifecycle fields from analysis. It does not pull live supplier inventory.",
+            "gap": gap,
+            "scope": scope,
+            "analysis_id": requested_analysis_id if scoped else None,
+            "analysis_label": analysis_label or None,
+            "source_part_count": source_part_count,
+            "analysis_count": len(analyses),
             "parameters": {
                 "build_quantity": max(1, int(build_quantity or 100)),
                 "stock_reduction_percent": int(stock_reduction_percent or 0),

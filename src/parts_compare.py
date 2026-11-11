@@ -32,9 +32,130 @@ FINDING_COMPATIBLE = "Compatible on available evidence"
 FINDING_MATERIAL = "Material difference"
 FINDING_CONFLICTING = "Conflicting evidence"
 FINDING_NEEDS_VERIFICATION = "Needs verification"
-FINDING_LISTING_AGREEMENT = "Supplier-listing agreement"
+# Catalog/supplier agreement is never a Compatible fit verdict.
+FINDING_LISTING_AGREEMENT = "Catalog values agree — fit unverified"
+FINDING_LISTING_AGREEMENT_LEGACY = "Supplier-listing agreement"
 # Legacy alias kept for older call sites / tests that still import the name.
 FINDING_NEEDS_DATA = FINDING_NEEDS_VERIFICATION
+
+
+def _source_missing(source: object) -> bool:
+    text = str(source or "").strip().casefold()
+    return (not text) or text in {"not stated", "none", "unknown"}
+
+
+def _source_is_catalog_only(source: object) -> bool:
+    text = str(source or "").strip().casefold()
+    if _source_missing(source):
+        # Absent/unknown provenance is unverified — treat like catalog-only for
+        # demotion so missing sources never mint Compatible.
+        return True
+    catalog_markers = (
+        "supplier catalog",
+        "supplier listing",
+        "catalog",
+        "digikey",
+        "mouser",
+        "newark",
+        "octopart",
+        "element14",
+        "farnell",
+        "rs components",
+        "arrow",
+        "avnet",
+    )
+    if any(marker in text for marker in catalog_markers):
+        return True
+    return False
+
+
+def _source_is_authoritative(source: object) -> bool:
+    """True for manufacturer datasheet / product-page citations (not catalog)."""
+    text = str(source or "").strip().casefold()
+    if _source_missing(source) or _source_is_catalog_only(source):
+        # Catalog markers already matched above; authoritative must not be catalog.
+        # Re-check: catalog_only treats missing as True, so authoritative is False.
+        return False
+    return (
+        "datasheet" in text
+        or "manufacturer" in text
+        or "product page" in text
+        or "uploaded" in text
+        or ".pdf" in text
+    )
+
+
+def _condition_unknown(value: object) -> bool:
+    text = str(value or "").strip().casefold()
+    return (not text) or text in {"not stated", "unknown", "none", "n/a", "na"}
+
+
+def assess_compare_row(
+    *,
+    status: str,
+    class_a: object = "",
+    class_b: object = "",
+    condition_a: object = "",
+    condition_b: object = "",
+    source_a: object = "",
+    source_b: object = "",
+) -> str:
+    """Map a row status to a customer assessment with provenance honesty.
+
+    Internal comparison Status values (Match / Listing agreement / Different)
+    stay unchanged for ranking. This mapping only affects customer-facing labels.
+    """
+    normalized = str(status or "").strip()
+    folded = normalized.casefold()
+    if normalized == "Different" or folded == FINDING_MATERIAL.casefold():
+        return FINDING_MATERIAL
+    if normalized == "Conflicting" or "conflict" in folded:
+        return FINDING_CONFLICTING
+
+    class_a_text = str(class_a or "").strip().casefold() or "unknown"
+    class_b_text = str(class_b or "").strip().casefold() or "unknown"
+    unknown_evidence = (
+        class_a_text == "unknown"
+        or class_b_text == "unknown"
+        or _condition_unknown(condition_a)
+        or _condition_unknown(condition_b)
+    )
+    missing_a = _source_missing(source_a)
+    missing_b = _source_missing(source_b)
+    catalog_a = _source_is_catalog_only(source_a)
+    catalog_b = _source_is_catalog_only(source_b)
+    authoritative_a = _source_is_authoritative(source_a)
+    authoritative_b = _source_is_authoritative(source_b)
+    listing_status = (
+        normalized == "Listing agreement"
+        or "listing agreement" in folded
+        or folded
+        in {
+            FINDING_LISTING_AGREEMENT.casefold(),
+            FINDING_LISTING_AGREEMENT_LEGACY.casefold(),
+        }
+    )
+
+    if listing_status or normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
+        # Missing/unknown provenance never yields Compatible.
+        if missing_a or missing_b:
+            return FINDING_NEEDS_VERIFICATION
+        # Unknown required evidence with catalog provenance → Needs verification.
+        if unknown_evidence and (catalog_a or catalog_b):
+            return FINDING_NEEDS_VERIFICATION
+        # Supplier-catalog agreement with known class/conditions is still not Compatible.
+        if listing_status or (catalog_a and catalog_b):
+            return FINDING_LISTING_AGREEMENT
+        # Compatible only with authoritative non-catalog evidence on both sides.
+        # Datasheet-backed exact/identity fields may omit class/condition tokens.
+        if (
+            (normalized == "Match" or folded == FINDING_COMPATIBLE.casefold())
+            and authoritative_a
+            and authoritative_b
+        ):
+            return FINDING_COMPATIBLE
+        return FINDING_NEEDS_VERIFICATION
+    return FINDING_NEEDS_VERIFICATION
 
 COMPARE_PARTS_PART_A_WIDGET_KEY = "compare_parts_part_a"
 COMPARE_PARTS_PART_B_WIDGET_KEY = "compare_parts_part_b"
@@ -128,14 +249,19 @@ def claim_compare_parts_submit(
 
 
 def map_status_to_assessment(status: str) -> str:
+    """Backward-compatible status→assessment map (no provenance context)."""
     normalized = str(status or "").strip()
     folded = normalized.casefold()
     if normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
         return FINDING_COMPATIBLE
     if (
         normalized == "Listing agreement"
-        or folded == FINDING_LISTING_AGREEMENT.casefold()
         or "listing agreement" in folded
+        or folded
+        in {
+            FINDING_LISTING_AGREEMENT.casefold(),
+            FINDING_LISTING_AGREEMENT_LEGACY.casefold(),
+        }
     ):
         return FINDING_LISTING_AGREEMENT
     if normalized == "Conflicting" or "conflict" in folded:
@@ -192,7 +318,15 @@ def user_facing_compare_rows(rows: list | None) -> list[dict]:
             "Test condition": test_condition or "Not stated",
             "Part A value class": class_a,
             "Part B value class": class_b,
-            "Assessment": map_status_to_assessment(status),
+            "Assessment": assess_compare_row(
+                status=status,
+                class_a=class_a,
+                class_b=class_b,
+                condition_a=condition_a,
+                condition_b=condition_b,
+                source_a=source_a,
+                source_b=source_b,
+            ),
             "Evidence": customer_facing_evidence_text(row.get("Evidence", "")),
         }
         if row.get("FixtureRow"):
@@ -1116,6 +1250,19 @@ def build_parts_comparison(
         )
 
     user_rows = user_facing_compare_rows(rows)
+    # Overall finding must not outrank honest row assessments. Catalog-only or
+    # unknown-evidence rows never mint a Compatible fit verdict.
+    if finding == FINDING_COMPATIBLE and user_rows:
+        row_assessments = {
+            str(row.get("Assessment") or "").strip() for row in user_rows
+        }
+        if FINDING_COMPATIBLE not in row_assessments:
+            if FINDING_MATERIAL in row_assessments:
+                finding = FINDING_MATERIAL
+            elif FINDING_LISTING_AGREEMENT in row_assessments:
+                finding = FINDING_LISTING_AGREEMENT
+            else:
+                finding = FINDING_NEEDS_VERIFICATION
     notes = [
         "Engineering compatibility is separate from any supplier substitute relationship.",
         "Missing attributes stay missing; Cadivor does not infer a match.",

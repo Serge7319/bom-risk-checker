@@ -1,0 +1,28 @@
+{
+  "lm358n_no_mfr": {
+    "status": "identity_ambiguous",
+    "identity_status": "ambiguous",
+    "choices": [
+      "Texas Instruments",
+      "onsemi"
+    ],
+    "candidates": 0,
+    "detail": "LM358N is offered by more than one manufacturer with official product evidence. Select the manufacturer identity to continue \u2014 Cadivor will not silently substitute another brand."
+  },
+  "supply_portfolio": {
+    "scope": "portfolio",
+    "source_part_count": 33,
+    "analysis_count": 2
+  },
+  "supply_nested": {
+    "analysis_id": "e1f194d8-e210-4624-a3e7-a82693f9a70e",
+    "scope": "analysis",
+    "source_part_count": 8,
+    "gap": "Scenario scoped to analysis PR Nov10 Nested Smoke \u2014 nested-product-hierarchy (8 BOM part records). Uses synthetic stock/lifecycle fields from that analysis \u2014 not live supplier inventory."
+  },
+  "supply_flat": {
+    "analysis_id": "9cd2d041-7370-4537-8b59-14f2c9f2b7e7",
+    "scope": "analysis",
+    "source_part_count": 25
+  }
+}
