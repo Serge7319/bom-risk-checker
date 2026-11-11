@@ -25,8 +25,33 @@ COMPONENT_COLUMNS = (
     "Currency",
     "Evidence Class",
     "Evidence Source",
+    "Identity Source",
+    "Identity Retrieved At",
+    "Lifecycle Source",
+    "Lifecycle Retrieved At",
+    "Stock Source",
+    "Stock Retrieved At",
+    "Price Source",
+    "Price Type",
+    "Price Retrieved At",
     "Supplier Product URL",
     "Datasheet URL",
+)
+
+ASSEMBLY_COLUMNS = (
+    "Assembly MPN",
+    "Description",
+    "Parent MPN",
+    "Line Type",
+    "Quantity per Parent",
+    "Effective Quantity",
+    "Rolled Risk",
+    "Leaf Count",
+    "High-Risk Leaves",
+    "Medium-Risk Leaves",
+    "Needs Verification Leaves",
+    "Top Contributors",
+    "Contributor Evidence",
 )
 
 
@@ -81,6 +106,12 @@ def _export_risk_score(row: dict[str, Any]) -> str:
     return _text(score)
 
 
+def _field_from_evidence(evidence: dict[str, Any], field: str, key: str, default: Any = "") -> Any:
+    fields = evidence.get("fields") if isinstance(evidence.get("fields"), dict) else {}
+    envelope = fields.get(field) if isinstance(fields.get(field), dict) else {}
+    return envelope.get(key, default)
+
+
 def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
     output = []
     for source in report.get("parts") or []:
@@ -104,10 +135,86 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
                 "Stock": _first(row, "Stock", "stock_available", "stock"),
                 "Unit Price": _first(row, "Unit Price", "unit_price"),
                 "Currency": _first(row, "unit_price_currency", "currency"),
-                "Evidence Class": _first(evidence, "evidence_class", default=_first(row, "evidence_source", "source", "price_source", default="not recorded")),
-                "Evidence Source": _first(evidence, "source", default=_first(row, "evidence_source", "source", "price_source")),
+                "Evidence Class": _first(evidence, "evidence_class", default=_first(row, "evidence_source", "source", default="not recorded")),
+                "Evidence Source": _first(evidence, "source", default=_first(row, "identity_source", "evidence_source", "source")),
+                "Identity Source": (
+                    _field_from_evidence(evidence, "identity", "source")
+                    or _first(row, "identity_source", "evidence_source", "source")
+                ),
+                "Identity Retrieved At": (
+                    _field_from_evidence(evidence, "identity", "retrieved_at")
+                    or _first(row, "identity_retrieved_at", "retrieved_at")
+                ),
+                "Lifecycle Source": (
+                    _field_from_evidence(evidence, "lifecycle", "source")
+                    or _first(row, "lifecycle_source")
+                ),
+                "Lifecycle Retrieved At": (
+                    _field_from_evidence(evidence, "lifecycle", "retrieved_at")
+                    or _first(row, "lifecycle_retrieved_at")
+                ),
+                "Stock Source": (
+                    _field_from_evidence(evidence, "stock", "source")
+                    or _first(row, "stock_source")
+                ),
+                "Stock Retrieved At": (
+                    _field_from_evidence(evidence, "stock", "retrieved_at")
+                    or _first(row, "stock_retrieved_at")
+                ),
+                "Price Source": (
+                    _field_from_evidence(evidence, "price", "source")
+                    or _first(row, "price_source")
+                ),
+                "Price Type": (
+                    _field_from_evidence(evidence, "price", "price_type")
+                    or _first(row, "price_type", default="not-recorded")
+                ),
+                "Price Retrieved At": (
+                    _field_from_evidence(evidence, "price", "retrieved_at")
+                    or _first(row, "price_retrieved_at")
+                ),
                 "Supplier Product URL": _first(row, "product_url", "source_url", "Supplier Product URL"),
                 "Datasheet URL": _first(row, "datasheet_url", "Datasheet URL"),
+            }
+        )
+    return output
+
+
+def _assembly_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
+    hierarchy = report.get("hierarchy") if isinstance(report.get("hierarchy"), dict) else {}
+    assemblies = hierarchy.get("assemblies") if isinstance(hierarchy.get("assemblies"), list) else []
+    output = []
+    for assembly in assemblies:
+        if not isinstance(assembly, dict):
+            continue
+        contributors = assembly.get("contributors") if isinstance(assembly.get("contributors"), list) else []
+        contributor_labels = []
+        evidence_labels = []
+        for contributor in contributors[:8]:
+            if not isinstance(contributor, dict):
+                continue
+            mpn = _text(contributor.get("mpn"))
+            level = _text(contributor.get("risk_level"))
+            if mpn:
+                contributor_labels.append(f"{mpn} ({level})" if level else mpn)
+            evidence = _text(contributor.get("evidence_source"))
+            if evidence:
+                evidence_labels.append(f"{mpn}: {evidence}" if mpn else evidence)
+        output.append(
+            {
+                "Assembly MPN": _first(assembly, "mpn", "MPN"),
+                "Description": _first(assembly, "description", "Description"),
+                "Parent MPN": _first(assembly, "parent_mpn", "Parent MPN"),
+                "Line Type": _first(assembly, "line_type", default="assembly"),
+                "Quantity per Parent": assembly.get("quantity_per_parent"),
+                "Effective Quantity": assembly.get("effective_quantity"),
+                "Rolled Risk": _first(assembly, "rolled_risk_level", default="Unknown"),
+                "Leaf Count": assembly.get("leaf_count"),
+                "High-Risk Leaves": assembly.get("high_risk_leaves"),
+                "Medium-Risk Leaves": assembly.get("medium_risk_leaves"),
+                "Needs Verification Leaves": assembly.get("needs_verification_leaves"),
+                "Top Contributors": "; ".join(contributor_labels),
+                "Contributor Evidence": "; ".join(evidence_labels),
             }
         )
     return output
@@ -324,6 +431,15 @@ def build_xlsx(report: dict[str, Any]) -> bytes:
             else "No high-risk parts were recorded for this BOM."
         ),
     )
+    assembly_rows = _assembly_rows(report)
+    _add_xlsx_sheet(
+        wb,
+        title="Assemblies",
+        columns=ASSEMBLY_COLUMNS,
+        rows=assembly_rows,
+        table_name="CadivorAssemblies",
+        empty_note="No assembly roll-up was recorded for this BOM. Flat BOMs export components only.",
+    )
 
     buffer = BytesIO()
     wb.save(buffer)
@@ -352,6 +468,12 @@ def build_pdf(report: dict[str, Any]) -> bytes:
     styles.add(ParagraphStyle(name="CadivorExportHead", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=7, leading=8, textColor=colors.white))
 
     metadata = _metadata(report)
+    health_score = report.get("health_score")
+    health_label = (
+        "Not scored"
+        if health_score is None or str(health_score).strip().casefold() in {"", "not scored", "unknown", "none"}
+        else _text(health_score)
+    )
     story = [
         Paragraph("Cadivor BOM Risk Report", styles["CadivorExportTitle"]),
         Paragraph(
@@ -361,8 +483,9 @@ def build_pdf(report: dict[str, Any]) -> bytes:
             styles["CadivorExportBody"],
         ),
         Paragraph(
-            "<b>Health:</b> " + escape(_text(report.get("health_score") if report.get("health_score") is not None else "Not scored")) +
-            " / 100 &nbsp;&nbsp; <b>Status:</b> " + escape(_text(report.get("health_status") or "Not reported")) +
+            "<b>Health:</b> " + escape(health_label) +
+            (" / 100" if health_label not in {"Not scored"} else "") +
+            " &nbsp;&nbsp; <b>Status:</b> " + escape(_text(report.get("health_status") or "Not reported")) +
             " &nbsp;&nbsp; <b>Components:</b> " + str(len(rows)) +
             " &nbsp;&nbsp; <b>High / medium / low:</b> " +
             " / ".join(escape(_text(report.get(key, 0))) for key in ("high_risk_count", "medium_risk_count", "low_risk_count")),
@@ -372,9 +495,81 @@ def build_pdf(report: dict[str, Any]) -> bytes:
         Spacer(1, 8),
     ]
 
-    headers = ("MPN", "Manufacturer / description", "Parent", "Qty", "Lifecycle", "Risk", "Evidence", "Risk reasons")
+    assembly_rows = _assembly_rows(report)
+    if assembly_rows:
+        story.append(Paragraph("Assembly risk roll-up", styles["CadivorExportBody"]))
+        assembly_headers = ("Assembly", "Parent", "Rolled risk", "Leaves", "Top contributors / evidence")
+        assembly_data: list[list[Any]] = [
+            [Paragraph(escape(name), styles["CadivorExportHead"]) for name in assembly_headers]
+        ]
+        for row in assembly_rows[:40]:
+            assembly_data.append(
+                [
+                    Paragraph(escape(_text(row["Assembly MPN"])), styles["CadivorExportSmall"]),
+                    Paragraph(escape(_text(row["Parent MPN"])), styles["CadivorExportSmall"]),
+                    Paragraph(escape(_text(row["Rolled Risk"])), styles["CadivorExportSmall"]),
+                    Paragraph(
+                        escape(
+                            f"{_text(row['Leaf Count'])} total · "
+                            f"H {_text(row['High-Risk Leaves'])} / "
+                            f"M {_text(row['Medium-Risk Leaves'])} / "
+                            f"NV {_text(row['Needs Verification Leaves'])}"
+                        ),
+                        styles["CadivorExportSmall"],
+                    ),
+                    Paragraph(
+                        escape(
+                            " · ".join(
+                                filter(
+                                    None,
+                                    (_text(row["Top Contributors"]), _text(row["Contributor Evidence"])),
+                                )
+                            )
+                        ),
+                        styles["CadivorExportSmall"],
+                    ),
+                ]
+            )
+        assembly_table = LongTable(
+            assembly_data,
+            colWidths=[1.2 * inch, 0.9 * inch, 0.8 * inch, 1.5 * inch, 3.8 * inch],
+            repeatRows=1,
+            hAlign="LEFT",
+            splitByRow=1,
+        )
+        assembly_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#17324D")),
+                    ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D9E2EC")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        story.append(assembly_table)
+        story.append(Spacer(1, 10))
+
+    headers = ("MPN", "Manufacturer / description", "Parent", "Qty", "Lifecycle", "Risk", "Provenance", "Risk reasons")
     data: list[list[Any]] = [[Paragraph(escape(name), styles["CadivorExportHead"]) for name in headers]]
     for row in rows:
+        provenance = " · ".join(
+            filter(
+                None,
+                [
+                    f"id {_text(row.get('Identity Source'))}" if row.get("Identity Source") else "",
+                    f"price {_text(row.get('Price Source'))}" if row.get("Price Source") else "",
+                    f"type {_text(row.get('Price Type'))}" if row.get("Price Type") else "",
+                    f"at {_text(row.get('Price Retrieved At') or row.get('Identity Retrieved At'))}"
+                    if (row.get("Price Retrieved At") or row.get("Identity Retrieved At"))
+                    else "",
+                ],
+            )
+        ) or _text(row.get("Evidence Class"))
         data.append(
             [
                 Paragraph(escape(_text(row["MPN"])), styles["CadivorExportSmall"]),
@@ -383,13 +578,13 @@ def build_pdf(report: dict[str, Any]) -> bytes:
                 Paragraph(escape(_text(row["Effective Quantity"])), styles["CadivorExportSmall"]),
                 Paragraph(escape(_text(row["Lifecycle"])), styles["CadivorExportSmall"]),
                 Paragraph(escape(_text(row["Risk Level"])), styles["CadivorExportSmall"]),
-                Paragraph(escape(_text(row["Evidence Class"])), styles["CadivorExportSmall"]),
+                Paragraph(escape(provenance), styles["CadivorExportSmall"]),
                 Paragraph(escape(_text(row["Risk Reasons"])), styles["CadivorExportSmall"]),
             ]
         )
     if len(data) == 1:
         data.append([Paragraph("No component rows are present in this report.", styles["CadivorExportSmall"])] + [""] * (len(headers) - 1))
-    widths = [0.95 * inch, 1.8 * inch, 0.78 * inch, 0.48 * inch, 0.78 * inch, 0.52 * inch, 0.88 * inch, 2.05 * inch]
+    widths = [0.95 * inch, 1.8 * inch, 0.78 * inch, 0.48 * inch, 0.78 * inch, 0.52 * inch, 1.2 * inch, 1.73 * inch]
     table = LongTable(data, colWidths=widths, repeatRows=1, hAlign="LEFT", splitByRow=1)
     table.setStyle(
         TableStyle(

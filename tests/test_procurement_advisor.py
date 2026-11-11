@@ -56,7 +56,7 @@ class ProcurementAdvisorTests(unittest.TestCase):
     def test_sourcing_recommendation_markup_uses_visible_streamlit_containers(self):
         part = {"mpn": "TPS54331D", "description": "Power controller"}
         recommendation = {
-            "Recommendation": "Complete sourcing data",
+            "Recommendation": "Check an authorized source",
             "Next Step": "Confirm the current supplier quote.",
             "Supplier Sources": None,
         }
@@ -101,7 +101,7 @@ class ProcurementAdvisorTests(unittest.TestCase):
         markup = procurement_workspace_panels_html(
             {"mpn": "TPS54331D", "description": "Power controller"},
             {
-                "Recommendation": "Complete sourcing data",
+                "Recommendation": "Check an authorized source",
                 "Next Step": "Confirm the current supplier quote.",
                 "Supplier Sources": None,
             },
@@ -199,12 +199,12 @@ class ProcurementAdvisorTests(unittest.TestCase):
             ],
         )
         row = advisor["recommendations"][0]
-        self.assertEqual(row["Recommendation"], "Complete sourcing data")
+        self.assertEqual(row["Recommendation"], "Check an authorized source")
         self.assertIsNone(row["Available Stock"])
         self.assertIsNone(row["Supplier Sources"])
         self.assertEqual(row["Evidence Status"], "Incomplete")
         self.assertEqual(advisor["urgent_count"], 0)
-        self.assertIn("current sourcing data", advisor["summary"])
+        self.assertIn("authorized source check", advisor["summary"])
 
     def test_unverified_numeric_zeroes_are_blank_in_the_editor(self):
         values = sourcing_editor_values(
@@ -624,7 +624,7 @@ class ProcurementAdvisorTests(unittest.TestCase):
         html = procurement_summary_cards_html(
             {"mpn": "TPS54331D"},
             {
-                "Recommendation": "Complete sourcing data",
+                "Recommendation": "Check an authorized source",
                 "Next Step": "Confirm the current quote.",
                 "Supplier Sources": None,
             },
@@ -687,7 +687,7 @@ class ProcurementAdvisorTests(unittest.TestCase):
     def test_sourcing_header_does_not_substitute_bom_quantity_for_annual_demand(self):
         html = procurement_part_summary_html(
             {"mpn": "TPS54331D", "quantity": 100},
-            {"Recommendation": "Complete sourcing data", "Supplier Sources": None},
+            {"Recommendation": "Check an authorized source", "Supplier Sources": None},
         )
         self.assertIn("Annual demand</span><strong>Not provided", html)
         self.assertNotIn("100 units", html)

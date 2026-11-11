@@ -150,7 +150,9 @@ export default function ReportPage() {
               <dt>Health</dt>
               <dd>
                 {report.health_score == null
-                  ? "—"
+                  || String(report.health_score).trim().toLowerCase() === "not scored"
+                  || String(report.health_score).trim().toLowerCase() === "unknown"
+                  ? "Not scored"
                   : `${report.health_score}/100`}
               </dd>
             </div>
@@ -237,9 +239,11 @@ export default function ReportPage() {
                 "Synthetic analysis; live supplier data is not included."}
             </p>
             <p className="cv-small-note" style={{ marginTop: 8 }}>
-              {report.mode === "synthetic-preview"
-                ? "Supplier prices, stock, and lifecycle are synthetic estimates, not live distributor evidence."
-                : `Live authorized-supplier evidence: ${verifiedSupplierRows}; synthetic/preview: ${syntheticSupplierRows}; no supplier match: ${missingSupplierRows} (of ${report.parts.length}). Synthetic rows never count as live verified evidence.`}
+              {verifiedSupplierRows > 0 || syntheticSupplierRows > 0 || missingSupplierRows > 0
+                ? `Live authorized-supplier identity: ${verifiedSupplierRows}; synthetic/preview: ${syntheticSupplierRows}; no supplier match: ${missingSupplierRows} (of ${report.parts.length}). Identity, lifecycle, stock, and price each keep their own source — a live identity never makes a synthetic price appear live.`
+                : report.mode === "synthetic-preview"
+                  ? "Supplier prices, stock, and lifecycle are synthetic estimates, not live distributor evidence."
+                  : "No per-row supplier evidence summary is available for this analysis yet."}
             </p>
           </section>
 

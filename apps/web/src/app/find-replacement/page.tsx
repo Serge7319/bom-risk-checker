@@ -256,9 +256,9 @@ function FindReplacementInner() {
           {candidates.length || hasSeparatedLeads ? (
             <>
               <section className="cv-card pad">
-                <h3 className="cv-card-title">Relevant candidates</h3>
+                <h3 className="cv-card-title">Qualified alternatives</h3>
                 <p className="cv-card-subtitle">
-                  Same or compatible component family. Still research leads — fit is not confirmed until datasheet evidence is reviewed.
+                  Same-family alternatives returned by search. These are not drop-in approvals — fit stays unconfirmed until datasheet evidence is reviewed.
                 </p>
                 {candidates.length ? (
                   <div style={{ marginTop: 12 }}>
@@ -381,15 +381,15 @@ function FindReplacementInner() {
                   </div>
                 ) : (
                   <p className="cv-small-note" style={{ marginTop: 12 }}>
-                    No same-family candidates were returned. Unclassified and cross-family distributor hits are listed separately below when present.
+                    No same-family alternatives were returned. Catalog leads are listed separately below when present — that is not the same as having no search results.
                   </p>
                 )}
               </section>
               {unclassifiedLeads.length ? (
                 <section className="cv-card pad">
-                  <h3 className="cv-card-title">Unclassified leads</h3>
+                  <h3 className="cv-card-title">Catalog leads · unclassified</h3>
                   <p className="cv-card-subtitle">
-                    Catalog hits without confirmed component-family evidence. Not relevant replacement candidates until family is classified.
+                    Catalog hits without confirmed component-family evidence. Shown separately from qualified alternatives — not substitutes until family is classified.
                   </p>
                   <div className="cv-table-wrap cv-table-wrap--replacement" style={{ marginTop: 12 }}>
                     <table className="cv-table cv-table-replacement cv-table-replacement--leads">
@@ -443,9 +443,9 @@ function FindReplacementInner() {
               ) : null}
               {unfilteredLeads.length ? (
                 <section className="cv-card pad">
-                  <h3 className="cv-card-title">Unfiltered leads</h3>
+                  <h3 className="cv-card-title">Catalog leads · cross-family</h3>
                   <p className="cv-card-subtitle">
-                    Distributor keyword hits from a different component family. Not relevant replacement candidates until family and fit are verified.
+                    Distributor keyword hits from a different component family. Catalog leads only — not qualified alternatives and not compatible by default.
                   </p>
                   <div className="cv-table-wrap cv-table-wrap--replacement" style={{ marginTop: 12 }}>
                     <table className="cv-table cv-table-replacement cv-table-replacement--leads">
@@ -499,11 +499,15 @@ function FindReplacementInner() {
             </>
           ) : (
             <section className="cv-card pad">
-              <h3 className="cv-card-title">Unable to confirm</h3>
+              <h3 className="cv-card-title">
+                {providerRows.some((row) => /returned \d+ leads/i.test(row.outcome))
+                  ? "Catalog leads returned — none qualified"
+                  : "Unable to confirm a replacement"}
+              </h3>
               <p className="cv-card-subtitle">
-                No verified replacement was found in this search. Check current
-                manufacturer documentation and authorized distributors before
-                changing the design.
+                {providerRows.some((row) => /returned \d+ leads/i.test(row.outcome))
+                  ? "Providers returned catalog leads, but none met same-family qualification for the alternatives list. Provider coverage does not imply compatibility. Review provider outcomes above and manufacturer documentation before changing the design."
+                  : "No qualified alternatives or catalog leads were returned in this search. That is not proof that no substitute exists — check manufacturer documentation and authorized distributors before changing the design."}
               </p>
               <div style={{ marginTop: 12 }}>
                 <SecondaryLink

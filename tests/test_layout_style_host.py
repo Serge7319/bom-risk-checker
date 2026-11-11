@@ -89,7 +89,7 @@ class LayoutStyleHostTests(unittest.TestCase):
     def test_procurement_panel_styles_are_not_marked_as_empty_hosts(self):
         markup = procurement_workspace_panels_html(
             {"mpn": "TPS54331D", "description": "Power controller"},
-            {"Recommendation": "Complete sourcing data", "Next Step": "Confirm the quote."},
+            {"Recommendation": "Check an authorized source", "Next Step": "Confirm the quote."},
         )
         self.assertIn("<div class='cv-pa-summary'>", markup)
         self.assertIn("<div class='cv-pa-recommendation-v2'>", markup)
