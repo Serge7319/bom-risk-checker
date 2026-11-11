@@ -400,7 +400,7 @@ def procurement_header_html(
         size=64,
         part=dict(part),
     )
-    action = html_escape(str((recommendation or {}).get("Recommendation") or "Complete sourcing data"))
+    action = html_escape(str((recommendation or {}).get("Recommendation") or "Check an authorized source"))
     next_step = html_escape(str((recommendation or {}).get("Next Step") or "Confirm the current supplier, stock, and lead time before making a purchasing decision."))
     missing = str((recommendation or {}).get("Missing Sourcing Data") or "").strip()
     evidence_note = (
@@ -549,7 +549,7 @@ def procurement_part_summary_html(
     bom_label = first("bom_name", "filename", "project_name", default="Not recorded")
     revision = first("bom_revision", "revision", "rev", default="")
     bom_value = f"BOM: Rev {revision}" if revision and revision != "Not recorded" else f"BOM: {bom_label}"
-    action = _t(recommendation.get("Recommendation"), "Complete sourcing data")
+    action = _t(recommendation.get("Recommendation"), "Check an authorized source")
     lifecycle_key = lifecycle.casefold()
     lifecycle_tone = (
         "good"
@@ -1168,7 +1168,7 @@ def _procurement_evidence_summary(context: Mapping[str, Any]) -> str:
         [
             "",
             "### Sourcing recommendation",
-            f"- {component.get('recommendation') or 'Complete sourcing data'}: {component.get('recommended_next_step') or 'Confirm current supplier evidence before buying.'}",
+            f"- {component.get('recommendation') or 'Check an authorized source'}: {component.get('recommended_next_step') or 'Confirm current supplier evidence before buying.'}",
             "",
             "### Data needed",
         ]
@@ -1321,7 +1321,7 @@ def procurement_recommendation_html(
         ("Price comparison", price_value, price_detail, "chart"),
         ("Lead-time evidence", lead_value, lead_detail, "clock"),
     )
-    action = _t(recommendation.get("Recommendation"), "Complete sourcing data")
+    action = _t(recommendation.get("Recommendation"), "Check an authorized source")
     action_title = {
         "Add a second source": "Add a second source to improve supply coverage",
         "Qualify a replacement": "Qualify a replacement for lifecycle continuity",
@@ -1329,7 +1329,8 @@ def procurement_recommendation_html(
         "Buy now": "Secure the units needed for the next build",
         "Order earlier": "Move procurement ahead of the long lead time",
         "Monitor closely": "Monitor supply before the next build",
-        "Complete sourcing data": "Complete current sourcing evidence",
+        "Check an authorized source": "Confirm current authorized sourcing evidence",
+        "Complete sourcing data": "Confirm current authorized sourcing evidence",
         "No immediate action": "Continue routine supplier monitoring",
     }.get(action, action)
     next_step = _t(recommendation.get("Next Step"), "Confirm current sourcing evidence before ordering.")
@@ -1417,7 +1418,7 @@ def procurement_summary_cards_html(
     risk = _t(_first(part, "blended_supply_risk", "supply_risk", default=""))
     risk_value = risk if risk else "Not assessed"
     risk_detail = "Recorded supply-risk assessment" if risk else "No blended supplier-risk evidence"
-    action = _t(recommendation.get("Recommendation"), "Complete sourcing data")
+    action = _t(recommendation.get("Recommendation"), "Check an authorized source")
     cards = (
         ("Sourcing coverage", coverage_value, coverage_detail, "coverage", "layers"),
         ("Estimated annual savings", annual_savings_value, annual_savings_detail, "cost", "calculator"),
@@ -1635,7 +1636,7 @@ def _recommend(row: Dict[str, Any]) -> Dict[str, Any]:
         recommendation = "Monitor closely"
         next_step = "Review stock weekly and prepare a sourcing fallback."
     elif stock is None or suppliers is None or lead is None:
-        recommendation = "Complete sourcing data"
+        recommendation = "Check an authorized source"
         next_step = "Confirm current stock, authorized supplier coverage, and lead time before making a buy decision."
     else:
         recommendation = "No immediate action"
@@ -1694,11 +1695,12 @@ def build_procurement_advisor(*, analyses: Iterable[Dict[str, Any]], parts: Iter
     df = pd.DataFrame(rows)
     urgent = [
         r for r in rows
-        if r["Priority Score"] >= 75 and r["Recommendation"] != "Complete sourcing data"
+        if r["Priority Score"] >= 75 and r["Recommendation"] != "Check an authorized source"
     ]
     monitor = [r for r in rows if r["Recommendation"] == "Monitor closely"]
     second_source = [r for r in rows if r["Recommendation"] == "Add a second source"]
     replace = [r for r in rows if r["Recommendation"] == "Qualify a replacement"]
+    needs_source = sum(1 for r in rows if r["Recommendation"] == "Check an authorized source")
     return {
         "recommendations": rows,
         "recommendation_df": df,
@@ -1710,8 +1712,8 @@ def build_procurement_advisor(*, analyses: Iterable[Dict[str, Any]], parts: Iter
             f"{len(urgent)} component(s) have evidence-backed purchasing actions, "
             f"{len(second_source)} need another source, and {len(monitor)} should be monitored."
             + (
-                f" {sum(1 for r in rows if r['Recommendation'] == 'Complete sourcing data')} need current sourcing data before Cadivor can prioritize a purchase."
-                if any(r["Recommendation"] == "Complete sourcing data" for r in rows)
+                f" {needs_source} need an authorized source check before Cadivor can prioritize a purchase."
+                if needs_source
                 else ""
             )
             if rows else "No purchasing intelligence is available yet."

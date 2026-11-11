@@ -278,6 +278,14 @@ def build_portfolio_intelligence(
 
     project_health = []
     for row in analyses:
+        health_value = _optional_number(row.get("health_score"))
+        # Preserve Not scored / Unknown — never coerce unscored health to 0.
+        if health_value is None:
+            health_display: int | str = "Not scored"
+            health_sort = float("inf")
+        else:
+            health_display = int(health_value)
+            health_sort = float(health_value)
         project_health.append(
             {
                 "Analysis ID": _text(row.get("id")),
@@ -285,14 +293,17 @@ def build_portfolio_intelligence(
                     row.get("project_name") or row.get("name") or row.get("filename"),
                     "Saved BOM",
                 ),
-                "Health": int(_number(row.get("health_score"), 0)),
+                "Health": health_display,
                 "High-Risk": int(_number(row.get("high_risk_count") or row.get("high_risk_parts"), 0)),
                 "Components": int(_number(row.get("total_parts") or row.get("part_count") or row.get("parts_count"), 0)),
                 "BOM": _text(row.get("filename") or row.get("file_name"), "Saved BOM"),
                 "Updated": _text(row.get("updated_at") or row.get("created_at"), "Not recorded"),
+                "_health_sort": health_sort,
             }
         )
-    project_health.sort(key=lambda row: (row["Health"], -row["High-Risk"]))
+    project_health.sort(key=lambda row: (row["_health_sort"], -row["High-Risk"]))
+    for row in project_health:
+        row.pop("_health_sort", None)
 
     normalized = []
     for row in parts:

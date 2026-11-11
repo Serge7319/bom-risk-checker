@@ -47,7 +47,7 @@ class WorkspaceEvidenceContractTests(unittest.TestCase):
                 "mpn": "LM358DR",
                 "supplier_offers": [{"supplier": "Newark", "unit_price": 1.2, "currency": "USD", "stock": 0}],
             },
-            {"Recommendation": "Complete sourcing data", "Supplier Sources": 3, "Lifecycle Status": "Active"},
+            {"Recommendation": "Check an authorized source", "Supplier Sources": 3, "Lifecycle Status": "Active"},
         )
         self.assertIn("3 recorded sources", html)
         self.assertIn("1 saved offer row shown", html)

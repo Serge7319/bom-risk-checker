@@ -453,7 +453,7 @@ class ExportAndSignalsTests(unittest.TestCase):
         xlsx = build_xlsx(report)
         self.assertTrue(zipfile.is_zipfile(io.BytesIO(xlsx)))
         workbook = load_workbook(io.BytesIO(xlsx), data_only=False)
-        for sheet_name in ("Summary", "Components", "Component Details", "High Risk Parts"):
+        for sheet_name in ("Summary", "Components", "Component Details", "High Risk Parts", "Assemblies"):
             self.assertIn(sheet_name, workbook.sheetnames)
         summary = workbook["Summary"]
         summary_values = " ".join(
