@@ -618,6 +618,50 @@ class MultiCandidateSnapshotTrustTests(unittest.TestCase):
                 )
                 self.assertTrue(signed_local.get("snapshot_token"))
 
+                # Valid pairwise token + smuggled multi_* aggregates must not
+                # persist forged multi evidence on reuse.
+                pairwise_smuggle = dict(signed[0])
+                pairwise_smuggle["multi_candidate_mpns"] = [part_b, part_c]
+                pairwise_smuggle["multi_matrix"] = [
+                    {
+                        "attribute": "Package",
+                        "current": "SMUGGLED",
+                        "candidates": [
+                            {"mpn": part_b, "value": "SMUGGLED-B"},
+                            {"mpn": part_c, "value": "SMUGGLED-C"},
+                        ],
+                    }
+                ]
+                pairwise_smuggle["multi_source_records"] = [
+                    {"side": "Part A", "mpn": part_a, "sourceLabel": "smuggled"}
+                ]
+                before_smuggle = captured["compare_calls"]
+                smuggle_response = client.post(
+                    "/decision-records",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={
+                        "analysis_id": analysis_id,
+                        "part_a": part_a,
+                        "part_b": part_b,
+                        "decision": "hold_for_review",
+                        "reviewer": "Smoke Reviewer",
+                        "rationale": "Pairwise token must not smuggle multi aggregates.",
+                        "validation_checks": [],
+                        "residual_risk": "unknown",
+                        "comparison_snapshot": pairwise_smuggle,
+                        "verified_primary_evidence": True,
+                    },
+                )
+                self.assertEqual(smuggle_response.status_code, 201, smuggle_response.text)
+                self.assertEqual(captured["compare_calls"], before_smuggle)
+                smuggle_record = smuggle_response.json()["record"]
+                self.assertFalse(smuggle_record.get("verified_primary_evidence"))
+                smuggle_snap = smuggle_record.get("comparison_snapshot") or {}
+                self.assertFalse(smuggle_snap.get("multi_matrix"))
+                self.assertFalse(smuggle_snap.get("multi_source_records"))
+                self.assertFalse(smuggle_snap.get("multi_candidate_mpns"))
+                self.assertNotIn("SMUGGLED", json.dumps(smuggle_snap))
+
 
 if __name__ == "__main__":
     unittest.main()

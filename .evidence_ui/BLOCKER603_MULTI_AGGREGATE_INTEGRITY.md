@@ -10,7 +10,9 @@ Verifying each candidate HMAC was not enough: a client could keep valid
 `materialize_snapshot_for_reuse` rebuilds the multi assembly exclusively from
 verified pairwise candidate payloads (`rebuild_multi_snapshot_from_candidates`).
 Client aggregate / top-level evidence fields are discarded on reuse.
-`/decision-records` persists only the rebuilt snapshot and derives
+Pairwise reuse copies only HMAC-bound content keys (unsigned `multi_*`
+fields are stripped so they cannot be smuggled beside a valid pairwise token).
+`/decision-records` persists only the rebuilt/stripped snapshot and derives
 `verified_primary_evidence` from that server-trusted payload.
 
 ## Regression

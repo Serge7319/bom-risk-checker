@@ -583,12 +583,24 @@ def materialize_snapshot_for_reuse(
         now=now,
     ):
         return None
-    trusted = dict(snapshot)
-    trusted.setdefault("ok", True)
-    trusted["part_a"] = _normalize_part(part_a)
-    trusted["part_b"] = _normalize_part(part_b)
-    if analysis_id:
-        trusted["analysis_id"] = _normalize_analysis_id(analysis_id)
+    # Pairwise tokens only bind SNAPSHOT_CONTENT_KEYS. Copy only those
+    # authenticated fields so unsigned multi_* aggregates cannot be smuggled
+    # onto a valid pairwise reuse and persisted by /decision-records.
+    trusted: dict[str, Any] = {
+        "ok": True,
+        "part_a": _normalize_part(part_a),
+        "part_b": _normalize_part(part_b),
+        "analysis_id": _normalize_analysis_id(
+            analysis_id or snapshot.get("analysis_id")
+        ),
+    }
+    for key in SNAPSHOT_CONTENT_KEYS:
+        if key in snapshot:
+            trusted[key] = snapshot.get(key)
+    if "snapshot_token" in snapshot:
+        trusted["snapshot_token"] = snapshot.get("snapshot_token")
+    if "snapshot_binding" in snapshot:
+        trusted["snapshot_binding"] = snapshot.get("snapshot_binding")
     return trusted
 
 
