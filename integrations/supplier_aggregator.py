@@ -1160,7 +1160,7 @@ def discover_alternative_candidates(
         if term and term.casefold() != primary_query.casefold()
     ]
 
-    def _search_digikey() -> tuple[str, dict, list[dict], list[dict]]:
+    def _search_digikey() -> tuple[str, dict, list[dict], list[dict], Exception | None]:
         status = {
             "substitutions": "available",
             "catalog": "available",
@@ -1178,7 +1178,7 @@ def discover_alternative_candidates(
                 "lookup": "not_configured",
                 "message": "DigiKey credentials are not configured.",
             })
-            return "DigiKey", status, [], []
+            return "DigiKey", status, [], [], None
         explicit: list[dict] = []
         catalog: list[dict] = []
         errors: list[str] = []
@@ -1213,12 +1213,18 @@ def discover_alternative_candidates(
             status["message"] = " ".join(dict.fromkeys(errors))
         status["explicit_count"] = len(explicit)
         status["catalog_count"] = len(catalog)
-        return "DigiKey", status, explicit, catalog
+        # Uniform shape: (source, status, primary_rows, secondary_rows, error)
+        return "DigiKey", status, explicit, catalog, None
 
-    def _search_catalog_provider(source_name: str, search_func) -> tuple[str, dict, list[dict]]:
+    def _search_catalog_provider(
+        source_name: str, search_func
+    ) -> tuple[str, dict, list[dict], list[dict], Exception | None]:
+        from integrations.newark_client import NewarkCatalogPartialResultsError
+
         status = _provider_discovery_status(source_name)
+        # Unconfigured: report configuration accurately and skip catalog requests.
         if status.get("lookup") == "not_configured":
-            return source_name, status, []
+            return source_name, status, [], [], None
         try:
             candidates = search_func(
                 requested,
@@ -1230,15 +1236,51 @@ def discover_alternative_candidates(
                 "catalog_count": len(candidates),
                 "message": "Catalog results are discovery leads, not confirmed substitutes.",
             })
-            return source_name, status, candidates
+            return source_name, status, candidates, [], None
+        except NewarkCatalogPartialResultsError as error:
+            cause = error.cause if isinstance(getattr(error, "cause", None), Exception) else error
+            provider_status = classify_provider_exception(cause)
+            safe_message = sanitize_provider_message(cause)
+            partial_rows = list(error.candidates or [])
+            status.update({
+                "catalog": "partial",
+                "family_search": "error" if include_family_search else "not_requested",
+                "lookup": "available",
+                "catalog_count": len(partial_rows),
+                "message": safe_message,
+                "provider_status": provider_status,
+                "exception_type": type(cause).__name__,
+                "failure_subreason": str(
+                    getattr(cause, "subreason", "")
+                    or getattr(error, "subreason", "")
+                    or ""
+                ),
+                "failed_term": str(getattr(error, "failed_term", "") or ""),
+                "partial_candidates": True,
+            })
+            return source_name, status, partial_rows, [], cause
         except Exception as error:
+            provider_status = classify_provider_exception(error)
+            safe_message = sanitize_provider_message(error)
             status.update({
                 "catalog": "error",
                 "family_search": "error" if include_family_search else "not_requested",
                 "lookup": "error",
-                "message": sanitize_provider_message(error),
+                "message": safe_message,
+                "provider_status": provider_status,
+                "exception_type": type(error).__name__,
+                "failure_subreason": str(getattr(error, "subreason", "") or ""),
             })
-            return source_name, status, []
+            return source_name, status, [], [], error
+
+    from integrations.supplier_diagnostics import (
+        log_supplier_diagnostic,
+        resolve_supplier_diagnostic_request_id,
+    )
+
+    discovery_request_id = resolve_supplier_diagnostic_request_id()
+    catalog_failures: list[tuple[str, dict, Exception | None]] = []
+    catalog_zero_results: list[str] = []
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {
@@ -1261,30 +1303,50 @@ def discover_alternative_candidates(
                     "parametric_search": "error" if original_data else "not_requested",
                     "lookup": "error",
                     "message": safe_message,
+                    "provider_status": classify_provider_exception(error),
+                    "exception_type": type(error).__name__,
+                    "failure_subreason": str(getattr(error, "subreason", "") or ""),
                 }
-                result = (source_name, status, [], [])
-            source_name = result[0]
-            status = result[1]
+                result = (source_name, status, [], [], error)
+            source_name, status, primary_rows, secondary_rows, failure_exc = result
             discovery["providers"][source_name] = status
             if source_name == "DigiKey":
-                explicit, catalog = result[2], result[3]
-                explicit_substitutes.extend(explicit)
-                catalog_candidates.extend(catalog)
+                explicit_substitutes.extend(primary_rows)
+                catalog_candidates.extend(secondary_rows)
             else:
-                candidates = result[2]
-                catalog_candidates.extend(candidates)
+                catalog_candidates.extend(primary_rows)
+
+            catalog_state = str(status.get("catalog") or "").strip().casefold()
+            lookup_state = str(status.get("lookup") or "").strip().casefold()
+            if lookup_state == "not_configured" or catalog_state == "not_configured":
+                # Configuration gap only — never treat as an upstream catalog failure.
+                discovery["has_incomplete_evidence"] = True
+                continue
+
             if (
-                status.get("lookup") in {"not_configured", "error"}
-                or status.get("catalog") == "error"
-                or status.get("substitutions") == "error"
+                lookup_state == "error"
+                or catalog_state in {"error", "partial"}
+                or str(status.get("substitutions") or "").strip().casefold() == "error"
             ):
                 discovery["has_incomplete_evidence"] = True
                 if (
-                    status.get("lookup") == "error"
-                    or status.get("catalog") == "error"
-                    or status.get("substitutions") == "error"
+                    lookup_state == "error"
+                    or catalog_state in {"error", "partial"}
+                    or str(status.get("substitutions") or "").strip().casefold() == "error"
                 ):
-                    discovery["provider_failures"].append(source_name)
+                    if source_name not in discovery["provider_failures"]:
+                        discovery["provider_failures"].append(source_name)
+                    if catalog_state in {"error", "partial"} and failure_exc is not None:
+                        catalog_failures.append((source_name, status, failure_exc))
+                    elif catalog_state == "error":
+                        catalog_failures.append((source_name, status, failure_exc))
+            elif (
+                source_name in {"Mouser", "Newark"}
+                and catalog_state == "ok"
+                and int(status.get("catalog_count") or 0) == 0
+            ):
+                # Defer zero-result diagnostics until merged candidates are known.
+                catalog_zero_results.append(source_name)
 
     merged = merge_discovery_candidates(
         explicit_substitutes,
@@ -1294,6 +1356,41 @@ def discover_alternative_candidates(
     discovery["explicit_count"] = len(explicit_substitutes)
     discovery["catalog_count"] = len(catalog_candidates)
     discovery["candidates"] = merged
+
+    # Emit correlated catalog-search diagnostics only after all suppliers settle.
+    retained = bool(merged)
+    for source_name in catalog_zero_results:
+        log_supplier_diagnostic(
+            request_id=discovery_request_id,
+            supplier=source_name,
+            stage="catalog_search",
+            provider_status=PROVIDER_PART_NOT_FOUND,
+            subreason="zero_results",
+            retained_candidates=retained,
+        )
+    for source_name, status, failure_exc in catalog_failures:
+        provider_status = str(
+            status.get("provider_status")
+            or (
+                classify_provider_exception(failure_exc)
+                if failure_exc is not None
+                else PROVIDER_ERROR
+            )
+        )
+        log_supplier_diagnostic(
+            request_id=discovery_request_id,
+            supplier=source_name,
+            stage="catalog_search",
+            provider_status=provider_status,
+            error_message=str(status.get("message") or ""),
+            exception_type=str(
+                status.get("exception_type")
+                or (type(failure_exc).__name__ if failure_exc is not None else "")
+            ),
+            error=failure_exc,
+            subreason=str(status.get("failure_subreason") or ""),
+            retained_candidates=retained,
+        )
     return discovery
 
 

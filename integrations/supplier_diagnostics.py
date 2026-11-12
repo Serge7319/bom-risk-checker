@@ -452,38 +452,47 @@ def log_supplier_diagnostic(
     if error_count:
         extra_bits.append("error_count=%s")
         extra_vals.append(payload["error_count"])
+    # Always include stage + retained_candidates so catalog_search failures are
+    # Railway-searchable and distinguishable from exact lookup zero_results.
     if resolved_subreason and extra_bits:
         logger.warning(
-            "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s category=%s "
-            "subreason=%s " + " ".join(extra_bits) + " status_code=%s retryable=%s",
+            "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s stage=%s category=%s "
+            "subreason=%s " + " ".join(extra_bits)
+            + " status_code=%s retryable=%s retained_candidates=%s",
             payload["request_id"],
             payload["supplier"],
+            payload["stage"],
             payload["log_category"],
             payload["subreason"],
             *extra_vals,
             payload["status_code"] or "none",
             payload["retryable"],
+            payload["retained_candidates"],
         )
     elif resolved_subreason:
         logger.warning(
-            "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s category=%s "
-            "subreason=%s status_code=%s retryable=%s",
+            "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s stage=%s category=%s "
+            "subreason=%s status_code=%s retryable=%s retained_candidates=%s",
             payload["request_id"],
             payload["supplier"],
+            payload["stage"],
             payload["log_category"],
             payload["subreason"],
             payload["status_code"] or "none",
             payload["retryable"],
+            payload["retained_candidates"],
         )
     else:
         logger.warning(
-            "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s category=%s "
-            "status_code=%s retryable=%s",
+            "ALT_FINDER_SUPPLIER_DIAG request_id=%s supplier=%s stage=%s category=%s "
+            "status_code=%s retryable=%s retained_candidates=%s",
             payload["request_id"],
             payload["supplier"],
+            payload["stage"],
             payload["log_category"],
             payload["status_code"] or "none",
             payload["retryable"],
+            payload["retained_candidates"],
         )
     return payload
 
