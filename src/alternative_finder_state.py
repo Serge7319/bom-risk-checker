@@ -34,15 +34,59 @@ OUTCOME_CATALOG_LEADS_ONLY = "catalog_leads_only"
 OUTCOME_PARTIAL_SUPPLIER = "partial_supplier_results"
 OUTCOME_IDENTITY_AMBIGUOUS = "identity_ambiguous"
 
+LABEL_VERIFIED_REPLACEMENTS = "Verified replacements found"
+LABEL_SUPPLIER_LISTED_FIT_UNVERIFIED = (
+    "Supplier-listed candidates found — fit unverified"
+)
+LABEL_PARTIAL_VERIFIED = "Partial success — verified replacements found"
+LABEL_PARTIAL_FIT_UNVERIFIED = "Partial success — fit unverified"
+
 SEARCH_OUTCOME_LABELS: dict[str, str] = {
-    OUTCOME_SUCCESS: "Verified replacements found",
-    OUTCOME_PARTIAL_SUCCESS: "Partial success",
+    # Default success wording is fit-unverified; callers pass candidates to
+    # upgrade to "Verified…" only when Compatible / verified-fit evidence exists.
+    OUTCOME_SUCCESS: LABEL_SUPPLIER_LISTED_FIT_UNVERIFIED,
+    OUTCOME_PARTIAL_SUCCESS: LABEL_PARTIAL_FIT_UNVERIFIED,
     OUTCOME_CATALOG_LEADS_ONLY: "No verified replacement; catalog leads available",
     OUTCOME_PARTIAL_SUPPLIER: "Partial supplier results",
     OUTCOME_NO_RESULTS: "No results",
     OUTCOME_FAILURE: "Search failed",
     OUTCOME_IDENTITY_AMBIGUOUS: "Could not verify manufacturer identity",
+    "candidates_found": LABEL_SUPPLIER_LISTED_FIT_UNVERIFIED,
 }
+
+_VERIFIED_FIT_TOKENS = frozenset(
+    {
+        "compatible",
+        "verified direct substitute",
+    }
+)
+
+
+def candidate_has_verified_fit(row: Mapping[str, Any] | None) -> bool:
+    """True only when candidate fields claim Compatible / verified-direct fit."""
+    if not isinstance(row, Mapping):
+        return False
+    for key in (
+        "Classification",
+        "Category",
+        "classification",
+        "category",
+        "fit",
+        "Fit",
+    ):
+        value = str(row.get(key) or "").strip().casefold()
+        if not value:
+            continue
+        if value in _VERIFIED_FIT_TOKENS:
+            return True
+        # Exact Compatible label only — never treat "not compatible" as verified.
+        if value == "compatible" or value.startswith("compatible "):
+            return True
+    return False
+
+
+def candidates_have_verified_fit(candidates: list[Any] | None) -> bool:
+    return any(candidate_has_verified_fit(row) for row in (candidates or []))
 
 TERMINAL_SEARCH_ERROR_MESSAGE = (
     "Cadivor could not complete the supplier search right now. "
@@ -370,11 +414,29 @@ def _migrate_legacy_completed_search(session_state: MutableMapping[str, Any]) ->
     )
 
 
-def search_outcome_label(outcome: object) -> str:
-    """Human-readable label for API/UI; unknown tokens pass through unchanged."""
+def search_outcome_label(
+    outcome: object,
+    *,
+    candidates: list[Any] | None = None,
+) -> str:
+    """Human-readable label for API/UI; unknown tokens pass through unchanged.
+
+    ``success`` / ``partial_success`` / ``candidates_found`` only claim
+    "verified" when at least one candidate carries Compatible (or verified-direct)
+    fit evidence. Supplier-listed rows alone stay fit-unverified.
+    """
     key = str(outcome or "").strip()
     if not key:
         return ""
+    verified = candidates_have_verified_fit(candidates) if candidates is not None else False
+    if key in {OUTCOME_SUCCESS, "candidates_found"}:
+        return (
+            LABEL_VERIFIED_REPLACEMENTS
+            if verified
+            else LABEL_SUPPLIER_LISTED_FIT_UNVERIFIED
+        )
+    if key == OUTCOME_PARTIAL_SUCCESS:
+        return LABEL_PARTIAL_VERIFIED if verified else LABEL_PARTIAL_FIT_UNVERIFIED
     return SEARCH_OUTCOME_LABELS.get(key, key)
 
 

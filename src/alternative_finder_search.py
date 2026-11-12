@@ -974,6 +974,38 @@ def run_alternative_finder_search(
                 + " and ".join(parts)
                 + " catalog lead(s) were separated and are not ranked as substitutes."
             )
+        # Refresh retained counts after family partition so UI raw≠retained is honest.
+        displayed = list(relevant) + list(unclassified) + list(unfiltered)
+        discovery["catalog_retained_count"] = len(displayed)
+        retained_by_source: dict[str, int] = {}
+        for row in displayed:
+            if not isinstance(row, dict):
+                continue
+            source = str(
+                row.get("source")
+                or row.get("Supplier")
+                or row.get("Evidence Source")
+                or ""
+            ).strip()
+            if source:
+                retained_by_source[source] = retained_by_source.get(source, 0) + 1
+        providers_meta = discovery.get("providers")
+        if isinstance(providers_meta, dict):
+            for source_name, status in providers_meta.items():
+                if isinstance(status, dict) and "catalog_raw_count" in status:
+                    status["catalog_retained_count"] = int(
+                        retained_by_source.get(source_name, 0)
+                    )
+        raw_total = int(discovery.get("catalog_raw_count") or 0)
+        if raw_total and len(displayed) < raw_total:
+            summary = str(discovery.get("catalog_filter_summary") or "").strip()
+            family_note = (
+                f"{raw_total} raw catalog matches → {len(displayed)} retained after "
+                "manufacturer, family, and deduplication filters"
+            )
+            discovery["catalog_filter_summary"] = (
+                f"{summary}; {family_note}" if summary else family_note
+            )
         candidates = relevant
         with search_run.stage(STAGE_PERSIST):
             canonical_mpn = str(
@@ -1004,7 +1036,9 @@ def run_alternative_finder_search(
         durable = session_state.get("alternative_finder_result")
         if isinstance(durable, dict):
             durable["search_outcome"] = outcome
-            durable["search_outcome_label"] = search_outcome_label(outcome)
+            durable["search_outcome_label"] = search_outcome_label(
+                outcome, candidates=candidates
+            )
             meta = durable.get("discovery_metadata")
             if not isinstance(meta, dict):
                 meta = {}
@@ -1015,6 +1049,10 @@ def run_alternative_finder_search(
                 "unclassified_lead_count",
                 "unfiltered_lead_count",
                 "candidate_status",
+                "catalog_raw_count",
+                "catalog_retained_count",
+                "catalog_filter_summary",
+                "manufacturer_filtered_count",
             ):
                 if key in discovery:
                     meta[key] = discovery.get(key)
@@ -1027,7 +1065,9 @@ def run_alternative_finder_search(
         return {
             "status": "partial_success" if outcome in non_error else "completed",
             "search_outcome": outcome,
-            "search_outcome_label": search_outcome_label(outcome),
+            "search_outcome_label": search_outcome_label(
+                outcome, candidates=candidates
+            ),
             "request_id": request_id,
             "candidate_count": len(candidates),
             "stage_timings_ms": dict(search_run.stages_ms),

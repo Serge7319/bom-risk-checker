@@ -1147,6 +1147,10 @@ def discover_alternative_candidates(
         "providers": {},
         "explicit_count": 0,
         "catalog_count": 0,
+        "catalog_raw_count": 0,
+        "catalog_retained_count": 0,
+        "manufacturer_filtered_count": 0,
+        "catalog_filter_summary": "",
         "provider_failures": [],
         "candidates": [],
         "has_incomplete_evidence": False,
@@ -1229,6 +1233,8 @@ def discover_alternative_candidates(
             status["message"] = " ".join(dict.fromkeys(errors))
         status["explicit_count"] = len(explicit)
         status["catalog_count"] = len(catalog)
+        status["catalog_raw_count"] = len(catalog)
+        status["catalog_retained_count"] = len(catalog)
         # Uniform shape: (source, status, primary_rows, secondary_rows, error)
         return "DigiKey", status, explicit, catalog, None
 
@@ -1250,6 +1256,8 @@ def discover_alternative_candidates(
                 "catalog": "ok",
                 "family_search": "ok" if include_family_search else "not_requested",
                 "catalog_count": len(candidates),
+                "catalog_raw_count": len(candidates),
+                "catalog_retained_count": len(candidates),
                 "message": "Catalog results are discovery leads, not confirmed substitutes.",
             })
             return source_name, status, candidates, [], None
@@ -1263,6 +1271,8 @@ def discover_alternative_candidates(
                 "family_search": "error" if include_family_search else "not_requested",
                 "lookup": "available",
                 "catalog_count": len(partial_rows),
+                "catalog_raw_count": len(partial_rows),
+                "catalog_retained_count": len(partial_rows),
                 "message": safe_message,
                 "provider_status": provider_status,
                 "exception_type": type(cause).__name__,
@@ -1364,6 +1374,19 @@ def discover_alternative_candidates(
                 # Defer zero-result diagnostics until merged candidates are known.
                 catalog_zero_results.append(source_name)
 
+    catalog_raw_total = 0
+    for status in discovery["providers"].values():
+        if not isinstance(status, dict):
+            continue
+        try:
+            raw = int(status.get("catalog_raw_count") or status.get("catalog_count") or 0)
+        except (TypeError, ValueError):
+            raw = 0
+        status["catalog_raw_count"] = max(0, raw)
+        catalog_raw_total += max(0, raw)
+    discovery["catalog_raw_count"] = catalog_raw_total
+
+    manufacturer_filtered = 0
     if requested_mfr:
         try:
             from apps.api.manufacturer_identity import manufacturers_match
@@ -1383,9 +1406,26 @@ def discover_alternative_candidates(
         before = len(explicit_substitutes) + len(catalog_candidates)
         explicit_substitutes = [row for row in explicit_substitutes if _brand_allowed(row)]
         catalog_candidates = [row for row in catalog_candidates if _brand_allowed(row)]
-        if before and (len(explicit_substitutes) + len(catalog_candidates)) < before:
+        after = len(explicit_substitutes) + len(catalog_candidates)
+        manufacturer_filtered = max(0, before - after)
+        if manufacturer_filtered:
             discovery["has_incomplete_evidence"] = True
             discovery["manufacturer_filter_applied"] = True
+        discovery["manufacturer_filtered_count"] = manufacturer_filtered
+
+    # Per-provider retained after manufacturer/lineage filter (pre-dedup).
+    retained_by_source: dict[str, int] = {}
+    for row in list(explicit_substitutes) + list(catalog_candidates):
+        if not isinstance(row, dict):
+            continue
+        source = str(row.get("source") or row.get("Supplier") or "").strip()
+        if not source:
+            continue
+        retained_by_source[source] = retained_by_source.get(source, 0) + 1
+    for source_name, status in discovery["providers"].items():
+        if not isinstance(status, dict):
+            continue
+        status["catalog_retained_count"] = int(retained_by_source.get(source_name, 0))
 
     merged = merge_discovery_candidates(
         explicit_substitutes,
@@ -1394,7 +1434,22 @@ def discover_alternative_candidates(
     )
     discovery["explicit_count"] = len(explicit_substitutes)
     discovery["catalog_count"] = len(catalog_candidates)
+    discovery["catalog_retained_count"] = len(merged)
     discovery["candidates"] = merged
+    filter_bits: list[str] = []
+    if manufacturer_filtered:
+        filter_bits.append(
+            f"{manufacturer_filtered} removed by manufacturer/lineage filter"
+        )
+    pre_merge = len(explicit_substitutes) + len(catalog_candidates)
+    dedup_removed = max(0, pre_merge - len(merged))
+    if dedup_removed:
+        filter_bits.append(f"{dedup_removed} removed by deduplication")
+    if catalog_raw_total and len(merged) < catalog_raw_total:
+        filter_bits.append(
+            f"{catalog_raw_total} raw catalog matches → {len(merged)} retained"
+        )
+    discovery["catalog_filter_summary"] = "; ".join(dict.fromkeys(filter_bits))
 
     # Emit correlated catalog-search diagnostics only after all suppliers settle.
     retained = bool(merged)
