@@ -1,0 +1,16 @@
+test_mixed_explicit_and_catalog_with_duplicate_mpn (tests.test_find_replacement_outcome_counts.CatalogVersusExplicitCountTests.test_mixed_explicit_and_catalog_with_duplicate_mpn) ... ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=catalog_search category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=true
+ok
+test_nineteen_raw_eighteen_filtered_one_retained (tests.test_find_replacement_outcome_counts.CatalogVersusExplicitCountTests.test_nineteen_raw_eighteen_filtered_one_retained) ... ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=catalog_search category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=true
+ok
+test_zero_catalog_two_explicit_never_counts_as_catalog (tests.test_find_replacement_outcome_counts.CatalogVersusExplicitCountTests.test_zero_catalog_two_explicit_never_counts_as_catalog) ... ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=catalog_search category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=true
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=catalog_search category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=true
+ok
+test_candidates_found_token_follows_fit_evidence (tests.test_find_replacement_outcome_counts.OutcomeWordingLm358Tests.test_candidates_found_token_follows_fit_evidence) ... ok
+test_catalog_only_never_labeled_compatible_in_matrix (tests.test_find_replacement_outcome_counts.OutcomeWordingLm358Tests.test_catalog_only_never_labeled_compatible_in_matrix) ... ok
+test_compatible_candidate_keeps_verified_wording (tests.test_find_replacement_outcome_counts.OutcomeWordingLm358Tests.test_compatible_candidate_keeps_verified_wording) ... ok
+test_success_without_compatible_is_fit_unverified (tests.test_find_replacement_outcome_counts.OutcomeWordingLm358Tests.test_success_without_compatible_is_fit_unverified) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.290s
+
+OK

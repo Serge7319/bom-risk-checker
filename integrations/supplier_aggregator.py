@@ -1146,6 +1146,8 @@ def discover_alternative_candidates(
         "requested_manufacturer": requested_mfr,
         "providers": {},
         "explicit_count": 0,
+        "explicit_raw_count": 0,
+        "explicit_retained_count": 0,
         "catalog_count": 0,
         "catalog_raw_count": 0,
         "catalog_retained_count": 0,
@@ -1232,6 +1234,8 @@ def discover_alternative_candidates(
         if errors:
             status["message"] = " ".join(dict.fromkeys(errors))
         status["explicit_count"] = len(explicit)
+        status["explicit_raw_count"] = len(explicit)
+        status["explicit_retained_count"] = len(explicit)
         status["catalog_count"] = len(catalog)
         status["catalog_raw_count"] = len(catalog)
         status["catalog_retained_count"] = len(catalog)
@@ -1374,19 +1378,77 @@ def discover_alternative_candidates(
                 # Defer zero-result diagnostics until merged candidates are known.
                 catalog_zero_results.append(source_name)
 
+    from src.alternative_classification import normalize_mpn_for_comparison
+
+    def _tag_channel(rows: list[dict], channel: str) -> list[dict]:
+        tagged: list[dict] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            payload = dict(row)
+            payload["discovery_channel"] = channel
+            tagged.append(payload)
+        return tagged
+
+    def _count_by_source(rows: list[dict]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            source = str(row.get("source") or row.get("Supplier") or "").strip()
+            if not source:
+                continue
+            counts[source] = counts.get(source, 0) + 1
+        return counts
+
+    def _unique_channel_count(rows: list[dict], channel: str) -> int:
+        keys: set[str] = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("discovery_channel") or "").casefold() != channel:
+                continue
+            key = normalize_mpn_for_comparison(
+                str(row.get("manufacturer_part_number") or "")
+            )
+            if key:
+                keys.add(key)
+        return len(keys)
+
     catalog_raw_total = 0
+    explicit_raw_total = 0
     for status in discovery["providers"].values():
         if not isinstance(status, dict):
             continue
         try:
-            raw = int(status.get("catalog_raw_count") or status.get("catalog_count") or 0)
+            raw_catalog = int(
+                status.get("catalog_raw_count")
+                if status.get("catalog_raw_count") is not None
+                else status.get("catalog_count")
+                or 0
+            )
         except (TypeError, ValueError):
-            raw = 0
-        status["catalog_raw_count"] = max(0, raw)
-        catalog_raw_total += max(0, raw)
+            raw_catalog = 0
+        try:
+            raw_explicit = int(
+                status.get("explicit_raw_count")
+                if status.get("explicit_raw_count") is not None
+                else status.get("explicit_count")
+                or 0
+            )
+        except (TypeError, ValueError):
+            raw_explicit = 0
+        status["catalog_raw_count"] = max(0, raw_catalog)
+        status["explicit_raw_count"] = max(0, raw_explicit)
+        catalog_raw_total += max(0, raw_catalog)
+        explicit_raw_total += max(0, raw_explicit)
     discovery["catalog_raw_count"] = catalog_raw_total
+    discovery["explicit_raw_count"] = explicit_raw_total
 
-    manufacturer_filtered = 0
+    explicit_substitutes = _tag_channel(explicit_substitutes, "explicit")
+    catalog_candidates = _tag_channel(catalog_candidates, "catalog")
+
+    manufacturer_filtered_catalog = 0
     if requested_mfr:
         try:
             from apps.api.manufacturer_identity import manufacturers_match
@@ -1403,51 +1465,96 @@ def discover_alternative_candidates(
                 )
             return row_mfr.casefold() == requested_mfr.casefold()
 
-        before = len(explicit_substitutes) + len(catalog_candidates)
+        before_catalog = len(catalog_candidates)
+        before_explicit = len(explicit_substitutes)
         explicit_substitutes = [row for row in explicit_substitutes if _brand_allowed(row)]
         catalog_candidates = [row for row in catalog_candidates if _brand_allowed(row)]
-        after = len(explicit_substitutes) + len(catalog_candidates)
-        manufacturer_filtered = max(0, before - after)
-        if manufacturer_filtered:
+        manufacturer_filtered_catalog = max(0, before_catalog - len(catalog_candidates))
+        manufacturer_filtered_explicit = max(
+            0, before_explicit - len(explicit_substitutes)
+        )
+        if manufacturer_filtered_catalog or manufacturer_filtered_explicit:
             discovery["has_incomplete_evidence"] = True
             discovery["manufacturer_filter_applied"] = True
-        discovery["manufacturer_filtered_count"] = manufacturer_filtered
+        # Catalog-only count for filter summaries (explicit tracked separately).
+        discovery["manufacturer_filtered_count"] = manufacturer_filtered_catalog
+        discovery["manufacturer_filtered_explicit_count"] = (
+            manufacturer_filtered_explicit
+        )
 
-    # Per-provider retained after manufacturer/lineage filter (pre-dedup).
-    retained_by_source: dict[str, int] = {}
-    for row in list(explicit_substitutes) + list(catalog_candidates):
-        if not isinstance(row, dict):
-            continue
-        source = str(row.get("source") or row.get("Supplier") or "").strip()
-        if not source:
-            continue
-        retained_by_source[source] = retained_by_source.get(source, 0) + 1
+    # Per-provider retained after manufacturer/lineage filter (pre-dedup),
+    # catalog channel only — never mix in explicit substitutions.
+    catalog_retained_by_source = _count_by_source(catalog_candidates)
+    explicit_retained_by_source = _count_by_source(explicit_substitutes)
     for source_name, status in discovery["providers"].items():
         if not isinstance(status, dict):
             continue
-        status["catalog_retained_count"] = int(retained_by_source.get(source_name, 0))
+        status["catalog_retained_count"] = int(
+            catalog_retained_by_source.get(source_name, 0)
+        )
+        if "explicit_raw_count" in status or "explicit_count" in status:
+            status["explicit_retained_count"] = int(
+                explicit_retained_by_source.get(source_name, 0)
+            )
 
     merged = merge_discovery_candidates(
         explicit_substitutes,
         catalog_candidates,
         original_mpn=requested,
     )
+    catalog_retained = _unique_channel_count(merged, "catalog")
+    explicit_retained = _unique_channel_count(merged, "explicit")
+    # Refresh per-provider retained from unique post-dedup merged rows.
+    catalog_merged_by_source: dict[str, set[str]] = {}
+    explicit_merged_by_source: dict[str, set[str]] = {}
+    for row in merged:
+        if not isinstance(row, dict):
+            continue
+        channel = str(row.get("discovery_channel") or "").casefold()
+        source = str(row.get("source") or row.get("Supplier") or "").strip()
+        key = normalize_mpn_for_comparison(
+            str(row.get("manufacturer_part_number") or "")
+        )
+        if not source or not key:
+            continue
+        bucket = (
+            catalog_merged_by_source
+            if channel == "catalog"
+            else explicit_merged_by_source if channel == "explicit" else None
+        )
+        if bucket is None:
+            continue
+        bucket.setdefault(source, set()).add(key)
+    for source_name, status in discovery["providers"].items():
+        if not isinstance(status, dict):
+            continue
+        status["catalog_retained_count"] = len(
+            catalog_merged_by_source.get(source_name, set())
+        )
+        if "explicit_raw_count" in status or "explicit_count" in status:
+            status["explicit_retained_count"] = len(
+                explicit_merged_by_source.get(source_name, set())
+            )
+
     discovery["explicit_count"] = len(explicit_substitutes)
+    discovery["explicit_retained_count"] = explicit_retained
     discovery["catalog_count"] = len(catalog_candidates)
-    discovery["catalog_retained_count"] = len(merged)
+    discovery["catalog_retained_count"] = catalog_retained
     discovery["candidates"] = merged
     filter_bits: list[str] = []
-    if manufacturer_filtered:
+    if manufacturer_filtered_catalog:
         filter_bits.append(
-            f"{manufacturer_filtered} removed by manufacturer/lineage filter"
+            f"{manufacturer_filtered_catalog} catalog leads removed by "
+            "manufacturer/lineage filter"
         )
-    pre_merge = len(explicit_substitutes) + len(catalog_candidates)
-    dedup_removed = max(0, pre_merge - len(merged))
-    if dedup_removed:
-        filter_bits.append(f"{dedup_removed} removed by deduplication")
-    if catalog_raw_total and len(merged) < catalog_raw_total:
+    catalog_dedup_removed = max(0, len(catalog_candidates) - catalog_retained)
+    if catalog_dedup_removed:
         filter_bits.append(
-            f"{catalog_raw_total} raw catalog matches → {len(merged)} retained"
+            f"{catalog_dedup_removed} catalog leads removed by deduplication"
+        )
+    if catalog_raw_total and catalog_retained < catalog_raw_total:
+        filter_bits.append(
+            f"{catalog_raw_total} raw catalog matches → {catalog_retained} retained"
         )
     discovery["catalog_filter_summary"] = "; ".join(dict.fromkeys(filter_bits))
 

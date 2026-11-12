@@ -1,4 +1,4 @@
-/** Pure checks for Find Replacement outcome + raw/retained provider labels. */
+/** Pure checks for Find Replacement outcome + catalog vs explicit provider labels. */
 
 function candidateHasVerifiedFit(row) {
   for (const key of ["classification", "Classification", "category", "Category", "fit", "Fit"]) {
@@ -38,22 +38,66 @@ function searchOutcomeLabel(outcome, explicitLabel, candidates) {
   return key;
 }
 
+function providerRawCatalogCount(state) {
+  if (state.catalog_raw_count !== undefined && state.catalog_raw_count !== null) {
+    const raw = Number(state.catalog_raw_count);
+    return Number.isFinite(raw) && raw >= 0 ? raw : null;
+  }
+  if (state.catalog_count !== undefined && state.catalog_count !== null) {
+    const raw = Number(state.catalog_count);
+    return Number.isFinite(raw) && raw >= 0 ? raw : null;
+  }
+  return null;
+}
+
+function providerRetainedCatalogCount(state) {
+  if (state.catalog_retained_count === undefined || state.catalog_retained_count === null) {
+    return null;
+  }
+  const retained = Number(state.catalog_retained_count);
+  return Number.isFinite(retained) && retained >= 0 ? retained : null;
+}
+
+function providerExplicitSubstitutionCount(state) {
+  const retained = Number(state.explicit_retained_count);
+  if (Number.isFinite(retained) && retained > 0) return retained;
+  const explicit = Number(state.explicit_count);
+  return Number.isFinite(explicit) && explicit > 0 ? explicit : 0;
+}
+
 function providerOutcomeLabel(state) {
   const values = ["lookup", "catalog", "substitutions", "family_search", "parametric_search"].map(
     (key) => String(state[key] || "").toLowerCase(),
   );
-  const raw = Number(state.catalog_raw_count ?? state.catalog_count ?? 0);
-  const retained =
-    state.catalog_retained_count === undefined || state.catalog_retained_count === null
-      ? null
-      : Number(state.catalog_retained_count);
-  if (values.some((value) => value === "ok" || value === "available" || value === "searched")) {
-    if (raw > 0) {
-      if (retained !== null && Number.isFinite(retained) && retained !== raw) {
-        return `${raw} raw catalog matches · ${retained} retained`;
-      }
-      return `${raw} raw catalog matches`;
+  const rawCount = providerRawCatalogCount(state);
+  const retainedCount = providerRetainedCatalogCount(state);
+  const explicitCount = providerExplicitSubstitutionCount(state);
+  if (values.some((value) => value === "not_configured")) return "Not configured";
+  if (values.some((value) => value === "timeout")) return "Timed out";
+  if (values.some((value) => value === "error" || value === "rate_limited")) return "Failed";
+  if (values.some((value) => value === "part_not_found" || value === "no_results")) {
+    return "No results";
+  }
+  const parts = [];
+  if (rawCount !== null && rawCount > 0) {
+    if (retainedCount !== null && retainedCount !== rawCount) {
+      parts.push(`${rawCount} raw catalog matches · ${retainedCount} retained`);
+    } else {
+      parts.push(`${rawCount} raw catalog matches`);
     }
+  }
+  if (explicitCount > 0) {
+    parts.push(
+      `${explicitCount} supplier substitution${explicitCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (parts.length) return parts.join("; ");
+  if (
+    values.some(
+      (value) =>
+        value === "ok" || value === "available" || value === "searched" || value === "partial",
+    )
+  ) {
     return "Searched — no results";
   }
   return "Searched";
@@ -89,6 +133,39 @@ assert(
     catalog_retained_count: 1,
   }) === "19 raw catalog matches · 1 retained",
   "AM29-style raw vs retained must both appear",
+);
+
+assert(
+  providerOutcomeLabel({
+    catalog: "ok",
+    substitutions: "ok",
+    catalog_raw_count: 0,
+    catalog_count: 0,
+    catalog_retained_count: 0,
+    explicit_count: 2,
+    explicit_retained_count: 2,
+  }) === "2 supplier substitutions",
+  "Explicit-only DigiKey must never say raw catalog matches",
+);
+
+assert(
+  providerOutcomeLabel({
+    catalog: "ok",
+    substitutions: "ok",
+    catalog_raw_count: 3,
+    catalog_retained_count: 1,
+    explicit_retained_count: 2,
+  }) === "3 raw catalog matches · 1 retained; 2 supplier substitutions",
+  "Mixed catalog + explicit must keep categories separate",
+);
+
+assert(
+  providerRawCatalogCount({
+    explicit_count: 2,
+    lead_count: 5,
+    result_count: 7,
+  }) === null,
+  "Absent catalog fields must not fall back to explicit/lead/result counts",
 );
 
 assert(

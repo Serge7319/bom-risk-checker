@@ -14,13 +14,17 @@ import {
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
-function providerRawCatalogCount(state: Record<string, unknown>): number {
-  const raw = Number(state.catalog_raw_count ?? state.catalog_count ?? 0);
-  if (Number.isFinite(raw) && raw > 0) return raw;
-  const explicit = Number(state.explicit_count ?? state.lead_count ?? 0);
-  if (Number.isFinite(explicit) && explicit > 0) return explicit;
-  const single = Number(state.result_count ?? state.count ?? 0);
-  return Number.isFinite(single) && single > 0 ? single : 0;
+function providerRawCatalogCount(state: Record<string, unknown>): number | null {
+  // Catalog-only: never infer from explicit_count / lead_count / generic totals.
+  if (state.catalog_raw_count !== undefined && state.catalog_raw_count !== null) {
+    const raw = Number(state.catalog_raw_count);
+    return Number.isFinite(raw) && raw >= 0 ? raw : null;
+  }
+  if (state.catalog_count !== undefined && state.catalog_count !== null) {
+    const raw = Number(state.catalog_count);
+    return Number.isFinite(raw) && raw >= 0 ? raw : null;
+  }
+  return null;
 }
 
 function providerRetainedCatalogCount(state: Record<string, unknown>): number | null {
@@ -29,6 +33,13 @@ function providerRetainedCatalogCount(state: Record<string, unknown>): number | 
   }
   const retained = Number(state.catalog_retained_count);
   return Number.isFinite(retained) && retained >= 0 ? retained : null;
+}
+
+function providerExplicitSubstitutionCount(state: Record<string, unknown>): number {
+  const retained = Number(state.explicit_retained_count);
+  if (Number.isFinite(retained) && retained > 0) return retained;
+  const explicit = Number(state.explicit_count);
+  return Number.isFinite(explicit) && explicit > 0 ? explicit : 0;
 }
 
 function candidateHasVerifiedFit(row: Record<string, unknown>): boolean {
@@ -88,26 +99,36 @@ function providerOutcomeLabel(state: Record<string, unknown>): string {
   );
   const rawCount = providerRawCatalogCount(state);
   const retainedCount = providerRetainedCatalogCount(state);
+  const explicitCount = providerExplicitSubstitutionCount(state);
   if (values.some((value) => value === "not_configured")) return "Not configured";
   if (values.some((value) => value === "timeout")) return "Timed out";
   if (values.some((value) => value === "error" || value === "rate_limited")) return "Failed";
   if (values.some((value) => value === "part_not_found" || value === "no_results")) {
     return "No results";
   }
-  if (values.some((value) => value === "ok" || value === "available" || value === "searched" || value === "partial")) {
-    if (rawCount > 0) {
-      if (retainedCount !== null && retainedCount !== rawCount) {
-        return `${rawCount} raw catalog matches · ${retainedCount} retained`;
-      }
-      return `${rawCount} raw catalog matches`;
-    }
-    return "Searched — no results";
-  }
-  if (rawCount > 0) {
+  const parts: string[] = [];
+  if (rawCount !== null && rawCount > 0) {
     if (retainedCount !== null && retainedCount !== rawCount) {
-      return `${rawCount} raw catalog matches · ${retainedCount} retained`;
+      parts.push(`${rawCount} raw catalog matches · ${retainedCount} retained`);
+    } else {
+      parts.push(`${rawCount} raw catalog matches`);
     }
-    return `${rawCount} raw catalog matches`;
+  }
+  if (explicitCount > 0) {
+    parts.push(
+      `${explicitCount} supplier substitution${explicitCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (parts.length) return parts.join("; ");
+  if (
+    values.some(
+      (value) =>
+        value === "ok" || value === "available" || value === "searched" || value === "partial",
+    )
+  ) {
+    // Catalog fields present and zero → honest empty catalog; do not invent matches.
+    if (rawCount === 0) return "Searched — no results";
+    return "Searched — no results";
   }
   return "Searched";
 }

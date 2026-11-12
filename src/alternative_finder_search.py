@@ -974,13 +974,34 @@ def run_alternative_finder_search(
                 + " and ".join(parts)
                 + " catalog lead(s) were separated and are not ranked as substitutes."
             )
-        # Refresh retained counts after family partition so UI raw≠retained is honest.
+        # Refresh catalog-only retained counts after family partition.
+        # Explicit substitutions stay in explicit_* fields and must not inflate
+        # catalog_retained_count or catalog filter summaries.
+        from src.alternative_classification import normalize_mpn_for_comparison
+
         displayed = list(relevant) + list(unclassified) + list(unfiltered)
-        discovery["catalog_retained_count"] = len(displayed)
-        retained_by_source: dict[str, int] = {}
+        catalog_keys: set[str] = set()
+        catalog_keys_by_source: dict[str, set[str]] = {}
+        explicit_keys: set[str] = set()
         for row in displayed:
             if not isinstance(row, dict):
                 continue
+            channel = str(row.get("discovery_channel") or "").casefold()
+            key = normalize_mpn_for_comparison(
+                str(
+                    row.get("manufacturer_part_number")
+                    or row.get("Alternative Part")
+                    or ""
+                )
+            )
+            if not key:
+                continue
+            if channel == "explicit":
+                explicit_keys.add(key)
+                continue
+            if channel != "catalog":
+                continue
+            catalog_keys.add(key)
             source = str(
                 row.get("source")
                 or row.get("Supplier")
@@ -988,19 +1009,25 @@ def run_alternative_finder_search(
                 or ""
             ).strip()
             if source:
-                retained_by_source[source] = retained_by_source.get(source, 0) + 1
+                catalog_keys_by_source.setdefault(source, set()).add(key)
+        discovery["catalog_retained_count"] = len(catalog_keys)
+        if explicit_keys:
+            discovery["explicit_retained_count"] = len(explicit_keys)
         providers_meta = discovery.get("providers")
         if isinstance(providers_meta, dict):
             for source_name, status in providers_meta.items():
-                if isinstance(status, dict) and "catalog_raw_count" in status:
-                    status["catalog_retained_count"] = int(
-                        retained_by_source.get(source_name, 0)
+                if isinstance(status, dict) and (
+                    "catalog_raw_count" in status or "catalog_count" in status
+                ):
+                    status["catalog_retained_count"] = len(
+                        catalog_keys_by_source.get(source_name, set())
                     )
         raw_total = int(discovery.get("catalog_raw_count") or 0)
-        if raw_total and len(displayed) < raw_total:
+        retained_catalog = len(catalog_keys)
+        if raw_total and retained_catalog < raw_total:
             summary = str(discovery.get("catalog_filter_summary") or "").strip()
             family_note = (
-                f"{raw_total} raw catalog matches → {len(displayed)} retained after "
+                f"{raw_total} raw catalog matches → {retained_catalog} retained after "
                 "manufacturer, family, and deduplication filters"
             )
             discovery["catalog_filter_summary"] = (
@@ -1053,6 +1080,9 @@ def run_alternative_finder_search(
                 "catalog_retained_count",
                 "catalog_filter_summary",
                 "manufacturer_filtered_count",
+                "explicit_raw_count",
+                "explicit_retained_count",
+                "explicit_count",
             ):
                 if key in discovery:
                     meta[key] = discovery.get(key)
