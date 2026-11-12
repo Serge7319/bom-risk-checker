@@ -14,13 +14,22 @@ Base: `ce20ed594c2763cf670fb716cc081319d2c8d891` (#609/#610 on main)
 
 Sanitized correlator from prior prod check: `4bc26b9498f5` (no keys/URLs).
 
+## Aggregator follow-up (supplier identity path)
+
+`integrations/supplier_aggregator.py` now passes `mpn=part_number` into `manufacturers_match()` for:
+1. DigiKey brand check in `_safe_supplier_lookup()`
+2. Requested-manufacturer filter in `get_best_part_data()`
+
+AM29 lineage (AMD ↔ Infineon/Cypress/Spansion) only applies when the supplier row has a real manufacturer and the exact MPN route permits it. Supplier-reported brand is preserved; typed text alone never verifies identity.
+
 ## Tests run
 
 | Suite | Result |
 | --- | --- |
 | `tests.test_replacement_outcome_identity` | OK |
-| `tests.test_newark_catalog_diagnostics` | OK (18) |
-| Alternative Finder regression list (+ post-605 / post-deploy identity) | **427 OK** |
+| `tests.test_threaded_manufacturer_lookup` (incl. AM29 aggregator path) | OK |
+| `tests.test_newark_catalog_diagnostics` | OK |
+| Alternative Finder regression list (+ post-605 / post-deploy identity) | **436 OK** |
 | `apps/web` lint | OK (pre-existing warnings only) |
 | `apps/web` build | OK |
 
@@ -28,4 +37,4 @@ Note: `tests.test_compare_parts` has pre-existing failures on main (e.g. capacit
 
 ## Do not
 
-Merge or deploy from this PR — leave open for Codex review / release.
+Merge or deploy from this PR — leave open for Codex review / release. Production remains on `ce20ed59`.

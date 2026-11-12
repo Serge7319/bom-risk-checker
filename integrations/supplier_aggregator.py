@@ -389,7 +389,10 @@ def _safe_supplier_lookup(
                 from apps.api.manufacturer_identity import manufacturers_match
 
                 brand_ok = bool(
-                    result_mfr and manufacturers_match(requested_mfr, result_mfr)
+                    result_mfr
+                    and manufacturers_match(
+                        requested_mfr, result_mfr, mpn=part_number
+                    )
                 )
             except Exception:  # noqa: BLE001
                 brand_ok = bool(
@@ -699,9 +702,14 @@ def get_best_part_data(part_number: str, manufacturer: str = "") -> dict:
             row_mfr = str(row.get("manufacturer") or "").strip()
             if not row_mfr:
                 continue
-            if manufacturers_match and manufacturers_match(requested_mfr, row_mfr):
+            if manufacturers_match and manufacturers_match(
+                requested_mfr, row_mfr, mpn=part_number
+            ):
                 matched.append(row)
-            elif not manufacturers_match and row_mfr.casefold() == requested_mfr.casefold():
+            elif (
+                not manufacturers_match
+                and row_mfr.casefold() == requested_mfr.casefold()
+            ):
                 matched.append(row)
         valid_results = matched
 
