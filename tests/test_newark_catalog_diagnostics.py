@@ -206,8 +206,20 @@ class NewarkCatalogClientDiagnosticsTests(unittest.TestCase):
                     "AM29F010B-70EC", include_family_search=False
                 )
 
-    def test_missing_products_key_is_malformed(self):
-        self.requests.get.return_value = self._ok_response({"keywordSearchReturn": {}})
+    def test_am29_zero_hits_omit_products_as_empty_success(self):
+        # Live element14 any: responses omit products when numberOfResults is 0.
+        empty = self._ok_response({"keywordSearchReturn": {"numberOfResults": 0}})
+        self.requests.get.return_value = empty
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            rows = self.newark.search_newark_catalog_candidates("AM29F010B-70EC")
+        self.assertEqual(rows, [])
+        terms = [call.kwargs["params"]["term"] for call in self.requests.get.call_args_list]
+        self.assertEqual(terms, ["any:AM29F010B-70EC", "any:AM29F010"])
+
+    def test_missing_products_with_positive_result_count_is_malformed(self):
+        self.requests.get.return_value = self._ok_response(
+            {"keywordSearchReturn": {"numberOfResults": 3}}
+        )
         with patch.object(self.newark, "get_secret", return_value="private-api-key"):
             with self.assertRaises(self.newark.NewarkCatalogResponseError):
                 self.newark.search_newark_catalog_candidates(

@@ -117,7 +117,8 @@ def search_newark_catalog_candidates(
     """Search Newark catalog terms and return review-only candidate leads.
 
     Distinguishes:
-    - empty successful HTTP responses (valid ``keywordSearchReturn.products: []``)
+    - empty successful HTTP responses (``products: []`` or omit ``products`` with
+      ``numberOfResults: 0``)
       → ``[]``
     - timeout / HTTP / auth / invalid JSON or payload → raise the classified error
     - mixed terms: keep candidate rows and raise ``NewarkCatalogPartialResultsError``
@@ -202,7 +203,17 @@ def search_newark_catalog_candidates(
             failed_term = term
             continue
 
+        # element14 omits ``products`` on valid zero-hit responses and returns
+        # ``numberOfResults`` only. Treat that as empty success; omit+hits is malformed.
         if "products" not in search_return:
+            number_of_results = search_return.get("numberOfResults")
+            try:
+                result_count = int(number_of_results) if number_of_results is not None else 0
+            except (TypeError, ValueError):
+                result_count = -1
+            if result_count == 0:
+                saw_successful_empty = True
+                continue
             last_failure = NewarkCatalogResponseError(
                 "Newark catalog keywordSearchReturn omitted products.",
                 subreason="malformed_response",
