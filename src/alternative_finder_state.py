@@ -28,6 +28,21 @@ STATUS_FAILED = "failed"
 OUTCOME_SUCCESS = "success"
 OUTCOME_PARTIAL_SUCCESS = "partial_success"
 OUTCOME_FAILURE = "failure"
+# Honest non-error outcomes: empty same-family list is not automatically a provider failure.
+OUTCOME_NO_RESULTS = "no_results"
+OUTCOME_CATALOG_LEADS_ONLY = "catalog_leads_only"
+OUTCOME_PARTIAL_SUPPLIER = "partial_supplier_results"
+OUTCOME_IDENTITY_AMBIGUOUS = "identity_ambiguous"
+
+SEARCH_OUTCOME_LABELS: dict[str, str] = {
+    OUTCOME_SUCCESS: "Verified replacements found",
+    OUTCOME_PARTIAL_SUCCESS: "Partial success",
+    OUTCOME_CATALOG_LEADS_ONLY: "No verified replacement; catalog leads available",
+    OUTCOME_PARTIAL_SUPPLIER: "Partial supplier results",
+    OUTCOME_NO_RESULTS: "No results",
+    OUTCOME_FAILURE: "Search failed",
+    OUTCOME_IDENTITY_AMBIGUOUS: "Could not verify manufacturer identity",
+}
 
 TERMINAL_SEARCH_ERROR_MESSAGE = (
     "Cadivor could not complete the supplier search right now. "
@@ -355,17 +370,96 @@ def _migrate_legacy_completed_search(session_state: MutableMapping[str, Any]) ->
     )
 
 
+def search_outcome_label(outcome: object) -> str:
+    """Human-readable label for API/UI; unknown tokens pass through unchanged."""
+    key = str(outcome or "").strip()
+    if not key:
+        return ""
+    return SEARCH_OUTCOME_LABELS.get(key, key)
+
+
+def _discovery_provider_counts(
+    discovery: Mapping[str, Any] | None,
+) -> tuple[int, int, int]:
+    """Return (ok_count, error_count, provider_lead_count) from discovery metadata."""
+    meta = discovery if isinstance(discovery, Mapping) else {}
+    providers = meta.get("providers") if isinstance(meta.get("providers"), Mapping) else {}
+    ok_count = 0
+    error_count = 0
+    lead_count = 0
+    error_tokens = {"error", "timeout", "rate_limited", "auth", "authentication", "malformed_response"}
+    ok_tokens = {"ok", "available", "searched", "partial", "zero_results", "part_not_found", "no_results"}
+    for state in providers.values():
+        if not isinstance(state, Mapping):
+            continue
+        values = {
+            str(state.get(key) or "").casefold()
+            for key in ("lookup", "catalog", "substitutions", "family_search", "parametric_search")
+        }
+        values.discard("")
+        if values & error_tokens:
+            error_count += 1
+        elif values & ok_tokens or values:
+            ok_count += 1
+        for key in ("catalog_count", "explicit_count", "lead_count", "result_count", "count"):
+            try:
+                lead_count += max(0, int(state.get(key) or 0))
+            except (TypeError, ValueError):
+                continue
+    return ok_count, error_count, lead_count
+
+
 def resolve_search_outcome(
     candidates: list[Any],
     *,
     has_incomplete_evidence: bool = False,
     persist_issue: bool = False,
+    catalog_lead_count: int = 0,
+    discovery: Mapping[str, Any] | None = None,
 ) -> str:
-    if not candidates:
+    """Classify overall search outcome without conflating valid empty with failure.
+
+    - verified same-family candidates → success / partial_success
+    - catalog/cross-family leads only → catalog_leads_only (or partial_supplier_results)
+    - providers completed with nothing → no_results (not a provider error)
+    - total provider failure with no salvage → failure
+    """
+    has_candidates = bool(candidates)
+    separated = max(0, int(catalog_lead_count or 0))
+    if separated <= 0 and isinstance(discovery, Mapping):
+        separated = (
+            len(discovery.get("unclassified_leads") or [])
+            + len(discovery.get("unfiltered_leads") or [])
+        )
+        try:
+            separated = max(
+                separated,
+                int(discovery.get("unclassified_lead_count") or 0)
+                + int(discovery.get("unfiltered_lead_count") or 0),
+                int(discovery.get("catalog_count") or 0),
+            )
+        except (TypeError, ValueError):
+            pass
+    ok_count, error_count, provider_leads = _discovery_provider_counts(discovery)
+    lead_count = max(separated, provider_leads)
+
+    if has_candidates:
+        if error_count > 0 and ok_count > 0:
+            return OUTCOME_PARTIAL_SUPPLIER
+        if has_incomplete_evidence or persist_issue:
+            return OUTCOME_PARTIAL_SUCCESS
+        return OUTCOME_SUCCESS
+
+    if lead_count > 0:
+        if error_count > 0:
+            return OUTCOME_PARTIAL_SUPPLIER
+        return OUTCOME_CATALOG_LEADS_ONLY
+
+    if error_count > 0 and ok_count == 0:
         return OUTCOME_FAILURE
-    if has_incomplete_evidence or persist_issue:
-        return OUTCOME_PARTIAL_SUCCESS
-    return OUTCOME_SUCCESS
+    if error_count > 0:
+        return OUTCOME_PARTIAL_SUPPLIER
+    return OUTCOME_NO_RESULTS
 
 
 def clear_alternative_finder_search_errors(session_state: MutableMapping[str, Any]) -> None:
@@ -441,7 +535,13 @@ def _sync_legacy_from_result(
     outcome = str(result.get("search_outcome") or "").strip()
     if not outcome and result.get("status") == STATUS_FAILED:
         outcome = OUTCOME_FAILURE
-    if outcome in {OUTCOME_SUCCESS, OUTCOME_PARTIAL_SUCCESS}:
+    if outcome in {
+        OUTCOME_SUCCESS,
+        OUTCOME_PARTIAL_SUCCESS,
+        OUTCOME_CATALOG_LEADS_ONLY,
+        OUTCOME_PARTIAL_SUPPLIER,
+        OUTCOME_NO_RESULTS,
+    }:
         session_state["alternative_search_error"] = ""
     else:
         session_state["alternative_search_error"] = str(result.get("search_error") or "")
@@ -586,6 +686,11 @@ def complete_alternative_finder_search(
             sanitized_candidates,
             has_incomplete_evidence=bool(discovery.get("has_incomplete_evidence")),
             persist_issue=bool(persist_diagnostic),
+            discovery=discovery,
+            catalog_lead_count=(
+                len(discovery.get("unclassified_leads") or [])
+                + len(discovery.get("unfiltered_leads") or [])
+            ),
         )
 
     result = {
@@ -601,6 +706,7 @@ def complete_alternative_finder_search(
         "lookup_error": lookup_error.strip(),
         "search_error": "",
         "search_outcome": resolved_outcome,
+        "search_outcome_label": search_outcome_label(resolved_outcome),
     }
     if persist_diagnostic:
         for key in (

@@ -31,6 +31,21 @@ _MANUFACTURER_ALIASES: dict[str, set[str]] = {
     "microchip": {"microchip", "microchip technology", "microchip technology inc"},
     "nxp": {"nxp", "nxp semiconductors", "nxp semicon"},
     "infineon": {"infineon", "infineon technologies"},
+    # Historical AMD flash brands are not Infineon aliases globally — MPN lineage
+    # matching (legacy_mpn_routes) covers AM29-style successor identity per part.
+    "advanced micro devices": {
+        "advanced micro devices",
+        "amd",
+        "advanced micro devices, inc.",
+        "advanced micro devices inc",
+        "advanced micro devices incorporated",
+    },
+    "spansion": {"spansion", "spansion llc", "spansion inc"},
+    "cypress": {
+        "cypress",
+        "cypress semiconductor",
+        "cypress semiconductor corporation",
+    },
     "vishay": {"vishay", "vishay intertechnology"},
     "diodes incorporated": {"diodes incorporated", "diodes inc", "diodes"},
     "murata": {"murata", "murata manufacturing", "murata manufacturing co"},
@@ -87,13 +102,50 @@ def manufacturer_canonical(value: object) -> str:
     return folded
 
 
-def manufacturers_match(left: object, right: object) -> bool:
-    """True when both labels resolve to the same manufacturer family."""
+def manufacturers_match(left: object, right: object, *, mpn: object = None) -> bool:
+    """True when both labels resolve to the same manufacturer family.
+
+    When ``mpn`` is provided, also match brands that share a trusted
+    ``legacy_mpn_routes`` lineage for that exact part (for example AMD → Infineon
+    on AM29F010B-70EC). Typed text alone is never proof — callers still require a
+    resolved supplier manufacturer (or registered multi-brand evidence) before
+    treating identity as verified.
+    """
     a = manufacturer_canonical(left)
     b = manufacturer_canonical(right)
     if not a or not b:
         return False
-    return a == b
+    if a == b:
+        return True
+    if not mpn:
+        return False
+    try:
+        from integrations.legacy_mpn_routes import legacy_mpn_route
+    except Exception:  # noqa: BLE001
+        return False
+    route = legacy_mpn_route(mpn)
+    if not route:
+        return False
+    lineage = {
+        manufacturer_canonical(label)
+        for label in (route.get("lineage") or ())
+        if str(label or "").strip()
+    }
+    lineage.discard("")
+    return a in lineage and b in lineage
+
+
+def lineage_identity_choices(mpn: object) -> list[dict[str, str]]:
+    """Return trusted lineage brands for an MPN when a legacy route exists."""
+    try:
+        from integrations.legacy_mpn_routes import legacy_mpn_route
+    except Exception:  # noqa: BLE001
+        return []
+    route = legacy_mpn_route(mpn)
+    if not route:
+        return []
+    labels = [str(label).strip() for label in (route.get("lineage") or ()) if str(label or "").strip()]
+    return choices_from_manufacturer_labels(mpn, labels)
 
 
 def register_multi_brand_evidence(mpn: object, choices: list[dict[str, str]]) -> None:
@@ -254,28 +306,38 @@ def identity_ambiguity_payload(
             + (
                 [requested_manufacturer]
                 if requested_manufacturer
-                and not manufacturers_match(requested_manufacturer, resolved_manufacturer)
+                and not manufacturers_match(
+                    requested_manufacturer, resolved_manufacturer, mpn=mpn
+                )
                 else []
             ),
         )
+    if not options:
+        options = lineage_identity_choices(mpn)
     detail = (
         f"More than one manufacturer identity is listed for {mpn}. "
         "Select the intended identity to continue. Official product links are shown when available; "
         "Cadivor will not silently substitute another brand."
     )
     if requested_manufacturer and resolved_manufacturer and not manufacturers_match(
-        requested_manufacturer, resolved_manufacturer
+        requested_manufacturer, resolved_manufacturer, mpn=mpn
     ):
         detail = (
             f"You selected {requested_manufacturer}, but the first supplier hit for {mpn} "
             f"resolved to {resolved_manufacturer}. Choose the intended manufacturer identity "
             "before reviewing replacements."
         )
-    elif not options and requested_manufacturer and not resolved_manufacturer:
+    elif requested_manufacturer and not resolved_manufacturer:
         detail = (
             f"Could not verify manufacturer identity for {mpn} as {requested_manufacturer}. "
-            "Replacement search paused until the selected brand is confirmed against supplier records."
+            "No supplier record confirmed that brand for this exact part number. "
+            "Replacement search stays paused — typed manufacturer text alone is not identity proof."
         )
+        if options:
+            detail += (
+                " Historical brands listed for this MPN are shown when a trusted route exists; "
+                "confirm against an authorized listing before continuing."
+            )
     return {
         "ok": True,
         "status": "identity_ambiguous",

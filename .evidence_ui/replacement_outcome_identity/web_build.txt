@@ -1,0 +1,59 @@
+
+> web@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.9
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 3.4s
+   Linting and checking validity of types ...
+
+./src/app/compare-parts/page.tsx
+664:23  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/app/layout.tsx
+23:9  Warning: Custom fonts not added in `pages/_document.js` will only load for a single page. This is discouraged. See: https://nextjs.org/docs/messages/no-page-custom-font  @next/next/no-page-custom-font
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules
+   Collecting page data ...
+   Generating static pages (0/25) ...
+   Generating static pages (6/25) 
+   Generating static pages (12/25) 
+   Generating static pages (18/25) 
+ ✓ Generating static pages (25/25)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                    3.56 kB         182 kB
+├ ○ /_not-found                            994 B         103 kB
+├ ○ /bom-analyzer                        6.96 kB         186 kB
+├ ○ /compare-parts                       10.6 kB         189 kB
+├ ○ /cost-optimization                   3.58 kB         182 kB
+├ ○ /datasheet-qa                         2.1 kB         181 kB
+├ ○ /design-impact                       3.06 kB         182 kB
+├ ○ /detailed-risk-report                3.11 kB         182 kB
+├ ○ /engineering-decisions               3.99 kB         183 kB
+├ ○ /engineering-intelligence            2.27 kB         181 kB
+├ ○ /evidence-review                     6.06 kB         185 kB
+├ ○ /find-replacement                    5.28 kB         184 kB
+├ ○ /login                               3.67 kB         178 kB
+├ ○ /monitoring                          5.08 kB         184 kB
+├ ○ /portfolio-intelligence              2.57 kB         181 kB
+├ ○ /procurement                          5.6 kB         184 kB
+├ ○ /reports                             2.13 kB         181 kB
+├ ƒ /reports/[id]                        9.14 kB         188 kB
+├ ○ /reset-password                      1.68 kB         176 kB
+├ ○ /settings                            8.34 kB         187 kB
+├ ○ /signup                              2.63 kB         177 kB
+├ ○ /single-bom-report                   3.24 kB         182 kB
+└ ○ /supply-risk                         3.37 kB         182 kB
++ First Load JS shared by all             102 kB
+  ├ chunks/255-cb395327542b56ef.js       45.9 kB
+  ├ chunks/4bd1b696-c023c6e3521b1417.js  54.2 kB
+  └ other shared chunks (total)          1.92 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

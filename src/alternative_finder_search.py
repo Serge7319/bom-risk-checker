@@ -587,11 +587,15 @@ def run_alternative_finder_search(
     )
     from integrations.supplier_aggregator import discover_alternative_candidates
     from src.alternative_finder_state import (
+        OUTCOME_CATALOG_LEADS_ONLY,
+        OUTCOME_NO_RESULTS,
         OUTCOME_PARTIAL_SUCCESS,
+        OUTCOME_PARTIAL_SUPPLIER,
         TERMINAL_SEARCH_ERROR_MESSAGE,
         complete_alternative_finder_search,
         fail_alternative_finder_search,
         resolve_search_outcome,
+        search_outcome_label,
     )
     from src.risk_engine import calculate_risk
 
@@ -658,13 +662,25 @@ def run_alternative_finder_search(
             matched = bool(
                 resolved_mfr
                 and manufacturers_match
-                and manufacturers_match(requested_mfr, resolved_mfr)
+                and manufacturers_match(requested_mfr, resolved_mfr, mpn=entered_mpn)
             )
             if not matched and resolved_mfr and manufacturers_match is None:
                 matched = resolved_mfr.casefold() == requested_mfr.casefold()
             if not resolved_mfr or not matched:
                 # Fail closed: do not stamp the caller's selection as verified.
                 identity_blocked = True
+                identity_choices: list = []
+                try:
+                    from apps.api.manufacturer_identity import (
+                        lineage_identity_choices,
+                        multi_brand_choices_for_mpn,
+                    )
+
+                    identity_choices = multi_brand_choices_for_mpn(entered_mpn) or (
+                        lineage_identity_choices(entered_mpn)
+                    )
+                except Exception:  # noqa: BLE001
+                    identity_choices = []
                 safe_original = {
                     "manufacturer_part_number": entered_mpn,
                     "manufacturer": "",
@@ -675,6 +691,7 @@ def run_alternative_finder_search(
                     ),
                     "identity_verified": False,
                     "supplier_data_verified": False,
+                    "identity_choices": identity_choices,
                     "all_supplier_results": list(
                         safe_original.get("all_supplier_results") or []
                     ),
@@ -682,8 +699,9 @@ def run_alternative_finder_search(
                 safe_risk = {}
                 safe_lookup_error = (
                     f"Could not verify manufacturer identity for {entered_mpn} as "
-                    f"{requested_mfr}. Replacement search paused until the selected "
-                    "brand is confirmed against supplier records."
+                    f"{requested_mfr}. No supplier record confirmed that brand for this "
+                    "exact part number; typed manufacturer text alone is not identity proof. "
+                    "Replacement search paused."
                 )
             else:
                 safe_original = dict(safe_original)
@@ -899,10 +917,41 @@ def run_alternative_finder_search(
         outcome = resolve_search_outcome(
             candidates,
             has_incomplete_evidence=bool(discovery.get("has_incomplete_evidence")),
+            discovery=discovery,
+            catalog_lead_count=(
+                len(discovery.get("unclassified_leads") or [])
+                + len(discovery.get("unfiltered_leads") or [])
+            ),
         )
+        # Persist the lead-aware outcome onto the durable result (complete_* may
+        # have resolved before unclassified/unfiltered counts were attached).
+        durable = session_state.get("alternative_finder_result")
+        if isinstance(durable, dict):
+            durable["search_outcome"] = outcome
+            durable["search_outcome_label"] = search_outcome_label(outcome)
+            meta = durable.get("discovery_metadata")
+            if not isinstance(meta, dict):
+                meta = {}
+                durable["discovery_metadata"] = meta
+            for key in (
+                "unclassified_leads",
+                "unfiltered_leads",
+                "unclassified_lead_count",
+                "unfiltered_lead_count",
+                "candidate_status",
+            ):
+                if key in discovery:
+                    meta[key] = discovery.get(key)
+        non_error = {
+            OUTCOME_PARTIAL_SUCCESS,
+            OUTCOME_CATALOG_LEADS_ONLY,
+            OUTCOME_PARTIAL_SUPPLIER,
+            OUTCOME_NO_RESULTS,
+        }
         return {
-            "status": "partial_success" if outcome == OUTCOME_PARTIAL_SUCCESS else "completed",
+            "status": "partial_success" if outcome in non_error else "completed",
             "search_outcome": outcome,
+            "search_outcome_label": search_outcome_label(outcome),
             "request_id": request_id,
             "candidate_count": len(candidates),
             "stage_timings_ms": dict(search_run.stages_ms),

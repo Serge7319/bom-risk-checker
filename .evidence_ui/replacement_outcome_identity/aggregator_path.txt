@@ -1,0 +1,45 @@
+.ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=DigiKey stage=lookup category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=DigiKey stage=lookup category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=DigiKey stage=lookup category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+..ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=DigiKey stage=lookup category=provider_response status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b2a1cc926ffd supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=7693cbca40d4 supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=7693cbca40d4 supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=7693cbca40d4 supplier=DigiKey stage=lookup category=provider_response status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=eec6685357a8 supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=eec6685357a8 supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=eec6685357a8 supplier=DigiKey stage=lookup category=provider_response status_code=none retryable=false retained_candidates=false
+..............
+----------------------------------------------------------------------
+Ran 22 tests in 1.685s
+
+OK
