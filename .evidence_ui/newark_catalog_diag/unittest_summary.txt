@@ -1,0 +1,11 @@
+tests.test_newark_catalog_diagnostics
+Ran 16 tests
+OK
+
+tests.test_alternative_finder_search (+ selected NewarkIntegration catalog tests)
+Ran 26 tests
+OK
+
+tests.test_threaded_manufacturer_lookup
+Ran 4 tests
+OK

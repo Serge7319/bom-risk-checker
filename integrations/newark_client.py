@@ -74,13 +74,57 @@ def search_newark_by_part_number(part_number: str) -> dict:
     return default_newark_result(requested_part_number)
 
 
+class NewarkCatalogResponseError(RuntimeError):
+    """Invalid Newark catalog payload that is not an empty successful result set."""
+
+    def __init__(self, message: str, *, subreason: str = "malformed_response"):
+        super().__init__(message)
+        self.subreason = str(subreason or "malformed_response")
+
+
+class NewarkCatalogPartialResultsError(RuntimeError):
+    """Some Newark catalog terms returned leads while another term failed.
+
+    Callers must retain ``candidates`` and still report ``cause`` as a catalog
+    failure. Never logs credentials or request URLs.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        candidates: list[dict],
+        cause: BaseException,
+        failed_term: str = "",
+    ):
+        super().__init__(message)
+        self.candidates = list(candidates or [])
+        self.cause = cause
+        self.failed_term = str(failed_term or "").strip()
+        self.subreason = str(getattr(cause, "subreason", "") or "")
+        self.__cause__ = cause
+        response = getattr(cause, "response", None)
+        if response is not None:
+            self.response = response
+
+
 def search_newark_catalog_candidates(
     part_number: str,
     *,
     limit: int = 12,
     include_family_search: bool = True,
 ) -> list[dict]:
-    """Search Newark catalog terms and return review-only candidate leads."""
+    """Search Newark catalog terms and return review-only candidate leads.
+
+    Distinguishes:
+    - empty successful HTTP responses (valid ``keywordSearchReturn.products: []``)
+      → ``[]``
+    - timeout / HTTP / auth / invalid JSON or payload → raise the classified error
+    - mixed terms: keep candidate rows and raise ``NewarkCatalogPartialResultsError``
+      so a successful empty or lead-bearing term cannot hide a failed term
+
+    Never logs API keys or credentialed request URLs.
+    """
     requested = str(part_number or "").strip()
     if not requested:
         return []
@@ -92,11 +136,14 @@ def search_newark_catalog_candidates(
 
     candidates: list[dict] = []
     seen: set[str] = set()
-    had_error = False
+    last_failure: BaseException | None = None
+    failed_term = ""
+    saw_successful_empty = False
     from datetime import datetime, timezone
 
     retrieved_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     for term in terms:
+        # Keep credentials in the request params only — never interpolate into logs.
         params = {
             "callInfo.apiKey": api_key,
             "callInfo.responseDataFormat": "json",
@@ -113,12 +160,67 @@ def search_newark_catalog_candidates(
                 timeout=15,
             )
             response.raise_for_status()
-            data = response.json() or {}
-        except Exception:
-            had_error = True
+            try:
+                data = response.json()
+            except ValueError as error:
+                wrapped = NewarkCatalogResponseError(
+                    "Newark catalog response was not valid JSON.",
+                    subreason="malformed_response",
+                )
+                wrapped.__cause__ = error
+                last_failure = wrapped
+                failed_term = term
+                continue
+        except Exception as error:  # noqa: BLE001 — classify upstream via diagnostics
+            last_failure = error
+            failed_term = term
             continue
-        search_return = data.get("keywordSearchReturn") or {}
-        products = search_return.get("products") or []
+
+        if not isinstance(data, dict):
+            last_failure = NewarkCatalogResponseError(
+                "Newark catalog response was not a JSON object.",
+                subreason="malformed_response",
+            )
+            failed_term = term
+            continue
+
+        if "keywordSearchReturn" not in data:
+            last_failure = NewarkCatalogResponseError(
+                "Newark catalog response omitted keywordSearchReturn.",
+                subreason="malformed_response",
+            )
+            failed_term = term
+            continue
+
+        search_return = data.get("keywordSearchReturn")
+        if not isinstance(search_return, dict):
+            last_failure = NewarkCatalogResponseError(
+                "Newark catalog keywordSearchReturn was invalid.",
+                subreason="malformed_response",
+            )
+            failed_term = term
+            continue
+
+        if "products" not in search_return:
+            last_failure = NewarkCatalogResponseError(
+                "Newark catalog keywordSearchReturn omitted products.",
+                subreason="malformed_response",
+            )
+            failed_term = term
+            continue
+
+        products = search_return.get("products")
+        if not isinstance(products, list):
+            last_failure = NewarkCatalogResponseError(
+                "Newark catalog products payload was invalid.",
+                subreason="malformed_response",
+            )
+            failed_term = term
+            continue
+
+        if not products:
+            saw_successful_empty = True
+
         for product in products:
             if not isinstance(product, dict):
                 continue
@@ -146,9 +248,22 @@ def search_newark_catalog_candidates(
                 "substitute_type": "Similar",
                 "supplier_relationship_evidence": [],
             })
-    if had_error and not candidates:
-        raise RuntimeError("Newark catalog candidate search did not return a usable response.")
-    return candidates
+
+    # A failed term always surfaces — empty success on another term must not hide it.
+    if last_failure is not None:
+        if candidates:
+            raise NewarkCatalogPartialResultsError(
+                "Newark catalog search returned partial candidates while another term failed.",
+                candidates=candidates,
+                cause=last_failure,
+                failed_term=failed_term,
+            )
+        raise last_failure
+    if candidates:
+        return candidates
+    if saw_successful_empty:
+        return []
+    return []
 
 
 def _catalog_family_search_term(part_number: str) -> str:
