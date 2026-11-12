@@ -160,6 +160,41 @@ class ManufacturerIdentityAliasTests(unittest.TestCase):
         self.assertIn("AMD", labels)
         self.assertIn("Infineon", labels)
 
+    def test_lineage_and_supplier_choice_notes_use_distinct_provenance(self):
+        from apps.api.manufacturer_identity import choices_from_manufacturer_labels
+
+        lineage = lineage_identity_choices("AM29F010B-70EC")
+        self.assertTrue(lineage)
+        for row in lineage:
+            note = str(row.get("note") or "")
+            self.assertEqual(row.get("note_source"), "lineage")
+            self.assertIn("historical brand in the trusted MPN lineage", note)
+            self.assertIn("Confirm against an authorized source", note)
+            self.assertNotIn("Supplier records list", note)
+
+        supplier = choices_from_manufacturer_labels(
+            "AM29F010B-70EC",
+            ["Infineon", "Cypress"],
+            note_source="supplier",
+        )
+        self.assertTrue(supplier)
+        for row in supplier:
+            note = str(row.get("note") or "")
+            self.assertEqual(row.get("note_source"), "supplier")
+            self.assertIn("Supplier records list", note)
+            self.assertNotIn("historical brand in the trusted MPN lineage", note)
+
+        # Unresolved AM29 payload must surface lineage provenance, not supplier-row copy.
+        payload = identity_ambiguity_payload(
+            mpn="AM29F010B-70EC",
+            requested_manufacturer="AMD",
+            resolved_manufacturer="",
+        )
+        for row in payload["identity_choices"]:
+            self.assertEqual(row.get("note_source"), "lineage")
+            self.assertIn("historical brand in the trusted MPN lineage", row.get("note") or "")
+            self.assertNotIn("Supplier records list", row.get("note") or "")
+
 
 class CatalogLeadsNeverCompatibleTests(unittest.TestCase):
     def test_cross_family_and_unclassified_projection_not_compatible(self):

@@ -1,0 +1,499 @@
+2026-11-12 15:42:50.830 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-11-12 15:42:50.836 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-11-12 15:42:50.852 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+..............2026-11-12 15:42:50.965 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+.ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=DigiKey stage=lookup category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=DigiKey stage=lookup category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=DigiKey stage=lookup category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+..ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=DigiKey stage=lookup category=provider_response status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=438a073aa27c supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=b3ca8e9461b4 supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b3ca8e9461b4 supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=b3ca8e9461b4 supplier=DigiKey stage=lookup category=provider_response status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=f95c49963303 supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=f95c49963303 supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=f95c49963303 supplier=DigiKey stage=lookup category=provider_response status_code=none retryable=false retained_candidates=false
+.............ALT_FINDER_SUPPLIER_DIAG request_id=newark401cat supplier=Newark stage=catalog_search category=auth subreason=authentication status_code=401 retryable=false retained_candidates=true
+.......ALT_FINDER_SUPPLIER_DIAG request_id=unconfnewark01 supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unconfnewark01 supplier=DigiKey stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unconfnewark01 supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=unconfnewark01 supplier=Mouser stage=catalog_search category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=true
+ALT_FINDER_SUPPLIER_DIAG request_id=unconfnewark01 supplier=Newark stage=catalog_search category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=true
+.ALT_FINDER_SUPPLIER_DIAG request_id=6e99f1290116 supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=6e99f1290116 supplier=DigiKey stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=6e99f1290116 supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=6e99f1290116 supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=6e99f1290116 supplier=DigiKey stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=6e99f1290116 supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+.Alternative Finder search failed after 0.1ms (provider=digikey operation=suggest_alternatives_v2 stage=candidate_engine code=digikey_lookup_failed type=RuntimeError message=digikey suggest_alternatives_v2: candidate engine exploded deploy=unknown stages={'original_lookup': 0.0, 'candidate_engine': 0.0})
+Traceback (most recent call last):
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/src/alternative_finder_search.py", line 814, in run_alternative_finder_search
+    candidates = suggest_alternatives_v2(entered_mpn) or []
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_alternative_finder_search.py", line 772, in <lambda>
+    self.engine.suggest_alternatives_v2 = lambda _part: (_ for _ in ()).throw(
+                                                        ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_alternative_finder_search.py", line 772, in <genexpr>
+    self.engine.suggest_alternatives_v2 = lambda _part: (_ for _ in ()).throw(
+RuntimeError: candidate engine exploded
+.........Alternative Finder search failed after 0.8ms (provider=digikey operation=suggest_alternatives_v2 stage=persist_results code=cache_serialization_failed type=TypeError message=digikey suggest_alternatives_v2: cannot pickle set state deploy=unknown stages={'original_lookup': 0.1, 'candidate_engine': 0.5, 'persist_results': 0.0})
+Traceback (most recent call last):
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/src/alternative_finder_search.py", line 906, in run_alternative_finder_search
+    complete_alternative_finder_search(
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_alternative_finder_search.py", line 411, in exploding_complete
+    raise TypeError("cannot pickle set state")
+TypeError: cannot pickle set state
+..........AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+.AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+.AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+..AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+.AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE cookie_source cookie_source=context
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE cookie_source cookie_source=context
+AUTH_COOKIE parse_valid valid=True
+.AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+.AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+.AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+...AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+.AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+.....AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=bom_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+.AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+..AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+.AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+.AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_RESTORE fallback_signed_out cookie_manager_ready=True reason=hydration_timeout
+..AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present present=False
+..AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+.AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+..AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=context
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=context
+AUTH_COOKIE parse_valid valid=True
+.AUTH_RESTORE manager_fallback_hydration_timeout cookie_manager_ready=True reason=hydration_timeout
+.AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+....AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_RESTORE manager_fallback_hydration_success attempt=1
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_RESTORE manager_fallback_restore_started
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_CORRELATE checkpoint=atomic_session_commit auth_status_in=authenticated cookie_absent_flag=False cookie_present=True cookie_source=manager_fallback force_signed_out=False has_access_token=True has_refresh_token=True has_user=True hydration_pending=False logout_marker_active=False request_origin=unknown script_run_id=run-b session_hash=unknown transition_reason=atomic_session_commit
+AUTH_RESTORE validation_success
+AUTH_RESTORE native_context_restore_validated
+...AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_RESTORE manager_fallback_hydration_success attempt=1
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_RESTORE manager_fallback_restore_started
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_CORRELATE checkpoint=atomic_session_commit auth_status_in=authenticated cookie_absent_flag=False cookie_present=True cookie_source=manager_fallback force_signed_out=False has_access_token=True has_refresh_token=True has_user=True hydration_pending=False logout_marker_active=False request_origin=unknown script_run_id=run-b session_hash=unknown transition_reason=atomic_session_commit
+AUTH_RESTORE validation_success
+AUTH_RESTORE native_context_restore_validated
+.AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+.AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+.AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+.AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+.AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=context
+AUTH_COOKIE parse_valid valid=True
+..AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+...AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_accepted reason=jwt_valid_and_post_logout
+...AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_rejected iat=1794515571 logout_at=1794516111 reason=token_predates_logout
+........AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_accepted reason=jwt_valid_and_post_logout
+.AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_rejected iat=1794515571 logout_at=1794516111 reason=token_predates_logout
+.AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_rejected iat=1794515571 logout_at=1794516111 reason=token_predates_logout
+.AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_accepted reason=jwt_valid_and_post_logout
+....AUTH_COOKIE supersession_rejected reason=token_expired
+.AUTH_COOKIE supersession_rejected reason=jwt_unparseable
+.AUTH_COOKIE supersession_rejected reason=identity_claims_missing
+.AUTH_COOKIE supersession_rejected reason=iat_missing
+.AUTH_COOKIE supersession_rejected reason=sub_claim_missing
+.AUTH_COOKIE supersession_accepted reason=jwt_valid_and_post_logout
+.AUTH_COOKIE supersession_accepted reason=jwt_valid_and_post_logout
+.AUTH_COOKIE supersession_rejected iat=1794515571 logout_at=1794515871 reason=token_predates_logout
+.AUTH_COOKIE supersession_rejected iat=1794515871 logout_at=1794515871 reason=token_predates_logout
+.AUTH_COOKIE supersession_accepted reason=jwt_valid_and_post_logout
+.AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_rejected reason=token_expired
+.AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_rejected reason=jwt_unparseable
+.AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_rejected reason=identity_claims_missing
+.AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_rejected reason=sub_claim_missing
+..AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_accepted reason=jwt_valid_and_post_logout
+..AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_rejected reason=token_expired
+.AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_rejected reason=iat_missing
+.AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_accepted reason=jwt_valid_and_post_logout
+..AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE supersession_rejected iat=1794515571 logout_at=1794515871 reason=token_predates_logout
+.......................AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE cookie_source cookie_source=context
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE cookie_source cookie_source=context
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=bom_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE context_available available=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_RESTORE fallback_signed_out cookie_manager_ready=True reason=hydration_timeout
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE parse_attempt decoding_changed_value=True json_parse_after_url_decode=True json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=context
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=context
+AUTH_COOKIE parse_valid valid=True
+AUTH_RESTORE manager_fallback_hydration_timeout cookie_manager_ready=True reason=hydration_timeout
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_RESTORE manager_fallback_hydration_success attempt=1
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_RESTORE manager_fallback_restore_started
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_CORRELATE checkpoint=atomic_session_commit auth_status_in=authenticated cookie_absent_flag=False cookie_present=True cookie_source=manager_fallback force_signed_out=False has_access_token=True has_refresh_token=True has_user=True hydration_pending=False logout_marker_active=False request_origin=unknown script_run_id=run-b session_hash=unknown transition_reason=atomic_session_commit
+AUTH_RESTORE validation_success
+AUTH_RESTORE native_context_restore_validated
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_RESTORE manager_fallback_hydration_success attempt=1
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_RESTORE manager_fallback_restore_started
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_CORRELATE checkpoint=atomic_session_commit auth_status_in=authenticated cookie_absent_flag=False cookie_present=True cookie_source=manager_fallback force_signed_out=False has_access_token=True has_refresh_token=True has_user=True hydration_pending=False logout_marker_active=False request_origin=unknown script_run_id=run-b session_hash=unknown transition_reason=atomic_session_commit
+AUTH_RESTORE validation_success
+AUTH_RESTORE native_context_restore_validated
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=False url_decode_attempted=True
+AUTH_COOKIE manager_read_present cookie_name=cadivor_auth present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=manager_fallback
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=True
+AUTH_COOKIE parse_attempt decoding_changed_value=False json_parse_after_url_decode=False json_parse_direct=True url_decode_attempted=False
+AUTH_COOKIE cookie_source cookie_source=context
+AUTH_COOKIE parse_valid valid=True
+AUTH_COOKIE context_available available=True
+AUTH_COOKIE context_read_present present=False
+AUTH_COOKIE manager_read_present present=False
+AUTH_COOKIE cookie_source cookie_source=none
+AUTH_COOKIE parse_valid valid=False
+...........................................ALT_FINDER_SUPPLIER_DIAG request_id=redact123 supplier=Mouser stage=lookup category=provider_response subreason=malformed_response status_code=none retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=httpreqid01 supplier=Mouser stage=lookup category=http status_code=500 retryable=true retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=newark401aa supplier=Newark stage=lookup category=auth subreason=authentication status_code=401 retryable=false retained_candidates=false
+.ALT_FINDER_SUPPLIER_DIAG request_id=newark500aa supplier=Newark stage=lookup category=http status_code=500 retryable=true retained_candidates=false
+........................................................................................................<frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+<frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+<frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+/opt/anaconda3/lib/python3.12/site-packages/fitz/__init__.py:17: FutureWarning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+  warnings.warn(
+........................................................................................ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+........................
+----------------------------------------------------------------------
+Ran 437 tests in 1.847s
+
+OK
+sys:1: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
