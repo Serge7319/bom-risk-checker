@@ -118,6 +118,7 @@ function FindReplacementInner() {
   const unclassifiedLeads = (result?.unclassified_leads || []) as Array<Record<string, unknown>>;
   const unfilteredLeads = (result?.unfiltered_leads || []) as Array<Record<string, unknown>>;
   const original = (result?.original || {}) as Record<string, unknown>;
+  const identityReviewOnly = Boolean(result?.identity_review_only);
   const hasSeparatedLeads = unclassifiedLeads.length > 0 || unfilteredLeads.length > 0;
   // Compare Parts inherits BOM context only when the API confirmed bom_context.
   const compareAnalysisId = result?.bom_context
@@ -193,12 +194,15 @@ function FindReplacementInner() {
 
       {result ? (
         <>
-          {String(result.status || result.outcome || result.identity_status || "")
+          {identityReviewOnly ||
+          String(result.status || result.outcome || result.identity_status || "")
             .toLowerCase()
             .includes("ambiguous") ||
           Array.isArray(result.identity_choices) ? (
             <section className="cv-card pad" style={{ marginBottom: 14 }} role="status" data-testid="identity-disambiguation">
-              <h3 className="cv-card-title">Manufacturer identity required</h3>
+              <h3 className="cv-card-title">
+                {identityReviewOnly ? "Manufacturer identity unverified" : "Manufacturer identity required"}
+              </h3>
               <p className="cv-card-subtitle">
                 {String(result.detail || result.gap || "") ||
                   `${mpn} is offered by more than one manufacturer with official product evidence. Choose the intended brand before reviewing replacements.`}
@@ -217,6 +221,7 @@ function FindReplacementInner() {
                         {String(choice.note || "Official product evidence available.")}
                       </p>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                        {!identityReviewOnly ? (
                         <button
                           type="button"
                           className="cv-button primary"
@@ -241,8 +246,11 @@ function FindReplacementInner() {
                             })();
                           }}
                         >
-                          Use {choiceMfr || "this manufacturer"}
+                          {String(choice.note_source || "") === "lineage"
+                            ? `Search catalog leads for ${choiceMfr || "this manufacturer"}`
+                            : `Use ${choiceMfr || "this manufacturer"}`}
                         </button>
+                        ) : null}
                         {choice.product_url ? (
                           <a
                             className="cv-button"
