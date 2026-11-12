@@ -1,0 +1,132 @@
+.........CI_NESTED_SUITE_START
+CI_NESTED_SUITE_FILE=tests/test_legal_acceptance_signup.py
+============================= test session starts ==============================
+platform darwin -- Python 3.12.7, pytest-7.4.4, pluggy-1.0.0 -- /opt/anaconda3/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report
+plugins: anyio-4.2.0
+collecting ... collected 15 items
+
+tests/test_legal_acceptance_signup.py::test_auth_config_exposes_published_versions PASSED [  6%]
+tests/test_legal_acceptance_signup.py::test_signup_rejects_missing_and_false_acceptance PASSED [ 13%]
+tests/test_legal_acceptance_signup.py::test_forged_terms_version_rejected_before_signup PASSED [ 20%]
+tests/test_legal_acceptance_signup.py::test_consent_storage_failure_blocks_signup PASSED [ 26%]
+tests/test_legal_acceptance_signup.py::test_fail_closed_without_durable_consent_store PASSED [ 33%]
+tests/test_legal_acceptance_signup.py::test_same_second_acceptances_both_persist_with_unique_ids PASSED [ 40%]
+tests/test_legal_acceptance_signup.py::test_invitation_register_requires_acceptance_and_persists PASSED [ 46%]
+tests/test_legal_acceptance_signup.py::test_ui_login_cta_and_terms_checkbox_contract PASSED [ 53%]
+tests/test_legal_acceptance_signup.py::test_migration_file_exists PASSED [ 60%]
+tests/test_legal_acceptance_signup.py::test_postgres_same_second_acceptances_both_persist SKIPPED [ 66%]
+tests/test_legal_acceptance_signup.py::test_signup_rate_limited_before_consent_write PASSED [ 73%]
+tests/test_legal_acceptance_signup.py::test_captcha_required_validated_before_consent PASSED [ 80%]
+tests/test_legal_acceptance_signup.py::test_repeated_valid_signup_reuses_acceptance_row PASSED [ 86%]
+tests/test_legal_acceptance_signup.py::test_email_only_acceptance_identity_when_no_user_returned PASSED [ 93%]
+tests/test_legal_acceptance_signup.py::test_public_roles_cannot_read_or_write_legal_acceptances SKIPPED [100%]
+
+=============================== warnings summary ===============================
+tests/test_legal_acceptance_signup.py:10
+  /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_legal_acceptance_signup.py:10: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=================== 13 passed, 2 skipped, 1 warning in 2.85s ===================
+
+
+CI_NESTED_SUITE_END
+.CI_NESTED_SUITE_START
+CI_NESTED_SUITE_FILE=tests/test_service_readiness.py
+CI_NESTED_SUITE_FILE=tests/test_evidence_notice_behavior.py
+CI_NESTED_SUITE_FILE=tests/test_evidence_notice_classification.py
+============================= test session starts ==============================
+platform darwin -- Python 3.12.7, pytest-7.4.4, pluggy-1.0.0 -- /opt/anaconda3/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report
+plugins: anyio-4.2.0
+collecting ... collected 17 items
+
+tests/test_service_readiness.py::test_service_readiness_not_connected_when_flags_off PASSED [  5%]
+tests/test_service_readiness.py::test_monitoring_email_enabled_without_transport_is_not_ready PASSED [ 11%]
+tests/test_service_readiness.py::test_monitoring_email_ready_when_transport_sink_present PASSED [ 17%]
+tests/test_service_readiness.py::test_scheduler_enabled_without_cron_token_is_partial PASSED [ 23%]
+tests/test_service_readiness.py::test_scheduler_with_token_stays_partial_without_verified_schedule PASSED [ 29%]
+tests/test_service_readiness.py::test_billing_checkout_enabled_but_not_implemented_is_not_ready PASSED [ 35%]
+tests/test_service_readiness.py::test_service_readiness_error_omits_exception_string PASSED [ 41%]
+tests/test_service_readiness.py::test_settings_copy_is_customer_facing PASSED [ 47%]
+tests/test_service_readiness.py::test_csv_file_workflows_do_not_make_live_connectors_ready PASSED [ 52%]
+tests/test_evidence_notice_behavior.py::test_classify_evidence_notice_categories PASSED [ 58%]
+tests/test_evidence_notice_behavior.py::test_compact_context_labels_are_restrained PASSED [ 64%]
+tests/test_evidence_notice_behavior.py::test_gap_banner_omits_service_tone PASSED [ 70%]
+tests/test_evidence_notice_behavior.py::test_settings_service_readiness_uses_dedicated_endpoint PASSED [ 76%]
+tests/test_evidence_notice_behavior.py::test_globals_css_does_not_hide_page_overflow_on_html_body PASSED [ 82%]
+tests/test_evidence_notice_classification.py::test_classifier_distinguishes_critical_context_and_service_gaps PASSED [ 88%]
+tests/test_evidence_notice_classification.py::test_reports_list_does_not_reuse_persistence_service_blurb_as_gap PASSED [ 94%]
+tests/test_evidence_notice_classification.py::test_persistence_label_no_longer_bundles_service_gaps PASSED [100%]
+
+=============================== warnings summary ===============================
+tests/test_service_readiness.py:8
+  /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_service_readiness.py:8: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 17 passed, 1 warning in 2.54s =========================
+
+
+CI_NESTED_SUITE_END
+.CI_NESTED_SUITE_START
+CI_NESTED_SUITE_FILE=tests/test_two_bom_smoke_parity.py
+CI_NESTED_SUITE_FILE=tests/test_nov9_prod_smoke_fixes.py
+============================= test session starts ==============================
+platform darwin -- Python 3.12.7, pytest-7.4.4, pluggy-1.0.0 -- /opt/anaconda3/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report
+plugins: anyio-4.2.0
+collecting ... collected 29 items
+
+tests/test_two_bom_smoke_parity.py::FamilyPartitionTests::test_family_filter_errors_fail_closed_out_of_relevant PASSED [  3%]
+tests/test_two_bom_smoke_parity.py::FamilyPartitionTests::test_flash_original_rejects_mcu_led_and_capacitor_leads PASSED [  6%]
+tests/test_two_bom_smoke_parity.py::FamilyPartitionTests::test_unknown_family_candidate_is_unclassified_not_relevant PASSED [ 10%]
+tests/test_two_bom_smoke_parity.py::CompareHonestyTests::test_bare_numeric_with_preferred_unit_needs_data PASSED [ 13%]
+tests/test_two_bom_smoke_parity.py::CompareHonestyTests::test_incomparable_formats_are_needs_data_not_material PASSED [ 17%]
+tests/test_two_bom_smoke_parity.py::CompareHonestyTests::test_listing_agreement_does_not_create_engineering_ready_result PASSED [ 20%]
+tests/test_two_bom_smoke_parity.py::CompareHonestyTests::test_mismatched_value_classes_need_verification PASSED [ 24%]
+tests/test_two_bom_smoke_parity.py::CompareHonestyTests::test_operating_and_storage_temperature_are_separate_fields PASSED [ 27%]
+tests/test_two_bom_smoke_parity.py::CompareHonestyTests::test_supplier_only_catalog_match_is_listing_agreement PASSED [ 31%]
+tests/test_two_bom_smoke_parity.py::CompareHonestyTests::test_typical_with_matching_conditions_can_match_or_differ PASSED [ 34%]
+tests/test_two_bom_smoke_parity.py::CompareHonestyTests::test_typical_without_test_conditions_needs_verification PASSED [ 37%]
+tests/test_two_bom_smoke_parity.py::CompareHonestyTests::test_unequal_unknown_class_values_need_verification PASSED [ 41%]
+tests/test_two_bom_smoke_parity.py::CompareHonestyTests::test_unknown_value_classes_are_not_compatible PASSED [ 44%]
+tests/test_two_bom_smoke_parity.py::ProvenanceAndOffersTests::test_offer_normalization_keeps_price_break_and_retrieval_provenance PASSED [ 48%]
+tests/test_two_bom_smoke_parity.py::ProvenanceAndOffersTests::test_report_evidence_summary_matches_live_synthetic_missing_counts PASSED [ 51%]
+tests/test_two_bom_smoke_parity.py::ExportAndSignalsTests::test_both_synthetic_bom_fixtures_exist_for_preview_workflows PASSED [ 55%]
+tests/test_two_bom_smoke_parity.py::ExportAndSignalsTests::test_export_bytes_include_evidence_and_do_not_coerce_missing_risk_to_zero PASSED [ 58%]
+tests/test_two_bom_smoke_parity.py::ExportAndSignalsTests::test_generic_part_line_type_is_suppressed_in_signal_helper PASSED [ 62%]
+tests/test_two_bom_smoke_parity.py::DesignImpactAndDecisionTests::test_decision_endpoint_reuses_matching_comparison_snapshot PASSED [ 65%]
+tests/test_two_bom_smoke_parity.py::DesignImpactAndDecisionTests::test_decision_mismatched_analysis_id_forces_recompute PASSED [ 68%]
+tests/test_two_bom_smoke_parity.py::DesignImpactAndDecisionTests::test_decision_rejects_forged_snapshot_identity_and_recomputes PASSED [ 72%]
+tests/test_two_bom_smoke_parity.py::DesignImpactAndDecisionTests::test_lm358dr_quantity_aggregates_across_two_synthetic_boms PASSED [ 75%]
+tests/test_two_bom_smoke_parity.py::DesignImpactAndDecisionTests::test_same_mpn_keeps_one_row_per_saved_bom PASSED [ 79%]
+tests/test_nov9_prod_smoke_fixes.py::SupplyVoltageExtractionTests::test_dual_rail_test_vs_single_span_stays_needs_data PASSED [ 82%]
+tests/test_nov9_prod_smoke_fixes.py::SupplyVoltageExtractionTests::test_vs_plus_minus_14_is_test_condition_not_supply_rating PASSED [ 86%]
+tests/test_nov9_prod_smoke_fixes.py::UiLayoutContractTests::test_bom_analyzer_materializes_file_before_validation PASSED [ 89%]
+tests/test_nov9_prod_smoke_fixes.py::UiLayoutContractTests::test_compare_page_supports_multi_alternate_matrix PASSED [ 93%]
+tests/test_nov9_prod_smoke_fixes.py::UiLayoutContractTests::test_design_impact_aggregates_all_workspace_boms PASSED [ 96%]
+tests/test_nov9_prod_smoke_fixes.py::UiLayoutContractTests::test_replacement_and_compare_tables_allocate_all_columns PASSED [100%]
+
+=============================== warnings summary ===============================
+tests/test_two_bom_smoke_parity.py::DesignImpactAndDecisionTests::test_decision_endpoint_reuses_matching_comparison_snapshot
+  /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_two_bom_smoke_parity.py:549: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 29 passed, 1 warning in 3.31s =========================
+
+
+CI_NESTED_SUITE_END
+......................                                        [100%]
+=============================== warnings summary ===============================
+tests/test_nextjs_migration_api.py:7
+  /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_nextjs_migration_api.py:7: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+33 passed, 1 warning in 17.77s

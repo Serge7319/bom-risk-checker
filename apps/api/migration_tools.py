@@ -807,7 +807,7 @@ def find_replacement_payload(
 
     requested_manufacturer = str(manufacturer or "").strip()
     dual_source_choices = multi_brand_choices_for_mpn(requested)
-    # Dual-source MPNs (e.g. LM358N TI vs onsemi) require an explicit manufacturer.
+    # Multi-brand MPNs with registered official evidence require an explicit manufacturer.
     if dual_source_choices and not requested_manufacturer:
         return _json_safe(
             {
@@ -822,7 +822,9 @@ def find_replacement_payload(
             }
         )
     if dual_source_choices and requested_manufacturer:
-        selected = select_manufacturer_choice(requested, requested_manufacturer)
+        selected = select_manufacturer_choice(
+            requested, requested_manufacturer, choices=dual_source_choices
+        )
         if selected is None:
             return _json_safe(
                 {
@@ -846,14 +848,18 @@ def find_replacement_payload(
             or ""
         ).strip()
         identity_status = str(original.get("identity_status") or "").strip()
-        if requested_manufacturer and (
-            identity_status in {"manufacturer_mismatch", "unresolved"}
-            or (
-                resolved_mfr
-                and not manufacturers_match(requested_manufacturer, resolved_mfr)
+        if identity_status == "ambiguous" or (
+            requested_manufacturer
+            and (
+                identity_status in {"manufacturer_mismatch", "unresolved"}
+                or (
+                    resolved_mfr
+                    and not manufacturers_match(requested_manufacturer, resolved_mfr)
+                )
+                or not resolved_mfr
             )
-            or not resolved_mfr
         ):
+            choices = dual_source_choices or original.get("identity_choices") or None
             return _json_safe(
                 {
                     **identity_ambiguity_payload(
@@ -861,7 +867,7 @@ def find_replacement_payload(
                         requested_manufacturer=requested_manufacturer,
                         resolved_manufacturer=resolved_mfr
                         or str(original.get("resolved_manufacturer") or ""),
-                        choices=dual_source_choices or None,
+                        choices=choices if isinstance(choices, list) else None,
                     ),
                     "analysis_id": context_analysis_id,
                     "bom_context": bom_context,
