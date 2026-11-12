@@ -346,6 +346,7 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
     result = result if isinstance(result, dict) else {}
     original = result.get("original_data") if isinstance(result.get("original_data"), dict) else {}
     identity_blocked = False
+    identity_review_only = False
     status_hint = str(original.get("identity_status") or "").strip()
     if status_hint == "ambiguous":
         identity_blocked = True
@@ -364,11 +365,19 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
             )
     elif requested_manufacturer:
         resolved = str(original.get("manufacturer") or original.get("Manufacturer") or "").strip()
-        if status_hint in {"manufacturer_mismatch", "unresolved"} or (
+        identity_review_only = bool(
+            original.get("identity_review_only")
+            and status_hint == "unresolved"
+            and not resolved
+            and not original.get("identity_verified")
+        )
+        if status_hint == "manufacturer_mismatch" or (
+            status_hint == "unresolved" and not identity_review_only
+        ) or (
             resolved
             and not manufacturers_match(requested_manufacturer, resolved, mpn=mpn)
         ):
-            # Fail closed — never stamp the caller's selection as verified identity.
+            # A known conflicting supplier identity must remain a hard stop.
             identity_blocked = True
             original = dict(original)
             original["identity_status"] = (
@@ -380,13 +389,17 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
             original["resolved_manufacturer"] = resolved
             original["manufacturer"] = ""
             original["identity_verified"] = False
+            original["identity_review_only"] = False
         elif not resolved:
-            identity_blocked = True
+            # This path is enabled only by the search engine's explicit review-only
+            # marker. Preserve leads, while keeping source identity unverified.
+            identity_blocked = not identity_review_only
             original = dict(original)
             original["manufacturer"] = ""
             original["requested_manufacturer"] = requested_manufacturer
             original["identity_status"] = "unresolved"
             original["identity_verified"] = False
+            original["identity_review_only"] = identity_review_only
         else:
             original = dict(original)
             original["identity_status"] = "matched"
@@ -419,6 +432,11 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
         else (result.get("candidates") if isinstance(result.get("candidates"), list) else [])
     )
     discovery = result.get("discovery_metadata") if isinstance(result.get("discovery_metadata"), dict) else {}
+    if identity_review_only:
+        discovery = dict(discovery)
+        discovery["identity_review_only"] = True
+        discovery["source_identity_verified"] = False
+
     def _project_candidate(
         candidate: dict[str, Any],
         *,
@@ -427,7 +445,7 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
         candidate_mpn = str(candidate.get("Alternative Part") or candidate.get("manufacturer_part_number") or "").strip()
         classification = str(candidate.get("Classification") or candidate.get("Category") or "Unverified candidate")
         disposition = str(candidate.get("Candidate Disposition") or "Discovery lead only")
-        exact_source = bool(candidate.get("Source Identity Verified"))
+        exact_source = bool(candidate.get("Source Identity Verified")) and not identity_review_only
         missing = [
             "datasheet-backed electrical, package, thermal, and qualification review",
         ]
@@ -458,11 +476,20 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
             fit = "not qualified — component family not classified from available evidence"
         elif lifecycle_conflict or not lifecycle_status or lifecycle_status.casefold() in {"unknown", "not stated"}:
             fit = "not qualified — lifecycle evidence incomplete or conflicting"
+        if identity_review_only:
+            classification = "Needs verification"
+            fit = "not qualified — source manufacturer identity is unverified"
+            missing.insert(0, "confirm the source manufacturer against an authorized source")
         return {
             "mpn": candidate_mpn,
             "manufacturer": str(candidate.get("Manufacturer") or ""),
             "description": str(candidate.get("description") or ""),
-            "rationale": str(candidate.get("Recommendation") or candidate.get("Compatibility Notes") or disposition),
+            "rationale": (
+                f"Catalog lead only. The source manufacturer identity for {mpn} is unverified; "
+                "confirm it against an authorized source before assessing this lead."
+                if identity_review_only
+                else str(candidate.get("Recommendation") or candidate.get("Compatibility Notes") or disposition)
+            ),
             "fit": fit,
             "classification": classification,
             "missing_evidence": missing,
@@ -613,7 +640,10 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
 
     for candidate in candidates_raw:
         if isinstance(candidate, dict):
-            _ingest(candidate)
+            _ingest(
+                candidate,
+                force_bucket="unclassified" if identity_review_only else None,
+            )
     for candidate in discovery.get("unclassified_leads") or []:
         if isinstance(candidate, dict):
             _ingest(candidate, force_bucket="unclassified")
@@ -654,11 +684,19 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
         )
     missing.append("datasheet-backed fit scoring")
 
-    from src.alternative_finder_state import search_outcome_label
+    from src.alternative_finder_state import resolve_search_outcome, search_outcome_label
 
-    search_outcome = str(
-        status.get("search_outcome") or result.get("search_outcome") or "failure"
-    )
+    if identity_review_only:
+        search_outcome = resolve_search_outcome(
+            [],
+            has_incomplete_evidence=True,
+            discovery=discovery,
+            catalog_lead_count=len(unclassified_leads) + len(unfiltered_leads),
+        )
+    else:
+        search_outcome = str(
+            status.get("search_outcome") or result.get("search_outcome") or "failure"
+        )
     return {
         "status": str(status.get("status") or result.get("status") or "failed"),
         "search_outcome": search_outcome,
@@ -668,6 +706,7 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
             or search_outcome_label(search_outcome)
         ),
         "requested_mpn": str(mpn).strip(),
+        "identity_review_only": bool(original.get("identity_review_only")),
         "original": {
             "mpn": str(original.get("manufacturer_part_number") or mpn).strip(),
             "manufacturer": str(original.get("manufacturer") or ""),
@@ -679,6 +718,7 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
             "supplier_data_verified": bool(original.get("supplier_data_verified")),
             "identity_status": str(original.get("identity_status") or ""),
             "identity_verified": bool(original.get("identity_verified")),
+            "identity_review_only": bool(original.get("identity_review_only")),
             "requested_manufacturer": str(original.get("requested_manufacturer") or ""),
             "resolved_manufacturer": str(original.get("resolved_manufacturer") or ""),
             "identity_choices": list(original.get("identity_choices") or []),
