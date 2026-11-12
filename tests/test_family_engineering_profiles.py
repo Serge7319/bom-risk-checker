@@ -107,14 +107,14 @@ class FamilyMatrixTests(unittest.TestCase):
         )
         self.assertEqual(resistor["family"], "Resistor")
         statuses = {r["Attribute"]: r["Status"] for r in resistor["rows"]}
-        self.assertEqual(statuses["Power rating"], "Needs data")
+        self.assertEqual(statuses["Power rating"], "Different")
         inductor = build_datasheet_comparison(
             {"description": "Inductor", "inductance": "10uH", "saturation_current": "1A"},
             {"description": "Inductor", "inductance": "10uH", "saturation_current": "0.5A"},
         )
         self.assertEqual(inductor["family"], "Inductor")
         statuses = {r["Attribute"]: r["Status"] for r in inductor["rows"]}
-        self.assertEqual(statuses["Saturation current"], "Needs data")
+        self.assertEqual(statuses["Saturation current"], "Different")
 
     def test_diode_matrix(self):
         result = build_datasheet_comparison(
@@ -123,7 +123,7 @@ class FamilyMatrixTests(unittest.TestCase):
         )
         self.assertEqual(result["family"], "Diode / protection")
         statuses = {r["Attribute"]: r["Status"] for r in result["rows"]}
-        self.assertEqual(statuses["Reverse voltage"], "Needs data")
+        self.assertEqual(statuses["Reverse voltage"], "Different")
 
     def test_bjt_matrix_includes_electricals_not_architecture(self):
         original = {
@@ -262,7 +262,7 @@ class FamilyMatrixTests(unittest.TestCase):
         )
         self.assertEqual(result["family"], "MOSFET")
         statuses = {r["Attribute"]: r["Status"] for r in result["rows"]}
-        self.assertEqual(statuses["RDS(on)"], "Needs data")
+        self.assertEqual(statuses["RDS(on)"], "Different")
         self.assertIn("VDS", self._attrs(result))
 
     def test_regulator_analog_mcu_fpga_connector(self):
