@@ -848,8 +848,16 @@ def find_replacement_payload(
             or ""
         ).strip()
         identity_status = str(original.get("identity_status") or "").strip()
+        identity_review_only = bool(
+            (result.get("identity_review_only") or original.get("identity_review_only"))
+            and requested_manufacturer
+            and identity_status == "unresolved"
+            and not resolved_mfr
+            and not original.get("identity_verified")
+        )
         if identity_status == "ambiguous" or (
             requested_manufacturer
+            and not identity_review_only
             and (
                 identity_status in {"manufacturer_mismatch", "unresolved"}
                 or (
@@ -885,7 +893,20 @@ def find_replacement_payload(
         )
 
         raw_outcome = str(result.get("search_outcome") or "").strip()
-        if result.get("candidates"):
+        review_lead_count = sum(
+            len(result.get(key) or [])
+            for key in ("candidates", "unclassified_leads", "unfiltered_leads")
+        )
+        if identity_review_only:
+            if raw_outcome == OUTCOME_PARTIAL_SUPPLIER:
+                outcome = raw_outcome
+            elif review_lead_count:
+                outcome = OUTCOME_CATALOG_LEADS_ONLY
+            elif raw_outcome == OUTCOME_FAILURE:
+                outcome = OUTCOME_FAILURE
+            else:
+                outcome = "unable_to_confirm"
+        elif result.get("candidates"):
             outcome = "candidates_found"
         elif raw_outcome in {
             OUTCOME_CATALOG_LEADS_ONLY,
@@ -897,17 +918,33 @@ def find_replacement_payload(
             outcome = "unable_to_confirm"
         else:
             outcome = raw_outcome or "unable_to_confirm"
+        final_search_outcome = outcome if identity_review_only else (raw_outcome or outcome)
+        review_detail = (
+            f"No supplier record verified {requested_manufacturer} as the manufacturer of {requested}. "
+            "Any catalog rows below are discovery leads only; confirm the source part against an authorized "
+            "source before evaluating a replacement."
+            if identity_review_only
+            else ""
+        )
         return _json_safe({
             "ok": True,
             **result,
             "outcome": outcome,
-            "search_outcome": raw_outcome or outcome,
-            "search_outcome_label": str(
-                result.get("search_outcome_label")
-                or search_outcome_label(raw_outcome or outcome)
+            "search_outcome": final_search_outcome,
+            "search_outcome_label": (
+                search_outcome_label(final_search_outcome)
+                if identity_review_only
+                else str(
+                    result.get("search_outcome_label")
+                    or search_outcome_label(final_search_outcome)
+                )
             ),
             "identity_status": original.get("identity_status") or "resolved",
+            "identity_review_only": identity_review_only,
+            "identity_choices": list(original.get("identity_choices") or []),
+            "identity_verified": bool(original.get("identity_verified")),
             "requested_manufacturer": requested_manufacturer,
+            "detail": review_detail or str(result.get("gap") or ""),
             "analysis_id": context_analysis_id,
             "bom_context": bom_context,
             "context_unavailable": context_notice,

@@ -614,6 +614,7 @@ def run_alternative_finder_search(
     safe_lookup_error = str(lookup_error or "")
     candidates: list = []
     identity_blocked = False
+    identity_review_only = False
 
     try:
         if not safe_original:
@@ -666,8 +667,9 @@ def run_alternative_finder_search(
             )
             if not matched and resolved_mfr and manufacturers_match is None:
                 matched = resolved_mfr.casefold() == requested_mfr.casefold()
-            if not resolved_mfr or not matched:
-                # Fail closed: do not stamp the caller's selection as verified.
+            if resolved_mfr and not matched:
+                # A supplier-confirmed different brand is a real identity conflict.
+                # Keep this hard stop; never return alternatives for a mismatched source.
                 identity_blocked = True
                 identity_choices: list = []
                 try:
@@ -686,9 +688,7 @@ def run_alternative_finder_search(
                     "manufacturer": "",
                     "requested_manufacturer": requested_mfr,
                     "resolved_manufacturer": resolved_mfr,
-                    "identity_status": (
-                        "manufacturer_mismatch" if resolved_mfr else "unresolved"
-                    ),
+                    "identity_status": "manufacturer_mismatch",
                     "identity_verified": False,
                     "supplier_data_verified": False,
                     "identity_choices": identity_choices,
@@ -698,10 +698,47 @@ def run_alternative_finder_search(
                 }
                 safe_risk = {}
                 safe_lookup_error = (
-                    f"Could not verify manufacturer identity for {entered_mpn} as "
-                    f"{requested_mfr}. No supplier record confirmed that brand for this "
-                    "exact part number; typed manufacturer text alone is not identity proof. "
-                    "Replacement search paused."
+                    f"You entered {requested_mfr} for {entered_mpn}, but the supplier record "
+                    f"identified {resolved_mfr}. The replacement search is paused because "
+                    "the source manufacturer does not match the selected manufacturer."
+                )
+            elif not resolved_mfr:
+                # Missing source identity should limit confidence, not suppress catalog
+                # discovery. Search broadly and expose results only as review-only leads.
+                identity_review_only = True
+                identity_choices = []
+                try:
+                    from apps.api.manufacturer_identity import (
+                        lineage_identity_choices,
+                        multi_brand_choices_for_mpn,
+                    )
+
+                    identity_choices = multi_brand_choices_for_mpn(entered_mpn) or (
+                        lineage_identity_choices(entered_mpn)
+                    )
+                except Exception:  # noqa: BLE001
+                    identity_choices = []
+                safe_original = dict(safe_original)
+                safe_original.update(
+                    {
+                        "manufacturer_part_number": str(
+                            safe_original.get("manufacturer_part_number") or entered_mpn
+                        ),
+                        "manufacturer": "",
+                        "requested_manufacturer": requested_mfr,
+                        "resolved_manufacturer": "",
+                        "identity_status": "unresolved",
+                        "identity_verified": False,
+                        "supplier_data_verified": False,
+                        "identity_review_only": True,
+                        "identity_choices": identity_choices,
+                    }
+                )
+                safe_risk = {}
+                safe_lookup_error = (
+                    f"No supplier record verified {requested_mfr} as the manufacturer of "
+                    f"{entered_mpn}. Catalog discovery will show review-only leads; typed "
+                    "manufacturer text alone is not identity proof."
                 )
             else:
                 safe_original = dict(safe_original)
@@ -774,6 +811,7 @@ def run_alternative_finder_search(
         }
         exact_source_match = bool(
             safe_original.get("supplier_data_verified")
+            and not identity_review_only
             and entered_key
             and entered_key in verified_source_keys
         )
@@ -790,7 +828,7 @@ def run_alternative_finder_search(
                     "Enter the complete manufacturer part number, including package or suffix where applicable."
                 )
 
-        if not identity_blocked:
+        if not identity_blocked and not identity_review_only:
             safe_original = _supplement_resolved_part_evidence(safe_original)
         candidates: list = []
         discovery: dict = {}
@@ -827,6 +865,10 @@ def run_alternative_finder_search(
                 discovery = discover_alternative_candidates(entered_mpn) or {}
                 discovery = dict(discovery)
                 discovery["source_identity_verified"] = False
+                discovery["identity_review_only"] = bool(identity_review_only)
+                if identity_review_only:
+                    discovery["requested_manufacturer"] = requested_mfr
+                    discovery["identity_status"] = "unresolved"
                 discovery["candidate_status"] = (
                     "Source MPN is not verified by an exact distributor listing. "
                     "Catalog results are discovery leads only; verify the source part "
@@ -840,11 +882,21 @@ def run_alternative_finder_search(
                 for candidate in candidates:
                     candidate["Source Identity Verified"] = False
                     candidate["Candidate Disposition"] = "Unverified source search lead"
-                    candidate["Recommendation"] = (
-                        "Discovery lead only. The original MPN has no exact distributor "
-                        "verification yet, so Cadivor cannot establish compatibility or "
-                        "approve this part. Verify the source, then review both datasheets."
-                    )
+                    if identity_review_only:
+                        candidate["Category"] = "Needs verification"
+                        candidate["Classification"] = "Needs verification"
+                        candidate["Recommendation Score"] = 0
+                        candidate["Recommendation"] = (
+                            f"Catalog lead only. {requested_mfr} is not verified as the "
+                            "source manufacturer; confirm the source part against an "
+                            "authorized listing before assessing this lead."
+                        )
+                    else:
+                        candidate["Recommendation"] = (
+                            "Discovery lead only. The original MPN has no exact distributor "
+                            "verification yet, so Cadivor cannot establish compatibility or "
+                            "approve this part. Verify the source, then review both datasheets."
+                        )
             discovery["has_incomplete_evidence"] = True
             if not candidates:
                 discovery["candidate_status"] = (

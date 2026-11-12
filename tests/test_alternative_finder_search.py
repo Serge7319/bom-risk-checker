@@ -273,6 +273,74 @@ class AlternativeFinderSearchTests(unittest.TestCase):
         self.assertTrue(result["discovery_metadata"]["has_incomplete_evidence"])
         self.assertEqual(outcome["search_outcome"], self.state.OUTCOME_PARTIAL_SUCCESS)
 
+    def test_typed_unverified_manufacturer_runs_catalog_discovery_as_review_only_leads(self):
+        session: dict = {}
+        self.state.init_alternative_finder_state(session)
+        requested: list[tuple[str, str]] = []
+
+        def get_original(part, manufacturer=""):
+            requested.append((part, manufacturer))
+            return {
+                "manufacturer_part_number": "DHT11",
+                "manufacturer": "",
+                "description": "Digital humidity and temperature sensor",
+                "primary_category": "Sensors",
+                "supplier_data_verified": False,
+                "all_supplier_results": [],
+            }
+
+        self.aggregator.get_best_part_data = get_original
+        self.aggregator.discover_alternative_candidates = lambda part: {
+            "original_mpn": part,
+            "providers": {
+                "Mouser": {
+                    "substitutions": "not_supported",
+                    "catalog": "ok",
+                    "family_search": "ok",
+                    "lookup": "available",
+                }
+            },
+            "explicit_count": 0,
+            "catalog_count": 1,
+            "provider_failures": [],
+            "candidates": [{
+                "manufacturer_part_number": "DHT22",
+                "manufacturer": "Aosong",
+                "description": "Digital humidity and temperature sensor",
+                "source": "Mouser",
+                "evidence_type": "Distributor family search match",
+                "discovery_scope": "family_search",
+                "substitute_type": "Similar",
+                "lifecycle_status": "Active",
+                "stock_total": 250,
+                "package": "Through Hole",
+                "pin_count": 4,
+                "primary_category": "Sensors",
+            }],
+            "has_incomplete_evidence": False,
+        }
+
+        outcome = self.search.run_alternative_finder_search(
+            session,
+            "DHT11",
+            requested_manufacturer="Aosong",
+        )
+        result = session[self.state.ALT_FINDER_RESULT_KEY]
+        original = result["original_data"]
+        candidate = result["candidates"][0]
+
+        self.assertEqual(requested, [("DHT11", "Aosong")])
+        self.assertTrue(original["identity_review_only"])
+        self.assertEqual(original["identity_status"], "unresolved")
+        self.assertEqual(original["manufacturer"], "")
+        self.assertFalse(original["identity_verified"])
+        self.assertFalse(original["supplier_data_verified"])
+        self.assertFalse(candidate["Source Identity Verified"])
+        self.assertEqual(candidate["Classification"], "Needs verification")
+        self.assertIn("Catalog lead only", candidate["Recommendation"])
+        self.assertEqual(outcome["search_outcome"], self.state.OUTCOME_PARTIAL_SUCCESS)
+        self.assertTrue(result["discovery_metadata"]["identity_review_only"])
+
     def test_verified_distributor_order_code_still_allows_alternative_search(self):
         session: dict = {}
         self.state.init_alternative_finder_state(session)

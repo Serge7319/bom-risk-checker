@@ -209,6 +209,147 @@ class GenericManufacturerIdentityTests(unittest.TestCase):
                     "",
                 )
 
+    def test_unresolved_selected_manufacturer_preserves_catalog_leads_only(self):
+        from apps.api.legacy_supplier_workflow import find_replacements
+        from apps.api.manufacturer_identity import lineage_identity_choices
+
+        mpn = "AM29F010B-70EC"
+        choices = lineage_identity_choices(mpn)
+        candidate = {
+            "Alternative Part": "AM29F010B-90EC",
+            "Manufacturer": "Spansion",
+            "description": "Flash memory",
+            "primary_category": "Memory",
+            "Category": "Compatible",
+            "Classification": "Compatible",
+            "Candidate Disposition": "Unverified source search lead",
+            "Source Identity Verified": False,
+            "Recommendation": "Discovery lead only.",
+            "Recommendation Score": 45,
+            "Supplier": "Mouser",
+            "Lifecycle": "Unknown",
+        }
+        fake_result = {
+            "original_data": {
+                "manufacturer_part_number": mpn,
+                "manufacturer": "",
+                "description": "Flash memory",
+                "primary_category": "Memory",
+                "supplier_data_verified": False,
+                "identity_status": "unresolved",
+                "identity_verified": False,
+                "identity_review_only": True,
+                "requested_manufacturer": "AMD",
+                "resolved_manufacturer": "",
+                "identity_choices": choices,
+                "all_supplier_results": [],
+            },
+            "original_risk": {},
+            "candidates": [candidate],
+            "discovery_metadata": {
+                "source_identity_verified": False,
+                "providers": {"Mouser": {"catalog": "ok", "lookup": "available"}},
+            },
+            "search_outcome": "partial_success",
+            "lookup_error": "No supplier record verified AMD.",
+        }
+
+        def run_review_only(state, _searched, **_kwargs):
+            state["alternative_finder_result"] = fake_result
+            return {
+                "status": "completed",
+                "search_outcome": "partial_success",
+                "search_outcome_label": "Partial success",
+            }
+
+        with patch(
+            "src.alternative_finder_search.run_alternative_finder_search",
+            side_effect=run_review_only,
+        ):
+            result = find_replacements(mpn, manufacturer="AMD")
+
+        self.assertTrue(result["identity_review_only"])
+        self.assertEqual(result["original"]["identity_status"], "unresolved")
+        self.assertEqual(result["original"]["manufacturer"], "")
+        self.assertFalse(result["original"]["identity_verified"])
+        self.assertEqual(result["candidates"], [])
+        self.assertEqual(len(result["unclassified_leads"]), 1)
+        self.assertEqual(result["unclassified_leads"][0]["classification"], "Needs verification")
+        self.assertNotIn("compatible", result["unclassified_leads"][0]["fit"].casefold())
+        self.assertEqual(result["search_outcome"], "catalog_leads_only")
+        self.assertEqual(
+            result["search_outcome_label"],
+            "No verified replacement; catalog leads available",
+        )
+
+    def test_unresolved_selected_manufacturer_returns_review_only_leads(self):
+        from apps.api.manufacturer_identity import lineage_identity_choices
+
+        mpn = "AM29F010B-70EC"
+        fake = {
+            "status": "completed",
+            "search_outcome": "partial_success",
+            "search_outcome_label": "Partial success",
+            "identity_review_only": True,
+            "identity_choices": lineage_identity_choices(mpn),
+            "original": {
+                "mpn": mpn,
+                "manufacturer": "",
+                "identity_status": "unresolved",
+                "identity_verified": False,
+                "identity_review_only": True,
+                "requested_manufacturer": "AMD",
+                "resolved_manufacturer": "",
+                "identity_choices": lineage_identity_choices(mpn),
+                "supplier_data_verified": False,
+            },
+            "candidates": [],
+            "unclassified_leads": [{
+                "mpn": "AM29F010B-90EC",
+                "manufacturer": "Spansion",
+                "fit": "not qualified — source manufacturer identity is unverified",
+                "classification": "Needs verification",
+                "source_identity_verified": False,
+                "missing_evidence": ["confirm the source manufacturer against an authorized source"],
+            }],
+            "unfiltered_leads": [],
+            "discovery": {
+                "source_identity_verified": False,
+                "identity_review_only": True,
+                "providers": {"Mouser": {"catalog": "ok", "lookup": "available"}},
+            },
+            "gap": "Catalog lead only; source identity is unverified.",
+        }
+        with patch(
+            "apps.api.legacy_supplier_workflow.production_analysis_enabled",
+            return_value=True,
+        ), patch(
+            "apps.api.legacy_supplier_workflow.find_replacements",
+            return_value=fake,
+        ):
+            payload = find_replacement_payload(
+                workspace_id="ws-test",
+                mpn=mpn,
+                manufacturer="AMD",
+            )
+
+        self.assertTrue(payload["identity_review_only"])
+        self.assertEqual(payload["outcome"], "catalog_leads_only")
+        self.assertEqual(payload["search_outcome"], "catalog_leads_only")
+        self.assertEqual(
+            payload["search_outcome_label"],
+            "No verified replacement; catalog leads available",
+        )
+        self.assertEqual(payload["candidates"], [])
+        self.assertEqual(len(payload["unclassified_leads"]), 1)
+        self.assertEqual(payload["original"]["manufacturer"], "")
+        self.assertFalse(payload["original"]["identity_verified"])
+        self.assertIn("authorized source", payload["detail"])
+        self.assertTrue(payload["identity_choices"])
+        for choice in payload["identity_choices"]:
+            self.assertEqual(choice["note_source"], "lineage")
+            self.assertNotIn("Supplier records list", choice["note"])
+
     def test_choices_from_live_hits_without_registry(self):
         labels = distinct_manufacturer_labels(
             [
