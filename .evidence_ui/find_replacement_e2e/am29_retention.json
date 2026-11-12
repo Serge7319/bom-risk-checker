@@ -1,0 +1,135 @@
+{
+  "mpn": "AM29F010B-70EC",
+  "live_supplier_calls": false,
+  "note": "Deterministic fixtures only; live DigiKey/Mouser/Newark not invoked.",
+  "lineage_choices": [
+    {
+      "manufacturer": "AMD",
+      "canonical": "advanced micro devices",
+      "product_url": "",
+      "note": "AMD is a historical brand in the trusted MPN lineage for AM29F010B-70EC. Confirm against an authorized source before continuing.",
+      "note_source": "lineage"
+    },
+    {
+      "manufacturer": "Spansion",
+      "canonical": "spansion",
+      "product_url": "",
+      "note": "Spansion is a historical brand in the trusted MPN lineage for AM29F010B-70EC. Confirm against an authorized source before continuing.",
+      "note_source": "lineage"
+    },
+    {
+      "manufacturer": "Cypress",
+      "canonical": "cypress",
+      "product_url": "",
+      "note": "Cypress is a historical brand in the trusted MPN lineage for AM29F010B-70EC. Confirm against an authorized source before continuing.",
+      "note_source": "lineage"
+    },
+    {
+      "manufacturer": "Infineon",
+      "canonical": "infineon",
+      "product_url": "",
+      "note": "Infineon is a historical brand in the trusted MPN lineage for AM29F010B-70EC. Confirm against an authorized source before continuing.",
+      "note_source": "lineage"
+    }
+  ],
+  "cases": [
+    {
+      "case": "blank",
+      "requested_manufacturer": "",
+      "identity_status": null,
+      "identity_verified": null,
+      "identity_review_only": null,
+      "manufacturer_preserved": "Infineon",
+      "search_outcome": "no_results",
+      "search_outcome_label": "No results",
+      "candidate_count": 0,
+      "candidate_classifications": [],
+      "unclassified_leads": 0,
+      "ui_retry_same_brand_suppressed": false,
+      "verified_compatible_present": false
+    },
+    {
+      "case": "amd_matched_lineage",
+      "requested_manufacturer": "AMD",
+      "identity_status": "matched",
+      "identity_verified": true,
+      "identity_review_only": null,
+      "manufacturer_preserved": "Infineon",
+      "search_outcome": "no_results",
+      "search_outcome_label": "No results",
+      "candidate_count": 0,
+      "candidate_classifications": [],
+      "unclassified_leads": 0,
+      "ui_retry_same_brand_suppressed": false,
+      "verified_compatible_present": false
+    },
+    {
+      "case": "amd_unresolved",
+      "requested_manufacturer": "AMD",
+      "identity_status": "unresolved",
+      "identity_verified": false,
+      "identity_review_only": true,
+      "manufacturer_preserved": "",
+      "search_outcome": "partial_success",
+      "search_outcome_label": "Partial success",
+      "candidate_count": 2,
+      "candidate_classifications": [
+        {
+          "mpn": "AM29F010B-120JC",
+          "classification": "Needs verification",
+          "source_identity_verified": false
+        },
+        {
+          "mpn": "S29AL008J70TFI010",
+          "classification": "Needs verification",
+          "source_identity_verified": false
+        }
+      ],
+      "unclassified_leads": 1,
+      "ui_retry_same_brand_suppressed": true,
+      "verified_compatible_present": false
+    },
+    {
+      "case": "ti_mismatch",
+      "requested_manufacturer": "Texas Instruments",
+      "identity_status": "manufacturer_mismatch",
+      "identity_verified": false,
+      "identity_review_only": null,
+      "manufacturer_preserved": "",
+      "search_outcome": "no_results",
+      "search_outcome_label": "No results",
+      "candidate_count": 0,
+      "candidate_classifications": [],
+      "unclassified_leads": 0,
+      "ui_retry_same_brand_suppressed": false,
+      "verified_compatible_present": false
+    }
+  ],
+  "discovery_filter_amd": {
+    "kept": [
+      {
+        "mpn": "AM29F010B-120JC",
+        "manufacturer": "AMD",
+        "reason": "blank_mfr_or_lineage_match"
+      },
+      {
+        "mpn": "S29AL008J70TFI010",
+        "manufacturer": "Infineon",
+        "reason": "blank_mfr_or_lineage_match"
+      },
+      {
+        "mpn": "AM29-UNKNOWN",
+        "manufacturer": "(blank)",
+        "reason": "blank_mfr_or_lineage_match"
+      }
+    ],
+    "dropped": [
+      {
+        "mpn": "LM358N",
+        "manufacturer": "Texas Instruments",
+        "reason": "conflicting_brand"
+      }
+    ]
+  },
+  "verdict": "No verified Compatible replacement is asserted for AM29F010B-70EC under these fixtures. Mouser catalog hits may appear as Needs verification / review-only leads; conflicting brands are filtered when manufacturer is requested; mismatch fail-closes; unresolved does not stamp typed AMD as verified."
+}

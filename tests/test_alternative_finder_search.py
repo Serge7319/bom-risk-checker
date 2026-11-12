@@ -229,7 +229,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
             "supplier_data_verified": False,
             "all_supplier_results": [],
         }
-        self.aggregator.discover_alternative_candidates = lambda part: {
+        self.aggregator.discover_alternative_candidates = lambda part, **_kwargs: {
             "original_mpn": part,
             "retrieved_at": "2026-10-22T00:00:00+00:00",
             "providers": {
@@ -290,7 +290,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
             }
 
         self.aggregator.get_best_part_data = get_original
-        self.aggregator.discover_alternative_candidates = lambda part: {
+        self.aggregator.discover_alternative_candidates = lambda part, **_kwargs: {
             "original_mpn": part,
             "providers": {
                 "Mouser": {

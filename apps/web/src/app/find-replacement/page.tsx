@@ -7,6 +7,10 @@ import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { findReplacement } from "@/lib/api";
+import {
+  shouldShowIdentityDisambiguation,
+  shouldShowIdentityRetryButton,
+} from "@/lib/findReplacementIdentity";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
@@ -194,22 +198,32 @@ function FindReplacementInner() {
 
       {result ? (
         <>
-          {identityReviewOnly ||
-          String(result.status || result.outcome || result.identity_status || "")
-            .toLowerCase()
-            .includes("ambiguous") ||
-          Array.isArray(result.identity_choices) ? (
+          {shouldShowIdentityDisambiguation(result) ? (
             <section className="cv-card pad" style={{ marginBottom: 14 }} role="status" data-testid="identity-disambiguation">
               <h3 className="cv-card-title">
-                {identityReviewOnly ? "Manufacturer identity unverified" : "Manufacturer identity required"}
+                {identityReviewOnly
+                  ? "Manufacturer identity unverified"
+                  : String(result.identity_status || "").toLowerCase() === "ambiguous"
+                    ? "Manufacturer identity required"
+                    : "Manufacturer lineage context"}
               </h3>
               <p className="cv-card-subtitle">
                 {String(result.detail || result.gap || "") ||
-                  `${mpn} is offered by more than one manufacturer with official product evidence. Choose the intended brand before reviewing replacements.`}
+                  (identityReviewOnly
+                    ? "Catalog leads below are review-only. Typed manufacturer text is not identity proof — retry with a supplier-confirmed brand when available."
+                    : `${mpn} is offered by more than one manufacturer with official product evidence. Choose the intended brand before reviewing replacements.`)}
               </p>
               <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
                 {((result.identity_choices || []) as Array<Record<string, unknown>>).map((choice) => {
                   const choiceMfr = String(choice.manufacturer || "");
+                  const typedMfr = String(manufacturer || result.requested_manufacturer || "").trim();
+                  // Review-only: allow escalating to a different lineage/supplier brand;
+                  // repeating the same unverified typed brand would re-trap the user.
+                  const showRetry = shouldShowIdentityRetryButton({
+                    identityReviewOnly,
+                    typedManufacturer: typedMfr,
+                    choiceManufacturer: choiceMfr,
+                  });
                   return (
                     <div
                       key={choiceMfr || String(choice.canonical || "")}
@@ -221,10 +235,11 @@ function FindReplacementInner() {
                         {String(choice.note || "Official product evidence available.")}
                       </p>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-                        {!identityReviewOnly ? (
+                        {showRetry ? (
                         <button
                           type="button"
                           className="cv-button primary"
+                          data-testid={`identity-retry-${choiceMfr || "brand"}`}
                           onClick={() => {
                             setManufacturer(choiceMfr);
                             void (async () => {
@@ -246,9 +261,11 @@ function FindReplacementInner() {
                             })();
                           }}
                         >
-                          {String(choice.note_source || "") === "lineage"
-                            ? `Search catalog leads for ${choiceMfr || "this manufacturer"}`
-                            : `Use ${choiceMfr || "this manufacturer"}`}
+                          {identityReviewOnly
+                            ? `Retry search as ${choiceMfr || "this manufacturer"}`
+                            : String(choice.note_source || "") === "lineage"
+                              ? `Search catalog leads for ${choiceMfr || "this manufacturer"}`
+                              : `Use ${choiceMfr || "this manufacturer"}`}
                         </button>
                         ) : null}
                         {choice.product_url ? (

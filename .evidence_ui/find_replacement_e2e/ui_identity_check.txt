@@ -1,0 +1,1 @@
+findReplacementIdentity checks OK
