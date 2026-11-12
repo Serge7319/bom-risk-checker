@@ -854,7 +854,9 @@ def find_replacement_payload(
                 identity_status in {"manufacturer_mismatch", "unresolved"}
                 or (
                     resolved_mfr
-                    and not manufacturers_match(requested_manufacturer, resolved_mfr)
+                    and not manufacturers_match(
+                        requested_manufacturer, resolved_mfr, mpn=requested
+                    )
                 )
                 or not resolved_mfr
             )
@@ -874,16 +876,35 @@ def find_replacement_payload(
                     "context_unavailable": context_notice,
                 }
             )
-        outcome = (
-            "candidates_found"
-            if result.get("candidates")
-            else str(result.get("search_outcome") or "unable_to_confirm")
+        from src.alternative_finder_state import (
+            OUTCOME_CATALOG_LEADS_ONLY,
+            OUTCOME_FAILURE,
+            OUTCOME_NO_RESULTS,
+            OUTCOME_PARTIAL_SUPPLIER,
+            search_outcome_label,
         )
+
+        raw_outcome = str(result.get("search_outcome") or "").strip()
+        if result.get("candidates"):
+            outcome = "candidates_found"
+        elif raw_outcome in {
+            OUTCOME_CATALOG_LEADS_ONLY,
+            OUTCOME_PARTIAL_SUPPLIER,
+            OUTCOME_NO_RESULTS,
+        }:
+            outcome = raw_outcome
+        elif raw_outcome == OUTCOME_FAILURE:
+            outcome = "unable_to_confirm"
+        else:
+            outcome = raw_outcome or "unable_to_confirm"
         return _json_safe({
             "ok": True,
             **result,
-            "outcome": outcome if outcome != "failure" else (
-                "unable_to_confirm" if not result.get("candidates") else outcome
+            "outcome": outcome,
+            "search_outcome": raw_outcome or outcome,
+            "search_outcome_label": str(
+                result.get("search_outcome_label")
+                or search_outcome_label(raw_outcome or outcome)
             ),
             "identity_status": original.get("identity_status") or "resolved",
             "requested_manufacturer": requested_manufacturer,
@@ -900,7 +921,7 @@ def find_replacement_payload(
     )
     resolved_mfr = str(original.get("manufacturer") or "").strip()
     if requested_manufacturer and resolved_mfr and not manufacturers_match(
-        requested_manufacturer, resolved_mfr
+        requested_manufacturer, resolved_mfr, mpn=requested
     ):
         return _json_safe(
             {

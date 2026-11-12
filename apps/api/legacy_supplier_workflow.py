@@ -365,7 +365,8 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
     elif requested_manufacturer:
         resolved = str(original.get("manufacturer") or original.get("Manufacturer") or "").strip()
         if status_hint in {"manufacturer_mismatch", "unresolved"} or (
-            resolved and not manufacturers_match(requested_manufacturer, resolved)
+            resolved
+            and not manufacturers_match(requested_manufacturer, resolved, mpn=mpn)
         ):
             # Fail closed — never stamp the caller's selection as verified identity.
             identity_blocked = True
@@ -653,9 +654,19 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
         )
     missing.append("datasheet-backed fit scoring")
 
+    from src.alternative_finder_state import search_outcome_label
+
+    search_outcome = str(
+        status.get("search_outcome") or result.get("search_outcome") or "failure"
+    )
     return {
         "status": str(status.get("status") or result.get("status") or "failed"),
-        "search_outcome": str(status.get("search_outcome") or result.get("search_outcome") or "failure"),
+        "search_outcome": search_outcome,
+        "search_outcome_label": str(
+            status.get("search_outcome_label")
+            or result.get("search_outcome_label")
+            or search_outcome_label(search_outcome)
+        ),
         "requested_mpn": str(mpn).strip(),
         "original": {
             "mpn": str(original.get("manufacturer_part_number") or mpn).strip(),

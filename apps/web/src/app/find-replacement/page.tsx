@@ -19,6 +19,24 @@ function providerLeadCount(state: Record<string, unknown>): number {
   return Number.isFinite(single) && single > 0 ? single : 0;
 }
 
+function searchOutcomeLabel(outcome: unknown, explicitLabel?: unknown): string {
+  const provided = String(explicitLabel || "").trim();
+  if (provided) return provided;
+  const key = String(outcome || "").trim();
+  const labels: Record<string, string> = {
+    success: "Verified replacements found",
+    partial_success: "Partial success",
+    catalog_leads_only: "No verified replacement; catalog leads available",
+    partial_supplier_results: "Partial supplier results",
+    no_results: "No results",
+    failure: "Search failed",
+    identity_ambiguous: "Could not verify manufacturer identity",
+    unable_to_confirm: "Unable to confirm a replacement",
+    candidates_found: "Verified replacements found",
+  };
+  return labels[key] || key;
+}
+
 function providerOutcomeLabel(state: Record<string, unknown>): string {
   const values = ["lookup", "catalog", "substitutions", "family_search", "parametric_search"].map(
     (key) => String(state[key] || "").toLowerCase(),
@@ -312,9 +330,10 @@ function FindReplacementInner() {
                   </tbody>
                 </table>
               </div>
-              {result.search_outcome ? (
+              {result.search_outcome || result.search_outcome_label ? (
                 <p className="cv-small-note" style={{ marginTop: 10 }}>
-                  Search outcome: {String(result.search_outcome)}
+                  Search outcome:{" "}
+                  {searchOutcomeLabel(result.search_outcome, result.search_outcome_label)}
                 </p>
               ) : null}
             </section>
