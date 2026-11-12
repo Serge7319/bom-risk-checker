@@ -402,10 +402,15 @@ class GenericManufacturerIdentityTests(unittest.TestCase):
         self.assertGreaterEqual(len(result.get("original", {}).get("identity_choices") or []), 2)
 
     def test_concurrent_explicit_manufacturer_propagation(self):
+        import importlib
+        import sys
+
         from tests.streamlit_cache_stub import install_streamlit_cache_stub
 
         install_streamlit_cache_stub()
-        import integrations.supplier_aggregator as aggregator
+        # Reload so earlier suites that monkeypatch get_best_part_data cannot leak.
+        sys.modules.pop("integrations.supplier_aggregator", None)
+        aggregator = importlib.import_module("integrations.supplier_aggregator")
 
         if hasattr(aggregator.get_best_part_data, "clear"):
             aggregator.get_best_part_data.clear()

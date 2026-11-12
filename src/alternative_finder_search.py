@@ -569,9 +569,10 @@ def run_alternative_finder_search(
     """Execute Alternative Finder search stages and persist durable session results.
 
     ``requested_manufacturer`` constrains DigiKey identity resolution and is
-    verified after aggregator lookup. A mismatch or unresolved brand fails
-    closed with no candidates — the caller's selection is never stamped as
-    supplier-verified identity.
+    verified after aggregator lookup. A supplier-confirmed brand mismatch fails
+    closed with no candidates. An unresolved brand (no supplier manufacturer)
+    continues as review-only catalog discovery — leads stay unverified, and the
+    caller's typed selection is never stamped as supplier-verified identity.
     """
     from integrations.supplier_diagnostics import (
         new_alternative_finder_request_id,
@@ -769,6 +770,13 @@ def run_alternative_finder_search(
                     if multi_brand_choices_for_mpn is not None
                     else []
                 )
+                lineage_choices: list = []
+                try:
+                    from apps.api.manufacturer_identity import lineage_identity_choices
+
+                    lineage_choices = lineage_identity_choices(entered_mpn)
+                except Exception:  # noqa: BLE001
+                    lineage_choices = []
                 if len(labels) > 1 or len(known) > 1:
                     identity_blocked = True
                     choices = known or (
@@ -794,6 +802,12 @@ def run_alternative_finder_search(
                         f"{entered_mpn} matches more than one manufacturer in supplier "
                         "records. Select the manufacturer identity to continue."
                     )
+                elif len(lineage_choices) > 1 and labels:
+                    # Non-blocking context: supplier resolved one brand, but the
+                    # trusted MPN route lists a multi-brand historical lineage.
+                    safe_original = dict(safe_original)
+                    safe_original["identity_choices"] = lineage_choices
+                    safe_original["identity_lineage_context"] = True
 
         returned_mpn = str(safe_original.get("manufacturer_part_number") or "").strip()
         entered_key = re.sub(r"[^A-Za-z0-9]", "", entered_mpn).casefold()
@@ -862,7 +876,17 @@ def run_alternative_finder_search(
             with search_run.stage(STAGE_CANDIDATE_ENGINE):
                 search_run.operation = "catalog_family_discovery"
                 search_run.provider = "aggregator"
-                discovery = discover_alternative_candidates(entered_mpn) or {}
+                try:
+                    discovery = (
+                        discover_alternative_candidates(
+                            entered_mpn,
+                            manufacturer=requested_mfr,
+                        )
+                        or {}
+                    )
+                except TypeError:
+                    # Older callables/mocks without manufacturer= still work.
+                    discovery = discover_alternative_candidates(entered_mpn) or {}
                 discovery = dict(discovery)
                 discovery["source_identity_verified"] = False
                 discovery["identity_review_only"] = bool(identity_review_only)

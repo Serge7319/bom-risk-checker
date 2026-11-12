@@ -1,0 +1,138 @@
+test_catalog_only_never_compatible_string (tests.test_find_replacement_e2e.CompatibleVerdictGuardTests.test_catalog_only_never_compatible_string) ... ok
+test_lineage_and_unrelated_concurrent_requests (tests.test_find_replacement_e2e.ConcurrentManufacturerIsolationTests.test_lineage_and_unrelated_concurrent_requests) ... ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=lookup category=configuration status_code=none retryable=false retained_candidates=false
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=DigiKey stage=lookup category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=false
+ok
+test_exact_keyword_product_uses_mpn_lineage (tests.test_find_replacement_e2e.DigiKeyLineageMatchTests.test_exact_keyword_product_uses_mpn_lineage) ... ok
+test_exact_keyword_rejects_lineage_brand_on_unrelated_mpn (tests.test_find_replacement_e2e.DigiKeyLineageMatchTests.test_exact_keyword_rejects_lineage_brand_on_unrelated_mpn) ... ok
+test_discovery_drops_conflicting_brand_keeps_blank_and_lineage (tests.test_find_replacement_e2e.DiscoveryManufacturerFilterTests.test_discovery_drops_conflicting_brand_keeps_blank_and_lineage) ... ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=catalog_search category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=true
+ok
+test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) ... 
+  test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='AM29F010B-70EC', requested='AMD', expect='matched_lineage') ... ERROR
+  test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='AM29F010B-70EC', requested='Advanced Micro Devices', expect='matched_lineage') ... ERROR
+  test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='AM29F010B-70EC', requested='Texas Instruments', expect='mismatch') ... ERROR
+  test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='AM29F010B-70EC', requested='AMD', expect='unresolved_review_only') ... ERROR
+  test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='LM358N', requested='Texas Instruments', expect='matched_alias') ... ERROR
+  test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='LM358N', requested='onsemi', expect='mismatch') ... ERROR
+  test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='C0603C104K5RACTU', requested='KEMET', expect='matched_exact') ... ERROR
+  test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='C0603C104K5RACTU', requested='', expect='blank_accepts_supplier') ... ERROR
+test_outcome_cases (tests.test_find_replacement_e2e.OutcomeAggregationParameterizedTests.test_outcome_cases) ... ok
+
+======================================================================
+ERROR: test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='AM29F010B-70EC', requested='AMD', expect='matched_lineage')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_find_replacement_e2e.py", line 218, in test_identity_matrix
+    with patch(
+         ^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1463, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1436, in get_original
+    raise AttributeError(
+AttributeError: <module 'src.alternative_finder_search' from '/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/src/alternative_finder_search.py'> does not have the attribute 'discover_alternative_candidates'
+
+======================================================================
+ERROR: test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='AM29F010B-70EC', requested='Advanced Micro Devices', expect='matched_lineage')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_find_replacement_e2e.py", line 218, in test_identity_matrix
+    with patch(
+         ^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1463, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1436, in get_original
+    raise AttributeError(
+AttributeError: <module 'src.alternative_finder_search' from '/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/src/alternative_finder_search.py'> does not have the attribute 'discover_alternative_candidates'
+
+======================================================================
+ERROR: test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='AM29F010B-70EC', requested='Texas Instruments', expect='mismatch')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_find_replacement_e2e.py", line 218, in test_identity_matrix
+    with patch(
+         ^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1463, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1436, in get_original
+    raise AttributeError(
+AttributeError: <module 'src.alternative_finder_search' from '/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/src/alternative_finder_search.py'> does not have the attribute 'discover_alternative_candidates'
+
+======================================================================
+ERROR: test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='AM29F010B-70EC', requested='AMD', expect='unresolved_review_only')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_find_replacement_e2e.py", line 218, in test_identity_matrix
+    with patch(
+         ^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1463, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1436, in get_original
+    raise AttributeError(
+AttributeError: <module 'src.alternative_finder_search' from '/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/src/alternative_finder_search.py'> does not have the attribute 'discover_alternative_candidates'
+
+======================================================================
+ERROR: test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='LM358N', requested='Texas Instruments', expect='matched_alias')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_find_replacement_e2e.py", line 218, in test_identity_matrix
+    with patch(
+         ^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1463, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1436, in get_original
+    raise AttributeError(
+AttributeError: <module 'src.alternative_finder_search' from '/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/src/alternative_finder_search.py'> does not have the attribute 'discover_alternative_candidates'
+
+======================================================================
+ERROR: test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='LM358N', requested='onsemi', expect='mismatch')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_find_replacement_e2e.py", line 218, in test_identity_matrix
+    with patch(
+         ^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1463, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1436, in get_original
+    raise AttributeError(
+AttributeError: <module 'src.alternative_finder_search' from '/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/src/alternative_finder_search.py'> does not have the attribute 'discover_alternative_candidates'
+
+======================================================================
+ERROR: test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='C0603C104K5RACTU', requested='KEMET', expect='matched_exact')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_find_replacement_e2e.py", line 218, in test_identity_matrix
+    with patch(
+         ^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1463, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1436, in get_original
+    raise AttributeError(
+AttributeError: <module 'src.alternative_finder_search' from '/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/src/alternative_finder_search.py'> does not have the attribute 'discover_alternative_candidates'
+
+======================================================================
+ERROR: test_identity_matrix (tests.test_find_replacement_e2e.IdentityPathParameterizedTests.test_identity_matrix) (mpn='C0603C104K5RACTU', requested='', expect='blank_accepts_supplier')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_find_replacement_e2e.py", line 218, in test_identity_matrix
+    with patch(
+         ^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1463, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/opt/anaconda3/lib/python3.12/unittest/mock.py", line 1436, in get_original
+    raise AttributeError(
+AttributeError: <module 'src.alternative_finder_search' from '/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/src/alternative_finder_search.py'> does not have the attribute 'discover_alternative_candidates'
+
+----------------------------------------------------------------------
+Ran 7 tests in 1.025s
+
+FAILED (errors=8)

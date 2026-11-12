@@ -199,9 +199,14 @@ def _exact_keyword_product(
         preferred: list[dict] = []
         for product in matches:
             product_mfr = _product_manufacturer_name(product)
-            if manufacturers_match and manufacturers_match(requested_mfr, product_mfr):
+            if manufacturers_match and manufacturers_match(
+                requested_mfr, product_mfr, mpn=part_number
+            ):
                 preferred.append(product)
-            elif not manufacturers_match and product_mfr.casefold() == requested_mfr.casefold():
+            elif (
+                not manufacturers_match
+                and product_mfr.casefold() == requested_mfr.casefold()
+            ):
                 preferred.append(product)
         if preferred:
             return preferred[0]

@@ -1129,13 +1129,21 @@ def discover_alternative_candidates(
     *,
     include_family_search: bool = True,
     original_data: dict | None = None,
+    manufacturer: str = "",
 ) -> dict:
-    """Discover explicit substitutes and catalog candidates across configured sources."""
+    """Discover explicit substitutes and catalog candidates across configured sources.
+
+    When ``manufacturer`` is provided, drop catalog/explicit rows whose supplier
+    manufacturer clearly conflicts with the requested brand (including exact-MPN
+    lineage aliases). Rows with a blank manufacturer stay as needs-verification leads.
+    """
     requested = str(part_number or "").strip()
+    requested_mfr = str(manufacturer or "").strip()
     retrieved_at = utc_now_iso()
     discovery = {
         "original_mpn": requested,
         "retrieved_at": retrieved_at,
+        "requested_manufacturer": requested_mfr,
         "providers": {},
         "explicit_count": 0,
         "catalog_count": 0,
@@ -1355,6 +1363,29 @@ def discover_alternative_candidates(
             ):
                 # Defer zero-result diagnostics until merged candidates are known.
                 catalog_zero_results.append(source_name)
+
+    if requested_mfr:
+        try:
+            from apps.api.manufacturer_identity import manufacturers_match
+        except Exception:  # noqa: BLE001
+            manufacturers_match = None  # type: ignore[assignment]
+
+        def _brand_allowed(row: dict) -> bool:
+            row_mfr = str(row.get("manufacturer") or "").strip()
+            if not row_mfr:
+                return True
+            if manufacturers_match:
+                return bool(
+                    manufacturers_match(requested_mfr, row_mfr, mpn=requested)
+                )
+            return row_mfr.casefold() == requested_mfr.casefold()
+
+        before = len(explicit_substitutes) + len(catalog_candidates)
+        explicit_substitutes = [row for row in explicit_substitutes if _brand_allowed(row)]
+        catalog_candidates = [row for row in catalog_candidates if _brand_allowed(row)]
+        if before and (len(explicit_substitutes) + len(catalog_candidates)) < before:
+            discovery["has_incomplete_evidence"] = True
+            discovery["manufacturer_filter_applied"] = True
 
     merged = merge_discovery_candidates(
         explicit_substitutes,
