@@ -4,8 +4,8 @@ Branch: `fix/compare-parts-verdict-decision` (from main `#615` / `1df5f44`)
 
 ## Root causes fixed
 
-1. **Limit/max fields blocked Different/Match** when value class was unknown (`role=max/min` → Needs data for `50V` vs `25V`, `3 mV` vs `2 mV`). Known magnitudes with units (or a field-declared preferred/storage unit) now Compare as Match/Different; Compatible still requires authoritative provenance.
-2. **`build_datasheet_comparison` always demoted Match → Listing agreement**, even when `datasheet_url` was present. Datasheet URLs now resolve as manufacturer provenance; Match is kept only when both sides are authoritative.
+1. **Limit/max fields blocked Different/Match** when value class was unknown. Known magnitudes with units now Match/Different when conditions are absent on both sides (absolute ratings) or match (`@ Id, Vgs`). Asymmetric/mismatched conditions stay Needs data. See `TWELVE_CASE_RECONCILIATION.md`.
+2. **Datasheet provenance fail-open closed.** A bare `datasheet_url` is labeled `Unverified datasheet link` and is never authoritative. Compatible requires identity-verified exact-MPN document citations (e.g. `datasheet, p. N` / field labels from `verify_datasheet_identity`). Wrong-MPN and URL-only fixtures stay unverified.
 3. **Counts double-keyed** Status labels and snake_case aliases, so `sum(counts.values())` was `2 × rows`. Payload now exposes snake_case buckets only, with Status labels under `count_aliases`.
 
 ## Acceptance checks

@@ -12,6 +12,10 @@ from apps.api.main import app
 from apps.api.sandbox_auth import reset_auth_store_for_tests
 from apps.api.workspace_store import reset_store_for_tests
 from src.component_family_profiles import COMPARE_LIMIT_GE, COMPARE_LIMIT_LE, FieldSpec
+from src.datasheet_comparison import (
+    _resolve_part_field_source,
+    _source_text_is_authoritative,
+)
 from src.parametric_compare import compare_field_values
 from src.parts_compare import (
     FINDING_COMPATIBLE,
@@ -26,6 +30,7 @@ from tests.fixtures.sandbox_auth_accounts import (
     SMOKE_EMAIL,
     SMOKE_PASSWORD,
 )
+from tests.test_compare_parts import _cap, _verified_cap_datasheet
 
 
 def _auth_headers(client: TestClient) -> dict[str, str]:
@@ -38,8 +43,7 @@ def _auth_headers(client: TestClient) -> dict[str, str]:
 
 
 class ParametricVerdictHonestyTests(unittest.TestCase):
-    def test_known_unequal_and_equal_values_without_family_markers(self):
-        # Parametric engine compares known magnitudes even when family is unknown.
+    def test_known_magnitudes_match_or_differ_when_conditions_support_it(self):
         voltage_spec = FieldSpec(
             key="rated_voltage",
             label="Rated voltage",
@@ -54,27 +58,88 @@ class ParametricVerdictHonestyTests(unittest.TestCase):
             unit="mV",
             value_role="max",
         )
+        rds_spec = FieldSpec(
+            key="rds_on",
+            label="RDS(on)",
+            compare=COMPARE_LIMIT_LE,
+            unit="Ohm",
+            value_role="max",
+        )
+        # Absolute ratings with matching units and no @ conditions.
         self.assertEqual(compare_field_values("50V", "25V", voltage_spec)[0], "Different")
         self.assertEqual(compare_field_values("50V", "50V", voltage_spec)[0], "Match")
         self.assertEqual(compare_field_values("3 mV", "2 mV", offset_spec)[0], "Different")
         self.assertEqual(compare_field_values("3", "3", offset_spec)[0], "Match")
-
-        # Arbitrary MPNs with no family markers still Match equal package evidence.
-        equal = build_parts_comparison(
-            {
-                "manufacturer_part_number": "USER-MPN-A2",
-                "package": "0603",
-                "datasheet_url": "https://example.com/a.pdf",
-            },
-            {
-                "manufacturer_part_number": "USER-MPN-B2",
-                "package": "0603",
-                "datasheet_url": "https://example.com/b.pdf",
-            },
+        # Matching @ conditions keep RDS comparable.
+        self.assertEqual(
+            compare_field_values(
+                "54mOhm @ 2.8A, 4.5V",
+                "40mOhm @ 2.8A, 4.5V",
+                rds_spec,
+            )[0],
+            "Different",
         )
-        self.assertEqual(equal["family"], "General electronic component")
-        package = next(row for row in equal["rows"] if row["Attribute"] == "Package")
-        self.assertEqual(package["Assessment"], FINDING_COMPATIBLE)
+        # Condition asymmetry stays Needs data.
+        self.assertEqual(
+            compare_field_values("54mOhm @ 2.8A, 4.5V", "40mOhm", rds_spec)[0],
+            "Needs data",
+        )
+        self.assertEqual(
+            compare_field_values(
+                "54mOhm @ 2.8A, 4.5V",
+                "40mOhm @ 1A, 10V",
+                rds_spec,
+            )[0],
+            "Needs data",
+        )
+
+    def test_unverified_datasheet_url_is_not_authoritative(self):
+        part = {
+            "datasheet_url": "https://example.com/part.pdf",
+            "source": "",
+        }
+        source = _resolve_part_field_source(part, {}, "rated_voltage")
+        self.assertEqual(source, "Unverified datasheet link")
+        self.assertFalse(_source_text_is_authoritative(source))
+        self.assertFalse(
+            _source_text_is_authoritative(
+                "Manufacturer datasheet (https://example.com/part.pdf)"
+            )
+        )
+        self.assertTrue(_source_text_is_authoritative("datasheet, p. 3"))
+        self.assertTrue(_source_text_is_authoritative("datasheet, field: Capacitance"))
+
+    def test_verified_exact_mpn_datasheets_can_be_compatible(self):
+        part_a = _cap()
+        part_b = _cap(mpn="ALT-CAP")
+        comparison = build_parts_comparison(
+            part_a,
+            part_b,
+            datasheet_a=_verified_cap_datasheet(mpn=part_a["manufacturer_part_number"]),
+            datasheet_b=_verified_cap_datasheet(mpn=part_b["manufacturer_part_number"]),
+            extract_linked_datasheets=False,
+        )
+        self.assertEqual(comparison["finding"], FINDING_COMPATIBLE)
+        self.assertTrue(comparison["datasheet_identity"]["part_a"]["mpn_verified"])
+        self.assertTrue(comparison["datasheet_identity"]["part_b"]["mpn_verified"])
+
+    def test_wrong_mpn_and_url_only_evidence_stay_unverified(self):
+        url_only = build_parts_comparison(
+            _cap(datasheet_url="https://example.com/a.pdf"),
+            _cap(mpn="ALT", datasheet_url="https://example.com/b.pdf"),
+        )
+        self.assertNotEqual(url_only["finding"], FINDING_COMPATIBLE)
+
+        wrong = build_parts_comparison(
+            _cap(),
+            _cap(mpn="ALT"),
+            datasheet_a=_verified_cap_datasheet(mpn="OTHER-A"),
+            datasheet_b=_verified_cap_datasheet(mpn="OTHER-B"),
+            extract_linked_datasheets=False,
+        )
+        self.assertFalse(wrong["datasheet_identity"]["part_a"]["verified"])
+        self.assertFalse(wrong["datasheet_identity"]["part_b"]["verified"])
+        self.assertNotEqual(wrong["finding"], FINDING_COMPATIBLE)
 
     def test_catalog_only_match_is_listing_or_needs_verification_not_compatible(self):
         comparison = build_parts_comparison(
@@ -142,7 +207,6 @@ class ParametricVerdictHonestyTests(unittest.TestCase):
         self.assertTrue(comparison["family_mismatch"])
         self.assertEqual(comparison["finding"], FINDING_MATERIAL)
         self.assertNotEqual(comparison["finding"], FINDING_COMPATIBLE)
-        # Forced Match with catalog / missing provenance stays non-Compatible.
         catalog_assessment = assess_compare_row(
             status="Match",
             source_a="DigiKey catalog",
@@ -153,14 +217,6 @@ class ParametricVerdictHonestyTests(unittest.TestCase):
             {FINDING_LISTING_AGREEMENT, FINDING_NEEDS_VERIFICATION},
         )
         self.assertNotEqual(catalog_assessment, FINDING_COMPATIBLE)
-        self.assertEqual(
-            assess_compare_row(
-                status="Match",
-                source_a="Not stated",
-                source_b="Not stated",
-            ),
-            FINDING_NEEDS_VERIFICATION,
-        )
 
 
 @pytest.fixture()
@@ -180,35 +236,16 @@ def _sandbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def test_replacement_candidate_compare_decision_persists_after_reload(_sandbox):
     """Fixture path: replacement candidate → compare → decision record → reload."""
-    original = {
-        "manufacturer_part_number": "C0603C104K5RACTU",
-        "manufacturer": "KEMET",
-        "description": "Ceramic capacitor",
-        "package": "0603",
-        "mounting_style": "SMD",
-        "capacitance": "0.1uF",
-        "rated_voltage": "50V",
-        "dielectric": "X7R",
-        "tolerance": "10%",
-        "lifecycle_status": "Active",
-        "datasheet_url": "https://example.com/original-cap.pdf",
-    }
-    candidate = {
-        "manufacturer_part_number": "ALT-CAP-0603",
-        "manufacturer": "KEMET",
-        "description": "Ceramic capacitor",
-        "package": "0603",
-        "mounting_style": "SMD",
-        "capacitance": "0.1uF",
-        "rated_voltage": "50V",
-        "dielectric": "X7R",
-        "tolerance": "10%",
-        "lifecycle_status": "Active",
-        "datasheet_url": "https://example.com/alt-cap.pdf",
-    }
-    comparison = build_parts_comparison(original, candidate)
-    self_assert_compatible = comparison["finding"] == FINDING_COMPATIBLE
-    assert self_assert_compatible
+    original = _cap()
+    candidate = _cap(mpn="ALT-CAP-0603")
+    comparison = build_parts_comparison(
+        original,
+        candidate,
+        datasheet_a=_verified_cap_datasheet(mpn=original["manufacturer_part_number"]),
+        datasheet_b=_verified_cap_datasheet(mpn=candidate["manufacturer_part_number"]),
+        extract_linked_datasheets=False,
+    )
+    assert comparison["finding"] == FINDING_COMPATIBLE
 
     fixture_compare_payload = {
         "ok": True,

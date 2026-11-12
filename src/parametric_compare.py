@@ -397,12 +397,13 @@ def compare_field_values(
         # Honesty for all NOMINAL/LIMIT modes:
         # - Labeled classes require matching test conditions before Match/Different.
         # - Typical/guaranteed roles never Match/Different without a known class.
-        # - Limit/max/min roles with known magnitudes and units may Match or
-        #   Different even when the value class token is unknown (e.g. "50V" vs
-        #   "25V" rated voltage, "3 mV" vs "2 mV" input offset).
+        # - Limit/max/min roles may Match/Different for known magnitudes+units when
+        #   both sides omit conditions (absolute ratings like 50V vs 25V) or both
+        #   cite the same test condition (e.g. RDS(on) @ Id, Vgs). Asymmetric or
+        #   mismatched conditions stay Needs data.
+        original_condition = engineering_test_condition(original_text)
+        candidate_condition = engineering_test_condition(candidate_text)
         if original_class in comparable_classes and candidate_class in comparable_classes:
-            original_condition = engineering_test_condition(original_text)
-            candidate_condition = engineering_test_condition(candidate_text)
             if original_condition == "Not stated" or candidate_condition == "Not stated":
                 return (
                     "Needs data",
@@ -428,6 +429,27 @@ def compare_field_values(
                         "conditions are not confirmed as comparable for engineering approval."
                     ),
                 )
+            if value_role in {"max", "min", "maximum", "minimum"} or mode in {
+                COMPARE_LIMIT_GE,
+                COMPARE_LIMIT_LE,
+            }:
+                if original_condition != "Not stated" or candidate_condition != "Not stated":
+                    if original_condition == "Not stated" or candidate_condition == "Not stated":
+                        return (
+                            "Needs data",
+                            (
+                                "One value cites a test condition and the other does not, so "
+                                "the magnitudes are not confirmed as comparable."
+                            ),
+                        )
+                    if original_condition.casefold() != candidate_condition.casefold():
+                        return (
+                            "Needs data",
+                            (
+                                "The stated test conditions differ, so the values are not "
+                                "comparable until matching conditions are cited."
+                            ),
+                        )
         if o_num is None or c_num is None:
             # Incomparable formats are unverified — never Material by default.
             if _compact(original_text) == _compact(candidate_text):

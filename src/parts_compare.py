@@ -7,6 +7,7 @@ diagnostics to customers.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import re
 import time
 from typing import Any, Mapping, MutableMapping
 
@@ -70,18 +71,24 @@ def _source_is_catalog_only(source: object) -> bool:
 
 
 def _source_is_authoritative(source: object) -> bool:
-    """True for manufacturer datasheet / product-page citations (not catalog)."""
-    text = str(source or "").strip().casefold()
+    """True for identity-verified manufacturer/datasheet citations (not catalog/URLs)."""
+    text = str(source or "").strip()
+    folded = text.casefold()
     if _source_missing(source) or _source_is_catalog_only(source):
-        # Catalog markers already matched above; authoritative must not be catalog.
-        # Re-check: catalog_only treats missing as True, so authoritative is False.
+        return False
+    if re.fullmatch(r"https?://\S+", text):
+        return False
+    if "unverified" in folded or "wrong mpn" in folded or "not verified" in folded:
+        return False
+    # Bare or URL-wrapped datasheet links are not exact-MPN identity evidence.
+    if re.search(r"https?://", folded) and not re.search(r"\bp\.\s*\d+", folded):
         return False
     return (
-        "datasheet" in text
-        or "manufacturer" in text
-        or "product page" in text
-        or "uploaded" in text
-        or ".pdf" in text
+        folded.startswith("datasheet")
+        or "uploaded datasheet" in folded
+        or "manufacturer product page" in folded
+        or ("product page" in folded and "http" not in folded)
+        or bool(re.search(r"\bp\.\s*\d+", folded))
     )
 
 

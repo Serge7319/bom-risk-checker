@@ -187,7 +187,9 @@ def family_for_datasheet_review(part: Mapping[str, Any] | None, *documents: Mapp
 
 _NOT_STATED = "Not stated in retrieved evidence"
 _CATALOG_SOURCE = " Supplier listings are used where available; no manufacturer datasheet is cited."
-_DATASHEET_SOURCE = " Manufacturer datasheet URL is cited on the retrieved part record."
+_DATASHEET_SOURCE = (
+    " Identity-verified manufacturer document citations support this attribute."
+)
 
 
 def _source_text_missing(source: object) -> bool:
@@ -217,15 +219,29 @@ def _source_text_is_catalog_only(source: object) -> bool:
 
 
 def _source_text_is_authoritative(source: object) -> bool:
-    text = str(source or "").strip().casefold()
+    """True only for identity-verified manufacturer/datasheet citations.
+
+    A bare HTTP(S) datasheet_url or URL-shaped string is never authoritative:
+    Compatible requires a verified exact-MPN document citation (page/field label),
+    not an unverified link that happens to mention datasheet/.pdf.
+    """
+    text = str(source or "").strip()
+    folded = text.casefold()
     if _source_text_missing(source) or _source_text_is_catalog_only(source):
         return False
+    if re.fullmatch(r"https?://\S+", text):
+        return False
+    if "unverified" in folded or "wrong mpn" in folded or "not verified" in folded:
+        return False
+    # URL wrapped as "Manufacturer datasheet (https://...)" is still unverified.
+    if re.search(r"https?://", folded) and not re.search(r"\bp\.\s*\d+", folded):
+        return False
     return (
-        "datasheet" in text
-        or "manufacturer" in text
-        or "product page" in text
-        or "uploaded" in text
-        or ".pdf" in text
+        folded.startswith("datasheet")
+        or "uploaded datasheet" in folded
+        or "manufacturer product page" in folded
+        or ("product page" in folded and "http" not in folded)
+        or bool(re.search(r"\bp\.\s*\d+", folded))
     )
 
 
@@ -234,17 +250,20 @@ def _resolve_part_field_source(
     field_sources: Mapping[str, Any] | None,
     key: str,
 ) -> str:
-    """Prefer explicit field provenance; fall back to datasheet URL as authoritative."""
+    """Prefer explicit field provenance; never promote a bare datasheet URL."""
     sources = field_sources if isinstance(field_sources, Mapping) else {}
     explicit = str(sources.get(key) or "").strip()
     if explicit:
         return explicit
     data = part if isinstance(part, Mapping) else {}
+    part_source = str(data.get("source") or "").strip()
+    if part_source:
+        return part_source
+    # A linked datasheet_url alone is not exact-MPN identity evidence.
     datasheet = str(data.get("datasheet_url") or "").strip()
     if datasheet.startswith(("http://", "https://")):
-        return f"Manufacturer datasheet ({datasheet})"
-    part_source = str(data.get("source") or "").strip()
-    return part_source or "Not stated"
+        return "Unverified datasheet link"
+    return "Not stated"
 
 
 def customer_facing_evidence_text(value: Any) -> str:
