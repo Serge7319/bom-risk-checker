@@ -136,7 +136,11 @@ def manufacturers_match(left: object, right: object, *, mpn: object = None) -> b
 
 
 def lineage_identity_choices(mpn: object) -> list[dict[str, str]]:
-    """Return trusted lineage brands for an MPN when a legacy route exists."""
+    """Return trusted lineage brands for an MPN when a legacy route exists.
+
+    Notes describe historical brands from the trusted MPN route — not live
+    supplier-row evidence. Callers must still confirm against an authorized source.
+    """
     try:
         from integrations.legacy_mpn_routes import legacy_mpn_route
     except Exception:  # noqa: BLE001
@@ -145,7 +149,11 @@ def lineage_identity_choices(mpn: object) -> list[dict[str, str]]:
     if not route:
         return []
     labels = [str(label).strip() for label in (route.get("lineage") or ()) if str(label or "").strip()]
-    return choices_from_manufacturer_labels(mpn, labels)
+    return choices_from_manufacturer_labels(
+        mpn,
+        labels,
+        note_source="lineage",
+    )
 
 
 def register_multi_brand_evidence(mpn: object, choices: list[dict[str, str]]) -> None:
@@ -198,11 +206,19 @@ def choices_from_manufacturer_labels(
     labels: list[str] | tuple[str, ...] | set[str],
     *,
     product_urls: dict[str, str] | None = None,
+    note_source: str = "supplier",
 ) -> list[dict[str, str]]:
-    """Build identity choices from observed manufacturer labels for any MPN."""
+    """Build identity choices from manufacturer labels for any MPN.
+
+    ``note_source`` controls provenance wording:
+    - ``supplier`` (default): choice is backed by supplier-row / observed labels
+    - ``lineage``: choice comes from the trusted MPN route historical brand chain
+    """
     urls = product_urls or {}
+    provenance = str(note_source or "supplier").strip().casefold() or "supplier"
     seen: set[str] = set()
     choices: list[dict[str, str]] = []
+    mpn_key = _mpn_key(mpn) or "this MPN"
     for label in labels:
         manufacturer = str(label or "").strip()
         if not manufacturer:
@@ -217,26 +233,34 @@ def choices_from_manufacturer_labels(
             or urls.get(manufacturer.casefold())
             or ""
         ).strip()
+        if provenance == "lineage":
+            note = (
+                f"{manufacturer} is a historical brand in the trusted MPN lineage "
+                f"for {mpn_key}. Confirm against an authorized source before continuing."
+            )
+        elif url:
+            note = f"Official product evidence for {manufacturer}."
+        else:
+            note = f"Supplier records list {manufacturer} for {mpn_key}."
         choices.append(
             {
                 "manufacturer": manufacturer,
                 "canonical": canonical,
                 "product_url": url,
-                "note": (
-                    f"Official product evidence for {manufacturer}."
-                    if url
-                    else f"Supplier records list {manufacturer} for {_mpn_key(mpn) or 'this MPN'}."
-                ),
+                "note": note,
+                "note_source": "lineage" if provenance == "lineage" else "supplier",
             }
         )
     # Prefer registered product URLs when the same brand is already known.
+    # Do not overwrite lineage provenance notes with supplier/registry copy.
     known = {row["canonical"]: row for row in multi_brand_choices_for_mpn(mpn)}
     for choice in choices:
         registered = known.get(choice["canonical"])
         if registered and not choice.get("product_url") and registered.get("product_url"):
             choice["product_url"] = registered["product_url"]
-            choice["note"] = registered.get("note") or choice["note"]
             choice["manufacturer"] = registered.get("manufacturer") or choice["manufacturer"]
+            if provenance != "lineage":
+                choice["note"] = registered.get("note") or choice["note"]
     return choices
 
 
@@ -335,8 +359,8 @@ def identity_ambiguity_payload(
         )
         if options:
             detail += (
-                " Historical brands listed for this MPN are shown when a trusted route exists; "
-                "confirm against an authorized listing before continuing."
+                " Historical brands from the trusted MPN lineage are shown when a route exists; "
+                "confirm against an authorized source before continuing."
             )
     return {
         "ok": True,
