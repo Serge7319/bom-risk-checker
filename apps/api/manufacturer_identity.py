@@ -259,8 +259,9 @@ def identity_ambiguity_payload(
             ),
         )
     detail = (
-        f"{mpn} is offered by more than one manufacturer with official product evidence. "
-        "Select the manufacturer identity to continue — Cadivor will not silently substitute another brand."
+        f"More than one manufacturer identity is listed for {mpn}. "
+        "Select the intended identity to continue. Official product links are shown when available; "
+        "Cadivor will not silently substitute another brand."
     )
     if requested_manufacturer and resolved_manufacturer and not manufacturers_match(
         requested_manufacturer, resolved_manufacturer
