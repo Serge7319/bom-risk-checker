@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
@@ -17,6 +17,12 @@ function cell(value: unknown, fallback = "—") {
 function SupplyRiskInner() {
   const session = useRequireSession();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const forcePortfolio = useMemo(
+    () => searchParams.get("scope") === "portfolio",
+    [searchParams],
+  );
   const requestedAnalysisId = useMemo(
     () => (searchParams.get("analysis_id") || "").trim(),
     [searchParams],
@@ -27,7 +33,6 @@ function SupplyRiskInner() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
   const [activeAnalysisId, setActiveAnalysisId] = useState(requestedAnalysisId);
-  const [forcePortfolio, setForcePortfolio] = useState(false);
   const [scopeSource, setScopeSource] = useState<"url" | "session" | "portfolio" | "explicit">(
     requestedAnalysisId ? "url" : "portfolio",
   );
@@ -139,9 +144,12 @@ function SupplyRiskInner() {
               type="button"
               disabled={busy}
               onClick={() => {
-                setForcePortfolio(true);
+                const params = new URLSearchParams(searchParams.toString());
+                params.delete("analysis_id");
+                params.set("scope", "portfolio");
                 setActiveAnalysisId("");
                 setScopeSource("portfolio");
+                router.replace(`${pathname}?${params.toString()}`, { scroll: false });
               }}
             >
               Clear analysis scope (portfolio-wide)

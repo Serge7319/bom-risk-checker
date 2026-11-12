@@ -499,7 +499,9 @@ class SupplyRiskScopeClearTests(unittest.TestCase):
     def test_supply_page_labels_inherited_scope_and_clear_control(self):
         source = SUPPLY_PAGE.read_text(encoding="utf-8")
         self.assertIn("Clear analysis scope (portfolio-wide)", source)
-        self.assertIn("forcePortfolio", source)
+        self.assertIn('searchParams.get("scope") === "portfolio"', source)
+        self.assertIn('params.delete("analysis_id")', source)
+        self.assertIn('params.set("scope", "portfolio")', source)
         self.assertIn("Scope source: inherited selected analysis from session", source)
         self.assertIn("Portfolio-wide across saved analyses in this workspace", source)
         self.assertIn("Scoped to selected analysis", source)
