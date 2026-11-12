@@ -327,7 +327,12 @@ def _part_analysis_failure(row: Mapping[str, Any]) -> dict[str, Any]:
 
 def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
     """Run the same Alternative Finder state machine used by the legacy UI."""
-    from apps.api.manufacturer_identity import manufacturers_match
+    from apps.api.manufacturer_identity import (
+        choices_from_manufacturer_labels,
+        distinct_manufacturer_labels,
+        manufacturers_match,
+        multi_brand_choices_for_mpn,
+    )
     from src.alternative_finder_search import run_alternative_finder_search
 
     state: dict[str, Any] = {}
@@ -341,9 +346,24 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
     result = result if isinstance(result, dict) else {}
     original = result.get("original_data") if isinstance(result.get("original_data"), dict) else {}
     identity_blocked = False
-    if requested_manufacturer:
+    status_hint = str(original.get("identity_status") or "").strip()
+    if status_hint == "ambiguous":
+        identity_blocked = True
+        original = dict(original)
+        original["manufacturer"] = ""
+        original["identity_verified"] = False
+        original["identity_status"] = "ambiguous"
+        if not original.get("identity_choices"):
+            labels = distinct_manufacturer_labels(
+                original.get("all_supplier_results") or [],
+                fallback=original.get("resolved_manufacturer")
+                or original.get("manufacturer"),
+            )
+            original["identity_choices"] = multi_brand_choices_for_mpn(mpn) or (
+                choices_from_manufacturer_labels(mpn, labels) if labels else []
+            )
+    elif requested_manufacturer:
         resolved = str(original.get("manufacturer") or original.get("Manufacturer") or "").strip()
-        status_hint = str(original.get("identity_status") or "").strip()
         if status_hint in {"manufacturer_mismatch", "unresolved"} or (
             resolved and not manufacturers_match(requested_manufacturer, resolved)
         ):
@@ -371,6 +391,27 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
             original["identity_status"] = "matched"
             original["requested_manufacturer"] = requested_manufacturer
             original["identity_verified"] = True
+    elif not requested_manufacturer:
+        # No brand selected: if supplier hits span multiple manufacturers for this
+        # MPN, require an explicit choice before any candidates are returned.
+        labels = distinct_manufacturer_labels(
+            original.get("all_supplier_results") or [],
+            fallback=original.get("manufacturer") or original.get("Manufacturer"),
+        )
+        known = multi_brand_choices_for_mpn(mpn)
+        if len(labels) > 1 or len(known) > 1:
+            identity_blocked = True
+            original = dict(original)
+            original["manufacturer"] = ""
+            original["identity_verified"] = False
+            original["identity_status"] = "ambiguous"
+            original["identity_choices"] = known or choices_from_manufacturer_labels(
+                mpn, labels
+            )
+            original["resolved_manufacturer"] = str(
+                original.get("resolved_manufacturer")
+                or (labels[0] if labels else "")
+            )
     candidates_raw = (
         []
         if identity_blocked
@@ -629,6 +670,8 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
             "identity_verified": bool(original.get("identity_verified")),
             "requested_manufacturer": str(original.get("requested_manufacturer") or ""),
             "resolved_manufacturer": str(original.get("resolved_manufacturer") or ""),
+            "identity_choices": list(original.get("identity_choices") or []),
+            "all_supplier_results": list(original.get("all_supplier_results") or []),
             "risk": result.get("original_risk") if isinstance(result.get("original_risk"), dict) else {},
         },
         "candidates": candidates,

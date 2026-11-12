@@ -690,6 +690,55 @@ def run_alternative_finder_search(
                 safe_original["identity_status"] = "matched"
                 safe_original["requested_manufacturer"] = requested_mfr
                 safe_original["identity_verified"] = True
+        else:
+            # No manufacturer selected: if live hits span multiple brands for this
+            # MPN, pause and require an explicit identity choice.
+            try:
+                from apps.api.manufacturer_identity import (
+                    choices_from_manufacturer_labels,
+                    distinct_manufacturer_labels,
+                    multi_brand_choices_for_mpn,
+                )
+            except Exception:  # noqa: BLE001
+                distinct_manufacturer_labels = None  # type: ignore[assignment]
+                choices_from_manufacturer_labels = None  # type: ignore[assignment]
+                multi_brand_choices_for_mpn = None  # type: ignore[assignment]
+            if distinct_manufacturer_labels is not None:
+                labels = distinct_manufacturer_labels(
+                    safe_original.get("all_supplier_results") or [],
+                    fallback=safe_original.get("manufacturer")
+                    or safe_original.get("Manufacturer"),
+                )
+                known = (
+                    multi_brand_choices_for_mpn(entered_mpn)
+                    if multi_brand_choices_for_mpn is not None
+                    else []
+                )
+                if len(labels) > 1 or len(known) > 1:
+                    identity_blocked = True
+                    choices = known or (
+                        choices_from_manufacturer_labels(entered_mpn, labels)
+                        if choices_from_manufacturer_labels is not None
+                        else []
+                    )
+                    safe_original = {
+                        "manufacturer_part_number": entered_mpn,
+                        "manufacturer": "",
+                        "requested_manufacturer": "",
+                        "resolved_manufacturer": labels[0] if labels else "",
+                        "identity_status": "ambiguous",
+                        "identity_verified": False,
+                        "supplier_data_verified": False,
+                        "identity_choices": choices,
+                        "all_supplier_results": list(
+                            safe_original.get("all_supplier_results") or []
+                        ),
+                    }
+                    safe_risk = {}
+                    safe_lookup_error = (
+                        f"{entered_mpn} matches more than one manufacturer in supplier "
+                        "records. Select the manufacturer identity to continue."
+                    )
 
         returned_mpn = str(safe_original.get("manufacturer_part_number") or "").strip()
         entered_key = re.sub(r"[^A-Za-z0-9]", "", entered_mpn).casefold()

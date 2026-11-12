@@ -15,6 +15,10 @@ import {
   type DecisionRecord,
 } from "@/lib/api";
 import {
+  formatCompareProgressLabel,
+  type CompareProgressState,
+} from "@/lib/compareProgress";
+import {
   buildMultiCompareMatrix,
   buildMultiDecisionSnapshot,
   buildMultiSourceRecords,
@@ -24,12 +28,7 @@ import {
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
-type CompareProgress = {
-  total: number;
-  completed: number;
-  current?: string;
-  failures: string[];
-};
+type CompareProgress = CompareProgressState;
 
 type Row = Record<string, unknown>;
 
@@ -212,11 +211,13 @@ function ComparePartsInner() {
       if (candidates.some((mpn) => mpn.toLowerCase() === partA.trim().toLowerCase())) {
         throw new Error("Candidate MPNs must differ from the current design part.");
       }
+      const baselineMpn = partA.trim();
       if (candidates.length === 1) {
         setProgress({
           total: 1,
           completed: 0,
-          current: candidates[0],
+          baselineMpn,
+          candidateMpn: candidates[0],
           failures: [],
         });
         const data = await compareParts(
@@ -227,24 +228,30 @@ function ComparePartsInner() {
           { a: datasheetA, b: datasheetB },
           { timeoutMs: COMPARE_PARTS_TIMEOUT_MS },
         );
-        setProgress({ total: 1, completed: 1, failures: [] });
+        setProgress({
+          total: 1,
+          completed: 1,
+          baselineMpn,
+          failures: [],
+        });
         setResult(data);
         setMultiColumns([]);
         if (data.analysis_id) setAnalysisId(String(data.analysis_id));
         return;
       }
-      // Multi-alternate: compare each candidate against the same current part.
+      // Multi-alternate: compare each candidate against the same design part.
       // Bounded per-pair timeout; failures stay visible and never become
       // “no candidates” or a Compatible fit verdict. Progress updates as each
       // pairwise request settles (not only after allSettled finishes).
       const failures: string[] = [];
       const columnsSlot: Array<MultiCompareColumn | null> = candidates.map(() => null);
       let completedCount = 0;
-      const publishProgress = (current?: string) => {
+      const publishProgress = (candidateMpn?: string) => {
         setProgress({
           total: candidates.length,
           completed: completedCount,
-          current,
+          baselineMpn,
+          candidateMpn,
           failures: [...failures],
         });
         const ready = columnsSlot.filter(Boolean) as MultiCompareColumn[];
@@ -307,6 +314,7 @@ function ComparePartsInner() {
       setProgress({
         total: candidates.length,
         completed: candidates.length,
+        baselineMpn,
         failures,
       });
       setMultiColumns(columns);
@@ -596,9 +604,7 @@ function ComparePartsInner() {
         <LoadingCard
           label={
             progress
-              ? `Comparing ${progress.completed} of ${progress.total} candidate${progress.total === 1 ? "" : "s"}${
-                  progress.current ? ` · current ${progress.current}` : ""
-                } (bounded ${Math.round(COMPARE_PARTS_TIMEOUT_MS / 1000)}s each)…`
+              ? formatCompareProgressLabel(progress, COMPARE_PARTS_TIMEOUT_MS)
               : "Comparing available part attributes and evidence…"
           }
         />

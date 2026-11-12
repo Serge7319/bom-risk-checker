@@ -27,14 +27,20 @@ function SupplyRiskInner() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
   const [activeAnalysisId, setActiveAnalysisId] = useState(requestedAnalysisId);
+  const [forcePortfolio, setForcePortfolio] = useState(false);
+  const [scopeSource, setScopeSource] = useState<"url" | "session" | "portfolio" | "explicit">(
+    requestedAnalysisId ? "url" : "portfolio",
+  );
 
-  async function run(event?: FormEvent, analysisOverride?: string) {
+  async function run(event?: FormEvent, analysisOverride?: string, source?: typeof scopeSource) {
     event?.preventDefault();
     if (!session) return;
     setBusy(true);
     setError("");
     const last = readLastAnalysis(session);
-    const analysisId = (analysisOverride ?? activeAnalysisId ?? requestedAnalysisId ?? last?.analysis_id ?? "").trim();
+    const analysisId = forcePortfolio
+      ? ""
+      : (analysisOverride ?? activeAnalysisId ?? requestedAnalysisId ?? last?.analysis_id ?? "").trim();
     try {
       const payload = await runSupplyRisk(session.access_token, {
         analysis_id: analysisId || null,
@@ -46,6 +52,8 @@ function SupplyRiskInner() {
       });
       setData(payload);
       setActiveAnalysisId(String(payload.analysis_id || analysisId || ""));
+      if (source) setScopeSource(source);
+      else if (!analysisId) setScopeSource("portfolio");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
     } finally {
@@ -54,17 +62,32 @@ function SupplyRiskInner() {
   }
 
   useEffect(() => {
+    if (forcePortfolio) {
+      setActiveAnalysisId("");
+      setScopeSource("portfolio");
+      void run(undefined, "");
+      return;
+    }
     const last = session ? readLastAnalysis(session) : null;
     const nextId = requestedAnalysisId || last?.analysis_id || "";
     setActiveAnalysisId(nextId);
+    setScopeSource(requestedAnalysisId ? "url" : nextId ? "session" : "portfolio");
     void run(undefined, nextId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, requestedAnalysisId]);
+  }, [session, requestedAnalysisId, forcePortfolio]);
 
   if (!session) return null;
   const scenario = (data?.scenario || {}) as Record<string, unknown>;
   const rows = (scenario.impacted || scenario.rows || []) as Array<Record<string, unknown>>;
   const scope = String(data?.scope || "").trim();
+  const inheritanceNote =
+    scopeSource === "url"
+      ? "Scope source: analysis_id from URL"
+      : scopeSource === "session"
+        ? "Scope source: inherited selected analysis from session"
+        : scopeSource === "explicit"
+          ? "Scope source: explicitly selected analysis"
+          : "Scope source: portfolio-wide (no analysis selected)";
   const scopeLabel =
     scope === "analysis"
       ? `Scoped to selected analysis${data?.analysis_label ? ` · ${String(data.analysis_label)}` : ""}`
@@ -89,7 +112,7 @@ function SupplyRiskInner() {
         }
       />
       {<EvidenceNotice gap={data?.gap} />}
-      <form className="cv-card pad" style={{ marginBottom: 14 }} onSubmit={(event) => run(event)}>
+      <form className="cv-card pad" style={{ marginBottom: 14 }} onSubmit={(event) => run(event, undefined, activeAnalysisId ? "explicit" : "portfolio")}>
         <div className="cv-form-grid">
           <div className="cv-field">
             <label htmlFor="build">Build quantity</label>
@@ -104,10 +127,27 @@ function SupplyRiskInner() {
           {scopeLabel}
           {Number.isFinite(sourcePartCount) ? ` · ${sourcePartCount} BOM part record${sourcePartCount === 1 ? "" : "s"}` : ""}
           {activeAnalysisId ? ` · analysis_id=${activeAnalysisId}` : " · no analysis_id (portfolio)"}
+          {` · ${inheritanceNote}`}
         </p>
-        <button className="cv-button primary" style={{ marginTop: 12 }} type="submit" disabled={busy}>
-          {busy ? "Modeling…" : "Run scenario"}
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+          <button className="cv-button primary" type="submit" disabled={busy}>
+            {busy ? "Modeling…" : "Run scenario"}
+          </button>
+          {(activeAnalysisId || scopeSource === "session" || scopeSource === "url") && !forcePortfolio ? (
+            <button
+              className="cv-button"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setForcePortfolio(true);
+                setActiveAnalysisId("");
+                setScopeSource("portfolio");
+              }}
+            >
+              Clear analysis scope (portfolio-wide)
+            </button>
+          ) : null}
+        </div>
       </form>
       {busy ? <LoadingCard label="Modeling supply scenario…" /> : null}
       {error ? <div className="cv-error" role="alert">The supply scenario could not run. {error}</div> : null}
