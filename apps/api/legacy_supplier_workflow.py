@@ -700,14 +700,11 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
     return {
         "status": str(status.get("status") or result.get("status") or "failed"),
         "search_outcome": search_outcome,
-        "search_outcome_label": (
-            search_outcome_label(search_outcome)
-            if identity_review_only
-            else str(
-                status.get("search_outcome_label")
-                or result.get("search_outcome_label")
-                or search_outcome_label(search_outcome)
-            )
+        # Recompute from projected candidates so "Verified…" never appears when
+        # no Compatible / verified-fit row is present in the API payload.
+        "search_outcome_label": search_outcome_label(
+            search_outcome,
+            candidates=[] if identity_review_only else candidates,
         ),
         "requested_mpn": str(mpn).strip(),
         "identity_review_only": bool(original.get("identity_review_only")),

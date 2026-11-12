@@ -931,13 +931,11 @@ def find_replacement_payload(
             **result,
             "outcome": outcome,
             "search_outcome": final_search_outcome,
-            "search_outcome_label": (
-                search_outcome_label(final_search_outcome)
+            "search_outcome_label": search_outcome_label(
+                final_search_outcome,
+                candidates=[]
                 if identity_review_only
-                else str(
-                    result.get("search_outcome_label")
-                    or search_outcome_label(final_search_outcome)
-                )
+                else list(result.get("candidates") or []),
             ),
             "identity_status": original.get("identity_status") or "resolved",
             "identity_review_only": identity_review_only,

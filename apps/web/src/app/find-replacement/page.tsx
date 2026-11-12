@@ -14,29 +14,81 @@ import {
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
-function providerLeadCount(state: Record<string, unknown>): number {
-  const explicit = Number(state.explicit_count ?? state.lead_count ?? 0);
-  const catalog = Number(state.catalog_count ?? 0);
-  const total = (Number.isFinite(explicit) ? explicit : 0) + (Number.isFinite(catalog) ? catalog : 0);
-  if (total > 0) return total;
-  const single = Number(state.result_count ?? state.count ?? 0);
-  return Number.isFinite(single) && single > 0 ? single : 0;
+function providerRawCatalogCount(state: Record<string, unknown>): number | null {
+  // Catalog-only: never infer from explicit_count / lead_count / generic totals.
+  if (state.catalog_raw_count !== undefined && state.catalog_raw_count !== null) {
+    const raw = Number(state.catalog_raw_count);
+    return Number.isFinite(raw) && raw >= 0 ? raw : null;
+  }
+  if (state.catalog_count !== undefined && state.catalog_count !== null) {
+    const raw = Number(state.catalog_count);
+    return Number.isFinite(raw) && raw >= 0 ? raw : null;
+  }
+  return null;
 }
 
-function searchOutcomeLabel(outcome: unknown, explicitLabel?: unknown): string {
+function providerRetainedCatalogCount(state: Record<string, unknown>): number | null {
+  if (state.catalog_retained_count === undefined || state.catalog_retained_count === null) {
+    return null;
+  }
+  const retained = Number(state.catalog_retained_count);
+  return Number.isFinite(retained) && retained >= 0 ? retained : null;
+}
+
+function providerExplicitSubstitutionCount(state: Record<string, unknown>): number {
+  const retained = Number(state.explicit_retained_count);
+  if (Number.isFinite(retained) && retained > 0) return retained;
+  const explicit = Number(state.explicit_count);
+  return Number.isFinite(explicit) && explicit > 0 ? explicit : 0;
+}
+
+function candidateHasVerifiedFit(row: Record<string, unknown>): boolean {
+  for (const key of ["classification", "Classification", "category", "Category", "fit", "Fit"]) {
+    const value = String(row[key] || "").trim().toLowerCase();
+    if (!value) continue;
+    if (value === "compatible" || value === "verified direct substitute") return true;
+    if (value.startsWith("compatible ")) return true;
+  }
+  return false;
+}
+
+function searchOutcomeLabel(
+  outcome: unknown,
+  explicitLabel?: unknown,
+  candidates?: Array<Record<string, unknown>>,
+): string {
   const provided = String(explicitLabel || "").trim();
+  const verified = Array.isArray(candidates)
+    ? candidates.some((row) => candidateHasVerifiedFit(row))
+    : false;
+  // Never keep a "Verified…" banner when no candidate carries Compatible fit evidence.
+  if (
+    provided
+    && /verified replacements found/i.test(provided)
+    && Array.isArray(candidates)
+    && !verified
+  ) {
+    return "Supplier-listed candidates found — fit unverified";
+  }
   if (provided) return provided;
   const key = String(outcome || "").trim();
+  if (key === "success" || key === "candidates_found") {
+    return verified
+      ? "Verified replacements found"
+      : "Supplier-listed candidates found — fit unverified";
+  }
+  if (key === "partial_success") {
+    return verified
+      ? "Partial success — verified replacements found"
+      : "Partial success — fit unverified";
+  }
   const labels: Record<string, string> = {
-    success: "Verified replacements found",
-    partial_success: "Partial success",
     catalog_leads_only: "No verified replacement; catalog leads available",
     partial_supplier_results: "Partial supplier results",
     no_results: "No results",
     failure: "Search failed",
     identity_ambiguous: "Could not verify manufacturer identity",
     unable_to_confirm: "Unable to confirm a replacement",
-    candidates_found: "Verified replacements found",
   };
   return labels[key] || key;
 }
@@ -45,18 +97,44 @@ function providerOutcomeLabel(state: Record<string, unknown>): string {
   const values = ["lookup", "catalog", "substitutions", "family_search", "parametric_search"].map(
     (key) => String(state[key] || "").toLowerCase(),
   );
-  const leadCount = providerLeadCount(state);
+  const rawCount = providerRawCatalogCount(state);
+  const retainedCount = providerRetainedCatalogCount(state);
+  const explicitCount = providerExplicitSubstitutionCount(state);
   if (values.some((value) => value === "not_configured")) return "Not configured";
   if (values.some((value) => value === "timeout")) return "Timed out";
   if (values.some((value) => value === "error" || value === "rate_limited")) return "Failed";
   if (values.some((value) => value === "part_not_found" || value === "no_results")) {
     return "No results";
   }
-  if (values.some((value) => value === "ok" || value === "available" || value === "searched")) {
-    return leadCount > 0 ? `Returned ${leadCount} leads` : "Searched — no results";
+  const parts: string[] = [];
+  if (rawCount !== null && rawCount > 0) {
+    if (retainedCount !== null && retainedCount !== rawCount) {
+      parts.push(`${rawCount} raw catalog matches · ${retainedCount} retained`);
+    } else {
+      parts.push(`${rawCount} raw catalog matches`);
+    }
   }
-  if (leadCount > 0) return `Returned ${leadCount} leads`;
+  if (explicitCount > 0) {
+    parts.push(
+      `${explicitCount} supplier substitution${explicitCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (parts.length) return parts.join("; ");
+  if (
+    values.some(
+      (value) =>
+        value === "ok" || value === "available" || value === "searched" || value === "partial",
+    )
+  ) {
+    // Catalog fields present and zero → honest empty catalog; do not invent matches.
+    if (rawCount === 0) return "Searched — no results";
+    return "Searched — no results";
+  }
   return "Searched";
+}
+
+function providerHasRawCatalogMatches(outcome: string): boolean {
+  return /\d+\s+raw catalog matches/i.test(outcome) || /returned \d+ leads/i.test(outcome);
 }
 
 function compareHref(partA: string, partB?: string | string[], analysisId?: string) {
@@ -356,9 +434,18 @@ function FindReplacementInner() {
                 </table>
               </div>
               {result.search_outcome || result.search_outcome_label ? (
-                <p className="cv-small-note" style={{ marginTop: 10 }}>
+                <p className="cv-small-note" style={{ marginTop: 10 }} data-testid="search-outcome-label">
                   Search outcome:{" "}
-                  {searchOutcomeLabel(result.search_outcome, result.search_outcome_label)}
+                  {searchOutcomeLabel(
+                    result.search_outcome,
+                    result.search_outcome_label,
+                    candidates as Array<Record<string, unknown>>,
+                  )}
+                </p>
+              ) : null}
+              {String(discovery.catalog_filter_summary || "").trim() ? (
+                <p className="cv-small-note" style={{ marginTop: 6 }} data-testid="catalog-filter-summary">
+                  {String(discovery.catalog_filter_summary)}
                 </p>
               ) : null}
             </section>
@@ -611,13 +698,13 @@ function FindReplacementInner() {
           ) : (
             <section className="cv-card pad">
               <h3 className="cv-card-title">
-                {providerRows.some((row) => /returned \d+ leads/i.test(row.outcome))
+                {providerRows.some((row) => providerHasRawCatalogMatches(row.outcome))
                   ? "Catalog leads returned — none qualified"
                   : "Unable to confirm a replacement"}
               </h3>
               <p className="cv-card-subtitle">
-                {providerRows.some((row) => /returned \d+ leads/i.test(row.outcome))
-                  ? "Providers returned catalog leads, but none met same-family qualification for the alternatives list. Provider coverage does not imply compatibility. Review provider outcomes above and manufacturer documentation before changing the design."
+                {providerRows.some((row) => providerHasRawCatalogMatches(row.outcome))
+                  ? "Providers returned raw catalog matches, but fewer (or none) were retained after manufacturer, lineage, family, and deduplication filters. Provider coverage does not imply compatibility. Review provider outcomes above and manufacturer documentation before changing the design."
                   : "No qualified alternatives or catalog leads were returned in this search. That is not proof that no substitute exists — check manufacturer documentation and authorized distributors before changing the design."}
               </p>
               <div style={{ marginTop: 12 }}>
