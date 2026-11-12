@@ -148,10 +148,10 @@ class NewarkIntegrationTests(unittest.TestCase):
         self.assertEqual(rows[0]["primary_category"], "Integrated Circuits")
         self.assertEqual(rows[0]["lifecycle_status"], "Active")
         self.assertEqual(self.requests.get.call_count, 2)
-        self.assertTrue(all("keyword:" in call.kwargs["params"]["term"] for call in self.requests.get.call_args_list))
+        self.assertTrue(all("any:" in call.kwargs["params"]["term"] for call in self.requests.get.call_args_list))
         self.assertEqual(
             [call.kwargs["params"]["term"] for call in self.requests.get.call_args_list],
-            ["keyword:LM317DCYR", "keyword:LM317"],
+            ["any:LM317DCYR", "any:LM317"],
         )
 
     def test_catalog_family_search_covers_dht_sensor_series(self):

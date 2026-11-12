@@ -80,6 +80,18 @@ class NewarkCatalogClientDiagnosticsTests(unittest.TestCase):
         self.assertEqual(rows, [])
         self.assertIn("callInfo.apiKey", self.requests.get.call_args.kwargs["params"])
 
+    def test_am29_catalog_terms_use_documented_any_operator(self):
+        empty = self._ok_response({"keywordSearchReturn": {"products": []}})
+        self.requests.get.return_value = empty
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            rows = self.newark.search_newark_catalog_candidates("AM29F010B-70EC")
+        self.assertEqual(rows, [])
+        self.assertEqual(self.requests.get.call_count, 2)
+        terms = [call.kwargs["params"]["term"] for call in self.requests.get.call_args_list]
+        self.assertEqual(terms, ["any:AM29F010B-70EC", "any:AM29F010"])
+        self.assertTrue(all(term.startswith("any:") for term in terms))
+        self.assertFalse(any(term.startswith("keyword:") for term in terms))
+
     def test_am29_empty_exact_plus_family_timeout_exposes_timeout(self):
         empty = self._ok_response({"keywordSearchReturn": {"products": []}})
         self.requests.get.side_effect = [empty, requests.Timeout("family timed out")]
@@ -88,8 +100,8 @@ class NewarkCatalogClientDiagnosticsTests(unittest.TestCase):
                 self.newark.search_newark_catalog_candidates("AM29F010B-70EC")
         self.assertEqual(self.requests.get.call_count, 2)
         terms = [call.kwargs["params"]["term"] for call in self.requests.get.call_args_list]
-        self.assertEqual(terms[0], "keyword:AM29F010B-70EC")
-        self.assertEqual(terms[1], "keyword:AM29F010")
+        self.assertEqual(terms[0], "any:AM29F010B-70EC")
+        self.assertEqual(terms[1], "any:AM29F010")
 
     def test_partial_candidates_plus_failed_term_keeps_rows_and_failure(self):
         lead = self._ok_response(

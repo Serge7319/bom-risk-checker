@@ -151,7 +151,8 @@ def search_newark_catalog_candidates(
             "resultsSettings.offset": 0,
             "resultsSettings.numberOfResults": max(1, min(int(limit), 25)),
             "resultsSettings.responseGroup": "large",
-            "term": f"keyword:{term}",
+            # element14 Product Search API documents keyword search as any:<query>.
+            "term": f"any:{term}",
         }
         try:
             response = requests.get(
