@@ -36,8 +36,31 @@ def _cap(a="0.1uF", v="50V", pkg="0603", **extra):
         "dielectric": "X7R",
         "tolerance": "10%",
         "lifecycle_status": "Active",
-        "datasheet_url": "https://example.com/cap.pdf",
         **extra,
+    }
+
+
+def _verified_cap_datasheet(*, mpn: str, manufacturer: str = "KEMET", capacitance="0.1 uF", voltage="50V") -> dict:
+    """Identity-verified manufacturer PDF fixture that names manufacturer + exact MPN."""
+    return {
+        "available": True,
+        "source_type": "manufacturer_pdf",
+        "extraction_method": "native_pdf_text",
+        "pages": [
+            {
+                "page": 1,
+                "text": (
+                    f"{manufacturer} {mpn}\n"
+                    f"Ceramic Capacitor\n"
+                    f"Capacitance: {capacitance}\n"
+                    f"Rated Voltage: {voltage}\n"
+                    f"Dielectric: X7R\n"
+                    f"Tolerance: 10%\n"
+                    f"Package: 0603\n"
+                    f"Mounting Type: Surface Mount\n"
+                ),
+            }
+        ],
     }
 
 
@@ -168,11 +191,45 @@ class ComparePartsCoreTests(unittest.TestCase):
             self.assertNotIn("Key", row)
             self.assertNotIn("Required", row)
 
-    def test_capacitor_compatible_on_available_evidence(self):
-        comparison = build_parts_comparison(_cap(), _cap(mpn="ALT-CAP"))
+    def test_capacitor_compatible_requires_verified_exact_mpn_datasheets(self):
+        part_a = _cap()
+        part_b = _cap(mpn="ALT-CAP")
+        comparison = build_parts_comparison(
+            part_a,
+            part_b,
+            datasheet_a=_verified_cap_datasheet(mpn=part_a["manufacturer_part_number"]),
+            datasheet_b=_verified_cap_datasheet(mpn=part_b["manufacturer_part_number"]),
+            extract_linked_datasheets=False,
+        )
         self.assertEqual(comparison["family"], "Capacitor")
         self.assertEqual(comparison["finding"], FINDING_COMPATIBLE)
+        self.assertTrue(comparison["datasheet_identity"]["part_a"]["verified"])
+        self.assertTrue(comparison["datasheet_identity"]["part_b"]["verified"])
         self.assertFalse(comparison["supplier_substitute_claim"])
+
+    def test_capacitor_unverified_datasheet_url_is_not_compatible(self):
+        comparison = build_parts_comparison(
+            _cap(datasheet_url="https://example.com/cap-a.pdf"),
+            _cap(mpn="ALT-CAP", datasheet_url="https://example.com/cap-b.pdf"),
+        )
+        self.assertEqual(comparison["family"], "Capacitor")
+        self.assertNotEqual(comparison["finding"], FINDING_COMPATIBLE)
+        assessments = {row["Assessment"] for row in comparison["rows"]}
+        self.assertNotIn(FINDING_COMPATIBLE, assessments)
+
+    def test_capacitor_wrong_mpn_datasheet_stays_unverified(self):
+        part_a = _cap()
+        part_b = _cap(mpn="ALT-CAP")
+        comparison = build_parts_comparison(
+            part_a,
+            part_b,
+            datasheet_a=_verified_cap_datasheet(mpn="WRONG-MPN-A"),
+            datasheet_b=_verified_cap_datasheet(mpn="WRONG-MPN-B"),
+            extract_linked_datasheets=False,
+        )
+        self.assertFalse(comparison["datasheet_identity"]["part_a"]["verified"])
+        self.assertFalse(comparison["datasheet_identity"]["part_b"]["verified"])
+        self.assertNotEqual(comparison["finding"], FINDING_COMPATIBLE)
 
     def test_capacitor_material_voltage_difference(self):
         comparison = build_parts_comparison(_cap(v="50V"), _cap(v="25V", mpn="ALT"))
@@ -267,7 +324,7 @@ class ComparePartsCoreTests(unittest.TestCase):
                 "Data retention",
                 "Package",
                 "Pinout / configuration",
-                "Temperature range",
+                "Operating temperature",
                 "Supply voltage",
             }.issubset(attributes)
         )
@@ -683,12 +740,42 @@ class ComparePartsUiWiringTests(unittest.TestCase):
                     "CompareMode": "exact",
                     "ValueRole": "identity",
                     "Required": True,
+                    "Part A source": "datasheet, p. 1",
+                    "Part B source": "datasheet, p. 2",
                 }
             ]
         )
         self.assertEqual(rows[0]["Part A"], "0603")
         self.assertEqual(rows[0]["Part B"], "0603")
         self.assertEqual(rows[0]["Assessment"], FINDING_COMPATIBLE)
+        url_only = user_facing_compare_rows(
+            [
+                {
+                    "Attribute": "Package",
+                    "Original": "0603",
+                    "Candidate": "0603",
+                    "Status": "Match",
+                    "Evidence": "ok",
+                    "Key": "package",
+                    "Part A source": "Manufacturer datasheet (https://example.com/a.pdf)",
+                    "Part B source": "Manufacturer datasheet (https://example.com/b.pdf)",
+                }
+            ]
+        )
+        self.assertNotEqual(url_only[0]["Assessment"], FINDING_COMPATIBLE)
+        missing_provenance = user_facing_compare_rows(
+            [
+                {
+                    "Attribute": "Package",
+                    "Original": "0603",
+                    "Candidate": "0603",
+                    "Status": "Match",
+                    "Evidence": "ok",
+                    "Key": "package",
+                }
+            ]
+        )
+        self.assertEqual(missing_provenance[0]["Assessment"], FINDING_NEEDS_DATA)
 
     def test_user_facing_evidence_uses_plain_language_and_keeps_citations(self):
         raw = (
