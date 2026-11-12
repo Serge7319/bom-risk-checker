@@ -277,6 +277,10 @@ class GenericManufacturerIdentityTests(unittest.TestCase):
         self.assertEqual(result["unclassified_leads"][0]["classification"], "Needs verification")
         self.assertNotIn("compatible", result["unclassified_leads"][0]["fit"].casefold())
         self.assertEqual(result["search_outcome"], "catalog_leads_only")
+        self.assertEqual(
+            result["search_outcome_label"],
+            "No verified replacement; catalog leads available",
+        )
 
     def test_unresolved_selected_manufacturer_returns_review_only_leads(self):
         from apps.api.manufacturer_identity import lineage_identity_choices
@@ -332,6 +336,10 @@ class GenericManufacturerIdentityTests(unittest.TestCase):
         self.assertTrue(payload["identity_review_only"])
         self.assertEqual(payload["outcome"], "catalog_leads_only")
         self.assertEqual(payload["search_outcome"], "catalog_leads_only")
+        self.assertEqual(
+            payload["search_outcome_label"],
+            "No verified replacement; catalog leads available",
+        )
         self.assertEqual(payload["candidates"], [])
         self.assertEqual(len(payload["unclassified_leads"]), 1)
         self.assertEqual(payload["original"]["manufacturer"], "")
