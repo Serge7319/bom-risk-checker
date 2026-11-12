@@ -1,0 +1,6 @@
+cap_equal_finding=Compatible on available evidence
+cap_voltage_finding=Material difference
+lm358_offset_status=Different
+lm358_offset_assessment=Material difference
+lm358_vs_ne555_mismatch=True families=Operational amplifier/Timer IC
+am29_vs_sst_finding=Needs verification family=Flash memory mismatch=False

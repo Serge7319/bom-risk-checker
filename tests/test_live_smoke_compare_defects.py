@@ -376,8 +376,10 @@ class LifecycleEvidenceParityTests(unittest.TestCase):
             part_b_mpn="PARTB",
         )
         counts = comparison.get("counts") or {}
-        self.assertGreaterEqual(int(counts.get("Conflicting") or 0), 1)
-        self.assertNotEqual(int(counts.get("Conflicting") or 0), 0)
+        aliases = comparison.get("count_aliases") or {}
+        conflicting = int(counts.get("conflicting") or aliases.get("Conflicting") or 0)
+        self.assertGreaterEqual(conflicting, 1)
+        self.assertNotEqual(conflicting, 0)
 
     def test_find_replacement_candidate_not_qualified_on_lifecycle_conflict(self):
         # Unit-level projection of the legacy workflow fit gate (no live suppliers).

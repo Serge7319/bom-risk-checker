@@ -267,7 +267,7 @@ class ComparePartsCoreTests(unittest.TestCase):
                 "Data retention",
                 "Package",
                 "Pinout / configuration",
-                "Temperature range",
+                "Operating temperature",
                 "Supply voltage",
             }.issubset(attributes)
         )
@@ -683,12 +683,27 @@ class ComparePartsUiWiringTests(unittest.TestCase):
                     "CompareMode": "exact",
                     "ValueRole": "identity",
                     "Required": True,
+                    "Part A source": "Manufacturer datasheet (https://example.com/a.pdf)",
+                    "Part B source": "Manufacturer datasheet (https://example.com/b.pdf)",
                 }
             ]
         )
         self.assertEqual(rows[0]["Part A"], "0603")
         self.assertEqual(rows[0]["Part B"], "0603")
         self.assertEqual(rows[0]["Assessment"], FINDING_COMPATIBLE)
+        missing_provenance = user_facing_compare_rows(
+            [
+                {
+                    "Attribute": "Package",
+                    "Original": "0603",
+                    "Candidate": "0603",
+                    "Status": "Match",
+                    "Evidence": "ok",
+                    "Key": "package",
+                }
+            ]
+        )
+        self.assertEqual(missing_provenance[0]["Assessment"], FINDING_NEEDS_DATA)
 
     def test_user_facing_evidence_uses_plain_language_and_keeps_citations(self):
         raw = (

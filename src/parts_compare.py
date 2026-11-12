@@ -1304,12 +1304,16 @@ def build_parts_comparison(
         "finding": finding,
         "engineering_evidence_summary": assessment.get("engineering_evidence_summary", ""),
         "engineering_evidence_status": assessment.get("engineering_evidence_status", ""),
+        # Snake-case buckets only so sum(counts.values()) equals row count.
+        # Status-label aliases remain available via count_aliases for legacy UI.
         "counts": {
             "compatible": int(counts.get("Match") or 0),
             "listing_agreement": int(counts.get("Listing agreement") or 0),
             "material_difference": int(counts.get("Different") or 0),
             "needs_data": int(counts.get("Needs data") or 0),
             "conflicting": int(counts.get("Conflicting") or 0),
+        },
+        "count_aliases": {
             "Match": int(counts.get("Match") or 0),
             "Listing agreement": int(counts.get("Listing agreement") or 0),
             "Different": int(counts.get("Different") or 0),

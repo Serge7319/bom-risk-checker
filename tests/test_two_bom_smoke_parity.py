@@ -217,18 +217,28 @@ class CompareHonestyTests(unittest.TestCase):
         self.assertEqual(status, "Needs data")
         self.assertIn("labeled", note.casefold())
 
-    def test_bare_numeric_with_preferred_unit_needs_data(self):
+    def test_bare_numeric_with_preferred_unit_compares_when_field_declares_unit(self):
         spec = FieldSpec(
             key="voltage_rating",
             label="Voltage rating",
             compare=COMPARE_LIMIT_GE,
             unit="V",
         )
-        # Bare magnitudes must not become Compatible even when preferred unit is V.
-        status, note = compare_field_values("14", "14", spec)
-        self.assertEqual(status, "Needs data")
-        self.assertNotEqual(status, "Match")
-        self.assertTrue("unit" in note.casefold() or "class" in note.casefold())
+        # Field-declared preferred units make bare magnitudes comparable as Match /
+        # Different. Compatible assessment still requires authoritative provenance.
+        status, _note = compare_field_values("14", "14", spec)
+        self.assertEqual(status, "Match")
+        status_diff, _note_diff = compare_field_values("50", "25", spec)
+        self.assertEqual(status_diff, "Different")
+        bare_without_unit = FieldSpec(
+            key="mystery_limit",
+            label="Mystery limit",
+            compare=COMPARE_LIMIT_GE,
+            unit="",
+        )
+        status_unknown, note_unknown = compare_field_values("14", "14", bare_without_unit)
+        self.assertEqual(status_unknown, "Needs data")
+        self.assertTrue("unit" in note_unknown.casefold() or "class" in note_unknown.casefold())
 
     def test_incomparable_formats_are_needs_data_not_material(self):
         spec = FieldSpec(

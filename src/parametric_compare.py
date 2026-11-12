@@ -394,13 +394,12 @@ def compare_field_values(
         o_num, o_unit = parse_numeric_with_unit(original_text, preferred_unit=preferred)
         c_num, c_unit = parse_numeric_with_unit(candidate_text, preferred_unit=preferred)
 
-        # Honesty for all NOMINAL/LIMIT modes (widened beyond typical/guaranteed-only):
+        # Honesty for all NOMINAL/LIMIT modes:
         # - Labeled classes require matching test conditions before Match/Different.
         # - Typical/guaranteed roles never Match/Different without a known class.
-        # - Other roles: unequal unknown-class magnitudes stay Needs data (never
-        #   Material/Different); equal parseable magnitudes may Match so catalog
-        #   demotion can yield Listing agreement (still not Compatible).
-        unknown_blocks_difference = False
+        # - Limit/max/min roles with known magnitudes and units may Match or
+        #   Different even when the value class token is unknown (e.g. "50V" vs
+        #   "25V" rated voltage, "3 mV" vs "2 mV" input offset).
         if original_class in comparable_classes and candidate_class in comparable_classes:
             original_condition = engineering_test_condition(original_text)
             candidate_condition = engineering_test_condition(candidate_text)
@@ -429,13 +428,6 @@ def compare_field_values(
                         "conditions are not confirmed as comparable for engineering approval."
                     ),
                 )
-            # Engineering min/max limit roles: unequal bare magnitudes stay Needs data
-            # (never Material/Different). Equal parseable values may still Match so
-            # catalog demotion can yield Listing agreement.
-            # Other roles (including bare LIMIT_GE/LE without a value_role) may still
-            # establish a meaningful Different, e.g. 50V vs 100V.
-            if value_role in {"max", "min", "maximum", "minimum"}:
-                unknown_blocks_difference = True
         if o_num is None or c_num is None:
             # Incomparable formats are unverified — never Material by default.
             if _compact(original_text) == _compact(candidate_text):
@@ -449,13 +441,13 @@ def compare_field_values(
                 "The retrieved values use incomparable formats or missing units; "
                 "engineer verification is required.",
             )
-        # Bare magnitudes without an explicit unit token are not comparable,
-        # even when the field implies a preferred unit (e.g. bare "14" for V).
+        # Bare magnitudes need either an explicit unit token or a preferred /
+        # storage unit declared by the field (e.g. input_offset_mv → mV).
         has_unit_token = bool(
             re.search(r"[A-Za-zΩωµμ°]", original_text)
             and re.search(r"[A-Za-zΩωµμ°]", candidate_text)
         )
-        if not has_unit_token:
+        if not has_unit_token and not preferred:
             return (
                 "Needs data",
                 "Neither value states an explicit unit, so the magnitudes are not "
@@ -479,14 +471,6 @@ def compare_field_values(
 
         denom = max(abs(o_num), abs(c_num), 1e-30)
         equal = abs(o_num - c_num) / denom <= 0.02
-        if unknown_blocks_difference and not equal:
-            return (
-                "Needs data",
-                (
-                    "One or both values lack a typical/min/max/guaranteed class, so the "
-                    "conditions are not confirmed as comparable for engineering approval."
-                ),
-            )
 
         if mode == COMPARE_NOMINAL:
             # Relative tolerance for floating SI equality.

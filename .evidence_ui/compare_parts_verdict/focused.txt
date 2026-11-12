@@ -1,0 +1,25 @@
+F..F..............................................................       [100%]
+=================================== FAILURES ===================================
+_ ParametricVerdictHonestyTests.test_am29_cross_family_lead_never_promotes_to_compatible _
+tests/test_compare_verdict_decision_path.py:142: in test_am29_cross_family_lead_never_promotes_to_compatible
+    self.assertEqual(
+E   AssertionError: 'Needs verification' != 'Catalog values agree — fit unverified'
+E   - Needs verification
+E   + Catalog values agree — fit unverified
+______ test_replacement_candidate_compare_decision_persists_after_reload _______
+tests/test_compare_verdict_decision_path.py:227: in test_replacement_candidate_compare_decision_persists_after_reload
+    headers = _auth_headers(client)
+tests/test_compare_verdict_decision_path.py:32: in _auth_headers
+    assert res.status_code == 200
+E   assert 401 == 200
+E    +  where 401 = <Response [401 Unauthorized]>.status_code
+=============================== warnings summary ===============================
+tests/test_compare_verdict_decision_path.py:9
+  /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_compare_verdict_decision_path.py:9: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_compare_verdict_decision_path.py::ParametricVerdictHonestyTests::test_am29_cross_family_lead_never_promotes_to_compatible
+FAILED tests/test_compare_verdict_decision_path.py::test_replacement_candidate_compare_decision_persists_after_reload
+2 failed, 64 passed, 1 warning in 2.57s
