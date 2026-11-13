@@ -2,7 +2,7 @@
 
 **PR:** https://github.com/Serge7319/bom-risk-checker/pull/626  
 **Branch:** `release/paid-promise-followup-gaps`  
-**Head:** `241584408a796d14b49c87659a488a936646ef80`  
+**Head:** `0f6014e2926f368f0be5ede6b25043b1d7409783`  
 **Base:** `main` @ `2c44ce3` (merged PR #625)  
 **Evidence dir:** `.evidence_ui/paid_promise_followup/`  
 **Verdict:** **Paid workflow is NOT accepted** while required production checks remain BLOCKED.
