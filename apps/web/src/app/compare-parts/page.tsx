@@ -26,7 +26,7 @@ import {
   type MultiCompareColumn,
 } from "@/lib/multiCompare";
 import { PAGE_META } from "@/lib/routes";
-import { readLastAnalysis, useRequireSession } from "@/lib/session";
+import { useRequireSession } from "@/lib/session";
 
 type CompareProgress = CompareProgressState;
 
@@ -60,6 +60,7 @@ function isUnknown(row: Row) {
     || assessment.includes("needs data")
     || assessment.includes("needs validation")
     || assessment.includes("needs verification")
+    || assessment.includes("fit unverified")
     || assessment.includes("conflict")
   );
 }
@@ -153,20 +154,15 @@ function ComparePartsInner() {
   useEffect(() => {
     if (!session) return;
     let active = true;
+    // Only attach BOM context when the handoff URL carried analysis_id.
+    // Standalone Compare Parts must not silently bind the latest/first BOM.
     const queryAnalysis = (search.get("analysis_id") || "").trim();
-    const last = readLastAnalysis(session);
-    const preferredAnalysis = queryAnalysis || last?.analysis_id || "";
-    setAnalysisId(preferredAnalysis);
+    setAnalysisId(queryAnalysis);
     setReviewer(session.email || "");
     listReports(session.access_token)
       .then(({ reports: rows }) => {
         if (active) {
           setReports(rows || []);
-          if (!preferredAnalysis && rows?.[0]) {
-            const defaultAnalysis = getAnalysisId(rows[0]);
-            setAnalysisId(defaultAnalysis);
-            setDecisionAnalysisId((current) => current || defaultAnalysis);
-          }
         }
       })
       .catch((err) => {
@@ -202,8 +198,8 @@ function ComparePartsInner() {
     setMultiColumns([]);
     setDecisionSuccess(null);
     try {
-      const last = readLastAnalysis(session);
-      const selectedAnalysis = analysisId || last?.analysis_id;
+      // Explicit BOM selection only — never fall back to last-analysis localStorage.
+      const selectedAnalysis = analysisId.trim() || undefined;
       const candidates = parseCandidateMpns(partB, 4);
       if (!candidates.length) {
         throw new Error("Enter one to four candidate manufacturer part numbers.");
@@ -553,15 +549,45 @@ function ComparePartsInner() {
         </div>
         <div className="cv-compare-form-footer">
           <div>
-            {reports.length ? (
-              <p className="cv-small-note">
-                Comparing against {reportLabel(reports.find((row) => getAnalysisId(row) === analysisId) || reports[0])}.
+            <div className="cv-field" style={{ marginBottom: 8, maxWidth: 420 }}>
+              <label htmlFor="compare-bom-context">BOM context (optional)</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <select
+                  id="compare-bom-context"
+                  value={analysisId}
+                  onChange={(event) => setAnalysisId(event.target.value)}
+                  disabled={busy}
+                  aria-describedby="compare-bom-help"
+                >
+                  <option value="">No BOM — standalone compare</option>
+                  {reports.map((row) => {
+                    const id = getAnalysisId(row);
+                    return (
+                      <option key={id} value={id}>
+                        {reportLabel(row)}
+                      </option>
+                    );
+                  })}
+                </select>
+                {analysisId ? (
+                  <button
+                    type="button"
+                    className="cv-button secondary"
+                    onClick={() => setAnalysisId("")}
+                    disabled={busy}
+                  >
+                    Clear BOM
+                  </button>
+                ) : null}
+              </div>
+              <p className="cv-small-note" id="compare-bom-help" style={{ marginTop: 6 }}>
+                {analysisId
+                  ? `BOM context attached: ${reportLabel(reports.find((row) => getAnalysisId(row) === analysisId) || { id: analysisId })}.`
+                  : reportsError
+                    ? `${reportsError} You can still compare without a saved BOM.`
+                    : "Standalone compare unless a BOM is selected or handed off via analysis_id."}
               </p>
-            ) : reportsError ? (
-              <p className="cv-small-note">{reportsError} You can still compare without a saved BOM.</p>
-            ) : (
-              <p className="cv-small-note">BOM context is optional. Source data stays labeled.</p>
-            )}
+            </div>
             <span className="cv-small-note" id="record-decision-help">
               {result ? "The recorded decision will include this comparison snapshot." : "Compare two parts to enable decision recording."}
             </span>

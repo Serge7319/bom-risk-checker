@@ -1,6 +1,13 @@
 /** Pure checks for Find Replacement outcome + catalog vs explicit provider labels. */
 
 function candidateHasVerifiedFit(row) {
+  const fitText = ["fit", "Fit", "disposition", "Candidate Disposition"]
+    .map((key) => String(row[key] || ""))
+    .join(" ")
+    .toLowerCase();
+  if (fitText.includes("not qualified") || fitText.includes("qualification required")) {
+    return false;
+  }
   for (const key of ["classification", "Classification", "category", "Category", "fit", "Fit"]) {
     const value = String(row[key] || "").trim().toLowerCase();
     if (!value) continue;
@@ -123,6 +130,14 @@ assert(
   searchOutcomeLabel("success", "", [{ classification: "Compatible" }])
     === "Verified replacements found",
   "Compatible evidence may keep verified wording",
+);
+
+assert(
+  searchOutcomeLabel("success", "Verified replacements found", [{
+    classification: "Compatible",
+    fit: "supplier-listed candidate; qualification required",
+  }]) === "Supplier-listed candidates found — fit unverified",
+  "Compatible classification with qualification-required fit must not stay Verified",
 );
 
 assert(

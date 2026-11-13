@@ -508,7 +508,7 @@ class DatasheetComparisonTests(unittest.TestCase):
             "DigiKey identifies this candidate as a Direct substitute for the original part number.",
             assessment["supplier_relationship_summary"],
         )
-        self.assertIn("7 confirmed matches", assessment["engineering_evidence_summary"])
+        self.assertIn("7 parametric matches", assessment["engineering_evidence_summary"])
 
     def test_engineering_evidence_assessment_sparse_coverage(self):
         from src.datasheet_comparison import build_engineering_evidence_assessment

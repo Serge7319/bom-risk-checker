@@ -63,8 +63,19 @@ _VERIFIED_FIT_TOKENS = frozenset(
 
 
 def candidate_has_verified_fit(row: Mapping[str, Any] | None) -> bool:
-    """True only when candidate fields claim Compatible / verified-direct fit."""
+    """True only when candidate fields claim Compatible / verified-direct fit.
+
+    Fit status wins: ``not qualified`` / ``qualification required`` never count
+    as verified even when Classification still says Compatible from a supplier
+    substitute relationship.
+    """
     if not isinstance(row, Mapping):
+        return False
+    fit_text = " ".join(
+        str(row.get(key) or "")
+        for key in ("fit", "Fit", "Candidate Disposition", "disposition")
+    ).casefold()
+    if "not qualified" in fit_text or "qualification required" in fit_text:
         return False
     for key in (
         "Classification",

@@ -172,12 +172,15 @@ class ParametricVerdictHonestyTests(unittest.TestCase):
         )
         self.assertNotEqual(comparison["finding"], FINDING_COMPATIBLE)
         assessments = {row["Assessment"] for row in comparison["rows"] if row.get("Part A")}
+        from src.parts_compare import FINDING_CATALOG_DIFFERENCE
+
         self.assertTrue(
             assessments.issubset(
                 {
                     FINDING_LISTING_AGREEMENT,
                     FINDING_NEEDS_VERIFICATION,
                     FINDING_MATERIAL,
+                    FINDING_CATALOG_DIFFERENCE,
                 }
             )
         )

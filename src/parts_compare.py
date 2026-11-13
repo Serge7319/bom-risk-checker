@@ -36,6 +36,8 @@ FINDING_NEEDS_VERIFICATION = "Needs verification"
 # Catalog/supplier agreement is never a Compatible fit verdict.
 FINDING_LISTING_AGREEMENT = "Catalog values agree — fit unverified"
 FINDING_LISTING_AGREEMENT_LEGACY = "Supplier-listing agreement"
+# Catalog-reported differences are visible but never claim Material fit impact.
+FINDING_CATALOG_DIFFERENCE = "Catalog values differ — fit unverified"
 # Legacy alias kept for older call sites / tests that still import the name.
 FINDING_NEEDS_DATA = FINDING_NEEDS_VERIFICATION
 
@@ -114,8 +116,6 @@ def assess_compare_row(
     """
     normalized = str(status or "").strip()
     folded = normalized.casefold()
-    if normalized == "Different" or folded == FINDING_MATERIAL.casefold():
-        return FINDING_MATERIAL
     if normalized == "Conflicting" or "conflict" in folded:
         return FINDING_CONFLICTING
 
@@ -142,6 +142,21 @@ def assess_compare_row(
             FINDING_LISTING_AGREEMENT_LEGACY.casefold(),
         }
     )
+
+    # Different: Material only when both sides carry authoritative engineering evidence.
+    # Missing → Needs verification; catalog-only → catalog-reported, fit unverified.
+    if (
+        normalized == "Different"
+        or folded == FINDING_MATERIAL.casefold()
+        or folded == FINDING_CATALOG_DIFFERENCE.casefold()
+    ):
+        if missing_a or missing_b:
+            return FINDING_NEEDS_VERIFICATION
+        if authoritative_a and authoritative_b:
+            return FINDING_MATERIAL
+        if catalog_a or catalog_b:
+            return FINDING_CATALOG_DIFFERENCE
+        return FINDING_NEEDS_VERIFICATION
 
     if listing_status or normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
         # Missing/unknown provenance never yields Compatible.
@@ -256,7 +271,11 @@ def claim_compare_parts_submit(
 
 
 def map_status_to_assessment(status: str) -> str:
-    """Backward-compatible status→assessment map (no provenance context)."""
+    """Backward-compatible status→assessment map (no provenance context).
+
+    Without source provenance, Different stays Needs verification — Material
+    requires authoritative evidence via ``assess_compare_row``.
+    """
     normalized = str(status or "").strip()
     folded = normalized.casefold()
     if normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
@@ -273,8 +292,13 @@ def map_status_to_assessment(status: str) -> str:
         return FINDING_LISTING_AGREEMENT
     if normalized == "Conflicting" or "conflict" in folded:
         return FINDING_CONFLICTING
-    if normalized == "Different" or folded == FINDING_MATERIAL.casefold():
+    if folded == FINDING_CATALOG_DIFFERENCE.casefold():
+        return FINDING_CATALOG_DIFFERENCE
+    if folded == FINDING_MATERIAL.casefold():
         return FINDING_MATERIAL
+    if normalized == "Different":
+        # No provenance available → do not claim Material difference.
+        return FINDING_NEEDS_VERIFICATION
     return FINDING_NEEDS_VERIFICATION
 
 
@@ -1258,14 +1282,30 @@ def build_parts_comparison(
 
     user_rows = user_facing_compare_rows(rows)
     # Overall finding must not outrank honest row assessments. Catalog-only or
-    # unknown-evidence rows never mint a Compatible fit verdict.
-    if finding == FINDING_COMPATIBLE and user_rows:
+    # unknown-evidence rows never mint a Compatible fit verdict. Material is
+    # kept only when a row assessment truly carries authoritative evidence.
+    if user_rows:
         row_assessments = {
             str(row.get("Assessment") or "").strip() for row in user_rows
         }
-        if FINDING_COMPATIBLE not in row_assessments:
+        if finding == FINDING_COMPATIBLE and FINDING_COMPATIBLE not in row_assessments:
             if FINDING_MATERIAL in row_assessments:
                 finding = FINDING_MATERIAL
+            elif FINDING_LISTING_AGREEMENT in row_assessments:
+                finding = FINDING_LISTING_AGREEMENT
+            elif FINDING_CATALOG_DIFFERENCE in row_assessments:
+                finding = FINDING_NEEDS_VERIFICATION
+            else:
+                finding = FINDING_NEEDS_VERIFICATION
+        elif (
+            finding == FINDING_MATERIAL
+            and FINDING_MATERIAL not in row_assessments
+            and not bool(family_meta["family_mismatch"])
+        ):
+            # Cross-family stays Material from derive_overall_finding. Catalog-only
+            # parametric diffs demote to Needs verification / listing agreement.
+            if FINDING_CATALOG_DIFFERENCE in row_assessments:
+                finding = FINDING_NEEDS_VERIFICATION
             elif FINDING_LISTING_AGREEMENT in row_assessments:
                 finding = FINDING_LISTING_AGREEMENT
             else:
@@ -1945,7 +1985,10 @@ def generate_parts_comparison_pdf(comparison: Mapping[str, Any]) -> bytes:
 __all__ = [
     "FINDING_COMPATIBLE",
     "FINDING_MATERIAL",
+    "FINDING_CATALOG_DIFFERENCE",
+    "FINDING_LISTING_AGREEMENT",
     "FINDING_NEEDS_DATA",
+    "FINDING_NEEDS_VERIFICATION",
     "USER_FACING_COMPARE_COLUMNS",
     "COMPARE_PARTS_PART_A_WIDGET_KEY",
     "COMPARE_PARTS_PART_B_WIDGET_KEY",

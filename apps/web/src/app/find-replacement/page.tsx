@@ -43,6 +43,14 @@ function providerExplicitSubstitutionCount(state: Record<string, unknown>): numb
 }
 
 function candidateHasVerifiedFit(row: Record<string, unknown>): boolean {
+  const fitText = ["fit", "Fit", "disposition", "Candidate Disposition"]
+    .map((key) => String(row[key] || ""))
+    .join(" ")
+    .toLowerCase();
+  // Fit status wins: never treat "not qualified" / "qualification required" as verified.
+  if (fitText.includes("not qualified") || fitText.includes("qualification required")) {
+    return false;
+  }
   for (const key of ["classification", "Classification", "category", "Category", "fit", "Fit"]) {
     const value = String(row[key] || "").trim().toLowerCase();
     if (!value) continue;
@@ -50,6 +58,14 @@ function candidateHasVerifiedFit(row: Record<string, unknown>): boolean {
     if (value.startsWith("compatible ")) return true;
   }
   return false;
+}
+
+function candidateListHeading(candidates: Array<Record<string, unknown>>): string {
+  if (!candidates.length) return "Replacement candidates";
+  if (candidates.some((row) => candidateHasVerifiedFit(row))) {
+    return "Verified replacements";
+  }
+  return "Supplier-listed candidates";
 }
 
 function searchOutcomeLabel(
@@ -454,9 +470,9 @@ function FindReplacementInner() {
           {candidates.length || hasSeparatedLeads ? (
             <>
               <section className="cv-card pad">
-                <h3 className="cv-card-title">Qualified alternatives</h3>
+                <h3 className="cv-card-title">{candidateListHeading(candidates)}</h3>
                 <p className="cv-card-subtitle">
-                  Same-family alternatives returned by search. These are not drop-in approvals — fit stays unconfirmed until datasheet evidence is reviewed.
+                  Same-family candidates returned by search. These are not drop-in approvals — fit stays unconfirmed until datasheet evidence is reviewed.
                 </p>
                 {candidates.length ? (
                   <div style={{ marginTop: 12 }}>

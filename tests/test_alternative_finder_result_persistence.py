@@ -331,7 +331,7 @@ class AlternativeFinderResultPersistenceTests(unittest.TestCase):
         candidates[0]["Engineering Comparison Confidence"] = 92
         candidates[0]["Supplier Relationship Confidence"] = 95
         candidates[0]["Engineering Evidence Summary"] = (
-            "Engineering evidence: substantial — 7 confirmed matches, 1 field need verification"
+            "Engineering evidence: substantial — 7 parametric matches, 1 field need verification"
         )
         complete_alternative_finder_search(
             self.session,

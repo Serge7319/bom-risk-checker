@@ -51,6 +51,19 @@ class OutcomeWordingLm358Tests(unittest.TestCase):
             LABEL_VERIFIED_REPLACEMENTS,
         )
 
+    def test_compatible_with_qualification_required_is_fit_unverified(self):
+        candidates = [
+            {
+                "Alternative Part": "LM358ADR2G",
+                "Classification": "Compatible",
+                "fit": "supplier-listed candidate; qualification required",
+            }
+        ]
+        self.assertEqual(
+            search_outcome_label(OUTCOME_SUCCESS, candidates=candidates),
+            LABEL_SUPPLIER_LISTED_FIT_UNVERIFIED,
+        )
+
     def test_candidates_found_token_follows_fit_evidence(self):
         unverified = [{"classification": "Needs verification", "fit": "not qualified"}]
         self.assertEqual(

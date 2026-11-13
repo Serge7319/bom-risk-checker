@@ -502,6 +502,7 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
             "datasheet_url": str(candidate.get("Datasheet URL") or ""),
             "recommendation_score": candidate.get("Recommendation Score"),
             "source_identity_verified": exact_source,
+            "discovery_channel": str(candidate.get("discovery_channel") or ""),
             "compare_href_query": f"part_a={mpn}&part_b={candidate_mpn}",
         }
 
