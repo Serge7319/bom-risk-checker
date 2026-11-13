@@ -157,6 +157,8 @@ def build_salvage_candidates_from_discovery(
                 ),
                 "Recommendation Score": 78 if substitute_type.casefold() == "direct" else 45,
                 "Feature Tags": [],
+                # Keep catalog vs explicit channel so retained-count refresh reconciles.
+                "discovery_channel": str(result.get("discovery_channel") or "catalog"),
             }
         )
     return prepare_candidates_for_session_and_cache(salvage)
@@ -1751,6 +1753,8 @@ def suggest_alternatives_v2(
                     "Supplier-listed candidate only. Verify electrical characteristics, footprint, "
                     "dimensions/height, temperature range, qualification, and datasheet compatibility before approval."
                 ),
+                # Preserve aggregator channel so post-family retained counts stay honest.
+                "discovery_channel": str(result.get("discovery_channel") or "catalog"),
                 "_discovery_row": dict(result),
             }
         )

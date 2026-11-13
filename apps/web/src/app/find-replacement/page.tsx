@@ -35,21 +35,84 @@ function providerRetainedCatalogCount(state: Record<string, unknown>): number | 
   return Number.isFinite(retained) && retained >= 0 ? retained : null;
 }
 
-function providerExplicitSubstitutionCount(state: Record<string, unknown>): number {
-  const retained = Number(state.explicit_retained_count);
-  if (Number.isFinite(retained) && retained > 0) return retained;
+function providerExplicitSubstitutionCount(state: Record<string, unknown>): number | null {
+  // Honor explicit_retained_count when present — including zero. Never fall back
+  // to raw explicit_count once retained has been computed.
+  if (state.explicit_retained_count !== undefined && state.explicit_retained_count !== null) {
+    const retained = Number(state.explicit_retained_count);
+    return Number.isFinite(retained) && retained >= 0 ? retained : null;
+  }
   const explicit = Number(state.explicit_count);
-  return Number.isFinite(explicit) && explicit > 0 ? explicit : 0;
+  return Number.isFinite(explicit) && explicit >= 0 ? explicit : null;
+}
+
+const AUTHORITATIVE_FIT_MARKERS = [
+  "manufacturer-datasheet",
+  "uploaded-manufacturer-datasheet",
+  "datasheet-backed",
+  "engineering-verified",
+  "authoritative fit",
+  "authoritative-fit",
+];
+
+function candidateHasAuthoritativeFitEvidence(row: Record<string, unknown>): boolean {
+  if (
+    row.authoritative_fit_evidence === true
+    || row.engineering_fit_verified === true
+    || row.datasheet_fit_verified === true
+  ) {
+    return true;
+  }
+  const evidenceText = [
+    "evidence_class",
+    "Evidence Class",
+    "fit_evidence",
+    "Fit Evidence",
+    "fit",
+    "Fit",
+    "Evidence Source",
+    "evidence_source",
+    "Recommendation",
+    "rationale",
+  ]
+    .map((key) => String(row[key] || ""))
+    .join(" ")
+    .toLowerCase();
+  return AUTHORITATIVE_FIT_MARKERS.some((marker) => evidenceText.includes(marker));
 }
 
 function candidateHasVerifiedFit(row: Record<string, unknown>): boolean {
+  const fitText = ["fit", "Fit", "disposition", "Candidate Disposition"]
+    .map((key) => String(row[key] || ""))
+    .join(" ")
+    .toLowerCase();
+  // Fit status wins: never treat "not qualified" / "qualification required" as verified.
+  if (fitText.includes("not qualified") || fitText.includes("qualification required")) {
+    return false;
+  }
+  let claimsCompatible = false;
   for (const key of ["classification", "Classification", "category", "Category", "fit", "Fit"]) {
     const value = String(row[key] || "").trim().toLowerCase();
     if (!value) continue;
-    if (value === "compatible" || value === "verified direct substitute") return true;
-    if (value.startsWith("compatible ")) return true;
+    if (value === "compatible" || value === "verified direct substitute") {
+      claimsCompatible = true;
+      break;
+    }
+    if (value.startsWith("compatible ")) {
+      claimsCompatible = true;
+      break;
+    }
   }
-  return false;
+  // Compatible / verified-direct classification alone is not enough.
+  return claimsCompatible && candidateHasAuthoritativeFitEvidence(row);
+}
+
+function candidateListHeading(candidates: Array<Record<string, unknown>>): string {
+  if (!candidates.length) return "Replacement candidates";
+  if (candidates.some((row) => candidateHasVerifiedFit(row))) {
+    return "Verified replacements";
+  }
+  return "Supplier-listed candidates";
 }
 
 function searchOutcomeLabel(
@@ -114,10 +177,16 @@ function providerOutcomeLabel(state: Record<string, unknown>): string {
       parts.push(`${rawCount} raw catalog matches`);
     }
   }
-  if (explicitCount > 0) {
+  if (explicitCount !== null && explicitCount > 0) {
     parts.push(
       `${explicitCount} supplier substitution${explicitCount === 1 ? "" : "s"}`,
     );
+  } else if (
+    explicitCount === 0
+    && Number(state.explicit_count) > 0
+  ) {
+    // Zero retained must stay visible when raw substitutions were filtered out.
+    parts.push("0 retained supplier substitutions");
   }
   if (parts.length) return parts.join("; ");
   if (
@@ -454,9 +523,9 @@ function FindReplacementInner() {
           {candidates.length || hasSeparatedLeads ? (
             <>
               <section className="cv-card pad">
-                <h3 className="cv-card-title">Qualified alternatives</h3>
+                <h3 className="cv-card-title">{candidateListHeading(candidates)}</h3>
                 <p className="cv-card-subtitle">
-                  Same-family alternatives returned by search. These are not drop-in approvals — fit stays unconfirmed until datasheet evidence is reviewed.
+                  Same-family candidates returned by search. These are not drop-in approvals — fit stays unconfirmed until datasheet evidence is reviewed.
                 </p>
                 {candidates.length ? (
                   <div style={{ marginTop: 12 }}>

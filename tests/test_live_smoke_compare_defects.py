@@ -196,7 +196,8 @@ class UnitNormalizationSmokeTests(unittest.TestCase):
         rows = {row["Key"]: row for row in comparison.get("rows") or []}
         self.assertEqual(rows["input_offset_mv"]["Status"], "Different")
         projected = user_facing_comparison_rows([rows["input_offset_mv"]])
-        self.assertEqual(projected[0]["Assessment"], "Material difference")
+        # No field sources → missing provenance stays Needs verification, not Material.
+        self.assertEqual(projected[0]["Assessment"], "Needs verification")
         self.assertIn("3 mV", str(rows["input_offset_mv"]["Original"]))
         self.assertIn("2 mV", str(rows["input_offset_mv"]["Candidate"]))
         self.assertIn("0.7 MHz", str(rows["bandwidth_mhz"]["Original"]))
@@ -251,8 +252,9 @@ class UnitNormalizationSmokeTests(unittest.TestCase):
         )
         self.assertEqual(lifecycle.get("Original"), "Active")
         self.assertEqual(lifecycle.get("Candidate"), "Active")
-        # Catalog-only lifecycle agreement is not Compatible.
-        self.assertEqual(lifecycle.get("Assessment"), "Supplier-listing agreement")
+        # Catalog DigiKey + unknown class stays Needs verification, never Compatible.
+        self.assertEqual(lifecycle.get("Assessment"), "Needs verification")
+        self.assertNotEqual(lifecycle.get("Assessment"), "Compatible on available evidence")
 
 
 class RiskCountConsistencyTests(unittest.TestCase):
@@ -327,7 +329,8 @@ class ExportProjectionSmokeTests(unittest.TestCase):
         ]
         projected = user_facing_comparison_rows(rows)
         self.assertEqual(projected[0]["Original"], "0.7 MHz")
-        self.assertEqual(projected[0]["Assessment"], "Compatible on available evidence")
+        # DigiKey catalog + unknown class → Needs verification (not Compatible).
+        self.assertEqual(projected[0]["Assessment"], "Needs verification")
 
 
 class LifecycleEvidenceParityTests(unittest.TestCase):
@@ -435,7 +438,9 @@ class LifecycleEvidenceParityTests(unittest.TestCase):
         text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf)).pages)
         self.assertIn("Unit", text)
         self.assertIn("conflicting supplier records", text.casefold())
-        self.assertIn("Material difference", text)
+        # Missing/catalog provenance demotes overall finding; no Material claim.
+        self.assertIn("Needs verification", text)
+        self.assertNotIn("Compatible on available evidence", text)
         # Display units must not collapse to bare SI bases.
         self.assertNotIn("0.7 Hz", text)
         self.assertNotIn("20 A", text)

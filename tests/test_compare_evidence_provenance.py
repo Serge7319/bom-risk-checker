@@ -205,7 +205,8 @@ class OpAmpAndFamilyProvenanceTests(unittest.TestCase):
 
     def test_assessment_mapping_covers_conflicting_and_material(self):
         self.assertEqual(map_status_to_assessment("Match"), FINDING_COMPATIBLE)
-        self.assertEqual(map_status_to_assessment("Different"), FINDING_MATERIAL)
+        # Different without provenance must not claim Material difference.
+        self.assertEqual(map_status_to_assessment("Different"), FINDING_NEEDS_VERIFICATION)
         self.assertEqual(map_status_to_assessment("Conflicting"), FINDING_CONFLICTING)
         self.assertEqual(map_status_to_assessment("Needs data"), FINDING_NEEDS_VERIFICATION)
 

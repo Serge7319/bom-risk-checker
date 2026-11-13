@@ -822,16 +822,17 @@ def engineering_confidence_from_rows(
             confidence = min(95, confidence + 8)
 
     confidence = max(0, min(100, int(confidence)))
+    # Preserve internal Match/Different counts; wording stays provenance-honest.
     summary = (
-        f"Engineering evidence: {status} — {matches} confirmed "
+        f"Engineering evidence: {status} — {matches} parametric "
         f"{'match' if matches == 1 else 'matches'}, "
         f"{needs_data} {'field' if needs_data == 1 else 'fields'} need verification"
     )
     if listing_agreements:
         summary += (
-            f"; {listing_agreements} supplier-listing "
+            f"; {listing_agreements} catalog "
             f"{'agreement' if listing_agreements == 1 else 'agreements'} "
-            "(catalog evidence only)"
+            "(Catalog values agree — fit unverified)"
         )
     if required_missing:
         summary += f"; {required_missing} required family fields lack data"

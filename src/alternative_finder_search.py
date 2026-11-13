@@ -557,6 +557,127 @@ def merge_supplier_failures_into_discovery(
     return discovery
 
 
+def _provider_count_bucket(label: object) -> str:
+    """Canonical provider bucket for retained-count rematch.
+
+    Row ``Supplier`` / ``Evidence Source`` strings often differ from provider
+    dict keys (e.g. ``Mouser Electronics`` vs ``Mouser``). Exact-string rematch
+    produced ``24 raw · 0 retained`` beside a non-zero aggregate.
+    """
+    text = str(label or "").strip().casefold()
+    if not text:
+        return ""
+    compact = (
+        text.replace(" electronics", "")
+        .replace(" electronic", "")
+        .replace(" components", "")
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("_", "")
+    )
+    if "mouser" in compact:
+        return "mouser"
+    if "digikey" in compact or compact in {"digi", "dk"}:
+        return "digikey"
+    if "newark" in compact or "element14" in compact or "farnell" in compact:
+        return "newark"
+    if "octopart" in compact:
+        return "octopart"
+    if "arrow" in compact:
+        return "arrow"
+    if "avnet" in compact:
+        return "avnet"
+    return compact
+
+
+def refresh_catalog_retained_after_partition(
+    discovery_metadata: Mapping[str, Any] | None,
+    displayed_rows: list[Any] | None,
+) -> dict[str, Any]:
+    """Reconcile catalog raw/retained counts after family partition.
+
+    Explicit substitutions stay in ``explicit_*``. Missing ``discovery_channel``
+    defaults to catalog so provider rows, aggregate totals, and filter text
+    never disagree (e.g. 39→24 then 0).
+    """
+    from src.alternative_classification import normalize_mpn_for_comparison
+
+    discovery = dict(discovery_metadata or {})
+    catalog_keys: set[str] = set()
+    catalog_keys_by_source: dict[str, set[str]] = {}
+    explicit_keys: set[str] = set()
+    explicit_keys_by_source: dict[str, set[str]] = {}
+    for row in displayed_rows or []:
+        if not isinstance(row, dict):
+            continue
+        channel = str(row.get("discovery_channel") or "").casefold()
+        key = normalize_mpn_for_comparison(
+            str(
+                row.get("manufacturer_part_number")
+                or row.get("Alternative Part")
+                or ""
+            )
+        )
+        if not key:
+            continue
+        source = str(
+            row.get("source")
+            or row.get("Supplier")
+            or row.get("Evidence Source")
+            or ""
+        ).strip()
+        bucket = _provider_count_bucket(source)
+        if channel == "explicit":
+            explicit_keys.add(key)
+            if bucket:
+                explicit_keys_by_source.setdefault(bucket, set()).add(key)
+            continue
+        # Missing channel defaults to catalog; explicit rows are tagged upstream.
+        if channel and channel != "catalog":
+            continue
+        catalog_keys.add(key)
+        if bucket:
+            catalog_keys_by_source.setdefault(bucket, set()).add(key)
+    discovery["catalog_retained_count"] = len(catalog_keys)
+    # Always publish retained explicit count, including zero when substitutions
+    # were filtered out — never leave a stale non-zero from pre-partition.
+    discovery["explicit_retained_count"] = len(explicit_keys)
+    providers_meta = discovery.get("providers")
+    if isinstance(providers_meta, dict):
+        for source_name, status in providers_meta.items():
+            if not isinstance(status, dict):
+                continue
+            bucket = _provider_count_bucket(source_name)
+            if "catalog_raw_count" in status or "catalog_count" in status:
+                status["catalog_retained_count"] = len(
+                    catalog_keys_by_source.get(bucket, set())
+                )
+            if "explicit_raw_count" in status or "explicit_count" in status:
+                status["explicit_retained_count"] = len(
+                    explicit_keys_by_source.get(bucket, set())
+                )
+    raw_total = int(discovery.get("catalog_raw_count") or 0)
+    retained_catalog = len(catalog_keys)
+    prior_summary = str(discovery.get("catalog_filter_summary") or "").strip()
+    prior_summary = re.sub(
+        r"(?:^|;\s*)\d+\s+raw catalog matches\s*→\s*\d+\s+retained[^;]*",
+        "",
+        prior_summary,
+        flags=re.IGNORECASE,
+    ).strip(" ;")
+    if raw_total:
+        family_note = (
+            f"{raw_total} raw catalog matches → {retained_catalog} retained after "
+            "manufacturer, family, and deduplication filters"
+        )
+        discovery["catalog_filter_summary"] = (
+            f"{prior_summary}; {family_note}" if prior_summary else family_note
+        )
+    else:
+        discovery["catalog_filter_summary"] = prior_summary
+    return discovery
+
+
 def run_alternative_finder_search(
     session_state: MutableMapping[str, Any],
     searched_part: str,
@@ -975,64 +1096,8 @@ def run_alternative_finder_search(
                 + " catalog lead(s) were separated and are not ranked as substitutes."
             )
         # Refresh catalog-only retained counts after family partition.
-        # Explicit substitutions stay in explicit_* fields and must not inflate
-        # catalog_retained_count or catalog filter summaries.
-        from src.alternative_classification import normalize_mpn_for_comparison
-
         displayed = list(relevant) + list(unclassified) + list(unfiltered)
-        catalog_keys: set[str] = set()
-        catalog_keys_by_source: dict[str, set[str]] = {}
-        explicit_keys: set[str] = set()
-        for row in displayed:
-            if not isinstance(row, dict):
-                continue
-            channel = str(row.get("discovery_channel") or "").casefold()
-            key = normalize_mpn_for_comparison(
-                str(
-                    row.get("manufacturer_part_number")
-                    or row.get("Alternative Part")
-                    or ""
-                )
-            )
-            if not key:
-                continue
-            if channel == "explicit":
-                explicit_keys.add(key)
-                continue
-            if channel != "catalog":
-                continue
-            catalog_keys.add(key)
-            source = str(
-                row.get("source")
-                or row.get("Supplier")
-                or row.get("Evidence Source")
-                or ""
-            ).strip()
-            if source:
-                catalog_keys_by_source.setdefault(source, set()).add(key)
-        discovery["catalog_retained_count"] = len(catalog_keys)
-        if explicit_keys:
-            discovery["explicit_retained_count"] = len(explicit_keys)
-        providers_meta = discovery.get("providers")
-        if isinstance(providers_meta, dict):
-            for source_name, status in providers_meta.items():
-                if isinstance(status, dict) and (
-                    "catalog_raw_count" in status or "catalog_count" in status
-                ):
-                    status["catalog_retained_count"] = len(
-                        catalog_keys_by_source.get(source_name, set())
-                    )
-        raw_total = int(discovery.get("catalog_raw_count") or 0)
-        retained_catalog = len(catalog_keys)
-        if raw_total and retained_catalog < raw_total:
-            summary = str(discovery.get("catalog_filter_summary") or "").strip()
-            family_note = (
-                f"{raw_total} raw catalog matches → {retained_catalog} retained after "
-                "manufacturer, family, and deduplication filters"
-            )
-            discovery["catalog_filter_summary"] = (
-                f"{summary}; {family_note}" if summary else family_note
-            )
+        discovery = refresh_catalog_retained_after_partition(discovery, displayed)
         candidates = relevant
         with search_run.stage(STAGE_PERSIST):
             canonical_mpn = str(

@@ -963,6 +963,9 @@ def build_datasheet_comparison(original: dict, candidate: dict) -> dict:
 
 def user_facing_comparison_rows(rows: list | None) -> list[dict]:
     """Project comparison rows to the standard end-user column set with provenance."""
+    # Lazy import avoids circular import with parts_compare.
+    from src.parts_compare import assess_compare_row
+
     projected: list[dict] = []
     for row in rows or []:
         if not isinstance(row, dict):
@@ -976,19 +979,18 @@ def user_facing_comparison_rows(rows: list | None) -> list[dict]:
         folded = status.casefold()
         if status == "Match" or "compatible" in folded:
             result = "Match"
-            assessment = "Compatible on available evidence"
         elif status == "Listing agreement" or "listing agreement" in folded:
             result = "Listing agreement"
-            assessment = "Supplier-listing agreement"
         elif status == "Conflicting" or "conflict" in folded:
             result = "Conflicting"
-            assessment = "Conflicting evidence"
-        elif status == "Different" or "material" in folded:
+        elif (
+            status == "Different"
+            or "material" in folded
+            or "catalog values differ" in folded
+        ):
             result = "Different"
-            assessment = "Material difference"
         else:
             result = "Needs data"
-            assessment = "Needs verification"
         source_a = (
             row.get("Part A source")
             or row.get("OriginalSource")
@@ -1001,6 +1003,23 @@ def user_facing_comparison_rows(rows: list | None) -> list[dict]:
             or row.get("Candidate Source")
             or ""
         )
+        class_a = row.get("Part A value class") or classify_value_condition(original)
+        class_b = row.get("Part B value class") or classify_value_condition(candidate)
+        condition_a = (
+            row.get("Part A test condition") or extract_test_condition(original)
+        )
+        condition_b = (
+            row.get("Part B test condition") or extract_test_condition(candidate)
+        )
+        assessment = assess_compare_row(
+            status=status,
+            class_a=class_a,
+            class_b=class_b,
+            condition_a=condition_a,
+            condition_b=condition_b,
+            source_a=source_a,
+            source_b=source_b,
+        )
         projected.append(
             {
                 "Attribute": row.get("Attribute", ""),
@@ -1011,19 +1030,15 @@ def user_facing_comparison_rows(rows: list | None) -> list[dict]:
                 "Part A source": source_a or "Not stated",
                 "Part B source": source_b or "Not stated",
                 "Unit": row.get("Unit") or row.get("unit") or "",
-                "Part A test condition": row.get("Part A test condition")
-                or extract_test_condition(original),
-                "Part B test condition": row.get("Part B test condition")
-                or extract_test_condition(candidate),
+                "Part A test condition": condition_a,
+                "Part B test condition": condition_b,
                 "Test condition": row.get("Test condition")
                 or (
-                    f"Part A: {extract_test_condition(original)}; "
-                    f"Part B: {extract_test_condition(candidate)}"
+                    f"Part A: {condition_a}; "
+                    f"Part B: {condition_b}"
                 ),
-                "Part A value class": row.get("Part A value class")
-                or classify_value_condition(original),
-                "Part B value class": row.get("Part B value class")
-                or classify_value_condition(candidate),
+                "Part A value class": class_a,
+                "Part B value class": class_b,
                 "Result": result,
                 "Assessment": assessment,
                 "Evidence": row.get("Evidence", ""),
@@ -1108,14 +1123,14 @@ def build_engineering_evidence_assessment(
         match_label = "match" if matches == 1 else "matches"
         field_label = "field" if needs_data == 1 else "fields"
         summary = (
-            f"Engineering evidence: {status} — {matches} confirmed {match_label}, "
+            f"Engineering evidence: {status} — {matches} parametric {match_label}, "
             f"{needs_data} {field_label} need verification"
         )
         if listing_agreements:
             summary += (
-                f"; {listing_agreements} supplier-listing "
+                f"; {listing_agreements} catalog "
                 f"{'agreement' if listing_agreements == 1 else 'agreements'} "
-                "(catalog evidence only)"
+                "(Catalog values agree — fit unverified)"
             )
         coverage_percent = round((matches / compared_fields) * 100) if compared_fields else 0
 

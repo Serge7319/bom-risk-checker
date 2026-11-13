@@ -625,7 +625,7 @@ class ComparePartsCoreTests(unittest.TestCase):
 
     def test_map_status_helpers(self):
         self.assertEqual(map_status_to_assessment("Match"), FINDING_COMPATIBLE)
-        self.assertEqual(map_status_to_assessment("Different"), FINDING_MATERIAL)
+        self.assertEqual(map_status_to_assessment("Different"), FINDING_NEEDS_DATA)
         self.assertEqual(map_status_to_assessment("Needs data"), FINDING_NEEDS_DATA)
         self.assertEqual(
             derive_overall_finding(

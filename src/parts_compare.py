@@ -36,6 +36,8 @@ FINDING_NEEDS_VERIFICATION = "Needs verification"
 # Catalog/supplier agreement is never a Compatible fit verdict.
 FINDING_LISTING_AGREEMENT = "Catalog values agree — fit unverified"
 FINDING_LISTING_AGREEMENT_LEGACY = "Supplier-listing agreement"
+# Catalog-reported differences are visible but never claim Material fit impact.
+FINDING_CATALOG_DIFFERENCE = "Catalog values differ — fit unverified"
 # Legacy alias kept for older call sites / tests that still import the name.
 FINDING_NEEDS_DATA = FINDING_NEEDS_VERIFICATION
 
@@ -114,8 +116,6 @@ def assess_compare_row(
     """
     normalized = str(status or "").strip()
     folded = normalized.casefold()
-    if normalized == "Different" or folded == FINDING_MATERIAL.casefold():
-        return FINDING_MATERIAL
     if normalized == "Conflicting" or "conflict" in folded:
         return FINDING_CONFLICTING
 
@@ -142,6 +142,21 @@ def assess_compare_row(
             FINDING_LISTING_AGREEMENT_LEGACY.casefold(),
         }
     )
+
+    # Different: Material only when both sides carry authoritative engineering evidence.
+    # Missing → Needs verification; catalog-only → catalog-reported, fit unverified.
+    if (
+        normalized == "Different"
+        or folded == FINDING_MATERIAL.casefold()
+        or folded == FINDING_CATALOG_DIFFERENCE.casefold()
+    ):
+        if missing_a or missing_b:
+            return FINDING_NEEDS_VERIFICATION
+        if authoritative_a and authoritative_b:
+            return FINDING_MATERIAL
+        if catalog_a or catalog_b:
+            return FINDING_CATALOG_DIFFERENCE
+        return FINDING_NEEDS_VERIFICATION
 
     if listing_status or normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
         # Missing/unknown provenance never yields Compatible.
@@ -255,8 +270,119 @@ def claim_compare_parts_submit(
     return True
 
 
+_CUSTOMER_COUNT_PRIMARY_KEYS = (
+    "compatible",
+    "listing_agreement",
+    "material_difference",
+    "needs_data",
+    "conflicting",
+)
+
+
+def _customer_counts_from_assessments(
+    assessment_counts: Mapping[str, int],
+) -> dict[str, Any]:
+    """Build additive customer count buckets from Assessment provenance.
+
+    Primary buckets sum to the row total. ``catalog_difference`` is nested under
+    ``breakdown`` so it remains available without double-counting against
+    ``needs_data`` (catalog diffs contribute to the need-verification primary).
+    """
+    compatible = int(assessment_counts.get("compatible") or 0)
+    listing = int(assessment_counts.get("listing_agreement") or 0)
+    material = int(assessment_counts.get("material_difference") or 0)
+    catalog_diff = int(assessment_counts.get("catalog_difference") or 0)
+    pure_needs = int(assessment_counts.get("needs_data") or 0)
+    conflicting = int(assessment_counts.get("conflicting") or 0)
+    return {
+        "compatible": compatible,
+        "listing_agreement": listing,
+        "material_difference": material,
+        "needs_data": pure_needs + catalog_diff,
+        "conflicting": conflicting,
+        "breakdown": {
+            "catalog_difference": catalog_diff,
+        },
+    }
+
+
+def primary_count_total(counts: Mapping[str, Any] | None) -> int:
+    """Sum of additive customer primary count buckets."""
+    payload = counts or {}
+    return sum(int(payload.get(key) or 0) for key in _CUSTOMER_COUNT_PRIMARY_KEYS)
+
+
+def _provenance_aware_evidence_status(
+    assessment_counts: Mapping[str, int],
+) -> str:
+    """Customer-facing evidence status from Assessment provenance only."""
+    compatible = int(assessment_counts.get("compatible") or 0)
+    listing = int(assessment_counts.get("listing_agreement") or 0)
+    material = int(assessment_counts.get("material_difference") or 0)
+    catalog_diff = int(assessment_counts.get("catalog_difference") or 0)
+    pure_needs = int(assessment_counts.get("needs_data") or 0)
+    needs = pure_needs + catalog_diff
+    conflicting = int(assessment_counts.get("conflicting") or 0)
+    if material or conflicting:
+        return "conflicts documented"
+    if compatible and not listing and not needs and not material and not conflicting:
+        return "complete"
+    if not compatible and not material and (listing or needs):
+        return "incomplete" if needs >= max(1, listing) else "partial"
+    return "partial"
+
+
+def _provenance_aware_evidence_summary(
+    assessment_counts: Mapping[str, int],
+    *,
+    engineering_status: str = "",
+) -> str:
+    """Customer-facing summary derived from Assessment provenance, not raw Status.
+
+    Catalog-reported differences fold into the need-verification total once (same
+    as customer ``counts.needs_data``) and are not restated as a second count.
+    Listing agreements stay a separate unverified bucket. Raw parametric status
+    is ignored for the customer string (kept only as diagnostics upstream).
+    """
+    _ = engineering_status  # Raw status is diagnostics-only; status comes from assessments.
+    compatible = int(assessment_counts.get("compatible") or 0)
+    listing = int(assessment_counts.get("listing_agreement") or 0)
+    material = int(assessment_counts.get("material_difference") or 0)
+    catalog_diff = int(assessment_counts.get("catalog_difference") or 0)
+    pure_needs = int(assessment_counts.get("needs_data") or 0)
+    needs = pure_needs + catalog_diff
+    status = _provenance_aware_evidence_status(assessment_counts)
+
+    parts = [
+        f"Engineering evidence: {status} — {compatible} verified "
+        f"{'match' if compatible == 1 else 'matches'}",
+        f"{needs} {'field' if needs == 1 else 'fields'} need verification",
+    ]
+    summary = f"{parts[0]}, {parts[1]}"
+    if listing:
+        summary += (
+            f"; {listing} catalog "
+            f"{'agreement' if listing == 1 else 'agreements'} "
+            "(Catalog values agree — fit unverified)"
+        )
+    if material:
+        summary += (
+            f"; {material} material "
+            f"{'difference' if material == 1 else 'differences'}"
+        )
+    # Catalog diffs already fold into the need-verification total above — note
+    # provenance once without restating a second numeric count.
+    if catalog_diff:
+        summary += "; catalog-reported differences remain fit unverified"
+    return summary
+
+
 def map_status_to_assessment(status: str) -> str:
-    """Backward-compatible status→assessment map (no provenance context)."""
+    """Backward-compatible status→assessment map (no provenance context).
+
+    Without source provenance, Different stays Needs verification — Material
+    requires authoritative evidence via ``assess_compare_row``.
+    """
     normalized = str(status or "").strip()
     folded = normalized.casefold()
     if normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
@@ -273,8 +399,13 @@ def map_status_to_assessment(status: str) -> str:
         return FINDING_LISTING_AGREEMENT
     if normalized == "Conflicting" or "conflict" in folded:
         return FINDING_CONFLICTING
-    if normalized == "Different" or folded == FINDING_MATERIAL.casefold():
+    if folded == FINDING_CATALOG_DIFFERENCE.casefold():
+        return FINDING_CATALOG_DIFFERENCE
+    if folded == FINDING_MATERIAL.casefold():
         return FINDING_MATERIAL
+    if normalized == "Different":
+        # No provenance available → do not claim Material difference.
+        return FINDING_NEEDS_VERIFICATION
     return FINDING_NEEDS_VERIFICATION
 
 
@@ -1257,15 +1388,64 @@ def build_parts_comparison(
         )
 
     user_rows = user_facing_compare_rows(rows)
+    # Customer-facing counts/summary come from provenance-aware Assessments.
+    # Raw Status Match/Different/Needs data stay in count_aliases for internals.
+    assessment_counts = {
+        "compatible": 0,
+        "listing_agreement": 0,
+        "material_difference": 0,
+        "catalog_difference": 0,
+        "needs_data": 0,
+        "conflicting": 0,
+    }
+    for row in user_rows:
+        label = str(row.get("Assessment") or "").strip()
+        if label == FINDING_COMPATIBLE:
+            assessment_counts["compatible"] += 1
+        elif label == FINDING_LISTING_AGREEMENT:
+            assessment_counts["listing_agreement"] += 1
+        elif label == FINDING_MATERIAL:
+            assessment_counts["material_difference"] += 1
+        elif label == FINDING_CATALOG_DIFFERENCE:
+            assessment_counts["catalog_difference"] += 1
+        elif label == FINDING_CONFLICTING:
+            assessment_counts["conflicting"] += 1
+        else:
+            assessment_counts["needs_data"] += 1
+
+    raw_evidence_status = str(
+        assessment.get("engineering_evidence_status")
+        or confidence.get("engineering_evidence_status")
+        or ""
+    )
+    provenance_status = _provenance_aware_evidence_status(assessment_counts)
+    provenance_summary = _provenance_aware_evidence_summary(assessment_counts)
+    customer_counts = _customer_counts_from_assessments(assessment_counts)
     # Overall finding must not outrank honest row assessments. Catalog-only or
-    # unknown-evidence rows never mint a Compatible fit verdict.
-    if finding == FINDING_COMPATIBLE and user_rows:
+    # unknown-evidence rows never mint a Compatible fit verdict. Material is
+    # kept only when a row assessment truly carries authoritative evidence.
+    if user_rows:
         row_assessments = {
             str(row.get("Assessment") or "").strip() for row in user_rows
         }
-        if FINDING_COMPATIBLE not in row_assessments:
+        if finding == FINDING_COMPATIBLE and FINDING_COMPATIBLE not in row_assessments:
             if FINDING_MATERIAL in row_assessments:
                 finding = FINDING_MATERIAL
+            elif FINDING_LISTING_AGREEMENT in row_assessments:
+                finding = FINDING_LISTING_AGREEMENT
+            elif FINDING_CATALOG_DIFFERENCE in row_assessments:
+                finding = FINDING_NEEDS_VERIFICATION
+            else:
+                finding = FINDING_NEEDS_VERIFICATION
+        elif (
+            finding == FINDING_MATERIAL
+            and FINDING_MATERIAL not in row_assessments
+            and not bool(family_meta["family_mismatch"])
+        ):
+            # Cross-family stays Material from derive_overall_finding. Catalog-only
+            # parametric diffs demote to Needs verification / listing agreement.
+            if FINDING_CATALOG_DIFFERENCE in row_assessments:
+                finding = FINDING_NEEDS_VERIFICATION
             elif FINDING_LISTING_AGREEMENT in row_assessments:
                 finding = FINDING_LISTING_AGREEMENT
             else:
@@ -1309,18 +1489,26 @@ def build_parts_comparison(
         ),
         "family_mismatch": bool(family_meta["family_mismatch"]),
         "finding": finding,
-        "engineering_evidence_summary": assessment.get("engineering_evidence_summary", ""),
-        "engineering_evidence_status": assessment.get("engineering_evidence_status", ""),
-        # Snake-case buckets only so sum(counts.values()) equals row count.
-        # Status-label aliases remain available via count_aliases for legacy UI.
-        "counts": {
-            "compatible": int(counts.get("Match") or 0),
-            "listing_agreement": int(counts.get("Listing agreement") or 0),
-            "material_difference": int(counts.get("Different") or 0),
-            "needs_data": int(counts.get("Needs data") or 0),
-            "conflicting": int(counts.get("Conflicting") or 0),
-        },
+        # Provenance-aware customer summary/status; raw parametric text/status
+        # remain available via *_raw / internal_status_counts for diagnostics.
+        "engineering_evidence_summary": provenance_summary
+        or assessment.get("engineering_evidence_summary", ""),
+        "engineering_evidence_summary_raw": assessment.get(
+            "engineering_evidence_summary", ""
+        ),
+        "engineering_evidence_status": provenance_status,
+        "engineering_evidence_status_raw": raw_evidence_status,
+        # Additive Assessment buckets. catalog_difference lives under breakdown.
+        "counts": customer_counts,
+        # Raw internal Status buckets (Match/Different/…) preserved for ranking.
         "count_aliases": {
+            "Match": int(counts.get("Match") or 0),
+            "Listing agreement": int(counts.get("Listing agreement") or 0),
+            "Different": int(counts.get("Different") or 0),
+            "Needs data": int(counts.get("Needs data") or 0),
+            "Conflicting": int(counts.get("Conflicting") or 0),
+        },
+        "internal_status_counts": {
             "Match": int(counts.get("Match") or 0),
             "Listing agreement": int(counts.get("Listing agreement") or 0),
             "Different": int(counts.get("Different") or 0),
@@ -1945,7 +2133,10 @@ def generate_parts_comparison_pdf(comparison: Mapping[str, Any]) -> bytes:
 __all__ = [
     "FINDING_COMPATIBLE",
     "FINDING_MATERIAL",
+    "FINDING_CATALOG_DIFFERENCE",
+    "FINDING_LISTING_AGREEMENT",
     "FINDING_NEEDS_DATA",
+    "FINDING_NEEDS_VERIFICATION",
     "USER_FACING_COMPARE_COLUMNS",
     "COMPARE_PARTS_PART_A_WIDGET_KEY",
     "COMPARE_PARTS_PART_B_WIDGET_KEY",
