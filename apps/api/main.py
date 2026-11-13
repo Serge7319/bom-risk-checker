@@ -1522,7 +1522,11 @@ async def monitoring_acknowledge_post(request: Request) -> JSONResponse:
 
 
 async def monitoring_notify_post(request: Request) -> JSONResponse:
-    """Exercise notification wiring with the mock sink (no real email by default)."""
+    """Explicit email notification action — never implied by refresh or page GET.
+
+    Requires a specific ``alert_id`` owned by the caller's workspace. Delivery
+    still respects preference and ``CADIVOR_MONITORING_EMAIL_ENABLED`` gates.
+    """
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1530,13 +1534,25 @@ async def monitoring_notify_post(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         body = {}
-    alert_id = str((body or {}).get("alert_id") or "")
+    alert_id = str((body or {}).get("alert_id") or "").strip()
+    if not alert_id:
+        return _json(
+            {
+                "detail": (
+                    "alert_id is required. Refresh never sends email — "
+                    "Notify is the explicit delivery action."
+                )
+            },
+            400,
+        )
     alerts = monitoring_store.list_alerts(ctx["workspace_id"])
-    alert = next((a for a in alerts if a.get("id") == alert_id), None) or (alerts[0] if alerts else None)
+    alert = next((a for a in alerts if str(a.get("id") or "") == alert_id), None)
     if not alert:
-        return _json({"detail": "No alerts to notify"}, 404)
+        return _json({"detail": "Alert not found"}, 404)
+    if alert.get("active") is False or str(alert.get("status") or "").lower() == "inactive":
+        return _json({"detail": "Alert is inactive and cannot be notified"}, 409)
     result = monitoring_store.deliver_alert_email(ctx["workspace_id"], alert)
-    return _json(result)
+    return _json({**result, "explicit_notify": True, "alert_id": alert_id})
 
 
 async def plan_usage_get(request: Request) -> JSONResponse:

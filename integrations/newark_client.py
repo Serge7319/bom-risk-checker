@@ -86,23 +86,129 @@ def _utc_now_iso() -> str:
 # ``58K1234`` or ``NEW1234``.  Anything outside this shape is not trusted as an
 # identity hint. SKU alone is never turned into a fabricated product URL.
 _NEWARK_SKU_RE = re.compile(r"^[A-Z0-9]{5,12}$")
+_OFFICIAL_NEWARK_HOSTS = frozenset({"www.newark.com", "newark.com"})
 LISTING_PROVENANCE_PROVIDER_URL = "provider_product_url"
+LISTING_PROVENANCE_SKU_LOOKUP = "provider_sku_lookup"
 LISTING_PROVENANCE_UNAVAILABLE = "provenance_unavailable"
 
 
-def resolve_newark_listing(product: dict) -> dict:
+def _official_newark_https_url(url: object) -> str:
+    """Return the URL only when it is HTTPS on an official Newark host."""
+    text = str(url or "").strip()
+    if not text.lower().startswith("https://"):
+        return ""
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(text)
+    except Exception:
+        return ""
+    host = str(parsed.hostname or "").strip().lower()
+    if host not in _OFFICIAL_NEWARK_HOSTS:
+        return ""
+    return text
+
+
+def lookup_newark_official_listing_url(
+    *,
+    sku: str,
+    expected_mpn: str = "",
+    expected_manufacturer: str = "",
+    session: object | None = None,
+) -> dict:
+    """Documented Element14 catalog lookup by Newark order code (``id:<sku>``).
+
+    Returns an official HTTPS ``www.newark.com`` ``productUrl`` only when the
+    provider response verifies the SKU and, when supplied, the exact MPN /
+    manufacturer. Never fabricates a listing path from the SKU alone.
+    """
+    order_code = str(sku or "").strip().upper()
+    if not order_code or not _NEWARK_SKU_RE.fullmatch(order_code):
+        return {
+            "product_detail_url": "",
+            "listing_verified": False,
+            "listing_url_provenance": LISTING_PROVENANCE_UNAVAILABLE,
+            "provenance_unavailable": True,
+            "supplier_sku": "",
+        }
+    api_key = get_secret("NEWARK_API_KEY", required=True)
+    params = {
+        "callInfo.apiKey": api_key,
+        "callInfo.responseDataFormat": "json",
+        "storeInfo.id": NEWARK_STORE_ID,
+        "resultsSettings.offset": 0,
+        "resultsSettings.numberOfResults": 5,
+        "resultsSettings.responseGroup": "large",
+        "term": f"id:{order_code}",
+    }
+    http = session or requests
+    response = http.get(
+        "https://api.element14.com/catalog/products",
+        params=params,
+        timeout=15,
+    )
+    response.raise_for_status()
+    data = response.json()
+    products = data.get("manufacturerPartNumberSearchReturn", {}).get("products", [])
+    if not products:
+        products = data.get("keywordSearchReturn", {}).get("products", [])
+    expected_mpn_n = normalize_part_number(expected_mpn) if expected_mpn else ""
+    expected_mfr_n = str(expected_manufacturer or "").strip().casefold()
+    for product in products if isinstance(products, list) else []:
+        if not isinstance(product, dict):
+            continue
+        product_sku = str(product.get("sku") or "").strip().upper()
+        if product_sku and product_sku != order_code:
+            continue
+        candidate_mpn = str(
+            product.get("translatedManufacturerPartNumber")
+            or product.get("manufacturerPartNumber")
+            or ""
+        ).strip()
+        if expected_mpn_n and normalize_part_number(candidate_mpn) != expected_mpn_n:
+            continue
+        candidate_mfr = str(product.get("brandName") or "").strip()
+        if expected_mfr_n and candidate_mfr.casefold() != expected_mfr_n:
+            continue
+        official = _official_newark_https_url(product.get("productUrl"))
+        if not official:
+            continue
+        return {
+            "product_detail_url": official,
+            "listing_verified": True,
+            "listing_url_provenance": LISTING_PROVENANCE_SKU_LOOKUP,
+            "provenance_unavailable": False,
+            "supplier_sku": order_code,
+        }
+    return {
+        "product_detail_url": "",
+        "listing_verified": False,
+        "listing_url_provenance": LISTING_PROVENANCE_UNAVAILABLE,
+        "provenance_unavailable": True,
+        "supplier_sku": order_code,
+    }
+
+
+def resolve_newark_listing(
+    product: dict,
+    *,
+    allow_sku_lookup: bool = True,
+    lookup: object | None = None,
+) -> dict:
     """Return ``product_detail_url`` plus provenance without inventing URLs.
 
-    - ``productUrl`` supplied by Newark → used verbatim, ``listing_verified=True``.
-    - otherwise leave the URL empty and mark ``provenance_unavailable``. A SKU in
-      the payload may be retained as ``supplier_sku`` for identity, but is never
-      turned into a guessed listing URL (no fabricated ``/dp/<sku>`` routes).
+    - Official HTTPS ``productUrl`` on ``www.newark.com`` → verified listing.
+    - Arbitrary http(s) hosts are never marked verified.
+    - When ``productUrl`` is missing, optionally perform the documented Element14
+      ``id:<sku>`` lookup and accept only a verified official HTTPS URL that
+      matches the payload MPN/manufacturer/SKU.
+    - Otherwise leave the URL empty and mark ``provenance_unavailable``.
     """
     product = product if isinstance(product, dict) else {}
-    provider_url = str(product.get("productUrl") or "").strip()
+    provider_url = _official_newark_https_url(product.get("productUrl"))
     sku = str(product.get("sku") or "").strip().upper()
     supplier_sku = sku if sku and _NEWARK_SKU_RE.fullmatch(sku) else ""
-    if provider_url.startswith(("https://", "http://")):
+    if provider_url:
         return {
             "product_detail_url": provider_url,
             "listing_verified": True,
@@ -110,6 +216,34 @@ def resolve_newark_listing(product: dict) -> dict:
             "provenance_unavailable": False,
             "supplier_sku": supplier_sku,
         }
+    if allow_sku_lookup and supplier_sku:
+        expected_mpn = str(
+            product.get("translatedManufacturerPartNumber")
+            or product.get("manufacturerPartNumber")
+            or product.get("requested_part_number")
+            or ""
+        ).strip()
+        expected_mfr = str(product.get("brandName") or product.get("manufacturer") or "").strip()
+        try:
+            lookup_fn = lookup or lookup_newark_official_listing_url
+            resolved = lookup_fn(
+                sku=supplier_sku,
+                expected_mpn=expected_mpn,
+                expected_manufacturer=expected_mfr,
+            )
+            if isinstance(resolved, dict) and resolved.get("listing_verified"):
+                return {
+                    "product_detail_url": str(resolved.get("product_detail_url") or ""),
+                    "listing_verified": True,
+                    "listing_url_provenance": str(
+                        resolved.get("listing_url_provenance") or LISTING_PROVENANCE_SKU_LOOKUP
+                    ),
+                    "provenance_unavailable": False,
+                    "supplier_sku": supplier_sku,
+                }
+        except Exception:
+            # Lookup failures stay provenance-unavailable; never fabricate a URL.
+            pass
     return {
         "product_detail_url": "",
         "listing_verified": False,

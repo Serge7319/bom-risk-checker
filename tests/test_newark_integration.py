@@ -388,13 +388,59 @@ class NewarkIntegrationTests(unittest.TestCase):
         self.assertEqual(result["listing_url_provenance"], "provider_product_url")
         self.assertFalse(result["provenance_unavailable"])
 
-    def test_missing_product_url_keeps_sku_but_does_not_fabricate_listing_url(self):
-        product = self._product(productUrl="", sku="58K1234")
-        result = self.newark.normalize_newark_product(product)
+    def test_arbitrary_https_host_is_not_verified(self):
+        result = self.newark.resolve_newark_listing(
+            self._product(productUrl="https://evil.example/product/1", sku="58K1234"),
+            allow_sku_lookup=False,
+        )
         self.assertEqual(result["product_detail_url"], "")
         self.assertFalse(result["listing_verified"])
         self.assertTrue(result["provenance_unavailable"])
-        self.assertEqual(result["listing_url_provenance"], "provenance_unavailable")
+
+    def test_http_newark_url_is_not_verified(self):
+        result = self.newark.resolve_newark_listing(
+            self._product(productUrl="http://www.newark.com/example", sku="58K1234"),
+            allow_sku_lookup=False,
+        )
+        self.assertEqual(result["product_detail_url"], "")
+        self.assertTrue(result["provenance_unavailable"])
+
+    def test_missing_product_url_uses_documented_sku_lookup_when_official(self):
+        product = self._product(productUrl="", sku="58K1234")
+
+        def _lookup(**kwargs):
+            self.assertEqual(kwargs["sku"], "58K1234")
+            return {
+                "product_detail_url": "https://www.newark.com/ti/lm358dr/dp/58K1234",
+                "listing_verified": True,
+                "listing_url_provenance": "provider_sku_lookup",
+                "provenance_unavailable": False,
+                "supplier_sku": "58K1234",
+            }
+
+        result = self.newark.resolve_newark_listing(product, lookup=_lookup)
+        self.assertEqual(
+            result["product_detail_url"],
+            "https://www.newark.com/ti/lm358dr/dp/58K1234",
+        )
+        self.assertTrue(result["listing_verified"])
+        self.assertEqual(result["listing_url_provenance"], "provider_sku_lookup")
+
+    def test_missing_product_url_stays_unavailable_when_lookup_cannot_resolve(self):
+        product = self._product(productUrl="", sku="58K1234")
+        result = self.newark.resolve_newark_listing(
+            product,
+            lookup=lambda **_kwargs: {
+                "product_detail_url": "",
+                "listing_verified": False,
+                "listing_url_provenance": "provenance_unavailable",
+                "provenance_unavailable": True,
+                "supplier_sku": "58K1234",
+            },
+        )
+        self.assertEqual(result["product_detail_url"], "")
+        self.assertFalse(result["listing_verified"])
+        self.assertTrue(result["provenance_unavailable"])
         self.assertEqual(result.get("supplier_sku"), "58K1234")
 
     def test_missing_url_and_sku_never_invents_identifier(self):

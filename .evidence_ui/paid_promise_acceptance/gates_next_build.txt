@@ -5,7 +5,7 @@
    ▲ Next.js 15.5.9
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 6.7s
+ ✓ Compiled successfully in 3.7s
    Linting and checking validity of types ...
 
 ./src/app/compare-parts/page.tsx
@@ -30,7 +30,7 @@ Route (app)                                 Size  First Load JS
 ├ ○ /bom-analyzer                        6.95 kB         187 kB
 ├ ○ /compare-parts                       12.5 kB         192 kB
 ├ ○ /cost-optimization                   3.58 kB         183 kB
-├ ○ /datasheet-qa                         2.1 kB         182 kB
+├ ○ /datasheet-qa                        3.05 kB         183 kB
 ├ ○ /design-impact                       3.06 kB         183 kB
 ├ ○ /detailed-risk-report                3.11 kB         183 kB
 ├ ○ /engineering-decisions               4.15 kB         184 kB
@@ -38,7 +38,7 @@ Route (app)                                 Size  First Load JS
 ├ ○ /evidence-review                     6.06 kB         186 kB
 ├ ○ /find-replacement                    6.28 kB         186 kB
 ├ ○ /login                               4.34 kB         179 kB
-├ ○ /monitoring                          5.92 kB         186 kB
+├ ○ /monitoring                          6.17 kB         186 kB
 ├ ○ /portfolio-intelligence              2.57 kB         182 kB
 ├ ○ /procurement                          5.6 kB         185 kB
 ├ ○ /reports                             2.13 kB         182 kB

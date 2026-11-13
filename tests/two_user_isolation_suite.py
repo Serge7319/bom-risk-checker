@@ -253,21 +253,15 @@ def assert_denied_for_other_user(
                 "/tools/monitoring/acknowledge", headers=headers, json={"alert_id": alert_id}
             ),
         )
-    # /notify resolves alert ids inside the caller's workspace only. A foreign id
-    # either 404s (attacker has no alerts) or falls back to the attacker's *own*
-    # first alert -- it must never deliver or echo the victim's alert.
+    # /notify requires an alert_id owned by the caller's workspace. A foreign id
+    # must 404 and never deliver or echo the victim's alert.
     notify = client.post(
         "/tools/monitoring/notify",
         headers=headers,
         json={"alert_id": victim["alert_ids"][0]},
     )
-    ledger.append({"case": "notify on victim alert", "status": notify.status_code, "expected": [404, "own-alert-only"]})
-    assert notify.status_code in (200, 404), notify.text[:200]
-    if notify.status_code == 200:
-        notified = notify.json()
-        assert notified["payload"]["workspace_id"] != victim["workspace_id"]
-        assert notified["payload"]["alert_id"] not in victim["alert_ids"]
-        assert notified.get("delivered") is False  # mock sink / prefs gate, no real email
+    ledger.append({"case": "notify on victim alert", "status": notify.status_code, "expected": [404]})
+    assert notify.status_code == 404, notify.text[:200]
     for secret in (victim["project_name"], victim["decision_id"], *victim["alert_ids"]):
         assert secret not in notify.text, "notify leaked victim data"
     # Attacker's own preference write (idempotent here) must never touch the victim.

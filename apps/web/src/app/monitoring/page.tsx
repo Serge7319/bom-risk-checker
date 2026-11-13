@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
-import { fetchMonitoring, refreshMonitoring } from "@/lib/api";
+import { fetchMonitoring, notifyMonitoringAlert, refreshMonitoring } from "@/lib/api";
 import { markReviewProgress, readReviewProgress } from "@/lib/bomDraft";
 import { evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
@@ -22,6 +22,7 @@ function MonitoringPageInner() {
   const [busy, setBusy] = useState(true);
   const [activeAnalysisId, setActiveAnalysisId] = useState<string>("");
   const [refreshing, setRefreshing] = useState<string>("");
+  const [notifying, setNotifying] = useState<string>("");
   const [refreshNote, setRefreshNote] = useState("");
   const [reloadTick, setReloadTick] = useState(0);
 
@@ -95,13 +96,30 @@ function MonitoringPageInner() {
         partNumber,
       });
       setRefreshNote(
-        `Refreshed ${String(result.scope_label || "selected scope")}. Saved ${String(result.alert_count ?? 0)} alert(s) from the saved analysis; suppliers were not re-queried.`,
+        `Refreshed ${String(result.scope_label || "selected scope")}. Saved ${String(result.alert_count ?? 0)} alert(s) from the saved analysis; suppliers were not re-queried. Email was not sent — use Notify for delivery.`,
       );
       setReloadTick((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Refresh failed");
     } finally {
       setRefreshing("");
+    }
+  }
+
+  async function runNotify(alertId: string) {
+    if (!session || !alertId || notifying) return;
+    setNotifying(alertId);
+    setRefreshNote("");
+    setError("");
+    try {
+      const result = await notifyMonitoringAlert(session.access_token, alertId);
+      setRefreshNote(
+        `Explicit notify for alert ${alertId}: ${String(result.status || result.detail || "requested")}. Refresh never sends email.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Notify failed");
+    } finally {
+      setNotifying("");
     }
   }
 
@@ -135,7 +153,7 @@ function MonitoringPageInner() {
               {lastRefreshAt
                 ? `Last refresh: ${new Date(lastRefreshAt).toLocaleString()}.`
                 : "Never refreshed."}{" "}
-              Opening this page does not refresh or save anything. Refresh re-derives alerts from the saved analysis; it does not query suppliers for live data.
+              Opening this page does not refresh or save anything. Refresh re-derives alerts from the saved analysis and never sends email. Email requires the separate Notify action when delivery is enabled.
             </p>
             {freshness.stale === true ? (
               <div className="cv-error" role="status">
@@ -165,7 +183,10 @@ function MonitoringPageInner() {
           </section>
           <section className="cv-card pad">
             <h3 className="cv-card-title">Alerts and changes</h3>
-            <p className="cv-card-subtitle">Signals derived from the saved analysis for this selection only. Scheduled refresh and email delivery are currently disabled.</p>
+            <p className="cv-card-subtitle">
+              Active signals for this selection only. Inactive/reconciled alerts are hidden.
+              Refresh updates data and never emails. Notify is the explicit email action (still gated off unless delivery is enabled).
+            </p>
             {alerts.length ? (
               <div className="cv-table-wrap" style={{ marginTop: 12 }}>
                 <table className="cv-table">
@@ -177,7 +198,7 @@ function MonitoringPageInner() {
                       <th>Message</th>
                       <th>Evidence</th>
                       <th>Saved</th>
-                      <th>Refresh</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -189,7 +210,7 @@ function MonitoringPageInner() {
                         <td>{String(a.alert_message || "")}</td>
                         <td>{evidenceSourceLabel(a.evidence_source)}</td>
                         <td>{a.persisted === false ? <span className="cv-badge amber">Not saved — refresh</span> : <span className="cv-badge green">Saved</span>}</td>
-                        <td>
+                        <td style={{ whiteSpace: "nowrap" }}>
                           <button
                             type="button"
                             className="cv-button small"
@@ -197,6 +218,15 @@ function MonitoringPageInner() {
                             onClick={() => void runRefresh(String(a.part_number || ""))}
                           >
                             {refreshing === String(a.part_number || "") ? "Refreshing…" : "Refresh part"}
+                          </button>{" "}
+                          <button
+                            type="button"
+                            className="cv-button small"
+                            disabled={!a.id || Boolean(notifying)}
+                            title="Explicit email action — not run by Refresh"
+                            onClick={() => void runNotify(String(a.id || ""))}
+                          >
+                            {notifying === String(a.id || "") ? "Notifying…" : "Notify"}
                           </button>
                         </td>
                       </tr>

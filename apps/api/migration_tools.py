@@ -385,6 +385,8 @@ def monitoring_payload(
         a
         for a in monitoring_store.list_alerts(workspace_id, analysis_id=report_id)
         if str(a.get("analysis_id") or "").strip() == report_id
+        and a.get("active") is not False
+        and str(a.get("status") or "active").lower() != "inactive"
     ]
     persisted_by_key = {_alert_key(a): a for a in persisted}
     scoped: list[dict[str, Any]] = []
@@ -394,12 +396,12 @@ def monitoring_payload(
         seen.add(key)
         saved = persisted_by_key.get(key)
         if saved:
-            scoped.append({**alert, **saved, "persisted": True})
+            scoped.append({**alert, **saved, "persisted": True, "active": True})
         else:
-            scoped.append({**alert, "persisted": False})
-    for key, saved in persisted_by_key.items():
-        if key not in seen:
-            scoped.append({**saved, "persisted": True})
+            scoped.append({**alert, "persisted": False, "active": True})
+    # Stale persisted alerts that no longer derive from the analysis are not
+    # shown as active. They remain in storage as inactive until the next refresh
+    # reconciles them.
 
     alert_df = pd.DataFrame(scoped)
     monitor_df = pd.DataFrame(
@@ -439,9 +441,10 @@ def monitoring_payload(
             "analysis_id": report_id,
             "filename": report.get("filename"),
             "gap": (
-                "Monitoring is read-only on this view: it shows saved analysis signals and previously "
-                "persisted alerts. Use Refresh to re-derive and save alerts; this does not "
-                "call live suppliers. Scheduled refresh and real alert email remain disabled."
+                "Monitoring is read-only on this view: it shows current signals from the saved "
+                "analysis and active persisted alerts. Use Refresh to re-derive and save alerts "
+                "(refresh never sends email). Email requires the separate Notify action when "
+                "delivery is enabled. Scheduled supplier refresh remains disabled."
             ),
             "metrics": {
                 "monitored_parts": report.get("total_parts") or 0,
@@ -528,10 +531,12 @@ def monitoring_refresh_payload(
         raise ValueError("part not found in selected analysis")
     alerts = _derive_monitoring_alerts(report, workspace_id=workspace_id, part_number=part)
     report_id = str(report["id"])
-    durable = monitoring_store.persist_alerts(workspace_id, alerts) if alerts else []
-    scoped = [a for a in durable if str(a.get("analysis_id") or "").strip() == report_id]
-    if part:
-        scoped = [a for a in scoped if str(a.get("part_number") or "").casefold() == part.casefold()]
+    scoped = monitoring_store.reconcile_alerts(
+        workspace_id,
+        analysis_id=report_id,
+        active_alerts=alerts,
+        part_number=part,
+    )
     scope = "part" if part else "analysis"
     refresh = monitoring_store.record_refresh(
         workspace_id,
@@ -554,6 +559,7 @@ def monitoring_refresh_payload(
             "alerts": scoped,
             "refresh": refresh,
             "live_supplier_refresh": False,
+            "email_sent": False,
         }
     )
 

@@ -7,6 +7,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from apps.api.main import app
+from apps.api import monitoring_store
 from apps.api.sandbox_auth import reset_auth_store_for_tests
 from apps.api.workspace_store import WorkspaceAccessError, reset_store_for_tests
 from tests.fixtures.sandbox_auth_accounts import SANDBOX_ACCOUNTS, SANDBOX_SEED_USERS
@@ -51,6 +52,7 @@ def isolated_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
     monkeypatch.delenv("CADIVOR_FORCE_PRODUCTION_AUTH", raising=False)
     reset_store_for_tests(store_path)
     reset_auth_store_for_tests(auth_path, accounts=SANDBOX_SEED_USERS)
+    monitoring_store.reset_monitoring_store_for_tests()
     from apps.api import workspace_store as ws
     from apps.api import synthetic_analyze as sa
 

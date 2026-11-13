@@ -268,5 +268,131 @@ def test_scheduler_refresh_with_email_disabled_never_sends(
     assert result["persisted"] is True
     assert result["email_delivery_enabled"] is False
     assert result["notifications"] == []
+    assert result["email_sent"] is False
     assert calls == []
     assert result["live_supplier_refresh"] is False
+
+
+def test_refresh_never_sends_email_even_when_delivery_enabled(
+    saved_report, monkeypatch: pytest.MonkeyPatch
+):
+    monitoring_store.update_preferences(WS, {"email_alerts": True})
+    monkeypatch.setenv("CADIVOR_MONITORING_EMAIL_ENABLED", "1")
+    calls = _forbid_email(monkeypatch)
+
+    result = monitoring_scheduler.run_workspace_refresh(WS, analysis_id="an-1")
+
+    assert result["persisted"] is True
+    assert result["email_delivery_enabled"] is True
+    assert result["notifications"] == []
+    assert result["email_sent"] is False
+    assert calls == []
+    assert "never sends email" in str(result.get("gap") or "").lower() or "Notify" in str(
+        result.get("gap") or ""
+    )
+
+
+def test_dry_run_part_scope_counts_only_requested_part(saved_report, monkeypatch):
+    _forbid_email(monkeypatch)
+    _forbid_writes(monkeypatch)
+    result = monitoring_scheduler.run_workspace_refresh(
+        WS, analysis_id="an-1", part_number="AAA111", dry_run=True
+    )
+    assert result["scope"] == "part"
+    assert result["part_number"] == "AAA111"
+    assert result["alert_count"] == 1
+    assert {a["part_number"] for a in result["alerts"]} == {"AAA111"}
+    assert result["email_sent"] is False
+
+
+def test_refresh_reconciles_stale_alerts_off_active_view(saved_report):
+    first = migration_tools.monitoring_refresh_payload(workspace_id=WS, analysis_id="an-1")
+    assert len(first["alerts"]) == 3
+    # Persist a synthetic alert that no longer derives from the analysis.
+    monitoring_store.persist_alerts(
+        WS,
+        [
+            {
+                "id": "stale-1",
+                "analysis_id": "an-1",
+                "part_number": "ZZZ999",
+                "alert_type": "Risk Signal",
+                "severity": "High",
+                "message": "stale",
+                "active": True,
+            }
+        ],
+    )
+    before = monitoring_store.list_alerts(WS, analysis_id="an-1")
+    assert any(a.get("part_number") == "ZZZ999" for a in before)
+
+    refreshed = migration_tools.monitoring_refresh_payload(
+        workspace_id=WS, analysis_id="an-1"
+    )
+    assert all(a.get("part_number") != "ZZZ999" for a in refreshed["alerts"])
+    stored = monitoring_store.list_alerts(WS, analysis_id="an-1")
+    stale = next(a for a in stored if a.get("part_number") == "ZZZ999")
+    assert stale.get("active") is False
+    assert str(stale.get("status") or "").lower() == "inactive"
+
+    view = migration_tools.monitoring_payload(workspace_id=WS, analysis_id="an-1")
+    assert all(a.get("part_number") != "ZZZ999" for a in view["alerts"])
+    assert all(a.get("active") is not False for a in view["alerts"])
+
+
+def test_notify_requires_explicit_alert_id_and_skips_inactive():
+    client = TestClient(app)
+    login = client.post(
+        "/auth/login", json={"email": SMOKE_EMAIL, "password": SMOKE_PASSWORD}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    workspace_id = login.json()["workspace_id"]
+    alerts = monitoring_store.persist_alerts(
+        workspace_id,
+        [
+            {
+                "id": "alert-active-1",
+                "analysis_id": "an-1",
+                "part_number": "AAA111",
+                "alert_type": "Risk Signal",
+                "severity": "High",
+                "message": "active",
+                "active": True,
+            }
+        ],
+    )
+    alert_id = alerts[0]["id"]
+
+    missing = client.post("/tools/monitoring/notify", headers=headers, json={})
+    assert missing.status_code == 400
+    assert "alert_id" in missing.json()["detail"].lower()
+
+    ok = client.post(
+        "/tools/monitoring/notify",
+        headers=headers,
+        json={"alert_id": alert_id},
+    )
+    assert ok.status_code == 200, ok.text
+    assert ok.json().get("explicit_notify") is True
+
+    monitoring_store.persist_alerts(
+        workspace_id,
+        [
+            {
+                "id": alert_id,
+                "analysis_id": "an-1",
+                "part_number": "AAA111",
+                "alert_type": "Risk Signal",
+                "severity": "High",
+                "message": "inactive now",
+                "active": False,
+                "status": "inactive",
+            }
+        ],
+    )
+    inactive = client.post(
+        "/tools/monitoring/notify",
+        headers=headers,
+        json={"alert_id": alert_id},
+    )
+    assert inactive.status_code == 409

@@ -692,14 +692,31 @@ export async function askDatasheet(
   token: string,
   file: File,
   question: string,
+  identity?: { mpn?: string | null; manufacturer?: string | null },
 ) {
   const body = new FormData();
   body.append("file", file);
   body.append("question", question);
+  const mpn = String(identity?.mpn || "").trim();
+  const manufacturer = String(identity?.manufacturer || "").trim();
+  if (mpn) body.append("mpn", mpn);
+  if (manufacturer) body.append("manufacturer", manufacturer);
   return apiJson<Record<string, unknown>>("/tools/datasheet-qa", {
     method: "POST",
     token,
     body,
+  });
+}
+
+/** Explicit monitoring email action — never implied by refresh or page GET. */
+export async function notifyMonitoringAlert(
+  token: string,
+  alertId: string,
+) {
+  return apiJson<Record<string, unknown>>("/tools/monitoring/notify", {
+    token,
+    method: "POST",
+    body: JSON.stringify({ alert_id: alertId }),
   });
 }
 
