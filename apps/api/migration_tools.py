@@ -23,6 +23,7 @@ from src.datasheet_qa import (
     extract_uploaded_datasheet,
     suggest_datasheet_follow_ups,
 )
+from src.datasheet_comparison import verify_datasheet_identity
 from src.design_impact_analyzer import build_design_impact
 from apps.api.evidence_contract import (
     annotate_report_parts,
@@ -180,38 +181,49 @@ def _monitoring_evidence_phrase(evidence_source: str) -> str:
     return "saved analysis"
 
 
-def monitoring_payload(
-    *, workspace_id: str, analysis_id: str | None = None
-) -> dict[str, Any]:
-    report = _require_analysis(analysis_id, workspace_id=workspace_id)
-    if not report:
-        return {
-            "ok": True,
-            "mode": "synthetic-preview",
-            "gap": "No analyzed BOM yet. Run BOM Analyzer first. This view needs saved analysis data.",
-            "metrics": {
-                "monitored_parts": 0,
-                "active_alerts": 0,
-                "high_priority": 0,
-                "lifecycle_changes": 0,
-            },
-            "alerts": [],
-            "action_center": {},
-        }
+MONITORING_STALE_AFTER_HOURS = 24
 
+
+def _parse_iso(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _part_mpn(part: dict[str, Any]) -> str:
+    return str(part.get("MPN") or part.get("mpn") or "").strip()
+
+
+def _derive_monitoring_alerts(
+    report: dict[str, Any],
+    *,
+    workspace_id: str,
+    part_number: str | None = None,
+) -> list[dict[str, Any]]:
+    """Pure derivation of alert rows from a saved analysis (no store access)."""
     alerts: list[dict[str, Any]] = []
     now = datetime.now(timezone.utc).isoformat()
-    report_mode = str(report.get("mode") or "synthetic-preview")
+    wanted = str(part_number or "").strip().casefold()
     for part in report.get("parts") or []:
         if not isinstance(part, dict):
             continue
-        mpn = str(part.get("MPN") or part.get("mpn") or "")
+        mpn = _part_mpn(part)
         if not mpn:
+            continue
+        if wanted and mpn.casefold() != wanted:
             continue
         lifecycle = str(part.get("Lifecycle") or part.get("lifecycle_status") or "")
         risk = str(part.get("Risk Level") or part.get("risk_level") or "")
         evidence_source = _monitoring_evidence_source(part, report)
         evidence_phrase = _monitoring_evidence_phrase(evidence_source)
+        reasons = part.get("Risk Reasons") or part.get("risk_reasons") or "see report"
         if lifecycle.upper() == "NRND":
             alerts.append(
                 {
@@ -230,7 +242,8 @@ def monitoring_payload(
                     "evidence_source": evidence_source,
                 }
             )
-        if risk.lower() == "high":
+        if risk.lower() in {"high", "medium"}:
+            level = "High" if risk.lower() == "high" else "Medium"
             alerts.append(
                 {
                     **build_alert_record(
@@ -238,8 +251,8 @@ def monitoring_payload(
                         report["id"],
                         mpn,
                         "Risk Signal",
-                        f"High risk in latest analysis: {part.get('Risk Reasons') or part.get('risk_reasons') or 'see report'}",
-                        "High",
+                        f"{level} risk in latest analysis: {reasons}",
+                        level,
                         "—",
                         risk,
                     ),
@@ -248,40 +261,148 @@ def monitoring_payload(
                     "evidence_source": evidence_source,
                 }
             )
-        elif risk.lower() == "medium":
-            alerts.append(
-                {
-                    **build_alert_record(
-                        "smoke-user",
-                        report["id"],
-                        mpn,
-                        "Risk Signal",
-                        f"Medium risk in latest analysis: {part.get('Risk Reasons') or part.get('risk_reasons') or 'see report'}",
-                        "Medium",
-                        "—",
-                        risk,
-                    ),
-                    "created_at": now,
-                    "acknowledged": False,
-                    "evidence_source": evidence_source,
-                }
-            )
-
     for alert in alerts:
         alert["analysis_id"] = report["id"]
         alert["workspace_id"] = workspace_id
-        # Preserve the per-part provenance already attached above.
-        alert["evidence_source"] = alert.get("evidence_source") or _monitoring_evidence_source(
-            {}, report
-        )
+    return alerts
 
-    durable = monitoring_store.persist_alerts(workspace_id, alerts)
-    # Hard scope: only alerts for this analysis_id feed KPIs / action center / UI.
-    scoped = [
-        alert
-        for alert in durable
-        if str(alert.get("analysis_id") or "").strip() == str(report["id"]).strip()
+
+def _alert_key(alert: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(alert.get("analysis_id") or "").strip(),
+        str(alert.get("part_number") or "").strip().casefold(),
+        str(alert.get("alert_type") or "").strip(),
+    )
+
+
+def _part_data_status(part: dict[str, Any]) -> dict[str, Any]:
+    """Per-part freshness / provider-failure view from saved analysis only."""
+    health = part.get("provider_health") if isinstance(part.get("provider_health"), dict) else {}
+    failed_sources = [str(s) for s in (health.get("failed_sources") or []) if str(s).strip()]
+    verified_flag = part.get("supplier_data_verified")
+    if verified_flag is None:
+        raw = str(part.get("Supplier Data Verified") or "").strip().casefold()
+        verified_flag = True if raw in {"1", "true", "yes", "verified"} else (
+            False if raw in {"0", "false", "no", "unverified"} else None
+        )
+    has_verified = health.get("has_verified_data")
+    provider_failure = bool(failed_sources) or (
+        has_verified is False or (has_verified is None and verified_flag is False)
+    )
+    if provider_failure:
+        message = str(
+            health.get("summary_message")
+            or "Supplier data could not be verified during this analysis."
+        )
+    elif verified_flag is True or has_verified is True:
+        message = ""
+    else:
+        message = "No live supplier verification is recorded for this part."
+    return {
+        "part_number": _part_mpn(part),
+        "provider_failure": provider_failure,
+        "failed_sources": failed_sources,
+        "data_verified": bool(verified_flag is True or has_verified is True) and not failed_sources,
+        "data_message": message,
+        "last_checked": str(
+            part.get("Last Checked")
+            or part.get("last_checked")
+            or part.get("retrieved_at")
+            or ""
+        ),
+    }
+
+
+def _monitoring_freshness(
+    report: dict[str, Any], refresh_history: list[dict[str, Any]]
+) -> dict[str, Any]:
+    analysis_id = str(report.get("id") or "")
+    latest = next(
+        (
+            row
+            for row in refresh_history
+            if str(row.get("analysis_id") or "") in {analysis_id, ""}
+            or str(row.get("scope") or "") == "portfolio"
+        ),
+        None,
+    )
+    last_refresh_at = str((latest or {}).get("ran_at") or "")
+    refreshed = _parse_iso(last_refresh_at)
+    saved = _parse_iso(report.get("created_at"))
+    now = datetime.now(timezone.utc)
+    if refreshed is None:
+        stale, reason = True, "never_refreshed"
+    elif (now - refreshed).total_seconds() > MONITORING_STALE_AFTER_HOURS * 3600:
+        stale, reason = True, "refresh_older_than_threshold"
+    elif saved is not None and saved > refreshed:
+        stale, reason = True, "analysis_newer_than_refresh"
+    else:
+        stale, reason = False, "fresh"
+    return {
+        "last_refresh_at": last_refresh_at or None,
+        "never_refreshed": refreshed is None,
+        "stale": stale,
+        "stale_reason": reason,
+        "stale_after_hours": MONITORING_STALE_AFTER_HOURS,
+        "analysis_saved_at": report.get("created_at"),
+        "live_supplier_refresh": False,
+    }
+
+
+def _empty_monitoring_payload() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "mode": "synthetic-preview",
+        "gap": "No analyzed BOM yet. Run BOM Analyzer first. This view needs saved analysis data.",
+        "metrics": {
+            "monitored_parts": 0,
+            "active_alerts": 0,
+            "high_priority": 0,
+            "lifecycle_changes": 0,
+        },
+        "alerts": [],
+        "action_center": {},
+    }
+
+
+def monitoring_payload(
+    *, workspace_id: str, analysis_id: str | None = None
+) -> dict[str, Any]:
+    """READ-ONLY monitoring view.
+
+    Loads persisted alerts / refresh history and derives the view from the saved
+    analysis in memory. Never calls ``persist_alerts`` or ``record_refresh`` —
+    use :func:`monitoring_refresh_payload` for an explicit refresh.
+    """
+    report = _require_analysis(analysis_id, workspace_id=workspace_id)
+    if not report:
+        return _empty_monitoring_payload()
+
+    report_mode = str(report.get("mode") or "synthetic-preview")
+    report_id = str(report["id"])
+    derived = _derive_monitoring_alerts(report, workspace_id=workspace_id)
+    persisted = [
+        a
+        for a in monitoring_store.list_alerts(workspace_id, analysis_id=report_id)
+        if str(a.get("analysis_id") or "").strip() == report_id
+        and a.get("active") is not False
+        and str(a.get("status") or "active").lower() != "inactive"
     ]
+    persisted_by_key = {_alert_key(a): a for a in persisted}
+    scoped: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for alert in derived:
+        key = _alert_key(alert)
+        seen.add(key)
+        saved = persisted_by_key.get(key)
+        if saved:
+            scoped.append({**alert, **saved, "persisted": True, "active": True})
+        else:
+            scoped.append({**alert, "persisted": False, "active": True})
+    # Stale persisted alerts that no longer derive from the analysis are not
+    # shown as active. They remain in storage as inactive until the next refresh
+    # reconciles them.
+
     alert_df = pd.DataFrame(scoped)
     monitor_df = pd.DataFrame(
         [
@@ -300,34 +421,145 @@ def monitoring_payload(
     lifecycle_n = sum(
         1 for a in scoped if "lifecycle" in str(a.get("alert_type") or "").lower()
     )
-    refresh = monitoring_store.record_refresh(
-        workspace_id,
-        analysis_id=report["id"],
-        alert_count=len(scoped),
-        mode=report_mode,
-    )
+    history = monitoring_store.list_refresh_history(workspace_id)
+    scoped_history = [
+        row
+        for row in history
+        if str(row.get("analysis_id") or "") in {report_id, ""}
+        or str(row.get("scope") or "") == "portfolio"
+    ]
+    freshness = _monitoring_freshness(report, scoped_history)
+    part_status = [
+        _part_data_status(p) for p in report.get("parts") or [] if isinstance(p, dict) and _part_mpn(p)
+    ]
     prefs = monitoring_store.get_preferences(workspace_id)
     return _json_safe(
         {
             "ok": True,
+            "read_only": True,
             "mode": report_mode,
-            "analysis_id": report["id"],
+            "analysis_id": report_id,
             "filename": report.get("filename"),
             "gap": (
-                "Monitoring persists tenant-scoped alert history from saved analysis. "
-                "Scheduled supplier refresh and real alert email remain disabled."
+                "Monitoring is read-only on this view: it shows current signals from the saved "
+                "analysis and active persisted alerts. Use Refresh to re-derive and save alerts "
+                "(refresh never sends email). Email requires the separate Notify action when "
+                "delivery is enabled. Scheduled supplier refresh remains disabled."
             ),
             "metrics": {
                 "monitored_parts": report.get("total_parts") or 0,
                 "active_alerts": len(scoped),
                 "high_priority": high,
                 "lifecycle_changes": lifecycle_n,
+                "provider_failures": sum(1 for s in part_status if s["provider_failure"]),
+                "unpersisted_alerts": sum(1 for a in scoped if not a.get("persisted")),
             },
             "alerts": scoped,
             "action_center": action_center,
             "preferences": prefs,
+            "freshness": freshness,
+            "refresh": scoped_history[0] if scoped_history else None,
+            "refresh_history": scoped_history[:10],
+            "part_status": part_status,
+        }
+    )
+
+
+def monitoring_refresh_payload(
+    *,
+    workspace_id: str,
+    analysis_id: str | None = None,
+    part_number: str | None = None,
+    portfolio: bool = False,
+) -> dict[str, Any]:
+    """EXPLICIT refresh: re-derive alerts from saved analysis, persist, record.
+
+    Scope is always labeled in the response:
+    - ``part``: one MPN within ``analysis_id``
+    - ``analysis``: all parts in ``analysis_id``
+    - ``portfolio``: every saved analysis in the workspace (only when
+      ``portfolio=True``; never inferred from a missing ``analysis_id``)
+    Does not call live suppliers and does not send email.
+    """
+    if portfolio:
+        if analysis_id or part_number:
+            raise ValueError("portfolio refresh cannot be combined with analysis_id/part_number")
+        summaries = list_reports(workspace_id=workspace_id)
+        reports = [
+            r
+            for r in (
+                get_report(str(s.get("id") or s.get("analysis_id")), workspace_id=workspace_id)
+                for s in summaries
+            )
+            if r
+        ]
+        alerts: list[dict[str, Any]] = []
+        for report in reports:
+            alerts.extend(_derive_monitoring_alerts(report, workspace_id=workspace_id))
+        durable = monitoring_store.persist_alerts(workspace_id, alerts) if alerts else []
+        refresh = monitoring_store.record_refresh(
+            workspace_id,
+            analysis_id=None,
+            alert_count=len(durable),
+            mode="portfolio",
+            scope="portfolio",
+        )
+        return _json_safe(
+            {
+                "ok": True,
+                "scope": "portfolio",
+                "scope_label": f"Portfolio-wide refresh across {len(reports)} saved analyses",
+                "analysis_ids": [str(r["id"]) for r in reports],
+                "alert_count": len(durable),
+                "alerts": durable,
+                "refresh": refresh,
+                "live_supplier_refresh": False,
+            }
+        )
+
+    if not str(analysis_id or "").strip():
+        raise ValueError("analysis_id is required (or request an explicit portfolio refresh)")
+    report = _require_analysis(analysis_id, workspace_id=workspace_id)
+    if not report:
+        raise ValueError("analysis not found")
+    part = str(part_number or "").strip() or None
+    if part and not any(
+        _part_mpn(p).casefold() == part.casefold()
+        for p in report.get("parts") or []
+        if isinstance(p, dict)
+    ):
+        raise ValueError("part not found in selected analysis")
+    alerts = _derive_monitoring_alerts(report, workspace_id=workspace_id, part_number=part)
+    report_id = str(report["id"])
+    scoped = monitoring_store.reconcile_alerts(
+        workspace_id,
+        analysis_id=report_id,
+        active_alerts=alerts,
+        part_number=part,
+    )
+    scope = "part" if part else "analysis"
+    refresh = monitoring_store.record_refresh(
+        workspace_id,
+        analysis_id=report_id,
+        alert_count=len(scoped),
+        mode=str(report.get("mode") or "synthetic-preview"),
+        scope=scope,
+        part_number=part,
+    )
+    return _json_safe(
+        {
+            "ok": True,
+            "scope": scope,
+            "scope_label": (
+                f"Part {part} in analysis {report_id}" if part else f"Analysis {report_id}"
+            ),
+            "analysis_id": report_id,
+            "part_number": part,
+            "alert_count": len(scoped),
+            "alerts": scoped,
             "refresh": refresh,
-            "refresh_history": monitoring_store.list_refresh_history(workspace_id)[:10],
+            "live_supplier_refresh": False,
+            "email_sent": False,
         }
     )
 
@@ -1329,8 +1561,22 @@ def datasheet_qa_payload(
     filename: str,
     payload: bytes,
     question: str,
+    requested_mpn: str = "",
+    manufacturer: str = "",
 ) -> dict[str, Any]:
     document = extract_uploaded_datasheet(payload, filename=filename or "datasheet.pdf")
+    mpn = str(requested_mpn or "").strip()
+    mfr = str(manufacturer or "").strip()
+    identity: dict[str, Any] | None = None
+    if mpn and document.get("available"):
+        # Bind the PDF to the selected part only when its text names the exact
+        # MPN. An unverified PDF keeps the requested MPN on the document so the
+        # answer layer abstains with "Needs verification." rather than citing it.
+        identity = verify_datasheet_identity(document, manufacturer=mfr, mpn=mpn)
+        document["requested_mpn"] = mpn
+        document["identity"] = identity
+        if mfr:
+            document["manufacturer"] = mfr
     # Prefer local grounded answers; do not require cloud AI credentials.
     result = answer_datasheet_question(document, question, ai_client=None, history=None)
     follow_ups: list[str] = []
@@ -1348,8 +1594,14 @@ def datasheet_qa_payload(
                 "filename": filename,
                 "page_count": document.get("page_count") or document.get("pages"),
                 "reason": document.get("reason") or "",
+                "requested_mpn": mpn or None,
+                "manufacturer": mfr or None,
+                "bound": bool(identity and identity.get("mpn_verified")),
+                "identity": identity,
             },
             "question": question,
+            "answer_kind": result.get("answer_kind") or "",
+            "source_document": result.get("source_document") or {},
             "answer": result.get("answer") or "",
             "error": result.get("error") or "",
             "citations": result.get("citations") or [],

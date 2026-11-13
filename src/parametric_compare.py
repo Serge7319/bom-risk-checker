@@ -186,6 +186,9 @@ def parse_numeric_with_unit(text: object, *, preferred_unit: str = "") -> tuple[
         return number * 1e-3, "Ohm"
     if unit_key in {"mm"}:
         return number * 1e-3, "m"
+    if unit_key in {"in", "inch", "inches"}:
+        # Preserve the real length: 0.1 in is 2.54 mm, not 0.1 m.
+        return number * 0.0254, "m"
     if preferred_key == "ohm" and not unit_token and prefix.lower() == "k":
         return number * 1e3, "Ohm"
     if preferred_key == "ohm" and not unit_token and prefix.lower() == "m":
@@ -306,6 +309,39 @@ def _looks_like_single_supply_span(value: object) -> bool:
     )
 
 
+_ABSOLUTE_MAX_RE = re.compile(
+    r"\babs(?:olute)?\.?\s*-?\s*max(?:imum)?(?:\s+rating)?s?\b|\bmaximum\s+ratings?\b",
+    re.IGNORECASE,
+)
+_OPERATING_RE = re.compile(
+    r"\b(?:recommended\s+)?operating\b|\brecommended\s+(?:supply|conditions?)\b",
+    re.IGNORECASE,
+)
+
+
+def classify_rating_context(text: object) -> str:
+    """Return ``absolute_max``, ``operating``, or ``unspecified`` for a rating string.
+
+    Absolute-maximum ratings are stress limits, not operating conditions, so the
+    two must never be compared as the same property.
+    """
+    raw = str(text or "")
+    if _ABSOLUTE_MAX_RE.search(raw):
+        return "absolute_max"
+    if _OPERATING_RE.search(raw):
+        return "operating"
+    return "unspecified"
+
+
+def rating_context_conflict(original_text: object, candidate_text: object) -> bool:
+    """True when one side is an absolute-maximum rating and the other is not."""
+    original_context = classify_rating_context(original_text)
+    candidate_context = classify_rating_context(candidate_text)
+    if original_context == candidate_context:
+        return False
+    return "absolute_max" in {original_context, candidate_context}
+
+
 def compare_field_values(
     original_value: object,
     candidate_value: object,
@@ -318,6 +354,16 @@ def compare_field_values(
         return (
             "Needs data",
             "One or both values were not available from the retrieved evidence.",
+        )
+
+    if rating_context_conflict(original_text, candidate_text):
+        return (
+            "Needs data",
+            (
+                "One value is an absolute-maximum rating and the other is not, so they "
+                "are different properties and cannot be compared. Confirm the matching "
+                "datasheet rating (operating vs absolute maximum) for both parts."
+            ),
         )
 
     if getattr(spec, "key", "") == "voltage_range" or str(
@@ -490,6 +536,10 @@ def compare_field_values(
             allowed = si_aliases.get(o_unit, {o_unit})
             if c_unit not in allowed:
                 return "Needs data", "Units are incomparable for this family attribute."
+        if o_unit and c_unit and o_unit != c_unit:
+            # Different physical units (for example V vs A) are never the same
+            # property, even when one side happens to equal the field's unit.
+            return "Needs data", "Units are incomparable for this family attribute."
 
         denom = max(abs(o_num), abs(c_num), 1e-30)
         equal = abs(o_num - c_num) / denom <= 0.02

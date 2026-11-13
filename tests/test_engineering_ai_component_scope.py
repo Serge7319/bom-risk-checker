@@ -144,6 +144,70 @@ class EngineeringAIComponentScopeTests(unittest.TestCase):
         self.assertIn("package evidence", response.answer)
         provider_request.assert_called_once()
 
+    def _unconfigured_client(self, ai):
+        return ai.EngineeringAI(api_key="", model="synthetic-test", base_url="https://example.invalid/v1")
+
+    def _lm358_bom_context(self):
+        return {
+            "analysis": {"project_name": "TEST - Synthetic QA BOM"},
+            "components": [
+                {"part_number": "LM358DR", "mpn": "LM358DR", "risk_score": 40, "risk_level": "Medium"},
+                {"part_number": "UNRELATED-999", "risk_score": 98, "risk_level": "High",
+                 "risk_reasons": "Unrelated synthetic lifecycle evidence."},
+            ],
+            "coverage": {"score": 80},
+        }
+
+    def test_lm358dr_operating_supply_is_not_bom_priority_prose(self):
+        ai = _load_engineering_ai()
+        client = self._unconfigured_client(ai)
+        for question in (
+            "What is the operating supply voltage for LM358DR?",
+            "What is the recommended operating supply voltage for LM358DR?",
+            "What VCC does LM358DR need?",
+        ):
+            with self.subTest(question=question):
+                response = client.ask(question=question, context=self._lm358_bom_context())
+                answer = response.answer
+                self.assertIn("LM358DR", answer)
+                self.assertIn("Datasheet Q&A", answer)
+                for banned in (
+                    "UNRELATED-999", "priority", "Priority", "ranked", "Ranking",
+                    "Direct answer", "Confidence", "Follow-up Questions",
+                ):
+                    self.assertNotIn(banned, answer)
+
+    def test_part_electrical_answer_uses_scoped_bom_facts_when_present(self):
+        ai = _load_engineering_ai()
+        context = self._lm358_bom_context()
+        context["components"][0]["operating_voltage"] = "3 V to 32 V (saved record)"
+        answer = ai._fallback_answer(
+            "What is the operating supply voltage for LM358DR?", context
+        )
+        self.assertIn("3 V to 32 V (saved record)", answer)
+        self.assertIn("not from a page-cited datasheet", answer)
+        self.assertNotIn("UNRELATED-999", answer)
+
+    def test_mpn_not_in_bom_still_redirects_to_datasheet_qa(self):
+        ai = _load_engineering_ai()
+        answer = ai._fallback_answer(
+            "What is the VDD range of TPS5430?", {"components": [], "analysis": {}}
+        )
+        self.assertIn("TPS5430", answer)
+        self.assertIn("Datasheet Q&A", answer)
+        self.assertNotIn("ranked", answer.casefold())
+
+    def test_true_priority_question_keeps_bom_priority_routing(self):
+        ai = _load_engineering_ai()
+        context = self._lm358_bom_context()
+        answer = ai._fallback_answer("Why is LM358DR ranked first?", context)
+        self.assertNotEqual(answer, ai._part_electrical_answer("LM358DR", None))
+        self.assertNotIn("Open **Datasheet Q&A**", answer)
+        electrical_priority = ai._fallback_answer(
+            "Is the LM358DR supply voltage a priority risk?", context
+        )
+        self.assertNotIn("Open **Datasheet Q&A**", electrical_priority)
+
 
 if __name__ == "__main__":
     unittest.main()

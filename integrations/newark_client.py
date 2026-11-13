@@ -69,9 +69,188 @@ def search_newark_by_part_number(part_number: str) -> dict:
         if matched_part_number is not None:
             normalized_product = normalize_newark_product(product)
             normalized_product["manufacturer_part_number"] = matched_part_number
+            normalized_product["requested_part_number"] = requested_part_number
+            normalized_product["retrieved_at"] = _utc_now_iso()
             return normalized_product
 
     return default_newark_result(requested_part_number)
+
+
+def _utc_now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+# Newark order codes (``sku``) are short alphanumeric identifiers such as
+# ``58K1234`` or ``NEW1234``.  Anything outside this shape is not trusted as an
+# identity hint. SKU alone is never turned into a fabricated product URL.
+_NEWARK_SKU_RE = re.compile(r"^[A-Z0-9]{5,12}$")
+_OFFICIAL_NEWARK_HOSTS = frozenset({"www.newark.com", "newark.com"})
+LISTING_PROVENANCE_PROVIDER_URL = "provider_product_url"
+LISTING_PROVENANCE_SKU_LOOKUP = "provider_sku_lookup"
+LISTING_PROVENANCE_UNAVAILABLE = "provenance_unavailable"
+
+
+def _official_newark_https_url(url: object) -> str:
+    """Return the URL only when it is HTTPS on an official Newark host."""
+    text = str(url or "").strip()
+    if not text.lower().startswith("https://"):
+        return ""
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(text)
+    except Exception:
+        return ""
+    host = str(parsed.hostname or "").strip().lower()
+    if host not in _OFFICIAL_NEWARK_HOSTS:
+        return ""
+    return text
+
+
+def lookup_newark_official_listing_url(
+    *,
+    sku: str,
+    expected_mpn: str = "",
+    expected_manufacturer: str = "",
+    session: object | None = None,
+) -> dict:
+    """Documented Element14 catalog lookup by Newark order code (``id:<sku>``).
+
+    Returns an official HTTPS ``www.newark.com`` ``productUrl`` only when the
+    provider response verifies the SKU and, when supplied, the exact MPN /
+    manufacturer. Never fabricates a listing path from the SKU alone.
+    """
+    order_code = str(sku or "").strip().upper()
+    if not order_code or not _NEWARK_SKU_RE.fullmatch(order_code):
+        return {
+            "product_detail_url": "",
+            "listing_verified": False,
+            "listing_url_provenance": LISTING_PROVENANCE_UNAVAILABLE,
+            "provenance_unavailable": True,
+            "supplier_sku": "",
+        }
+    api_key = get_secret("NEWARK_API_KEY", required=True)
+    params = {
+        "callInfo.apiKey": api_key,
+        "callInfo.responseDataFormat": "json",
+        "storeInfo.id": NEWARK_STORE_ID,
+        "resultsSettings.offset": 0,
+        "resultsSettings.numberOfResults": 5,
+        "resultsSettings.responseGroup": "large",
+        "term": f"id:{order_code}",
+    }
+    http = session or requests
+    response = http.get(
+        "https://api.element14.com/catalog/products",
+        params=params,
+        timeout=15,
+    )
+    response.raise_for_status()
+    data = response.json()
+    products = data.get("manufacturerPartNumberSearchReturn", {}).get("products", [])
+    if not products:
+        products = data.get("keywordSearchReturn", {}).get("products", [])
+    expected_mpn_n = normalize_part_number(expected_mpn) if expected_mpn else ""
+    expected_mfr_n = str(expected_manufacturer or "").strip().casefold()
+    for product in products if isinstance(products, list) else []:
+        if not isinstance(product, dict):
+            continue
+        product_sku = str(product.get("sku") or "").strip().upper()
+        if product_sku and product_sku != order_code:
+            continue
+        candidate_mpn = str(
+            product.get("translatedManufacturerPartNumber")
+            or product.get("manufacturerPartNumber")
+            or ""
+        ).strip()
+        if expected_mpn_n and normalize_part_number(candidate_mpn) != expected_mpn_n:
+            continue
+        candidate_mfr = str(product.get("brandName") or "").strip()
+        if expected_mfr_n and candidate_mfr.casefold() != expected_mfr_n:
+            continue
+        official = _official_newark_https_url(product.get("productUrl"))
+        if not official:
+            continue
+        return {
+            "product_detail_url": official,
+            "listing_verified": True,
+            "listing_url_provenance": LISTING_PROVENANCE_SKU_LOOKUP,
+            "provenance_unavailable": False,
+            "supplier_sku": order_code,
+        }
+    return {
+        "product_detail_url": "",
+        "listing_verified": False,
+        "listing_url_provenance": LISTING_PROVENANCE_UNAVAILABLE,
+        "provenance_unavailable": True,
+        "supplier_sku": order_code,
+    }
+
+
+def resolve_newark_listing(
+    product: dict,
+    *,
+    allow_sku_lookup: bool = True,
+    lookup: object | None = None,
+) -> dict:
+    """Return ``product_detail_url`` plus provenance without inventing URLs.
+
+    - Official HTTPS ``productUrl`` on ``www.newark.com`` → verified listing.
+    - Arbitrary http(s) hosts are never marked verified.
+    - When ``productUrl`` is missing, optionally perform the documented Element14
+      ``id:<sku>`` lookup and accept only a verified official HTTPS URL that
+      matches the payload MPN/manufacturer/SKU.
+    - Otherwise leave the URL empty and mark ``provenance_unavailable``.
+    """
+    product = product if isinstance(product, dict) else {}
+    provider_url = _official_newark_https_url(product.get("productUrl"))
+    sku = str(product.get("sku") or "").strip().upper()
+    supplier_sku = sku if sku and _NEWARK_SKU_RE.fullmatch(sku) else ""
+    if provider_url:
+        return {
+            "product_detail_url": provider_url,
+            "listing_verified": True,
+            "listing_url_provenance": LISTING_PROVENANCE_PROVIDER_URL,
+            "provenance_unavailable": False,
+            "supplier_sku": supplier_sku,
+        }
+    if allow_sku_lookup and supplier_sku:
+        expected_mpn = str(
+            product.get("translatedManufacturerPartNumber")
+            or product.get("manufacturerPartNumber")
+            or product.get("requested_part_number")
+            or ""
+        ).strip()
+        expected_mfr = str(product.get("brandName") or product.get("manufacturer") or "").strip()
+        try:
+            lookup_fn = lookup or lookup_newark_official_listing_url
+            resolved = lookup_fn(
+                sku=supplier_sku,
+                expected_mpn=expected_mpn,
+                expected_manufacturer=expected_mfr,
+            )
+            if isinstance(resolved, dict) and resolved.get("listing_verified"):
+                return {
+                    "product_detail_url": str(resolved.get("product_detail_url") or ""),
+                    "listing_verified": True,
+                    "listing_url_provenance": str(
+                        resolved.get("listing_url_provenance") or LISTING_PROVENANCE_SKU_LOOKUP
+                    ),
+                    "provenance_unavailable": False,
+                    "supplier_sku": supplier_sku,
+                }
+        except Exception:
+            # Lookup failures stay provenance-unavailable; never fabricate a URL.
+            pass
+    return {
+        "product_detail_url": "",
+        "listing_verified": False,
+        "listing_url_provenance": LISTING_PROVENANCE_UNAVAILABLE,
+        "provenance_unavailable": True,
+        "supplier_sku": supplier_sku,
+    }
 
 
 class NewarkCatalogResponseError(RuntimeError):
@@ -140,9 +319,7 @@ def search_newark_catalog_candidates(
     last_failure: BaseException | None = None
     failed_term = ""
     saw_successful_empty = False
-    from datetime import datetime, timezone
-
-    retrieved_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    retrieved_at = _utc_now_iso()
     for term in terms:
         # Keep credentials in the request params only — never interpolate into logs.
         params = {
@@ -328,7 +505,9 @@ def normalize_newark_product(product: dict) -> dict:
     gbw_mhz = extract_gbw_mhz_from_text(description)
 
     currency = NEWARK_STORE_CURRENCY.get(NEWARK_STORE_ID, "")
+    listing = resolve_newark_listing(product)
     return {
+        **listing,
         "lifecycle_status": infer_newark_lifecycle(product),
         "stock_total": stock_total,
         "supplier_count": 1,
@@ -346,7 +525,6 @@ def normalize_newark_product(product: dict) -> dict:
         "mouser_part_number": "",
         "manufacturer_part_number": product.get("translatedManufacturerPartNumber", "")
         or product.get("manufacturerPartNumber", ""),
-        "product_detail_url": product.get("productUrl", ""),
         "image_url": normalize_supplier_image_url(
             product.get("image") or product.get("imageUrl"),
             provider="Newark",
@@ -369,30 +547,42 @@ def normalize_newark_product(product: dict) -> dict:
     }
 
 
-def extract_newark_price(product: dict) -> float:
-    prices = product.get("prices", [])
+def extract_newark_price(product: dict) -> float | None:
+    """First price-break unit cost, or ``None`` when Newark did not supply one.
 
-    if not prices:
-        return 0.0
-
+    Missing / unparsable / non-positive values are never coerced to ``0.0``.
+    """
+    prices = product.get("prices") if isinstance(product, dict) else None
+    if not isinstance(prices, (list, tuple)) or not prices:
+        return None
+    first = prices[0]
+    if not isinstance(first, dict) or first.get("cost") in (None, ""):
+        return None
     try:
-        return price_number(prices[0].get("cost", 0)) or 0.0
+        value = price_number(first.get("cost"))
     except (ValueError, TypeError, AttributeError):
-        return 0.0
+        return None
+    if value is None or value <= 0:
+        return None
+    return float(value)
 
 
-def extract_newark_stock(product: dict) -> int:
-    stock = product.get("stock", {})
+def extract_newark_stock(product: dict) -> int | None:
+    """On-hand level, or ``None`` when Newark did not report stock.
 
-    if isinstance(stock, dict):
-        level = stock.get("level", 0)
-    else:
-        level = 0
-
+    An explicit reported ``0`` stays ``0``; absent / malformed is ``None``.
+    """
+    stock = product.get("stock") if isinstance(product, dict) else None
+    if not isinstance(stock, dict) or stock.get("level") in (None, ""):
+        return None
+    level = stock.get("level")
+    if isinstance(level, bool):
+        return None
     try:
-        return int(level)
+        parsed = int(float(str(level).replace(",", "").strip()))
     except (ValueError, TypeError):
-        return 0
+        return None
+    return parsed if parsed >= 0 else None
 
 
 def extract_newark_lead_time_weeks(product: dict):
@@ -510,10 +700,13 @@ def default_newark_result(part_number: str) -> dict:
         "source": "Newark",
         "searched_part_number": part_number,
         "lifecycle_status": "Unknown",
-        "stock_total": 0,
+        "stock_total": None,
         "supplier_count": 0,
         "lead_time_weeks": None,
-        "unit_price": 0.0,
+        "unit_price": None,
+        "listing_verified": False,
+        "listing_url_provenance": LISTING_PROVENANCE_UNAVAILABLE,
+        "provenance_unavailable": True,
         "has_alternates": False,
         "manufacturer": "",
         "description": "",

@@ -382,7 +382,7 @@ def _safe_supplier_lookup(
 
         # DigiKey brand constraint: reject a hit that does not match the
         # explicitly requested manufacturer (worker-thread safe).
-        if requested_mfr and str(source_name or "") == "DigiKey":
+        if requested_mfr and str(source_name or "") in {"DigiKey", "Newark"}:
             result_mfr = str(result.get("manufacturer") or "").strip()
             brand_ok = False
             try:
@@ -411,7 +411,7 @@ def _safe_supplier_lookup(
                     stage="lookup",
                     provider_status=PROVIDER_PART_NOT_FOUND,
                     error_message=(
-                        f"No DigiKey exact match for manufacturer {requested_mfr}"
+                        f"No {source_name} exact match for manufacturer {requested_mfr}"
                     ),
                 )
                 attach_supplier_diagnostic(result, diagnostic)
@@ -428,6 +428,12 @@ def _safe_supplier_lookup(
         result["provider_status"] = PROVIDER_AVAILABLE
         result.pop("error", None)
         result["stock_total"] = parse_stock_total(result.get("stock_total"))
+        # Missing price stays explicit via ``unit_price_known``; legacy numeric
+        # consumers keep 0.0 as a "no price" sentinel, never a real price.
+        raw_price = result.get("unit_price")
+        result["unit_price_known"] = isinstance(raw_price, (int, float)) and raw_price > 0
+        if raw_price is None:
+            result["unit_price"] = 0.0
         if not str(result.get("retrieved_at") or "").strip():
             result["retrieved_at"] = utc_now_iso()
         if started is not None:

@@ -7583,6 +7583,7 @@ def render_datasheet_live() -> None:
         MAX_DATASHEET_BYTES,
         MAX_DATASHEET_PAGES,
         extract_datasheet_text,
+        verify_datasheet_identity,
     )
     from src.pages.datasheet_qa import (
         _execute_datasheet_question,
@@ -7801,13 +7802,34 @@ def render_datasheet_live() -> None:
                                 "source_supplier": lookup_result["supplier"],
                                 "requested_mpn": requested_mpn,
                             }
-                            store_document_in_session(st.session_state, document)
-                            st.session_state.pop("approved_datasheet_source_page", None)
-                            lookup_result["loaded"] = True
-                            lookup_result["message"] = (
-                                f"Loaded a readable datasheet from {lookup_result['supplier']}. "
-                                "You can ask cited questions below."
+                            document_manufacturer = str(
+                                (evidence or {}).get("manufacturer") or ""
+                            ).strip()
+                            if document_manufacturer:
+                                document["manufacturer"] = document_manufacturer
+                            # Never treat a PDF as bound to the selected part
+                            # unless its text names the exact MPN.
+                            bind_identity = verify_datasheet_identity(
+                                document,
+                                manufacturer=document_manufacturer,
+                                mpn=requested_mpn,
                             )
+                            if bind_identity.get("mpn_verified"):
+                                document["identity"] = bind_identity
+                                store_document_in_session(st.session_state, document)
+                                st.session_state.pop("approved_datasheet_source_page", None)
+                                lookup_result["loaded"] = True
+                                lookup_result["message"] = (
+                                    f"Loaded a readable datasheet from {lookup_result['supplier']}. "
+                                    "You can ask cited questions below."
+                                )
+                            else:
+                                lookup_result["message"] = (
+                                    "The supplier datasheet was not bound to "
+                                    f"{requested_mpn}: "
+                                    f"{bind_identity.get('reason') or 'its text does not name this exact part.'} "
+                                    "Needs verification — upload the manufacturer datasheet instead."
+                                )
                         else:
                             lookup_result["message"] = (
                                 str(linked_pdf.get("reason") or "The supplier link did not return readable PDF text.")

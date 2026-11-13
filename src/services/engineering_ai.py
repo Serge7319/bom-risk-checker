@@ -1324,6 +1324,82 @@ def _s472_report(question: str, context: dict[str, Any], history=None) -> str:
     return _s473_report(question, context, history)
 
 
+_PART_ELECTRICAL_RE = re.compile(
+    r"\b(operating\s+supply|supply\s+voltage|supply\s+range|vcc|vdd|"
+    r"recommended\s+operating\s+(?:voltage|supply|conditions?)|operating\s+voltage)\b",
+    re.IGNORECASE,
+)
+_BOM_PRIORITY_RE = re.compile(
+    r"\b(risk|risky|priority|priorities|rank|ranked|ranking|review\s+first|"
+    r"mitigat\w*|at[-\s]risk)\b",
+    re.IGNORECASE,
+)
+_MPN_LIKE_RE = re.compile(r"\b[A-Za-z]{1,5}\d{2,}[A-Za-z0-9./-]*\b")
+_BOM_ELECTRICAL_FIELDS = (
+    "recommended_operating_voltage",
+    "recommended_operating_supply",
+    "operating_supply_voltage",
+    "operating_voltage",
+    "supply_voltage",
+    "Operating Voltage",
+    "Supply Voltage",
+    "vcc",
+    "vdd",
+)
+
+
+def _part_specific_electrical_target(
+    question: str, context: dict[str, Any]
+) -> tuple[str, dict[str, Any] | None] | None:
+    """Detect a part-specific supply/VCC/datasheet question that names an MPN.
+
+    Returns ``(mpn, bom_row_or_None)``. True risk/priority questions return
+    ``None`` so they keep the BOM-priority routing.
+    """
+    text = str(question or "")
+    if not _PART_ELECTRICAL_RE.search(text) or _BOM_PRIORITY_RE.search(text):
+        return None
+    components = [row for row in (context.get("components") or []) if isinstance(row, dict)]
+    matched = _mentioned_components(text, components)
+    if matched:
+        row = matched[0]
+        mpn = str(row.get("mpn") or row.get("part_number") or "").strip()
+        if mpn:
+            return mpn, row
+    for match in _MPN_LIKE_RE.finditer(text):
+        token = match.group(0).strip(".-/")
+        if len(token) >= 5 and any(ch.isalpha() for ch in token):
+            return token.upper(), None
+    return None
+
+
+def _part_electrical_answer(mpn: str, row: dict[str, Any] | None) -> str:
+    facts: list[tuple[str, str]] = []
+    for field in _BOM_ELECTRICAL_FIELDS:
+        value = str((row or {}).get(field) or "").strip()
+        if value and value.casefold() not in {"unknown", "n/a", "none", "nan", "not available"}:
+            facts.append((field.replace("_", " ").title() if field.islower() else field, value))
+    if facts:
+        listed = "\n".join(f"- **{label}:** {value}" for label, value in facts)
+        return (
+            f"### {mpn} electrical facts\n"
+            f"**Saved BOM record for {mpn}:**\n{listed}\n\n"
+            "These values come from the saved component record, not from a page-cited "
+            "datasheet. For a datasheet-grounded recommended operating range, open "
+            f"Datasheet Q&A for {mpn} and ask: \"What is the recommended operating supply "
+            "voltage?\" Absolute-maximum ratings are stress limits, not operating ranges."
+        )
+    return (
+        f"### {mpn} operating supply\n"
+        f"**Needs verification.** This BOM analysis has no datasheet-verified operating "
+        f"supply (VCC/VDD) range recorded for {mpn}, so Ask Cadivor will not estimate one.\n\n"
+        f"Open **Datasheet Q&A** for {mpn} and ask: \"What is the recommended operating "
+        "supply voltage?\" to get a page-cited answer from the manufacturer datasheet. "
+        "Recommended Operating Conditions and Absolute Maximum Ratings are reported "
+        "separately there; absolute-maximum values are never an operating range."
+    )
+
+
 def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[str, str]] | None = None) -> str:
     """Produce a question-specific, evidence-grounded assessment without an external AI provider."""
     summary = context.get("summary") or {}
@@ -1333,6 +1409,12 @@ def _fallback_answer(question: str, context: dict[str, Any], history: list[dict[
     alternatives = list(context.get("alternatives") or [])
     decisions = list(context.get("decisions") or [])
     resolved_question = _conversation_question(question, history)
+    # Part-specific electrical / datasheet questions (operating supply, VCC/VDD)
+    # must not be answered with a BOM-priority ranking summary.
+    if not context.get("datasheet_qa"):
+        electrical = _part_specific_electrical_target(question, context)
+        if electrical is not None:
+            return _part_electrical_answer(*electrical)
     # Sprint 47.1: all local assessments use the explicit consultant-style intent router.
     return _s472_report(question, context, history)
     intent = _classify_question(resolved_question)

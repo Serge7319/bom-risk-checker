@@ -1,0 +1,25 @@
+{
+  "fixture": "lm358dr_ti_excerpts",
+  "sanitized": true,
+  "note": "Synthetic paraphrased excerpts with page/section markers only; not a copy of the manufacturer datasheet.",
+  "manufacturer": "Texas Instruments",
+  "mpn": "LM358DR",
+  "filename": "lm358dr-datasheet.pdf",
+  "pages": [
+    {
+      "page": 1,
+      "section": "Device identity",
+      "text": "LM358DR dual operational amplifier.\nTexas Instruments Incorporated.\nThe LM358 family consists of two independent, high-gain, internally frequency-compensated operational amplifiers designed to operate from a single power supply over a wide range of voltages.\nOrdering information: LM358DR, SOIC (D) 8-pin, tape and reel."
+    },
+    {
+      "page": 4,
+      "section": "Absolute Maximum Ratings",
+      "text": "Absolute Maximum Ratings\nStresses beyond these limits may cause permanent damage. These are stress ratings only, not operating conditions.\nSupply voltage, VCC +/-16 V or 32 V\nDifferential input voltage 32 V\nOperating virtual junction temperature 150 C"
+    },
+    {
+      "page": 5,
+      "section": "Recommended Operating Conditions",
+      "text": "Recommended Operating Conditions\nSupply voltage, VCC (single supply) 3 V to 32 V\nSupply voltage, split supply +/-1.5 V to +/-16 V\nOperating free-air temperature 0 C to 70 C"
+    }
+  ]
+}

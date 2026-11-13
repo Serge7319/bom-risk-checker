@@ -10,6 +10,15 @@ import pytest
 from starlette.testclient import TestClient
 
 from tests.fixtures.sandbox_auth_accounts import SANDBOX_SEED_USERS
+from tests.two_user_isolation_suite import (
+    PREFERENCES_A,
+    PREFERENCES_B,
+    assert_denied_for_other_user,
+    assert_other_user_only_sees_own,
+    assert_owner_still_has_everything,
+    assert_unauthenticated_denied,
+    seed_workspace,
+)
 
 FIXTURE = Path(__file__).resolve().parents[1] / "tests/fixtures/synthetic_bom_25parts.csv"
 EVIDENCE_DIR = Path(__file__).resolve().parents[1] / "apps" / ".evidence_cutover"
@@ -124,7 +133,7 @@ def test_tenant_isolation_reads_and_mutations(cutover_env):
         headers=headers_a,
         json={"email_alerts": True, "lifecycle": True},
     )
-    client.get("/tools/monitoring", headers=headers_a, params={"analysis_id": analysis_a})
+    client.post("/tools/monitoring/refresh", headers=headers_a, params={"analysis_id": analysis_a})
     alerts_a = client.get("/tools/monitoring/alerts", headers=headers_a).json()["alerts"]
     prefs_b = client.get("/tools/monitoring/preferences", headers=headers_b).json()["preferences"]
     alerts_b = client.get("/tools/monitoring/alerts", headers=headers_b).json()["alerts"]
@@ -138,6 +147,37 @@ def test_tenant_isolation_reads_and_mutations(cutover_env):
             json={"alert_id": alerts_a[0]["id"]},
         )
         assert ack.status_code == 404
+
+
+def test_two_user_postgres_matrix_workspaces_boms_reports_decisions_monitoring(cutover_env):
+    """Acceptance D3 on disposable Postgres: User B denied everything of A; B sees own only.
+
+    Monitoring GET is read-only; alerts are persisted via
+    ``POST /tools/monitoring/refresh`` inside ``seed_workspace``. No production
+    account is created and no email transport is configured.
+    """
+    from apps.api.main import app
+
+    client = TestClient(app)
+    a, b = SANDBOX_SEED_USERS[0], SANDBOX_SEED_USERS[1]
+    headers_a = _login(client, a["email"], a["password"])
+    headers_b = _login(client, b["email"], b["password"])
+
+    seeded_a = seed_workspace(client, headers_a, owner="A", preferences=PREFERENCES_A)
+    seeded_b = seed_workspace(client, headers_b, owner="B", preferences=PREFERENCES_B)
+    assert seeded_a["workspace_id"] == a["workspace_id"]
+    assert seeded_b["workspace_id"] == b["workspace_id"]
+
+    denied_b = assert_denied_for_other_user(client, headers_b, seeded_a)
+    denied_a = assert_denied_for_other_user(client, headers_a, seeded_b)
+    assert len(denied_b) == len(denied_a) >= 30
+    assert_unauthenticated_denied(client, seeded_a)
+
+    assert_owner_still_has_everything(client, headers_a, seeded_a)
+    allowed_b = assert_other_user_only_sees_own(client, headers_b, seeded_b)
+    assert len(allowed_b) >= 12
+    # B deleting their own project/report never touched A (verified in Postgres).
+    assert_owner_still_has_everything(client, headers_a, seeded_a)
 
 
 def test_backup_restore_and_recovery(cutover_env, tmp_path):
@@ -380,3 +420,100 @@ def test_concurrent_analysis_writes_are_persisted(cutover_env, monkeypatch):
         assert saved.status_code == 200, saved.text
         assert saved.json()["workspace_id"] == account["workspace_id"]
 
+
+
+def test_hold_for_review_single_record_under_correct_bom_on_workspace_store(cutover_env):
+    """Railway-style Postgres workspace store: one hold record, correct BOM, no approval."""
+    from apps.api.main import app
+    from tests.test_hold_for_review_single_record import (
+        assert_single_hold_for_review_under_bom,
+    )
+
+    client = TestClient(app)
+    account = SANDBOX_SEED_USERS[0]
+    headers = _login(client, account["email"], account["password"])
+    record = assert_single_hold_for_review_under_bom(client, headers)
+    assert record["workspace_id"] == account["workspace_id"]
+
+
+def test_ledger_reconcile_inserts_marker_without_rerunning_production_sql(
+    cutover_env, monkeypatch
+):
+    """Schema exists but the legacy ledger row is missing: insert marker only."""
+    import psycopg
+
+    from apps.api import migration_ledger as ledger
+    from apps.api.postgres_store import PostgresWorkspaceStore
+
+    # Production SQL (ensure_schema) must not be re-run by the reconcile helper.
+    def _boom(self):  # noqa: ANN001
+        raise AssertionError("reconcile must not re-run production schema SQL")
+
+    monkeypatch.setattr(PostgresWorkspaceStore, "ensure_schema", _boom)
+
+    class _RecordingConn:
+        def __init__(self, inner):
+            self._inner = inner
+            self.statements: list[str] = []
+
+        @property
+        def info(self):
+            return self._inner.info
+
+        def execute(self, sql, params=None):
+            self.statements.append(" ".join(str(sql).split()))
+            return self._inner.execute(sql, params)
+
+    version = "20990101000000"
+    kwargs = dict(
+        version=version,
+        name="legacy_sandbox_workspace",
+        required_tables=("migration_decision_records", "migration_projects"),
+        required_columns=(("migration_decision_records", "analysis_id"),),
+    )
+    with psycopg.connect(cutover_env["uri"], autocommit=True) as raw:
+        ledger.ensure_ledger_table(raw)
+        raw.execute(
+            f"DELETE FROM {ledger.DEFAULT_LEDGER_TABLE} WHERE version = %s", (version,)
+        )
+        assert not ledger.ledger_has_version(raw, version)
+
+        conn = _RecordingConn(raw)
+        assert ledger.reconcile_migration_marker(conn, **kwargs) == ledger.STATUS_RECORDED
+        assert ledger.ledger_has_version(raw, version)
+        # Only ledger writes + catalog reads: no production DDL / DML.
+        writes = [
+            stmt
+            for stmt in conn.statements
+            if stmt.upper().startswith(("CREATE", "ALTER", "DROP", "TRUNCATE", "INSERT", "UPDATE", "DELETE"))
+            and "schema_migrations" not in stmt
+            and not stmt.upper().startswith("CREATE SCHEMA")
+        ]
+        assert writes == []
+
+        # Idempotent: second call never duplicates the marker.
+        assert (
+            ledger.reconcile_migration_marker(conn, **kwargs) == ledger.STATUS_ALREADY_RECORDED
+        )
+        count = raw.execute(
+            f"SELECT count(*) FROM {ledger.DEFAULT_LEDGER_TABLE} WHERE version = %s",
+            (version,),
+        ).fetchone()[0]
+        assert count == 1
+
+        # Missing objects are never marked as applied.
+        missing_version = "20990101000001"
+        assert (
+            ledger.reconcile_migration_marker(
+                conn,
+                version=missing_version,
+                name="not_applied",
+                required_tables=("migration_table_that_does_not_exist",),
+            )
+            == ledger.STATUS_OBJECTS_MISSING
+        )
+        assert not ledger.ledger_has_version(raw, missing_version)
+
+        raw.execute(
+            f"DELETE FROM {ledger.DEFAULT_LEDGER_TABLE} WHERE version = %s", (version,)
+        )

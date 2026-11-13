@@ -308,6 +308,50 @@ def test_csv_and_xlsx_revisions_reopen_after_sign_in_and_stay_workspace_scoped()
     assert hidden.status_code == 404
 
 
+def test_repeat_upload_journey_save_navigate_reload_reopen():
+    """Acceptance D1: upload -> map -> validate -> analyze -> save -> navigate away
+    -> repeat upload -> reload (restart + fresh sign-in) -> reopen, disposable auth."""
+    from apps.api import synthetic_analyze, workspace_store
+    from tests.harness_first_bom_journey import run_repeat_upload_journey
+
+    client = TestClient(app)
+    store_path = workspace_store.get_store().path
+
+    def _login(index: int) -> dict[str, str]:
+        user = SANDBOX_SEED_USERS[index]
+        res = client.post("/auth/login", json={"email": user["email"], "password": user["password"]})
+        assert res.status_code == 200, res.text
+        return {"Authorization": f"Bearer {res.json()['access_token']}"}
+
+    def restart() -> None:
+        synthetic_analyze._REPORTS.clear()
+        workspace_store._STORE = workspace_store.WorkspaceStore(store_path)
+
+    result = run_repeat_upload_journey(
+        client,
+        login=lambda _label: _login(0),
+        other_login=lambda: _login(1),
+        restart=restart,
+    )
+    assert result["ok"] is True
+    assert [s["step"] for s in result["steps"]] == [
+        "sign_in",
+        "map_rev_A",
+        "validate_rev_A",
+        "analyze_rev_A",
+        "save",
+        "navigate_away",
+        "map_rev_B",
+        "validate_rev_B",
+        "analyze_rev_B",
+        "repeat_upload",
+        "reload",
+        "reopen_report",
+        "second_user_denied",
+    ]
+    assert "token" not in str(result).lower()
+
+
 def test_two_reports_keep_requested_analysis_selected_for_monitoring():
     """Monitoring must honor the explicit analysis_id from the report CTA."""
     client = TestClient(app)

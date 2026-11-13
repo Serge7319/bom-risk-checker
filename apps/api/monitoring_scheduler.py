@@ -58,26 +58,85 @@ def authorize_cron(header_token: str | None) -> bool:
     return (header_token or "").strip() == expected
 
 
-def run_workspace_refresh(workspace_id: str, *, analysis_id: str | None = None) -> dict[str, Any]:
-    payload = migration_tools.monitoring_payload(
-        workspace_id=workspace_id, analysis_id=analysis_id
+def run_workspace_refresh(
+    workspace_id: str,
+    *,
+    analysis_id: str | None = None,
+    part_number: str | None = None,
+    portfolio: bool = False,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Explicit data refresh only — never sends email.
+
+    Email delivery requires the separate, clearly labeled
+    ``POST /tools/monitoring/notify`` action. ``dry_run=True`` derives the
+    scoped view, writes nothing, and never reaches email. A cron caller that
+    supplies no ``analysis_id`` must request ``portfolio=True`` explicitly.
+    """
+    part = str(part_number or "").strip() or None
+    if dry_run:
+        if portfolio:
+            raise ValueError("dry_run supports a single analysis_id scope")
+        payload = migration_tools.monitoring_payload(
+            workspace_id=workspace_id, analysis_id=analysis_id
+        )
+        alerts = list(payload.get("alerts") or [])
+        if part:
+            alerts = [
+                a
+                for a in alerts
+                if str(a.get("part_number") or "").casefold() == part.casefold()
+            ]
+        return {
+            "ok": True,
+            "dry_run": True,
+            "workspace_id": workspace_id,
+            "scope": "part" if part else "analysis",
+            "analysis_id": payload.get("analysis_id") or analysis_id,
+            "part_number": part,
+            "scheduler_enabled": scheduler_enabled(),
+            "email_delivery_enabled": monitoring_store.email_delivery_enabled(),
+            "alert_count": len(alerts),
+            "alerts": alerts,
+            "refresh": None,
+            "notifications": [],
+            "email_sent": False,
+            "persisted": False,
+            "gap": (
+                "Dry run: nothing was saved and no notifications were attempted. "
+                "Email is never sent from refresh; use the explicit notify action."
+            ),
+        }
+    payload = migration_tools.monitoring_refresh_payload(
+        workspace_id=workspace_id,
+        analysis_id=analysis_id,
+        part_number=part,
+        portfolio=portfolio,
     )
-    prefs = monitoring_store.get_preferences(workspace_id)
-    delivered = []
-    if prefs.get("email_alerts") and monitoring_store.email_delivery_enabled():
-        for alert in payload.get("alerts") or []:
-            delivered.append(monitoring_store.deliver_alert_email(workspace_id, alert))
     return {
         "ok": True,
+        "dry_run": False,
+        "persisted": True,
         "workspace_id": workspace_id,
+        "scope": payload.get("scope"),
+        "scope_label": payload.get("scope_label"),
+        "analysis_id": payload.get("analysis_id"),
+        "part_number": payload.get("part_number"),
         "scheduler_enabled": scheduler_enabled(),
         "email_delivery_enabled": monitoring_store.email_delivery_enabled(),
-        "alert_count": len(payload.get("alerts") or []),
+        "alert_count": payload.get("alert_count", len(payload.get("alerts") or [])),
+        "alerts": payload.get("alerts") or [],
         "refresh": payload.get("refresh"),
-        "notifications": delivered,
+        "live_supplier_refresh": False,
+        "notifications": [],
+        "email_sent": False,
         "gap": (
-            None
-            if scheduler_enabled()
-            else "Scheduler flag off; this was an on-demand refresh only."
-        ),
+            "Data refresh saved alerts from the selected scope. "
+            "Email was not sent — use the explicit Notify action when delivery is enabled. "
+            + (
+                ""
+                if scheduler_enabled()
+                else "Scheduler flag off; this was an on-demand refresh only."
+            )
+        ).strip(),
     }

@@ -1,0 +1,4 @@
+CI_HEAD=278e58db42a17a24c5aaa0bb73b7b48c9d37841f
+regression-tests=SUCCESS
+billing-contract=SUCCESS
+Cloudflare Pages=SUCCESS

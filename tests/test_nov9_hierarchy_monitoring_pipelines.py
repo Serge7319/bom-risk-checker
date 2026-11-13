@@ -325,6 +325,12 @@ def test_monitoring_scoped_to_analysis_with_saved_provenance():
         assert "synthetic" not in evidence
         assert "synthetic analysis" not in str(alert.get("message") or "").casefold()
 
+    # Read path must not persist; explicit refresh does.
+    assert list_alerts(SMOKE_WORKSPACE_ID, analysis_id=nested_id) == []
+    refreshed = client.post(
+        "/tools/monitoring/refresh", headers=headers, params={"analysis_id": nested_id}
+    )
+    assert refreshed.status_code == 200, refreshed.text
     listed = list_alerts(SMOKE_WORKSPACE_ID, analysis_id=nested_id)
     assert listed
     assert all(str(a.get("analysis_id")) == nested_id for a in listed)

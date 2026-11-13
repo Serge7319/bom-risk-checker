@@ -1,0 +1,28 @@
+# cmd: python -m pytest tests/test_nextjs_report_exports.py -v -rx -p no:cacheprovider
+============================= test session starts ==============================
+platform darwin -- Python 3.12.7, pytest-7.4.4, pluggy-1.0.0 -- <python-env>/bin/python
+rootdir: <worktree>
+plugins: anyio-4.2.0
+collecting ... collected 11 items
+
+tests/test_nextjs_report_exports.py::test_saved_report_exports_are_downloadable_and_workspace_scoped[pdf-application/pdf] PASSED [  9%]
+tests/test_nextjs_report_exports.py::test_saved_report_exports_are_downloadable_and_workspace_scoped[csv-text/csv] PASSED [ 18%]
+tests/test_nextjs_report_exports.py::test_saved_report_exports_are_downloadable_and_workspace_scoped[xlsx-application/vnd.openxmlformats-officedocument.spreadsheetml.sheet] PASSED [ 27%]
+tests/test_nextjs_report_exports.py::test_report_export_requires_auth_and_rejects_unknown_format PASSED [ 36%]
+tests/test_nextjs_report_exports.py::test_exports_preserve_synthetic_label_and_neutralize_formula_cells PASSED [ 45%]
+tests/test_nextjs_report_exports.py::test_csv_xlsx_pdf_row_and_field_parity_against_saved_bom PASSED [ 54%]
+tests/test_nextjs_report_exports.py::test_csv_and_legacy_csv_agree_on_saved_bom_rows PASSED [ 63%]
+tests/test_nextjs_report_exports.py::test_exports_are_identical_after_reload_of_the_saved_bom PASSED [ 72%]
+tests/test_nextjs_report_exports.py::test_empty_saved_report_exports_headers_only_without_phantom_rows PASSED [ 81%]
+tests/test_nextjs_report_exports.py::test_pdf_and_csv_keep_unicode_manufacturer_names_for_latin_scripts PASSED [ 90%]
+tests/test_nextjs_report_exports.py::test_pdf_preserves_cjk_manufacturer_glyphs XFAIL [100%]
+
+=============================== warnings summary ===============================
+tests/test_nextjs_report_exports.py:12
+  <worktree>/tests/test_nextjs_report_exports.py:12: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+XFAIL tests/test_nextjs_report_exports.py::test_pdf_preserves_cjk_manufacturer_glyphs - KNOWN GAP (not fixed here): build_pdf uses the base-14 Helvetica font, so CJK manufacturer glyphs render as black boxes in the PDF while CSV/XLSX keep them. The row itself is still present. strict=True flips this to a failure once fixed.
+=================== 10 passed, 1 xfailed, 1 warning in 3.37s ===================

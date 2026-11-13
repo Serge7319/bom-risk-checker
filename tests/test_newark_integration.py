@@ -339,18 +339,23 @@ class NewarkIntegrationTests(unittest.TestCase):
         self.assertNotIn("except Exception:\n    search_newark_by_part_number = None", source)
 
     def test_bom_results_show_available_supplier_names(self):
+        # The legacy Streamlit BOM table now renders a single "Supplier" column
+        # for the best source, while per-row "Sources Available" carries every
+        # verified supplier name.
         source = (ROOT / "src/authenticated_runtime.py").read_text()
-        display_start = source.index("            display_columns = [", source.index('st.subheader("Detailed Risk Report")'))
-        display_end = source.index("            ]", display_start)
-        self.assertIn('"Sources Available"', source[display_start:display_end])
-        self.assertIn('"Available Suppliers", width="medium"', source)
+        display_start = source.index("display_columns = [", source.index("visible = visible.reset_index(drop=True)"))
+        display_end = source.index("display_components = visible[display_columns]", display_start)
+        self.assertIn('"Supplier"', source[display_start:display_end])
+        self.assertIn('"Sources Available": part_data.get("sources_available", "")', source)
+        self.assertIn("**Available Suppliers:** ", source)
 
     def test_saved_component_details_use_persisted_primary_supplier(self):
         source = (ROOT / "src/pages/analysis_detail.py").read_text()
-        detail_start = source.index("                    selected_source = _safe(")
-        detail_end = source.index("                    selected_url = _safe(", detail_start)
-        self.assertIn('"primary_supplier"', source[detail_start:detail_end])
-        self.assertIn("html.escape(primary_supplier)", source)
+        detail_start = source.index('"source": _safe(', source.index("def _part_signals") if "def _part_signals" in source else 0)
+        detail_end = source.index('"url": _safe(', detail_start)
+        block = source[detail_start:detail_end]
+        self.assertIn('"primary_supplier"', block)
+        self.assertIn('"Not recorded"', block)
 
     def test_existing_bom_and_alternative_supplier_paths_remain_intact(self):
         source = (ROOT / "src/authenticated_runtime.py").read_text()
@@ -372,6 +377,266 @@ class NewarkIntegrationTests(unittest.TestCase):
     def test_unknown_replacement_price_is_not_reported_as_free(self):
         source = (ROOT / "src/authenticated_runtime.py").read_text()
         self.assertIn("if original_price > 0 and alternative_price > 0:", source)
+
+
+    # ---- Acceptance C: URL provenance, null stock/price, outcomes ----
+
+    def test_provider_product_url_is_verified_listing(self):
+        result = self.newark.normalize_newark_product(self._product())
+        self.assertEqual(result["product_detail_url"], "https://www.newark.com/example")
+        self.assertTrue(result["listing_verified"])
+        self.assertEqual(result["listing_url_provenance"], "provider_product_url")
+        self.assertFalse(result["provenance_unavailable"])
+
+    def test_arbitrary_https_host_is_not_verified(self):
+        result = self.newark.resolve_newark_listing(
+            self._product(productUrl="https://evil.example/product/1", sku="58K1234"),
+            allow_sku_lookup=False,
+        )
+        self.assertEqual(result["product_detail_url"], "")
+        self.assertFalse(result["listing_verified"])
+        self.assertTrue(result["provenance_unavailable"])
+
+    def test_http_newark_url_is_not_verified(self):
+        result = self.newark.resolve_newark_listing(
+            self._product(productUrl="http://www.newark.com/example", sku="58K1234"),
+            allow_sku_lookup=False,
+        )
+        self.assertEqual(result["product_detail_url"], "")
+        self.assertTrue(result["provenance_unavailable"])
+
+    def test_missing_product_url_uses_documented_sku_lookup_when_official(self):
+        product = self._product(productUrl="", sku="58K1234")
+
+        def _lookup(**kwargs):
+            self.assertEqual(kwargs["sku"], "58K1234")
+            return {
+                "product_detail_url": "https://www.newark.com/ti/lm358dr/dp/58K1234",
+                "listing_verified": True,
+                "listing_url_provenance": "provider_sku_lookup",
+                "provenance_unavailable": False,
+                "supplier_sku": "58K1234",
+            }
+
+        result = self.newark.resolve_newark_listing(product, lookup=_lookup)
+        self.assertEqual(
+            result["product_detail_url"],
+            "https://www.newark.com/ti/lm358dr/dp/58K1234",
+        )
+        self.assertTrue(result["listing_verified"])
+        self.assertEqual(result["listing_url_provenance"], "provider_sku_lookup")
+
+    def test_missing_product_url_stays_unavailable_when_lookup_cannot_resolve(self):
+        product = self._product(productUrl="", sku="58K1234")
+        result = self.newark.resolve_newark_listing(
+            product,
+            lookup=lambda **_kwargs: {
+                "product_detail_url": "",
+                "listing_verified": False,
+                "listing_url_provenance": "provenance_unavailable",
+                "provenance_unavailable": True,
+                "supplier_sku": "58K1234",
+            },
+        )
+        self.assertEqual(result["product_detail_url"], "")
+        self.assertFalse(result["listing_verified"])
+        self.assertTrue(result["provenance_unavailable"])
+        self.assertEqual(result.get("supplier_sku"), "58K1234")
+
+    def test_missing_url_and_sku_never_invents_identifier(self):
+        product = self._product(productUrl="", productId="not-a-newark-sku-123", id="abc")
+        product.pop("sku", None)
+        result = self.newark.normalize_newark_product(product)
+        self.assertEqual(result["product_detail_url"], "")
+        self.assertFalse(result["listing_verified"])
+        self.assertTrue(result["provenance_unavailable"])
+        self.assertEqual(result["listing_url_provenance"], "provenance_unavailable")
+
+    def test_malformed_sku_is_not_used_to_build_a_url(self):
+        for bad in ("../etc", "58K 1234", "x", "a" * 40, None, 123):
+            with self.subTest(sku=bad):
+                result = self.newark.normalize_newark_product(
+                    self._product(productUrl=None, sku=bad)
+                )
+                self.assertEqual(result["product_detail_url"], "")
+                self.assertTrue(result["provenance_unavailable"])
+
+    def test_non_http_product_url_is_rejected(self):
+        result = self.newark.normalize_newark_product(
+            self._product(productUrl="javascript:alert(1)")
+        )
+        self.assertEqual(result["product_detail_url"], "")
+        self.assertFalse(result["listing_verified"])
+
+    def test_missing_stock_and_price_are_none_not_zero(self):
+        product = self._product()
+        product.pop("stock")
+        product.pop("prices")
+        self.assertIsNone(self.newark.extract_newark_stock(product))
+        self.assertIsNone(self.newark.extract_newark_price(product))
+        normalized = self.newark.normalize_newark_product(product)
+        self.assertIsNone(normalized["stock_total"])
+        self.assertIsNone(normalized["unit_price"])
+        self.assertIsNone(normalized["lead_time_weeks"])
+
+    def test_malformed_stock_and_price_are_none(self):
+        self.assertIsNone(self.newark.extract_newark_stock({"stock": {"level": "n/a"}}))
+        self.assertIsNone(self.newark.extract_newark_stock({"stock": {"level": None}}))
+        self.assertIsNone(self.newark.extract_newark_stock({"stock": "In stock"}))
+        self.assertIsNone(self.newark.extract_newark_price({"prices": [{"cost": ""}]}))
+        self.assertIsNone(self.newark.extract_newark_price({"prices": [{"cost": "call"}]}))
+        self.assertIsNone(self.newark.extract_newark_price({"prices": [{"cost": 0}]}))
+        self.assertIsNone(self.newark.extract_newark_price({"prices": ["bad"]}))
+
+    def test_explicit_zero_stock_is_preserved_as_zero(self):
+        self.assertEqual(self.newark.extract_newark_stock({"stock": {"level": 0}}), 0)
+        self.assertEqual(self.newark.extract_newark_stock({"stock": {"level": "1,250"}}), 1250)
+
+    def test_exact_hit_carries_retrieved_at_and_exact_identity(self):
+        self._response([self._product("LM358N")])
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            result = self.newark.search_newark_by_part_number("lm358n")
+        self.assertEqual(result["manufacturer_part_number"], "LM358N")
+        self.assertEqual(result["requested_part_number"], "lm358n")
+        self.assertEqual(result["manufacturer"], "Texas Instruments")
+        from datetime import datetime
+
+        stamp = datetime.fromisoformat(result["retrieved_at"])
+        self.assertIsNotNone(stamp.tzinfo)
+
+    def test_no_hit_default_is_unverified_with_null_stock_and_price(self):
+        self._response([])
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            result = self.newark.search_newark_by_part_number("NOPE123")
+        self.assertEqual(result["manufacturer_part_number"], "")
+        self.assertIsNone(result["stock_total"])
+        self.assertIsNone(result["unit_price"])
+        self.assertEqual(result["product_detail_url"], "")
+        self.assertFalse(result["listing_verified"])
+        self.assertTrue(result["provenance_unavailable"])
+
+    def test_aggregator_marks_missing_newark_price_and_stock_unknown(self):
+        product = self._product(productUrl="")
+        product.pop("stock")
+        product.pop("prices")
+        self._response([product])
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            result = self.aggregator._safe_supplier_lookup(
+                "Newark", self.newark.search_newark_by_part_number, "LM358N"
+            )
+        self.assertEqual(result["provider_status"], self.health.PROVIDER_AVAILABLE)
+        self.assertIsNone(result["stock_total"])
+        self.assertFalse(result["unit_price_known"])
+        self.assertFalse(result["listing_verified"])
+        self.assertEqual(result["product_detail_url"], "")
+
+    def _failing_lookup(self, error):
+        def lookup(_part):
+            raise error
+
+        return lookup
+
+    def test_timeout_http_auth_and_malformed_are_failures_not_no_hit(self):
+        class _Resp:
+            def __init__(self, status):
+                self.status_code = status
+
+        class _HTTPError(Exception):
+            def __init__(self, message, status):
+                super().__init__(message)
+                self.response = _Resp(status)
+
+        no_hit = self.aggregator._safe_supplier_lookup(
+            "Newark", lambda part: self.newark.default_newark_result(part), "LM358N"
+        )
+        self.assertEqual(no_hit["provider_status"], self.health.PROVIDER_PART_NOT_FOUND)
+
+        cases = {
+            "timeout": (Exception("Read timed out"), self.health.PROVIDER_TIMEOUT),
+            "http_500": (_HTTPError("500 Server Error", 500), self.health.PROVIDER_ERROR),
+            "rate_limit": (_HTTPError("429 Too Many Requests", 429), self.health.PROVIDER_RATE_LIMITED),
+            "auth": (_HTTPError("401 Unauthorized", 401), self.health.PROVIDER_ERROR),
+        }
+        for label, (error, expected) in cases.items():
+            with self.subTest(label=label):
+                result = self.aggregator._safe_supplier_lookup(
+                    "Newark", self._failing_lookup(error), "LM358N"
+                )
+                self.assertEqual(result["provider_status"], expected)
+                self.assertNotEqual(result["provider_status"], no_hit["provider_status"])
+                self.assertIsNone(result["stock_total"])
+                self.assertNotIn("sekrit", result.get("error", ""))
+
+    def test_malformed_payload_is_provider_error_not_no_hit(self):
+        for payload in (["not", "a", "dict"], {"manufacturerPartNumberSearchReturn": ["bad"]}):
+            with self.subTest(payload=payload):
+                response = Mock()
+                response.json.return_value = payload
+                self.requests.get.return_value = response
+                with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+                    result = self.aggregator._safe_supplier_lookup(
+                        "Newark", self.newark.search_newark_by_part_number, "LM358N"
+                    )
+                self.assertEqual(result["provider_status"], self.health.PROVIDER_ERROR)
+
+    def test_exact_mpn_with_wrong_manufacturer_is_part_not_found(self):
+        self._response([self._product("LM358N", brandName="Some Other Vendor")])
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            mismatch = self.aggregator._safe_supplier_lookup(
+                "Newark", self.newark.search_newark_by_part_number, "LM358N", "", "Texas Instruments"
+            )
+
+        self.assertEqual(mismatch["provider_status"], self.health.PROVIDER_PART_NOT_FOUND)
+
+    def test_exact_mpn_with_matching_manufacturer_is_available(self):
+        self._response([self._product("LM358N")])
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            result = self.aggregator._safe_supplier_lookup(
+                "Newark", self.newark.search_newark_by_part_number, "LM358N", "", "Texas Instruments"
+            )
+        self.assertEqual(result["provider_status"], self.health.PROVIDER_AVAILABLE)
+        self.assertEqual(result["manufacturer"], "Texas Instruments")
+
+    def test_catalog_candidates_empty_success_vs_timeout_vs_malformed(self):
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            self.requests.get.side_effect = None
+            self.requests.get.return_value = Mock(
+                json=Mock(return_value={"keywordSearchReturn": {"numberOfResults": 0}}),
+                raise_for_status=Mock(),
+            )
+            self.assertEqual(self.newark.search_newark_catalog_candidates("ZZZ999"), [])
+
+            self.requests.get.side_effect = Exception("Read timed out")
+            with self.assertRaises(Exception) as ctx:
+                self.newark.search_newark_catalog_candidates("ZZZ999")
+            self.assertEqual(
+                self.health.classify_provider_exception(ctx.exception),
+                self.health.PROVIDER_TIMEOUT,
+            )
+
+            self.requests.get.side_effect = None
+            self.requests.get.return_value = Mock(
+                json=Mock(return_value={"unexpected": True}), raise_for_status=Mock()
+            )
+            with self.assertRaises(self.newark.NewarkCatalogResponseError):
+                self.newark.search_newark_catalog_candidates("ZZZ999")
+
+    def test_catalog_candidates_are_review_leads_with_provenance_and_no_fit_claim(self):
+        self.requests.get.side_effect = [
+            Mock(json=Mock(return_value={"keywordSearchReturn": {"products": [self._product("LM317DCYR")]}}), raise_for_status=Mock()),
+            Mock(json=Mock(return_value={"keywordSearchReturn": {"products": [
+                self._product("LM317MDCYR", productUrl="", sku="12X3456"),
+            ]}}), raise_for_status=Mock()),
+        ]
+        with patch.object(self.newark, "get_secret", return_value="private-api-key"):
+            rows = self.newark.search_newark_catalog_candidates("LM317DCYR")
+        row = rows[0]
+        self.assertEqual(row["evidence_type"], "Distributor family search match")
+        self.assertEqual(row["substitute_type"], "Similar")
+        self.assertEqual(row["supplier_relationship_evidence"], [])
+        self.assertFalse(row["listing_verified"])
+        self.assertTrue(row["retrieved_at"])
+        self.assertNotIn("Compatible", str(row.get("substitute_type")))
 
 
 if __name__ == "__main__":

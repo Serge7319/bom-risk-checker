@@ -219,6 +219,65 @@ def update_preferences(workspace_id: str, updates: dict[str, Any]) -> dict[str, 
     return get_preferences(workspace_id)
 
 
+def _alert_identity_key(alert: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(alert.get("analysis_id") or "").strip(),
+        str(alert.get("part_number") or "").strip(),
+        str(alert.get("alert_type") or "").strip(),
+    )
+
+
+def reconcile_alerts(
+    workspace_id: str,
+    *,
+    analysis_id: str,
+    active_alerts: list[dict[str, Any]],
+    part_number: str | None = None,
+) -> list[dict[str, Any]]:
+    """Mark persisted alerts inactive when they no longer apply to the scope.
+
+    Active derived alerts are written with ``active=True``. Persisted rows for
+    the same analysis (or part) that are absent from ``active_alerts`` are kept
+    for history but flagged ``active=False`` so read views do not show them as
+    current.
+    """
+    report_id = str(analysis_id or "").strip()
+    part = str(part_number or "").strip() or None
+    if not report_id:
+        return []
+    active_keys = {_alert_identity_key(a) for a in active_alerts}
+    for alert in active_alerts:
+        alert["active"] = True
+        alert["status"] = str(alert.get("status") or "active")
+    persisted = persist_alerts(workspace_id, active_alerts) if active_alerts else []
+    existing = list_alerts(workspace_id, analysis_id=report_id)
+    inactivated: list[dict[str, Any]] = []
+    for row in existing:
+        key = _alert_identity_key(row)
+        if key[0] != report_id:
+            continue
+        if part and key[1].casefold() != part.casefold():
+            continue
+        if key in active_keys:
+            continue
+        if row.get("active") is False or str(row.get("status") or "").lower() == "inactive":
+            continue
+        stale = dict(row)
+        stale["active"] = False
+        stale["status"] = "inactive"
+        stale["resolved_at"] = utc_now()
+        inactivated.append(stale)
+    if inactivated:
+        persist_alerts(workspace_id, inactivated)
+    return [
+        row
+        for row in list_alerts(workspace_id, analysis_id=report_id)
+        if row.get("active") is not False
+        and str(row.get("status") or "active").lower() != "inactive"
+        and (not part or str(row.get("part_number") or "").casefold() == part.casefold())
+    ]
+
+
 def persist_alerts(workspace_id: str, alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Upsert alert rows for a workspace; returns durable copies for those analyses."""
     analysis_ids = {
@@ -381,13 +440,18 @@ def record_refresh(
     analysis_id: str | None,
     alert_count: int,
     mode: str = "synthetic-preview",
+    scope: str = "analysis",
+    part_number: str | None = None,
 ) -> dict[str, Any]:
+    """Record an explicit refresh. Never called from read-only GET paths."""
     entry = {
         "id": f"refresh-{uuid.uuid4().hex[:10]}",
         "workspace_id": workspace_id,
         "analysis_id": analysis_id,
         "alert_count": alert_count,
         "mode": mode,
+        "scope": scope,
+        "part_number": part_number,
         "ran_at": utc_now(),
         "scheduled": False,
         "gap": "On-demand refresh only. Cron/scheduler not attached to migration API yet.",

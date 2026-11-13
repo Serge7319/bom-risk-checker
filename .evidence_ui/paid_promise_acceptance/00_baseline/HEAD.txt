@@ -1,0 +1,2 @@
+6cd47f7 Start 14-day trial on first verified sign-in (#624)
+BASELINE_COMMIT=6cd47f73e71acba7a3bec95e6437c693809d86be

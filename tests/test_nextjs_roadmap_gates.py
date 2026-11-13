@@ -147,7 +147,28 @@ def test_monitoring_persists_alerts_and_preferences_with_mock_email():
     payload = mon.json()
     assert payload["ok"] is True
     assert "preferences" in payload
-    assert payload["refresh"]["scheduled"] is False
+    # GET is read-only: it must not record a refresh or persist alerts.
+    assert payload["read_only"] is True
+    assert payload["refresh"] is None
+    assert payload["freshness"]["never_refreshed"] is True
+    assert payload["freshness"]["stale"] is True
+    assert client.get("/tools/monitoring/alerts", headers=headers).json()["alerts"] == []
+    assert client.get("/tools/monitoring/alerts", headers=headers).json()["refresh_history"] == []
+
+    refreshed = client.post(
+        "/tools/monitoring/refresh",
+        headers=headers,
+        params={"analysis_id": analysis_id},
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    assert refreshed.json()["persisted"] is True
+    assert refreshed.json()["refresh"]["scheduled"] is False
+    after = client.get(
+        "/tools/monitoring", headers=headers, params={"analysis_id": analysis_id}
+    ).json()
+    assert after["refresh"]["scope"] == "analysis"
+    assert after["freshness"]["never_refreshed"] is False
+    assert all(a["persisted"] for a in after["alerts"])
 
     prefs = client.put(
         "/tools/monitoring/preferences",

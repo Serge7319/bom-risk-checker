@@ -1,0 +1,33 @@
+# cmd: python -m pytest tests/test_supabase_auth.py -v -p no:cacheprovider
+============================= test session starts ==============================
+platform darwin -- Python 3.12.7, pytest-7.4.4, pluggy-1.0.0 -- <python-env>/bin/python
+rootdir: <worktree>
+plugins: anyio-4.2.0
+collecting ... collected 18 items
+
+tests/test_supabase_auth.py::test_production_runtime_reports_missing_supabase_vars PASSED [  5%]
+tests/test_supabase_auth.py::test_supabase_login_membership_reload_logout_and_isolation PASSED [ 11%]
+tests/test_supabase_auth.py::test_entitlement_snapshot_is_authoritative_and_login_does_not_reset_membership PASSED [ 16%]
+tests/test_supabase_auth.py::test_sandbox_hs256_blocked_when_production_runtime_forced PASSED [ 22%]
+tests/test_supabase_auth.py::test_self_serve_signup_is_disabled_by_default PASSED [ 27%]
+tests/test_supabase_auth.py::test_unprovisioned_supabase_account_cannot_enter_when_signup_is_closed PASSED [ 33%]
+tests/test_supabase_auth.py::test_verified_signup_provisions_workspace_and_starts_trial_once PASSED [ 38%]
+tests/test_supabase_auth.py::test_signup_redirect_must_be_allowlisted_https PASSED [ 44%]
+tests/test_supabase_auth.py::test_production_signup_redirect_uses_app_cadivor_login PASSED [ 50%]
+tests/test_supabase_auth.py::test_expired_trial_is_read_only_for_new_bom_analysis PASSED [ 55%]
+tests/test_supabase_auth.py::test_signup_requires_explicit_email_and_abuse_protection_acknowledgments PASSED [ 61%]
+tests/test_supabase_auth.py::test_trial_signup_login_allows_analysis_and_saved_report PASSED [ 66%]
+tests/test_supabase_auth.py::test_one_time_report_signup_does_not_receive_trial PASSED [ 72%]
+tests/test_supabase_auth.py::test_paid_student_and_grandfathered_plans_are_preserved_on_signin PASSED [ 77%]
+tests/test_supabase_auth.py::test_broken_flow_starter_receives_full_trial_from_signin_not_created_at PASSED [ 83%]
+tests/test_supabase_auth.py::test_bearer_requests_do_not_provision_trial PASSED [ 88%]
+tests/test_supabase_auth.py::test_provisioning_failure_on_signin_is_clear_and_retryable PASSED [ 94%]
+tests/test_supabase_auth.py::test_decision_scope_and_snapshot_token_suites_in_ci PASSED [100%]
+
+=============================== warnings summary ===============================
+tests/test_supabase_auth.py:10
+  <worktree>/tests/test_supabase_auth.py:10: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 18 passed, 1 warning in 4.75s =========================

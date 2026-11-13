@@ -1,0 +1,20 @@
+# cmd: python -m pytest tests/test_workspace_isolation.py -v -p no:cacheprovider
+============================= test session starts ==============================
+platform darwin -- Python 3.12.7, pytest-7.4.4, pluggy-1.0.0 -- <python-env>/bin/python
+rootdir: <worktree>
+plugins: anyio-4.2.0
+collecting ... collected 5 items
+
+tests/test_workspace_isolation.py::test_cross_workspace_cannot_see_or_open_analysis PASSED [ 20%]
+tests/test_workspace_isolation.py::test_each_workspace_only_lists_own_analyses PASSED [ 40%]
+tests/test_workspace_isolation.py::test_store_raises_on_cross_workspace_get PASSED [ 60%]
+tests/test_workspace_isolation.py::test_cross_workspace_cannot_update_or_delete PASSED [ 80%]
+tests/test_workspace_isolation.py::test_two_user_matrix_workspaces_boms_reports_decisions_monitoring PASSED [100%]
+
+=============================== warnings summary ===============================
+tests/test_workspace_isolation.py:7
+  <worktree>/tests/test_workspace_isolation.py:7: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+========================= 5 passed, 1 warning in 2.86s =========================
