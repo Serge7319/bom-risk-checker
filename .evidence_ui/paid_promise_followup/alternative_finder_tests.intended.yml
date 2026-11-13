@@ -1,0 +1,129 @@
+name: Alternative Finder Regression Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+jobs:
+  regression-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set Up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt PyMuPDF pytest embedded-postgres
+
+      - name: Run Next migration API, decision-record, Supabase Auth, and trial tests
+        run: python -m pytest tests/test_nextjs_migration_api.py tests/test_nextjs_migration_tools.py tests/test_nextjs_report_exports.py tests/test_supabase_auth.py -q
+
+      - name: Install Next.js web dependencies
+        run: npm ci --prefix apps/web
+
+      - name: Lint Next.js web app
+        run: npm run lint --prefix apps/web
+
+      - name: Build Next.js web app
+        run: npm run build --prefix apps/web
+
+      - name: Run disposable Postgres migration gates
+        run: python -m pytest tests/test_cutover_disposable_db.py tests/test_nextjs_roadmap_gates.py -q
+
+      - name: Run file-store two-user isolation matrix
+        run: python -m pytest tests/test_workspace_isolation.py -q
+
+      - name: Run Alternative Finder Regression Tests
+        run: |
+          python -m unittest \
+            tests.test_auth_cookie_read_bridge \
+            tests.test_authenticated_nav_and_evidence_dedup \
+            tests.test_provider_health_import \
+            tests.test_secrets_stub_isolation \
+            tests.test_alternative_evidence_integrity \
+            tests.test_alternative_supplier_evidence \
+            tests.test_alternative_finder_search \
+            tests.test_octopart_integration \
+            tests.test_alternative_finder_suitability \
+            tests.test_alternative_finder_cross_family \
+            tests.test_pin_count_parsing \
+            tests.test_family_engineering_profiles \
+            tests.test_family_raw_payload_contracts \
+            tests.test_digikey_substitutions \
+            tests.test_datasheet_comparison \
+            tests.test_supplier_provider_matrix \
+            tests.test_procurement_offer_display \
+            tests.test_alternative_decision_consistency_752a20 \
+            tests.test_alternative_finder_comparison_scroll \
+            tests.test_alternative_finder_search_submit \
+            tests.test_alternative_finder_presentation \
+            tests.test_alternative_finder_admin_diagnostics \
+            tests.test_main_transition_release_signal \
+            tests.test_main_transition_slow_route_contract \
+            tests.test_navigation_scroll_reset \
+            tests.test_approved_replacement_handoff
+
+      - name: Run DigiKey/Mouser/Newark provider matrix (pytest)
+        run: python -m pytest tests/test_supplier_provider_matrix.py -q
+
+      - name: Run Supply Risk inventory + scope acceptance
+        run: |
+          python -m pytest \
+            tests/test_live_portfolio_and_supply_scenarios.py::test_supply_scenario_does_not_treat_missing_stock_or_sources_as_zero \
+            tests/test_live_portfolio_and_supply_scenarios.py::test_supply_scenario_complete_stock_coverage_produces_affected_components \
+            tests/test_live_portfolio_and_supply_scenarios.py::test_supply_scenario_partial_stock_coverage_exposes_gap \
+            tests/test_live_portfolio_and_supply_scenarios.py::test_supply_scenario_absent_stock_preserves_lifecycle_and_supplier_risks \
+            tests/test_live_portfolio_and_supply_scenarios.py::test_supply_scenario_uses_recorded_stock_and_lead_time_delta \
+            tests/test_live_portfolio_and_supply_scenarios.py::test_supply_scenario_treats_unknown_text_fields_as_unrecorded_not_zero \
+            tests/test_post_605_generic_followup.py::SupplyRiskScopeClearTests \
+            -q
+
+      - name: Run Datasheet Q&A positive + identity abstention
+        run: |
+          python -m pytest \
+            tests/test_datasheet_qa.py \
+            tests/test_datasheet_qa_identity_api.py \
+            -q
+
+      - name: Run component-scoped Ask Cadivor evidence tests
+        run: python -m unittest tests.test_engineering_ai_component_scope
+
+      - name: Run Engineering Review Explicit Save Tests
+        run: python -m unittest tests.test_engineering_review_explicit_save
+
+      - name: Run Monitoring History Persistence Tests
+        run: python -m unittest tests.test_monitoring_history_persistence
+
+      - name: Run On-demand Monitoring Supplier Refresh Tests
+        run: python -m unittest tests.test_monitoring_refresh tests.test_monitoring_notify_idle_label
+
+      - name: Run Monitoring read-only refresh + explicit Notify
+        run: python -m pytest tests/test_monitoring_read_only_refresh.py -q
+
+      - name: Run procurement offer URL + retrieved_at display contract
+        run: python -m unittest tests.test_procurement_offer_display
+
+      - name: Run Browser Route Recovery Tests
+        run: python -m unittest tests.test_browser_route_state
+
+      - name: Run Engineering Intelligence Layout Tests
+        run: python -m unittest tests.test_ei_bom_report_layout
+
+      - name: Run Supabase query schema compatibility tests
+        run: python -m unittest tests.test_workspace_schema_columns

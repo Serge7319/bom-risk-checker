@@ -463,13 +463,20 @@ class NewarkMatrixTests(unittest.TestCase):
         official = newark_client.resolve_newark_listing(_newark_product(), allow_sku_lookup=False)
         self.assertTrue(official["listing_verified"])
         self.assertEqual(official["product_detail_url"], NEWARK_URL)
+        self.assertTrue(
+            official["product_detail_url"].startswith("https://www.newark.com/")
+        )
 
+        # Bare apex host is not the canonical store host — reject it.
         bare_host = newark_client.resolve_newark_listing(
             _newark_product(productUrl="https://newark.com/p/58K1234"), allow_sku_lookup=False
         )
-        self.assertTrue(bare_host["listing_verified"])
+        self.assertFalse(bare_host["listing_verified"])
+        self.assertEqual(bare_host["product_detail_url"], "")
+        self.assertTrue(bare_host["provenance_unavailable"])
 
         rejected = {
+            "bare apex host": "https://newark.com/texas-instruments/lm358dr/dp/58K1234",
             "plain http": "http://www.newark.com/texas-instruments/lm358dr/dp/58K1234",
             "foreign host": "https://www.example.com/www.newark.com/dp/58K1234",
             "lookalike host": "https://www.newark.com.evil.example/dp/58K1234",

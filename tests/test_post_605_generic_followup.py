@@ -651,8 +651,9 @@ class SupplyRiskScopeClearTests(unittest.TestCase):
         self.assertIn("Scope source: inherited selected analysis from session", source)
         self.assertIn("Portfolio-wide across saved analyses in this workspace", source)
         self.assertIn("Scoped to selected analysis", source)
-        self.assertIn("Inventory evidence unavailable", source)
-        self.assertIn("will not show a zero-impact result", source)
+        self.assertIn("Stock coverage gap — impact not fully established", source)
+        self.assertIn("Missing stock is not treated as zero", source)
+        self.assertIn("stock_coverage_gap", source)
 
     def test_analysis_scope_with_inventory_returns_affected_components(self):
         analyses = [
@@ -688,6 +689,7 @@ class SupplyRiskScopeClearTests(unittest.TestCase):
         self.assertEqual(payload.get("scope"), "analysis")
         self.assertEqual(payload.get("analysis_id"), "bom-inv")
         self.assertTrue(payload.get("inventory_evidence_available"))
+        self.assertEqual(payload.get("stock_coverage"), "complete")
         self.assertEqual(payload.get("inventory_status"), "available")
         scenario = payload.get("scenario") or {}
         self.assertGreaterEqual(int(scenario.get("exposed_components") or 0), 1)
@@ -696,7 +698,12 @@ class SupplyRiskScopeClearTests(unittest.TestCase):
     def test_missing_inventory_is_unavailable_not_zero_impact(self):
         analyses = [{"id": "bom-empty", "project_name": "No Stock", "filename": "ns.csv"}]
         parts = [
-            {"analysis_id": "bom-empty", "mpn": "NO-STOCK-1", "quantity": 2},
+            {
+                "analysis_id": "bom-empty",
+                "mpn": "NO-STOCK-1",
+                "quantity": 2,
+                "supplier_count": 1,
+            },
             {"analysis_id": "bom-empty", "mpn": "NO-STOCK-2", "quantity": 4},
         ]
         with patch(
@@ -711,14 +718,20 @@ class SupplyRiskScopeClearTests(unittest.TestCase):
             )
         self.assertEqual(payload.get("scope"), "analysis")
         self.assertFalse(payload.get("inventory_evidence_available"))
+        self.assertEqual(payload.get("stock_coverage"), "absent")
         self.assertEqual(payload.get("inventory_status"), "inventory evidence unavailable")
+        self.assertFalse(payload.get("stock_impact_available"))
         gap = str(payload.get("gap") or "").casefold()
         self.assertIn("inventory evidence unavailable", gap)
-        self.assertIn("not a zero-impact", gap)
+        self.assertIn("not zero", gap)
         scenario = payload.get("scenario") or {}
-        self.assertEqual(scenario.get("impacted"), [])
-        self.assertEqual(int(scenario.get("exposed_components") or 0), 0)
         self.assertIsNone(scenario.get("projected_stock_gap"))
+        self.assertEqual(int(scenario.get("shortage_components") or 0), 0)
+        impacted_mpns = {
+            str(row.get("Part Number") or "")
+            for row in (scenario.get("impacted") or [])
+        }
+        self.assertIn("NO-STOCK-1", impacted_mpns)
 
 
 class AmbiguityDoesNotStampIdentityTests(unittest.TestCase):

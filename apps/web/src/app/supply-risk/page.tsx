@@ -83,14 +83,28 @@ function SupplyRiskInner() {
 
   if (!session) return null;
   const scenario = (data?.scenario || {}) as Record<string, unknown>;
-  const inventoryAvailable =
-    data?.inventory_evidence_available !== false &&
-    scenario.inventory_evidence_available !== false &&
+  const stockCoverage = String(
+    data?.stock_coverage || scenario.stock_coverage || ""
+  ).trim();
+  const coverageGap = (
+    (data?.stock_coverage_gap as Record<string, unknown> | undefined) ||
+    (scenario.stock_coverage_gap as Record<string, unknown> | undefined) ||
+    {}
+  ) as Record<string, unknown>;
+  const unknownStockCount = Number(
+    coverageGap.unknown_stock_components ?? scenario.unknown_stock_components ?? 0
+  );
+  const stockImpactAvailable =
+    data?.stock_impact_available !== false &&
+    scenario.stock_impact_available !== false &&
+    stockCoverage !== "absent" &&
     String(data?.inventory_status || scenario.inventory_status || "") !==
       "inventory evidence unavailable";
-  const rows = (
-    inventoryAvailable ? scenario.impacted || scenario.rows || [] : []
-  ) as Array<Record<string, unknown>>;
+  const inventoryAbsent =
+    stockCoverage === "absent" ||
+    String(data?.inventory_status || scenario.inventory_status || "") ===
+      "inventory evidence unavailable";
+  const rows = (scenario.impacted || []) as Array<Record<string, unknown>>;
   const scope = String(data?.scope || "").trim();
   const inheritanceNote =
     scopeSource === "url"
@@ -179,17 +193,23 @@ function SupplyRiskInner() {
                     ? "Showing portfolio-wide impact (all saved analyses)."
                     : "Showing impact for the selected analysis only."}
                 </p>
+                <p className="cv-small-note" role="status" style={{ marginTop: 8 }}>
+                  {String(
+                    coverageGap.message ||
+                      (inventoryAbsent
+                        ? "Stock coverage absent — inventory evidence unavailable for stock-based impact."
+                        : stockCoverage === "partial"
+                          ? `Stock coverage gap: ${unknownStockCount} component(s) lack recorded stock.`
+                          : "Stock coverage complete.")
+                  )}
+                  {!stockImpactAvailable
+                    ? " Stock-based impact is unavailable; missing stock is not treated as zero."
+                    : ""}
+                </p>
               </div>
               <span className="cv-data-note">{rows.length} component{rows.length === 1 ? "" : "s"}</span>
             </div>
-            {!inventoryAvailable ? (
-              <EmptyState
-                icon="risk"
-                title="Inventory evidence unavailable"
-                body="Saved BOM parts in this scope do not include recorded stock. Cadivor will not show a zero-impact result when inventory evidence is missing. Re-analyze with supplier stock fields, or clear scope to another analysis that has inventory."
-                action={<PrimaryLink href="/reports">Choose a saved analysis</PrimaryLink>}
-              />
-            ) : rows.length ? (
+            {rows.length ? (
               <div className="cv-table-wrap" style={{ marginTop: 12 }}>
               <table className="cv-table">
                 <thead>
@@ -214,11 +234,22 @@ function SupplyRiskInner() {
                 </tbody>
               </table>
             </div>
+            ) : inventoryAbsent || unknownStockCount > 0 ? (
+              <EmptyState
+                icon="risk"
+                title="Stock coverage gap — impact not fully established"
+                body={
+                  inventoryAbsent
+                    ? "Inventory evidence unavailable for stock-based impact. Missing stock is not treated as zero, so Cadivor will not claim there are no affected components. Independently evidenced lifecycle and supplier-source risks still appear when present."
+                    : `Stock coverage is partial (${unknownStockCount} component(s) without recorded stock). Unknown stock is not treated as zero and could change the result, so Cadivor will not claim there are no affected components.`
+                }
+                action={<PrimaryLink href="/reports">Choose a saved analysis</PrimaryLink>}
+              />
             ) : (
               <EmptyState
                 icon="risk"
                 title="No affected components found"
-                body="Inventory evidence is present, but no components match this scenario. Try another stock reduction or review the saved analysis."
+                body="Stock coverage is complete and no components match this scenario. Try another stock reduction or review the saved analysis."
                 action={<PrimaryLink href="/reports">Choose a saved analysis</PrimaryLink>}
               />
             )}

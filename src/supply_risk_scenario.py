@@ -452,42 +452,123 @@ def build_supply_scenario(
             f"A {stock_reduction_percent}% stock reduction is modeled. Review the components "
             f"with the lowest remaining coverage first."
         )
-    inventory_evidence_available = bool(known_stock)
-    if not inventory_evidence_available:
+    unknown_stock = [row for row in normalized if not row["Stock Recorded"]]
+    known_stock_count = len(known_stock)
+    unknown_stock_count = len(unknown_stock)
+    total_components = len(normalized)
+    if total_components == 0 or known_stock_count == 0:
+        stock_coverage = "absent"
+    elif unknown_stock_count == 0:
+        stock_coverage = "complete"
+    else:
+        stock_coverage = "partial"
+
+    # Stock-based impact requires recorded stock. Independently evidenced
+    # lifecycle / supplier-source risks stay visible even when stock is absent.
+    def _non_stock_impact(row: dict) -> bool:
+        return bool(
+            (row["Sources Recorded"] and (row["Scenario Sources"] or 0) <= 1)
+            or row["Lifecycle Event"]
+            or (
+                row["Scenario Risk"] is not None
+                and row["Scenario Risk"] >= 60
+                and not row["Stock Recorded"]
+            )
+        )
+
+    if stock_coverage == "absent":
+        impacted = [row for row in normalized if _non_stock_impact(row)]
+        shortage_components = 0
+        shortage_value = None
+        projected_stock_gap = None
+        stock_impact_available = False
+        inventory_status = "inventory evidence unavailable"
+    else:
+        # Keep full impacted set for complete/partial; stock shortage metrics
+        # only sum known-stock rows (missing stock stays unknown, never zero).
+        stock_impact_available = True
+        inventory_status = (
+            "available" if stock_coverage == "complete" else "partial stock coverage"
+        )
+        projected_stock_gap = sum(row["Shortage Units"] or 0 for row in known_stock)
+
+    stock_coverage_gap = {
+        "coverage": stock_coverage,
+        "known_stock_components": known_stock_count,
+        "unknown_stock_components": unknown_stock_count,
+        "component_count": total_components,
+        "stock_impact_available": stock_impact_available,
+        "message": (
+            "Stock coverage complete — stock-reduction impact is established for all components."
+            if stock_coverage == "complete"
+            else (
+                f"Stock coverage gap: {unknown_stock_count} of {total_components} component(s) "
+                "have no recorded stock. Stock-based impact is established only for parts with "
+                "recorded stock; unknown stock is not treated as zero and could change the result."
+                if stock_coverage == "partial"
+                else (
+                    "Stock coverage absent — inventory evidence unavailable. "
+                    "Stock-based impact is not established (missing stock is not zero). "
+                    "Independently evidenced lifecycle and supplier-source risks are still shown."
+                )
+            )
+        ),
+    }
+
+    inventory_evidence_available = stock_coverage != "absent"
+    if stock_coverage == "absent":
         recommendations = [
-            "Inventory evidence unavailable for this scope. "
-            "Cadivor cannot compute stock-reduction impact without recorded stock on BOM parts. "
-            "Re-run analysis with supplier stock fields, or treat stock-impact results as not established."
+            tip
+            for tip in recommendations
+            if "stock reduction" not in tip.casefold()
+            and "fall short of modeled demand" not in tip.casefold()
         ]
+        recommendations.insert(
+            0,
+            "Inventory evidence unavailable for stock-based impact. "
+            "Missing stock is not treated as zero. "
+            "Lifecycle and supplier-source risks with independent evidence remain in scope.",
+        )
+    elif stock_coverage == "partial":
+        recommendations.insert(0, stock_coverage_gap["message"])
     elif not recommendations:
         recommendations.append(
             "The selected scenario does not create a major recorded supply or lifecycle exception."
         )
     recommendations = recommendations[:5]
 
+    impacted.sort(
+        key=lambda row: (
+            -(row["Scenario Risk"] if row["Scenario Risk"] is not None else -1),
+            -(row["Shortage Units"] or 0),
+            row["Project Health"],
+        )
+    )
+    if stock_coverage == "absent":
+        project_keys = {
+            (row.get("Analysis ID"), row.get("Project")) for row in impacted
+        }
+        affected_projects = len({key for key in project_keys if key[0] or key[1]})
+
     return {
         "rows": normalized,
-        "impacted": impacted if inventory_evidence_available else [],
-        "project_impact": project_impact if inventory_evidence_available else [],
+        "impacted": impacted,
+        "project_impact": project_impact,
         "build_quantity": max(1, build_quantity),
         "stock_reduction_percent": stock_reduction_percent,
         "supplier_loss": supplier_loss,
         "demand_growth_percent": demand_growth_percent,
         "include_lifecycle_event": include_lifecycle_event,
-        "affected_projects": affected_projects if inventory_evidence_available else 0,
-        "shortage_components": shortage_components if inventory_evidence_available else 0,
-        "single_source_components": single_source_components if inventory_evidence_available else 0,
-        "lifecycle_components": lifecycle_components if inventory_evidence_available else 0,
-        "critical_components": critical_components if inventory_evidence_available else 0,
-        "shortage_value": shortage_value if inventory_evidence_available else None,
-        "projected_stock_gap": (
-            sum(row["Shortage Units"] or 0 for row in normalized)
-            if inventory_evidence_available
-            else None
-        ),
-        "exposed_components": len(impacted) if inventory_evidence_available else 0,
-        "known_stock_components": len(known_stock),
-        "unknown_stock_components": len(normalized) - len(known_stock),
+        "affected_projects": affected_projects,
+        "shortage_components": shortage_components if stock_impact_available else 0,
+        "single_source_components": single_source_components,
+        "lifecycle_components": lifecycle_components,
+        "critical_components": critical_components,
+        "shortage_value": shortage_value if stock_impact_available else None,
+        "projected_stock_gap": projected_stock_gap,
+        "exposed_components": len(impacted),
+        "known_stock_components": known_stock_count,
+        "unknown_stock_components": unknown_stock_count,
         "known_source_components": len(known_source_rows),
         "unknown_source_components": len(normalized) - len(known_source_rows),
         "recorded_stock_total": sum(row["Original Stock"] or 0 for row in known_stock),
@@ -500,12 +581,13 @@ def build_supply_scenario(
         "lead_time_evidence_count": len(lead_time_deltas),
         "recommendations": recommendations,
         "scenario_summary": scenario_summary,
-        "component_count": len(normalized),
+        "component_count": total_components,
         "source_component_record_count": len(source_rows),
         "inventory_evidence_available": inventory_evidence_available,
-        "inventory_status": (
-            "available" if inventory_evidence_available else "inventory evidence unavailable"
-        ),
+        "inventory_status": inventory_status,
+        "stock_coverage": stock_coverage,
+        "stock_coverage_gap": stock_coverage_gap,
+        "stock_impact_available": stock_impact_available,
     }
 
 

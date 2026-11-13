@@ -2128,6 +2128,12 @@ def supply_risk_payload(
             or requested_analysis_id
         )
     inventory_available = bool(scenario.get("inventory_evidence_available"))
+    stock_coverage = str(scenario.get("stock_coverage") or "").strip() or (
+        "complete" if inventory_available else "absent"
+    )
+    coverage_gap = scenario.get("stock_coverage_gap")
+    if not isinstance(coverage_gap, dict):
+        coverage_gap = {}
     if scoped:
         gap = (
             f"Scenario scoped to analysis {analysis_label or requested_analysis_id} "
@@ -2142,12 +2148,15 @@ def supply_risk_payload(
             "fields — not live supplier inventory."
         )
         scope = "portfolio"
-    if not inventory_available:
-        gap = (
-            "Inventory evidence unavailable. Saved BOM parts in this scope do not include "
-            "recorded stock, so stock-reduction impact is not established. "
-            "This is not a zero-impact result."
+    coverage_message = str(coverage_gap.get("message") or "").strip()
+    if stock_coverage == "absent":
+        gap = coverage_message or (
+            "Inventory evidence unavailable. Stock-based impact is not established "
+            "(missing stock is not zero). Independently evidenced lifecycle and "
+            "supplier-source risks remain in scope."
         )
+    elif stock_coverage == "partial" and coverage_message:
+        gap = f"{gap} {coverage_message}"
     return _json_safe(
         {
             "ok": True,
@@ -2163,6 +2172,9 @@ def supply_risk_payload(
             or (
                 "available" if inventory_available else "inventory evidence unavailable"
             ),
+            "stock_coverage": stock_coverage,
+            "stock_coverage_gap": coverage_gap,
+            "stock_impact_available": bool(scenario.get("stock_impact_available")),
             "parameters": {
                 "build_quantity": max(1, int(build_quantity or 100)),
                 "stock_reduction_percent": int(stock_reduction_percent or 0),
