@@ -84,4 +84,4 @@ Status legend: PASS | FAIL | BLOCKED | NOT TESTED
 | Billing/report unittests | PASS | `gates_billing_report.txt` (68 OK) |
 | Synthetic browser / repeat-upload harness | PASS | `D_journey/` |
 | Production second-user live check | BLOCKED | User manual |
-| CI regression + Cloudflare on PR head | NOT TESTED | Pending PR |
+| CI regression + Cloudflare on PR head | PASS | Head `278e58db42a17a24c5aaa0bb73b7b48c9d37841f`: regression-tests, billing-contract, Cloudflare Pages SUCCESS |
