@@ -23,6 +23,13 @@ from integrations.supplier_aggregator import (
 )
 
 
+def _clear_cache(function) -> None:
+    """Clear a Streamlit-cached function when the cache wrapper is installed."""
+    clear = getattr(function, "clear", None)
+    if callable(clear):
+        clear()
+
+
 class SupplierHealthTests(unittest.TestCase):
     def test_review_lookup_returns_datasheet_before_slowest_supplier_finishes(self):
         from integrations import supplier_aggregator
@@ -174,7 +181,7 @@ class SupplierHealthTests(unittest.TestCase):
                         {"source": "Newark", "provider_status": PROVIDER_NOT_CONFIGURED},
                     ]
 
-                supplier_aggregator.get_best_part_data.clear()
+                _clear_cache(supplier_aggregator.get_best_part_data)
                 try:
                     with patch.object(
                         supplier_aggregator,
@@ -183,7 +190,7 @@ class SupplierHealthTests(unittest.TestCase):
                     ):
                         data = supplier_aggregator.get_best_part_data(requested)
                 finally:
-                    supplier_aggregator.get_best_part_data.clear()
+                    _clear_cache(supplier_aggregator.get_best_part_data)
 
                 self.assertEqual(data["mpn"], requested)
                 self.assertEqual(data["assessment_basis"], "manufacturer_documented_order_code")
@@ -204,7 +211,7 @@ class SupplierHealthTests(unittest.TestCase):
     def test_family_only_legacy_route_remains_unassessed_without_an_exact_record(self):
         from integrations import supplier_aggregator
 
-        supplier_aggregator.get_best_part_data.clear()
+        _clear_cache(supplier_aggregator.get_best_part_data)
         try:
             with patch.object(
                 supplier_aggregator,
@@ -221,7 +228,7 @@ class SupplierHealthTests(unittest.TestCase):
             ):
                 data = supplier_aggregator.get_best_part_data("AM29F010B-70EC")
         finally:
-            supplier_aggregator.get_best_part_data.clear()
+            _clear_cache(supplier_aggregator.get_best_part_data)
 
         self.assertEqual(data["lifecycle_status"], "Unknown")
         self.assertFalse(data["supplier_data_verified"])
@@ -256,7 +263,7 @@ class SupplierHealthTests(unittest.TestCase):
     def test_aggregated_lifecycle_reports_conflicting_supplier_status(self):
         from integrations import supplier_aggregator
 
-        supplier_aggregator.get_supplier_results = lambda _part: [
+        rows = [
             {
                 "source": "DigiKey",
                 "provider_status": PROVIDER_AVAILABLE,
@@ -272,6 +279,9 @@ class SupplierHealthTests(unittest.TestCase):
                 "stock_total": 50,
             },
         ]
+        patcher = patch.object(supplier_aggregator, "get_supplier_results", lambda _part: rows)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         data = supplier_aggregator.get_best_part_data("LM358N-CONFLICT")
         self.assertEqual(data["lifecycle_status"], "Conflicting supplier data")
         self.assertTrue(data["lifecycle_conflict"])
@@ -283,7 +293,7 @@ class SupplierHealthTests(unittest.TestCase):
     def test_aggregated_stock_does_not_turn_missing_sources_into_zero(self):
         from integrations import supplier_aggregator
 
-        supplier_aggregator.get_supplier_results = lambda _part: [
+        rows = [
             {
                 "source": "DigiKey",
                 "provider_status": PROVIDER_AVAILABLE,
@@ -292,6 +302,9 @@ class SupplierHealthTests(unittest.TestCase):
                 "lifecycle_status": "Unknown",
             },
         ]
+        patcher = patch.object(supplier_aggregator, "get_supplier_results", lambda _part: rows)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         data = supplier_aggregator.get_best_part_data("LM358N-STOCK")
         self.assertIsNone(data["stock_total"])
         self.assertIsNone(data["total_market_stock"])
@@ -305,6 +318,111 @@ class SupplierHealthTests(unittest.TestCase):
         self.assertIsNone(extract_stock_number("On Order: 1200"))
         self.assertEqual(extract_stock_number("0 In Stock"), 0)
         self.assertEqual(extract_stock_number("1,234 In Stock"), 1234)
+
+    def test_provider_failure_is_not_reported_as_no_hit(self):
+        def boom(_part):
+            raise RuntimeError("Read timed out")
+
+        failed = _safe_supplier_lookup("Newark", boom, "LM358N")
+        no_hit = _safe_supplier_lookup(
+            "Newark", lambda _part: {"manufacturer_part_number": ""}, "LM358N"
+        )
+        self.assertEqual(failed["provider_status"], PROVIDER_TIMEOUT)
+        self.assertEqual(no_hit["provider_status"], PROVIDER_PART_NOT_FOUND)
+        self.assertNotEqual(failed["provider_status"], no_hit["provider_status"])
+        health = summarize_provider_health([failed, no_hit])
+        self.assertIn("Newark", health["failed_sources"])
+
+    def test_one_provider_failure_preserves_other_provider_results(self):
+        from integrations import supplier_aggregator
+
+        def mouser_ok(_part):
+            return {
+                "manufacturer_part_number": "LM358N",
+                "stock_total": 40,
+                "lifecycle_status": "Active",
+            }
+
+        def newark_boom(_part):
+            raise RuntimeError("500 Server Error")
+
+        def digikey_none(_part):
+            return {"manufacturer_part_number": ""}
+
+        lookups = {"Mouser": mouser_ok, "DigiKey": digikey_none, "Newark": newark_boom}
+        with patch.object(
+            supplier_aggregator,
+            "_supplier_lookup_callable",
+            side_effect=lambda source: lookups[source],
+        ):
+            results = supplier_aggregator.get_supplier_results("LM358N")
+        by_source = {row["source"]: row for row in results}
+        self.assertEqual(by_source["Mouser"]["provider_status"], PROVIDER_AVAILABLE)
+        self.assertEqual(by_source["Mouser"]["stock_total"], 40)
+        self.assertEqual(by_source["DigiKey"]["provider_status"], PROVIDER_PART_NOT_FOUND)
+        self.assertEqual(by_source["Newark"]["provider_status"], PROVIDER_ERROR)
+
+        with patch.object(
+            supplier_aggregator, "get_supplier_results", return_value=results
+        ):
+            best = supplier_aggregator.get_best_part_data("LM358N")
+        self.assertEqual(best["stock_total"], 40)
+        self.assertEqual(best["source"], "Mouser")
+        self.assertIn("Newark", best["provider_health"]["failed_sources"])
+        self.assertTrue(best["supplier_data_verified"])
+
+    def test_auth_and_malformed_failures_are_distinct_from_no_hit(self):
+        class _Resp:
+            status_code = 401
+
+        class _AuthError(Exception):
+            def __init__(self):
+                super().__init__("401 Unauthorized")
+                self.response = _Resp()
+
+        def auth(_part):
+            raise _AuthError()
+
+        def malformed(_part):
+            return ["not", "a", "dict"]
+
+        for label, lookup in (("auth", auth), ("malformed", malformed)):
+            with self.subTest(label=label):
+                result = _safe_supplier_lookup("Newark", lookup, "LM358N")
+                self.assertEqual(result["provider_status"], PROVIDER_ERROR)
+                self.assertNotEqual(result["provider_status"], PROVIDER_PART_NOT_FOUND)
+
+    def test_missing_listing_url_is_not_verified_in_aggregate(self):
+        result = _safe_supplier_lookup(
+            "Newark",
+            lambda _part: {
+                "manufacturer_part_number": "LM358N",
+                "stock_total": None,
+                "unit_price": None,
+                "product_detail_url": "",
+                "listing_verified": False,
+                "provenance_unavailable": True,
+            },
+            "LM358N",
+        )
+        self.assertEqual(result["provider_status"], PROVIDER_AVAILABLE)
+        self.assertEqual(result["product_detail_url"], "")
+        self.assertFalse(result["listing_verified"])
+        self.assertFalse(result["unit_price_known"])
+        self.assertIsNone(result["stock_total"])
+        self.assertTrue(result["retrieved_at"])
+
+    def test_newark_manufacturer_constraint_rejects_exact_mpn_wrong_vendor(self):
+        row = {
+            "manufacturer_part_number": "LM358N",
+            "manufacturer": "Other Vendor Inc",
+            "stock_total": 10,
+        }
+        mismatch = _safe_supplier_lookup(
+            "Newark", lambda _p: dict(row), "LM358N", "", "Texas Instruments"
+        )
+        self.assertEqual(mismatch["provider_status"], PROVIDER_PART_NOT_FOUND)
+        self.assertIsNone(mismatch["stock_total"])
 
     def test_all_providers_successful(self):
         results = [

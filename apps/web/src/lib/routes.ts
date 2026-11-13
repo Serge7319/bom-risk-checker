@@ -83,7 +83,7 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Monitoring",
     eyebrow: "Alerts & monitoring",
     description:
-      "Review lifecycle, inventory, pricing, and supplier changes across monitored components.",
+      "Review lifecycle and risk signals derived from a saved analysis. Refresh is explicit and does not query suppliers for live data.",
   },
   evidence: {
     icon: "shield",
@@ -125,7 +125,7 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Procurement Advisor",
     eyebrow: "Sourcing workspace",
     description:
-      "Review supplier coverage, availability, pricing, and sourcing next steps.",
+      "Review recorded supplier coverage, availability, and pricing from saved evidence. Figures are not live quotes.",
   },
   design: {
     icon: "design",

@@ -10,6 +10,15 @@ from apps.api.main import app
 from apps.api.sandbox_auth import reset_auth_store_for_tests
 from apps.api.workspace_store import WorkspaceAccessError, reset_store_for_tests
 from tests.fixtures.sandbox_auth_accounts import SANDBOX_ACCOUNTS, SANDBOX_SEED_USERS
+from tests.two_user_isolation_suite import (
+    PREFERENCES_A,
+    PREFERENCES_B,
+    assert_denied_for_other_user,
+    assert_other_user_only_sees_own,
+    assert_owner_still_has_everything,
+    assert_unauthenticated_denied,
+    seed_workspace,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 FLAT = ROOT / "tests/fixtures/synthetic_bom_25parts.csv"
@@ -211,3 +220,39 @@ def test_cross_workspace_cannot_update_or_delete(isolated_client: TestClient):
     assert client.delete(f"/projects/{project_id2}", headers=headers_a).status_code == 200
     assert client.get("/projects", headers=headers_a).json()["projects"] == []
     assert client.get("/projects", headers=headers_b).json()["projects"] == []
+
+
+def test_two_user_matrix_workspaces_boms_reports_decisions_monitoring(
+    isolated_client: TestClient,
+):
+    """Acceptance D3 (file-backed disposable auth/store): allow + deny matrix.
+
+    Monitoring GET is read-only, so seeding persists alerts through
+    ``POST /tools/monitoring/refresh`` and User B can never trigger that
+    write against User A's analysis.
+    """
+    client = isolated_client
+    headers_a = _login(client, "sandbox-a@cadivor.test")
+    headers_b = _login(client, "sandbox-b@cadivor.test")
+
+    seeded_a = seed_workspace(client, headers_a, owner="A", preferences=PREFERENCES_A)
+    seeded_b = seed_workspace(client, headers_b, owner="B", preferences=PREFERENCES_B)
+    assert seeded_a["workspace_id"] == "ws-sandbox-a"
+    assert seeded_b["workspace_id"] == "ws-sandbox-b"
+    assert seeded_a["analysis_id"] != seeded_b["analysis_id"]
+
+    # B -> A denied on every list/read/download/export/update/delete surface.
+    denied_b = assert_denied_for_other_user(client, headers_b, seeded_a)
+    # A -> B denied symmetrically.
+    denied_a = assert_denied_for_other_user(client, headers_a, seeded_b)
+    assert len(denied_b) == len(denied_a) >= 30
+
+    assert_unauthenticated_denied(client, seeded_a)
+
+    # Allowed: each owner still has complete, unmodified data.
+    assert_owner_still_has_everything(client, headers_a, seeded_a)
+    allowed_b = assert_other_user_only_sees_own(client, headers_b, seeded_b)
+    assert len(allowed_b) >= 12
+
+    # B's own deletions never touched A.
+    assert_owner_still_has_everything(client, headers_a, seeded_a)

@@ -1297,7 +1297,11 @@ async def datasheet_qa_post(request: Request) -> JSONResponse:
         return _json({"detail": "Empty file"}, 400)
     try:
         result = migration_tools.datasheet_qa_payload(
-            filename=filename, payload=payload, question=question
+            filename=filename,
+            payload=payload,
+            question=question,
+            requested_mpn=str(form.get("mpn") or form.get("requested_mpn") or "").strip(),
+            manufacturer=str(form.get("manufacturer") or "").strip(),
         )
     except Exception as exc:  # noqa: BLE001
         return _json({"detail": str(exc)}, 400)
@@ -1767,28 +1771,69 @@ async def compliance_pack_get(request: Request) -> JSONResponse:
 
 
 async def monitoring_refresh_post(request: Request) -> JSONResponse:
-    """On-demand or cron-authenticated monitoring refresh (mock delivery by default)."""
+    """Explicit monitoring refresh (the only monitoring path that persists).
+
+    Scope (never inferred silently):
+    - ``analysis_id`` (+ optional ``part_number``): refresh that analysis / part
+    - ``scope=portfolio``: clearly labeled workspace-wide refresh
+    Mock delivery by default; supports ``dry_run=1`` (derive only, no writes,
+    no email). Cron callers authenticate with ``x-cadivor-cron-token``.
+    """
     cron_header = request.headers.get("x-cadivor-cron-token")
     cron_ok = monitoring_scheduler.authorize_cron(cron_header)
     ctx, denied = _auth_context(request)
     if denied and not cron_ok:
         return denied or _json({"detail": "Unauthorized"}, 401)
-    analysis_id = None
-    workspace_id = None
+    body: dict[str, Any] = {}
+    try:
+        raw = await request.body()
+        if raw:
+            parsed = json.loads(raw)
+            body = parsed if isinstance(parsed, dict) else {}
+    except Exception:  # noqa: BLE001
+        body = {}
+
+    def _param(name: str) -> str:
+        return str(request.query_params.get(name) or body.get(name) or "").strip()
+
     if cron_ok:
-        workspace_id = (request.query_params.get("workspace_id") or "").strip()
-        analysis_id = request.query_params.get("analysis_id") or None
+        workspace_id = _param("workspace_id")
         if not workspace_id:
             return _json({"detail": "workspace_id required for cron refresh"}, 400)
     else:
         assert ctx is not None
         workspace_id = ctx["workspace_id"]
-        analysis_id = request.query_params.get("analysis_id") or None
-    return _json(
-        monitoring_scheduler.run_workspace_refresh(
-            workspace_id, analysis_id=analysis_id
+    analysis_id = _param("analysis_id") or None
+    part_number = _param("part_number") or None
+    portfolio = _param("scope").casefold() == "portfolio"
+    dry_run = _param("dry_run").casefold() in {"1", "true", "yes"}
+    if not portfolio and not analysis_id:
+        return _json(
+            {
+                "detail": "analysis_id is required, or pass scope=portfolio for a "
+                "workspace-wide refresh.",
+            },
+            400,
         )
-    )
+    if portfolio and (analysis_id or part_number):
+        return _json(
+            {"detail": "scope=portfolio cannot be combined with analysis_id or part_number."},
+            400,
+        )
+    try:
+        return _json(
+            monitoring_scheduler.run_workspace_refresh(
+                workspace_id,
+                analysis_id=analysis_id,
+                part_number=part_number,
+                portfolio=portfolio,
+                dry_run=dry_run,
+            )
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
 
 
 def _team_error(exc: TeamError) -> JSONResponse:

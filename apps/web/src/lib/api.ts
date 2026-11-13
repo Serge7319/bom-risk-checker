@@ -599,6 +599,30 @@ export async function fetchMonitoring(token: string, analysisId?: string) {
   return apiJson<Record<string, unknown>>(`/tools/monitoring${q}`, { token });
 }
 
+/**
+ * Explicit monitoring refresh — the only client path that persists alerts.
+ * Scope is always explicit: a selected analysis (optionally one part) or
+ * `portfolio` (workspace-wide). Does not call live suppliers.
+ */
+export async function refreshMonitoring(
+  token: string,
+  scope:
+    | { analysisId: string; partNumber?: string }
+    | { portfolio: true },
+) {
+  const params = new URLSearchParams();
+  if ("portfolio" in scope) {
+    params.set("scope", "portfolio");
+  } else {
+    params.set("analysis_id", scope.analysisId);
+    if (scope.partNumber) params.set("part_number", scope.partNumber);
+  }
+  return apiJson<Record<string, unknown>>(
+    `/tools/monitoring/refresh?${params.toString()}`,
+    { token, method: "POST" },
+  );
+}
+
 /** Default client bound for one pairwise compare (progress + fail-closed). */
 export const COMPARE_PARTS_TIMEOUT_MS = 60_000;
 

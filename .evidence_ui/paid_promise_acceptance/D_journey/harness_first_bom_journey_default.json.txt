@@ -1,0 +1,50 @@
+# cmd: python tests/harness_first_bom_journey.py  (existing scenarios, unchanged default path)
+{
+  "degraded_supplier": {
+    "analysis": {
+      "project_name": "First BOM",
+      "total_parts": 1,
+      "user_id": "user-1"
+    },
+    "message": "BOM is within your plan entitlements.",
+    "ok": true,
+    "parts": [
+      {
+        "analysis_part": "LM358",
+        "mpn": "LM358",
+        "supplier_data_verified": false,
+        "user_id": "user-1"
+      }
+    ],
+    "stage": "complete"
+  },
+  "empty_bom": {
+    "message": "Missing required columns: ['mpn']",
+    "ok": false,
+    "stage": "validation"
+  },
+  "missing_mpn_column": {
+    "message": "Missing required columns: ['mpn']",
+    "ok": false,
+    "stage": "validation"
+  },
+  "valid_csv": {
+    "analysis": {
+      "project_name": "First BOM",
+      "total_parts": 1,
+      "user_id": "user-1"
+    },
+    "message": "BOM is within your plan entitlements.",
+    "ok": true,
+    "parts": [
+      {
+        "analysis_part": "LM358",
+        "mpn": "LM358",
+        "supplier_data_verified": true,
+        "user_id": "user-1"
+      }
+    ],
+    "stage": "complete"
+  }
+}
+exit=0

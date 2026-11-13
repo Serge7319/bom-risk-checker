@@ -12,7 +12,11 @@ import re
 import time
 from typing import Any, Mapping, MutableMapping
 
-from src.datasheet_comparison import MAX_DATASHEET_BYTES, MAX_DATASHEET_PAGES
+from src.datasheet_comparison import (
+    MAX_DATASHEET_BYTES,
+    MAX_DATASHEET_PAGES,
+    verify_datasheet_identity,
+)
 
 
 DATASHEET_QA_DOC_KEY = "datasheet_qa_document"
@@ -36,6 +40,11 @@ STATUS_READY = "ready"
 STATUS_FAILED = "failed"
 
 NOT_FOUND_ANSWER = "Not found in this datasheet."
+# Explicit abstention for ambiguous / conflicting / unbound evidence. Answers
+# always start with this exact string (a short reason may follow) and carry
+# ``answer_kind == "needs_verification"``. Never use it for truly missing text.
+NEEDS_VERIFICATION_ANSWER = "Needs verification."
+ANSWER_KIND_NEEDS_VERIFICATION = "needs_verification"
 ASSISTED_FALLBACK_NOTICE = (
     "Cadivor could not complete the assisted analysis; here is the document-grounded result."
 )
@@ -459,7 +468,7 @@ def format_datasheet_answer_blocks(answer: str) -> list[str]:
     text = str(answer or "").strip()
     if not text:
         return []
-    if text == NOT_FOUND_ANSWER:
+    if text == NOT_FOUND_ANSWER or text.startswith(NEEDS_VERIFICATION_ANSWER):
         return [text]
     # Keep short answers as a single block.
     if len(text) < 160 and text.count(".") <= 2:
@@ -1280,7 +1289,7 @@ def compact_datasheet_history(thread: list[Mapping[str, Any]] | None) -> list[di
     return history
 
 
-def answer_datasheet_question(
+def _answer_datasheet_question_core(
     document: Mapping[str, Any],
     question: str,
     *,
@@ -1471,6 +1480,361 @@ def answer_datasheet_question(
     }
 
 
+# --- Recommended-operating vs absolute-maximum supply grounding -------------
+
+_ABS_MAX_HEADING_RE = re.compile(r"absolute\s+maximum(?:\s+ratings?)?", re.IGNORECASE)
+_RECOMMENDED_HEADING_RE = re.compile(
+    r"recommended\s+operating(?:\s+conditions?)?", re.IGNORECASE
+)
+_OTHER_SECTION_RE = re.compile(
+    r"^\s*(?:electrical\s+characteristics|thermal\s+information|esd\s+ratings|"
+    r"pin\s+(?:configuration|functions)|switching\s+characteristics|"
+    r"typical\s+characteristics|ordering\s+information|package\s+information|"
+    r"device\s+comparison)\b",
+    re.IGNORECASE,
+)
+_SUPPLY_FACT_RE = re.compile(
+    r"(supply|\bV\s?CC\b|\bV\s?DD\b|\bV\s?S\b|\bV\+)", re.IGNORECASE
+)
+_VOLT_VALUE_RE = re.compile(r"\d(?:\.\d+)?\s*V\b")
+_SUPPLY_TERM_RE = re.compile(
+    r"\b(supply\s+voltage|supply\s+range|vcc|vdd|operating\s+supply|"
+    r"operating\s+voltage|supply)\b",
+    re.IGNORECASE,
+)
+_RECOMMENDED_INTENT_RE = re.compile(
+    r"\b(recommended|operating|normal|range)\b", re.IGNORECASE
+)
+_ABS_MAX_INTENT_RE = re.compile(
+    r"\b(absolute\s+max(?:imum)?|abs\.?\s*max|maximum\s+rating|never\s+exceed)\b",
+    re.IGNORECASE,
+)
+_DEVICE_TOKEN_RE = re.compile(r"\b[A-Z]{1,5}\d{2,6}[A-Z0-9]*\b")
+_PACKAGE_PREFIXES = (
+    "SOT", "SOIC", "SOP", "SSOP", "TSSOP", "VSSOP", "MSOP", "DIP", "PDIP", "QFN",
+    "QFP", "LQFP", "TQFP", "DFN", "SON", "WSON", "UQFN", "BGA", "DSBGA", "LGA",
+    "TO", "SC", "SMA", "SMB", "SMC", "DPAK", "D2PAK", "SMD", "IEC", "ISO", "MIL",
+    "JESD", "ANSI", "UL", "RS", "USB", "CAN", "SPI", "I2C", "ESD",
+)
+
+
+def is_needs_verification_answer(answer: object) -> bool:
+    return str(answer or "").strip().startswith(NEEDS_VERIFICATION_ANSWER)
+
+
+def is_recommended_supply_question(question: str) -> bool:
+    """True for recommended/operating supply asks (never absolute-maximum asks)."""
+    text = str(question or "")
+    if not _SUPPLY_TERM_RE.search(text):
+        return False
+    if _ABS_MAX_INTENT_RE.search(text):
+        return False
+    return bool(_RECOMMENDED_INTENT_RE.search(text))
+
+
+def _norm_part_key(value: object) -> str:
+    return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+
+
+def _identity_document(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Document view with ``pages`` always present for identity verification."""
+    data = dict(document or {})
+    if data.get("pages"):
+        return data
+    grouped: dict[int, list[str]] = {}
+    for chunk in data.get("chunks") or []:
+        if isinstance(chunk, Mapping):
+            grouped.setdefault(int(chunk.get("page") or 0), []).append(
+                str(chunk.get("text") or "")
+            )
+    data["pages"] = [
+        {"page": page, "text": "\n".join(texts)} for page, texts in sorted(grouped.items())
+    ]
+    return data
+
+
+def _datasheet_identity(
+    document: Mapping[str, Any], mpn: str, manufacturer: str
+) -> dict[str, Any]:
+    return verify_datasheet_identity(
+        _identity_document(document), manufacturer=manufacturer, mpn=mpn
+    )
+
+
+def _source_document_metadata(document: Mapping[str, Any]) -> dict[str, str]:
+    meta: dict[str, str] = {}
+    for key in ("filename", "source_url", "source_supplier", "content_fingerprint"):
+        value = str(document.get(key) or "").strip()
+        if value:
+            meta[key] = value
+    return meta
+
+
+def _bind_answer_metadata(
+    result: dict[str, Any],
+    document: Mapping[str, Any] | None,
+    mpn: str,
+    manufacturer: str,
+    identity: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Bind answer metadata to the requested MPN / manufacturer / source document."""
+    doc = document if isinstance(document, Mapping) else {}
+    if mpn:
+        result["requested_mpn"] = mpn
+    if manufacturer:
+        result["manufacturer"] = manufacturer
+    source = _source_document_metadata(doc)
+    if source:
+        result["source_document"] = source
+    if identity is not None:
+        result["identity"] = dict(identity)
+    return result
+
+
+def _needs_verification_result(
+    reason: str,
+    *,
+    evidence: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    evidence = list(evidence or [])
+    pages = sorted(
+        {int(item["page"]) for item in evidence if int(item.get("page") or 0) > 0}
+    )
+    return {
+        "ok": True,
+        "error": "",
+        "answer": f"{NEEDS_VERIFICATION_ANSWER} {reason}".strip(),
+        "citations": [f"Page {page}" for page in pages],
+        "evidence": evidence,
+        "provider": "local-excerpts",
+        "notice": "",
+        "assisted_fallback": False,
+        "answer_kind": ANSWER_KIND_NEEDS_VERIFICATION,
+        "verification_reason": reason,
+    }
+
+
+def _line_label(line: str) -> tuple[str, str] | None:
+    """Section heading carried by a line, earliest heading wins."""
+    abs_match = _ABS_MAX_HEADING_RE.search(line)
+    rec_match = _RECOMMENDED_HEADING_RE.search(line)
+    if abs_match and (not rec_match or abs_match.start() <= rec_match.start()):
+        return "abs_max", "Absolute Maximum Ratings"
+    if rec_match:
+        return "recommended", "Recommended Operating Conditions"
+    if _OTHER_SECTION_RE.search(line):
+        return "other", ""
+    return None
+
+
+def _foreign_or_applicable_tokens(line: str, mpn_key: str) -> tuple[set[str], set[str]]:
+    applicable: set[str] = set()
+    foreign: set[str] = set()
+    if not mpn_key:
+        return applicable, foreign
+    for match in _DEVICE_TOKEN_RE.finditer(line.upper()):
+        token = match.group(0)
+        if token.startswith(_PACKAGE_PREFIXES) or len(token) < 4:
+            continue
+        if mpn_key.startswith(token):
+            applicable.add(token)
+        else:
+            foreign.add(token)
+    return applicable, foreign
+
+
+def _extract_supply_facts(
+    document: Mapping[str, Any], mpn_key: str
+) -> list[dict[str, Any]]:
+    """Section-labelled supply lines, in page order, never mixing sections."""
+    chunks = [c for c in (document.get("chunks") or []) if isinstance(c, Mapping)]
+    chunks.sort(key=lambda c: (int(c.get("page") or 0), int(c.get("start_char") or 0)))
+    facts: list[dict[str, Any]] = []
+    state_page = None
+    label, section, segment, seg_tokens = "", "", 0, (set(), set())
+    segment_counter = 0
+    for chunk in chunks:
+        page = int(chunk.get("page") or 0)
+        if page != state_page:
+            state_page = page
+            label, section, seg_tokens = "", "", (set(), set())
+        for raw_line in str(chunk.get("text") or "").splitlines():
+            line = re.sub(r"\s+", " ", raw_line).strip()
+            if not line:
+                continue
+            heading = _line_label(line)
+            if heading:
+                label, section = heading
+                segment_counter += 1
+                segment = segment_counter
+                seg_tokens = _foreign_or_applicable_tokens(line, mpn_key)
+            if not (_SUPPLY_FACT_RE.search(line) and _VOLT_VALUE_RE.search(line)):
+                continue
+            applicable, foreign = _foreign_or_applicable_tokens(line, mpn_key)
+            if not applicable and not foreign:
+                applicable, foreign = seg_tokens
+            facts.append(
+                {
+                    "page": page,
+                    "label": label,
+                    "section": section,
+                    "segment": segment,
+                    "line": line,
+                    "chunk_id": str(chunk.get("chunk_id") or ""),
+                    "applicable_tokens": sorted(applicable),
+                    "foreign_tokens": sorted(foreign),
+                }
+            )
+    return facts
+
+
+def _supply_mode(line: str) -> str:
+    lowered = line.casefold()
+    if any(token in lowered for token in ("dual", "split", "±", "+/-", "plus/minus")):
+        return "dual"
+    if "single" in lowered:
+        return "single"
+    return "generic"
+
+
+def _fact_evidence(facts: list[dict[str, Any]], *, note: str = "") -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    for fact in facts:
+        item = {
+            "page": fact["page"],
+            "citation": f"Page {fact['page']}" if fact["page"] else "",
+            "section": fact["section"],
+            "excerpt": fact["line"][:500],
+            "chunk_id": fact["chunk_id"],
+            "kind": fact["label"],
+        }
+        if note:
+            item["note"] = note
+        evidence.append(item)
+    return evidence
+
+
+def _recommended_supply_conflict(facts: list[dict[str, Any]]) -> bool:
+    """True when separate recommended tables / variants give different ranges."""
+    merged: dict[tuple[str, int, str], set[str]] = {}
+    for fact in facts:
+        mode = _supply_mode(fact["line"])
+        token = ",".join(fact["applicable_tokens"])
+        key = (mode, fact["segment"], token)
+        merged.setdefault(key, set()).update(
+            re.findall(r"\d+(?:\.\d+)?", fact["line"])
+        )
+    by_mode: dict[str, set[frozenset[str]]] = {}
+    for (mode, _segment, _token), numbers in merged.items():
+        by_mode.setdefault(mode, set()).add(frozenset(numbers))
+    return any(len(signatures) > 1 for signatures in by_mode.values())
+
+
+def _recommended_supply_result(
+    document: Mapping[str, Any], mpn: str, manufacturer: str
+) -> dict[str, Any] | None:
+    """Deterministic recommended-operating supply answer; None = use general path."""
+    mpn_key = _norm_part_key(mpn)
+    facts = _extract_supply_facts(document, mpn_key)
+    recommended = [f for f in facts if f["label"] == "recommended"]
+    abs_max = [f for f in facts if f["label"] == "abs_max"]
+    if not recommended and not abs_max:
+        return None
+    if not recommended:
+        pages = ", ".join(sorted({f"Page {f['page']}" for f in abs_max}))
+        return _needs_verification_result(
+            "Only absolute-maximum supply ratings were found "
+            f"({pages}); they are stress limits, not a recommended operating range, "
+            "and no Recommended Operating Conditions supply range was located.",
+            evidence=_fact_evidence(abs_max),
+        )
+    applicable = [f for f in recommended if not (f["foreign_tokens"] and not f["applicable_tokens"])]
+    if not applicable:
+        others = sorted({t for f in recommended for t in f["foreign_tokens"]})
+        return _needs_verification_result(
+            "The recommended supply ratings found are labeled for other components "
+            f"({', '.join(others)}), not {mpn or 'the requested part'}.",
+            evidence=_fact_evidence(recommended, note="Different component; not used"),
+        )
+    if _recommended_supply_conflict(applicable):
+        return _needs_verification_result(
+            "Recommended operating supply ranges differ between tables or variants, "
+            "and the datasheet text does not establish which applies to "
+            f"{mpn or 'this part'}.",
+            evidence=_fact_evidence(applicable),
+        )
+    seen: set[str] = set()
+    lines: list[str] = []
+    for fact in applicable:
+        text = fact["line"]
+        if text.casefold() not in seen:
+            seen.add(text.casefold())
+            lines.append(text)
+    pages = sorted({f["page"] for f in applicable if f["page"]})
+    page_text = ", ".join(f"Page {page}" for page in pages)
+    subject = " ".join(part for part in (manufacturer, mpn) if part).strip()
+    subject_clause = f" for {subject}" if subject else ""
+    answer = (
+        f"Recommended operating supply{subject_clause}: {'; '.join(lines)[:700]} "
+        f"(Recommended Operating Conditions, {page_text}). "
+        "This is the recommended operating range, not an absolute-maximum rating."
+    )
+    return {
+        "ok": True,
+        "error": "",
+        "answer": answer,
+        "citations": [f"Page {page}" for page in pages],
+        "evidence": _fact_evidence(applicable),
+        "provider": "local-excerpts",
+        "notice": "",
+        "assisted_fallback": False,
+        "answer_kind": "supported",
+    }
+
+
+def answer_datasheet_question(
+    document: Mapping[str, Any],
+    question: str,
+    *,
+    ai_client: Any | None = None,
+    history: list[Mapping[str, Any]] | None = None,
+    requested_mpn: str = "",
+    manufacturer: str = "",
+) -> dict[str, Any]:
+    """Cited Ask Cadivor answer bound to the requested MPN/manufacturer/source.
+
+    * A document that does not name the requested exact MPN is rejected with
+      ``NEEDS_VERIFICATION_ANSWER`` — its text is never cited for that part.
+    * Recommended-operating supply questions use Recommended Operating Conditions
+      text only; absolute-maximum text is never presented as the operating range.
+    * Conflicting tables / variants abstain with ``NEEDS_VERIFICATION_ANSWER``.
+    * Truly missing evidence keeps ``NOT_FOUND_ANSWER``.
+    """
+    doc = document if isinstance(document, Mapping) else {}
+    mpn = str(requested_mpn or doc.get("requested_mpn") or "").strip()
+    mfr = str(manufacturer or doc.get("manufacturer") or "").strip()
+    cleaned = str(question or "").strip()
+    askable = bool(
+        doc.get("available") and cleaned and len(cleaned) <= MAX_QUESTION_CHARS
+    )
+    identity: dict[str, Any] | None = None
+    result: dict[str, Any] | None = None
+    if askable and mpn:
+        identity = _datasheet_identity(doc, mpn, mfr)
+        if not identity.get("mpn_verified"):
+            result = _needs_verification_result(
+                str(identity.get("reason") or "")
+                + f" This datasheet is not bound to {mpn}, so none of its text is cited for that part."
+            )
+    if result is None and askable and is_recommended_supply_question(cleaned):
+        result = _recommended_supply_result(doc, mpn, mfr)
+    if result is None:
+        result = _answer_datasheet_question_core(
+            document, question, ai_client=ai_client, history=history
+        )
+    return _bind_answer_metadata(result, doc, mpn, mfr, identity)
+
+
 def build_datasheet_ai_client() -> Any | None:
     """Construct the optional EngineeringAI client without page-level secrets UI."""
     try:
@@ -1530,7 +1894,7 @@ def append_thread_turn(
     if answer_kind == "supported" or (
         answer
         and answer != NOT_FOUND_ANSWER
-        and answer_kind != "insufficient_evidence"
+        and answer_kind not in {"insufficient_evidence", ANSWER_KIND_NEEDS_VERIFICATION}
     ):
         primary = primary_evidence_line(evidence)
     citations = supporting_citations(
@@ -1538,6 +1902,9 @@ def append_thread_turn(
         answer=answer,
         primary=primary,
     )
+    if answer_kind == ANSWER_KIND_NEEDS_VERIFICATION:
+        # Show exactly the pages that were found, never a re-ranked subset.
+        citations = list(result.get("citations") or [])
     if not citations:
         citations = list(result.get("citations") or [])
     active_doc = document if isinstance(document, Mapping) else session_state.get(
@@ -1567,6 +1934,9 @@ def append_thread_turn(
             "notice": str(result.get("notice") or ""),
             "assisted_fallback": bool(result.get("assisted_fallback")),
             "answer_kind": answer_kind,
+            "requested_mpn": str(result.get("requested_mpn") or ""),
+            "manufacturer": str(result.get("manufacturer") or ""),
+            "source_document": dict(result.get("source_document") or {}),
             "provider": str(result.get("provider") or ""),
             "document_fingerprint": document_fingerprint(
                 active_doc if isinstance(active_doc, Mapping) else None

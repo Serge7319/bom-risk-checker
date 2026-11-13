@@ -58,9 +58,44 @@ def authorize_cron(header_token: str | None) -> bool:
     return (header_token or "").strip() == expected
 
 
-def run_workspace_refresh(workspace_id: str, *, analysis_id: str | None = None) -> dict[str, Any]:
-    payload = migration_tools.monitoring_payload(
-        workspace_id=workspace_id, analysis_id=analysis_id
+def run_workspace_refresh(
+    workspace_id: str,
+    *,
+    analysis_id: str | None = None,
+    part_number: str | None = None,
+    portfolio: bool = False,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Explicit refresh + optional (mock/disabled-by-default) alert delivery.
+
+    ``dry_run=True`` derives the read-only monitoring view, writes nothing and
+    never reaches the email delivery path. A cron caller that supplies no
+    ``analysis_id`` must request ``portfolio=True`` explicitly.
+    """
+    if dry_run:
+        if portfolio:
+            raise ValueError("dry_run supports a single analysis_id scope")
+        payload = migration_tools.monitoring_payload(
+            workspace_id=workspace_id, analysis_id=analysis_id
+        )
+        return {
+            "ok": True,
+            "dry_run": True,
+            "workspace_id": workspace_id,
+            "scope": "part" if part_number else "analysis",
+            "scheduler_enabled": scheduler_enabled(),
+            "email_delivery_enabled": monitoring_store.email_delivery_enabled(),
+            "alert_count": len(payload.get("alerts") or []),
+            "refresh": None,
+            "notifications": [],
+            "persisted": False,
+            "gap": "Dry run: nothing was saved and no notifications were attempted.",
+        }
+    payload = migration_tools.monitoring_refresh_payload(
+        workspace_id=workspace_id,
+        analysis_id=analysis_id,
+        part_number=part_number,
+        portfolio=portfolio,
     )
     prefs = monitoring_store.get_preferences(workspace_id)
     delivered = []
@@ -69,11 +104,19 @@ def run_workspace_refresh(workspace_id: str, *, analysis_id: str | None = None) 
             delivered.append(monitoring_store.deliver_alert_email(workspace_id, alert))
     return {
         "ok": True,
+        "dry_run": False,
+        "persisted": True,
         "workspace_id": workspace_id,
+        "scope": payload.get("scope"),
+        "scope_label": payload.get("scope_label"),
+        "analysis_id": payload.get("analysis_id"),
+        "part_number": payload.get("part_number"),
         "scheduler_enabled": scheduler_enabled(),
         "email_delivery_enabled": monitoring_store.email_delivery_enabled(),
-        "alert_count": len(payload.get("alerts") or []),
+        "alert_count": payload.get("alert_count", len(payload.get("alerts") or [])),
+        "alerts": payload.get("alerts") or [],
         "refresh": payload.get("refresh"),
+        "live_supplier_refresh": False,
         "notifications": delivered,
         "gap": (
             None

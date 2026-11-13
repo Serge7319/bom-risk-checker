@@ -160,5 +160,50 @@ class StockCoercionTests(unittest.TestCase):
         self.assertEqual(render_original, 1000.0)
 
 
+    def test_newark_missing_stock_and_price_are_null_not_zero_or_out_of_stock(self):
+        newark = importlib.import_module("integrations.newark_client")
+        self.assertIsNone(newark.extract_newark_stock({}))
+        self.assertIsNone(newark.extract_newark_stock({"stock": {}}))
+        self.assertIsNone(newark.extract_newark_stock({"stock": {"level": "unknown"}}))
+        self.assertIsNone(newark.extract_newark_price({}))
+        self.assertIsNone(newark.extract_newark_price({"prices": []}))
+        # An explicit zero report is still a real zero.
+        self.assertEqual(newark.extract_newark_stock({"stock": {"level": 0}}), 0)
+
+    def test_newark_null_stock_stays_unknown_through_aggregation(self):
+        from unittest.mock import patch
+
+        rows = [
+            {
+                "source": "Newark",
+                "provider_status": "AVAILABLE",
+                "manufacturer_part_number": "LM358N",
+                "stock_total": None,
+                "unit_price": None,
+            }
+        ]
+        with patch.object(self.aggregator, "get_supplier_results", return_value=rows):
+            data = self.aggregator.get_best_part_data("LM358N")
+        self.assertIsNone(data["stock_total"])
+        self.assertIsNone(data["total_market_stock"])
+        self.assertFalse(data["stock_data_complete"])
+
+    def test_reported_zero_stock_is_distinct_from_missing_in_aggregation(self):
+        from unittest.mock import patch
+
+        rows = [
+            {
+                "source": "Newark",
+                "provider_status": "AVAILABLE",
+                "manufacturer_part_number": "LM358N",
+                "stock_total": 0,
+            }
+        ]
+        with patch.object(self.aggregator, "get_supplier_results", return_value=rows):
+            data = self.aggregator.get_best_part_data("LM358N")
+        self.assertEqual(data["stock_total"], 0)
+        self.assertTrue(data["stock_data_complete"])
+
+
 if __name__ == "__main__":
     unittest.main()

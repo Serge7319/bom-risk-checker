@@ -1,0 +1,23 @@
+# cmd: python -m pytest tests/test_cutover_disposable_db.py -v -p no:cacheprovider
+============================= test session starts ==============================
+platform darwin -- Python 3.12.7, pytest-7.4.4, pluggy-1.0.0 -- <python-env>/bin/python
+rootdir: <worktree>
+plugins: anyio-4.2.0
+collecting ... collected 8 items
+
+tests/test_cutover_disposable_db.py::test_tenant_isolation_reads_and_mutations PASSED [ 12%]
+tests/test_cutover_disposable_db.py::test_two_user_postgres_matrix_workspaces_boms_reports_decisions_monitoring PASSED [ 25%]
+tests/test_cutover_disposable_db.py::test_backup_restore_and_recovery PASSED [ 37%]
+tests/test_cutover_disposable_db.py::test_performance_synthetic_analyze_and_report PASSED [ 50%]
+tests/test_cutover_disposable_db.py::test_supplier_monitoring_billing_connectors_compliance_on_disposable_db PASSED [ 62%]
+tests/test_cutover_disposable_db.py::test_concurrent_analysis_writes_are_persisted PASSED [ 75%]
+tests/test_cutover_disposable_db.py::test_hold_for_review_single_record_under_correct_bom_on_workspace_store PASSED [ 87%]
+tests/test_cutover_disposable_db.py::test_ledger_reconcile_inserts_marker_without_rerunning_production_sql PASSED [100%]
+
+=============================== warnings summary ===============================
+tests/test_cutover_disposable_db.py:10
+  <worktree>/tests/test_cutover_disposable_db.py:10: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+========================= 8 passed, 1 warning in 7.14s =========================

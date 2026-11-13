@@ -34,6 +34,7 @@ from src.component_family_profiles import (
     pdf_label_aliases,
 )
 from src.parametric_compare import (
+    classify_rating_context,
     classify_value_condition,
     compare_field_values,
     engineering_confidence_from_rows,
@@ -1861,6 +1862,16 @@ def _is_specific_pdf_field_value(field_spec: Any, value: str) -> bool:
     return not re.search(r"[.!?]{2,}|\b(?:the|this|these|with|from|while|which|that)\b", text, re.IGNORECASE)
 
 
+def _pdf_line_is_wrong_rating_context(field_spec: Any, line: str) -> bool:
+    """True when a PDF line's operating/absolute-max context contradicts the field."""
+    spec_text = f"{getattr(field_spec, 'key', '')} {getattr(field_spec, 'label', '')}"
+    spec_context = classify_rating_context(spec_text.replace("_", " "))
+    line_context = classify_rating_context(line)
+    if spec_context == "absolute_max":
+        return line_context == "operating"
+    return line_context == "absolute_max"
+
+
 def _find_pdf_evidence(
     pdf_result: dict,
     labels: tuple[str, ...],
@@ -1882,6 +1893,10 @@ def _find_pdf_evidence(
                 )
                 for label in labels
             ):
+                continue
+            if field_spec is not None and _pdf_line_is_wrong_rating_context(field_spec, compact):
+                # An absolute-maximum rating row must never be extracted as the
+                # operating property (and vice versa).
                 continue
             value = _pdf_value_after_label(compact, labels)
             excerpt_line = compact

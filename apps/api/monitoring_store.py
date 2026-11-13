@@ -381,13 +381,18 @@ def record_refresh(
     analysis_id: str | None,
     alert_count: int,
     mode: str = "synthetic-preview",
+    scope: str = "analysis",
+    part_number: str | None = None,
 ) -> dict[str, Any]:
+    """Record an explicit refresh. Never called from read-only GET paths."""
     entry = {
         "id": f"refresh-{uuid.uuid4().hex[:10]}",
         "workspace_id": workspace_id,
         "analysis_id": analysis_id,
         "alert_count": alert_count,
         "mode": mode,
+        "scope": scope,
+        "part_number": part_number,
         "ran_at": utc_now(),
         "scheduled": False,
         "gap": "On-demand refresh only. Cron/scheduler not attached to migration API yet.",

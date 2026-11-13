@@ -1,0 +1,111 @@
+/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/paid-promise-acceptance/tests/harness_first_bom_journey.py:181: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient
+{
+  "boms": {
+    "parts": 3,
+    "source_rows": 4
+  },
+  "ok": true,
+  "steps": [
+    {
+      "auth": "disposable-sandbox-jwt",
+      "ok": true,
+      "step": "sign_in"
+    },
+    {
+      "mapping": {
+        "Part Number": "mpn",
+        "Qty": "quantity"
+      },
+      "ok": true,
+      "step": "map_rev_A"
+    },
+    {
+      "can_analyze": true,
+      "ok": true,
+      "source_rows": 4,
+      "step": "validate_rev_A",
+      "unique_parts": 3
+    },
+    {
+      "ok": true,
+      "persisted": true,
+      "status": 200,
+      "step": "analyze_rev_A",
+      "total_parts": 3
+    },
+    {
+      "analysis_id_is_uuid": true,
+      "ok": true,
+      "parts": 3,
+      "reopened_in_session": true,
+      "step": "save"
+    },
+    {
+      "monitoring_get_wrote_nothing": true,
+      "ok": true,
+      "pages": {
+        "monitoring_get": 200,
+        "procurement": 200,
+        "projects": 200,
+        "reports_list": 200,
+        "workspace_home": 200
+      },
+      "step": "navigate_away"
+    },
+    {
+      "mapping": {
+        "Part Number": "mpn",
+        "Qty": "quantity"
+      },
+      "ok": true,
+      "step": "map_rev_B"
+    },
+    {
+      "can_analyze": true,
+      "ok": true,
+      "source_rows": 4,
+      "step": "validate_rev_B",
+      "unique_parts": 3
+    },
+    {
+      "ok": true,
+      "persisted": true,
+      "status": 200,
+      "step": "analyze_rev_B",
+      "total_parts": 3
+    },
+    {
+      "new_analysis": true,
+      "ok": true,
+      "revisions": [
+        "A",
+        "B"
+      ],
+      "same_bom": true,
+      "same_project": true,
+      "step": "repeat_upload"
+    },
+    {
+      "new_session": true,
+      "ok": true,
+      "process_cache_cleared": true,
+      "reports_listed": 2,
+      "step": "reload",
+      "storage_reopened": true
+    },
+    {
+      "csv_export_stable": true,
+      "csv_rows": 3,
+      "identical_to_pre_reload": true,
+      "ok": true,
+      "parts": 3,
+      "step": "reopen_report"
+    },
+    {
+      "ok": true,
+      "status": 404,
+      "step": "second_user_denied"
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 """Datasheet Q&A regressions: citations, privacy, scanned PDF, injection."""
 from __future__ import annotations
 
+import copy
+import json
 import unittest
 from pathlib import Path
 
@@ -12,7 +14,9 @@ from src.datasheet_qa import (
     DATASHEET_QA_FOLLOW_UP_WIDGET_KEY,
     DATASHEET_QA_QUESTION_WIDGET_KEY,
     DATASHEET_QA_THREAD_KEY,
+    NEEDS_VERIFICATION_ANSWER,
     NOT_FOUND_ANSWER,
+    _chunk_page_text,
     answer_datasheet_question,
     claim_datasheet_question_submit,
     clear_datasheet_document,
@@ -28,6 +32,44 @@ from src.datasheet_qa import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
+LM358_FIXTURE = ROOT / "tests" / "fixtures" / "datasheets" / "lm358dr_ti_excerpts.json"
+
+
+def _fixture_document(
+    pages: list[dict] | None = None,
+    *,
+    requested_mpn: str = "LM358DR",
+    manufacturer: str = "Texas Instruments",
+) -> dict:
+    """Build a page-aware document from the sanitized LM358DR excerpt fixture."""
+    data = json.loads(LM358_FIXTURE.read_text(encoding="utf-8"))
+    rows = copy.deepcopy(pages if pages is not None else data["pages"])
+    chunks = []
+    for row in rows:
+        for chunk in _chunk_page_text(int(row["page"]), str(row["text"])):
+            chunks.append(
+                {
+                    "chunk_id": chunk.chunk_id,
+                    "page": chunk.page,
+                    "text": chunk.text,
+                    "start_char": chunk.start_char,
+                }
+            )
+    document = {
+        "available": True,
+        "reason": "",
+        "pages": [{"page": r["page"], "text": r["text"]} for r in rows],
+        "chunks": chunks,
+        "filename": data["filename"],
+        "page_count": len(rows),
+        "content_fingerprint": "fixture-lm358dr",
+        "source_url": "https://fixture.invalid/lm358dr.pdf",
+    }
+    if requested_mpn:
+        document["requested_mpn"] = requested_mpn
+    if manufacturer:
+        document["manufacturer"] = manufacturer
+    return document
 
 
 def _text_pdf_bytes(pages: list[str]) -> bytes:
@@ -790,3 +832,176 @@ class DatasheetQaFollowUpLifecycleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DatasheetQaPaidPromiseSupplyTests(unittest.TestCase):
+    """Recommended-operating vs absolute-maximum grounding and abstention."""
+
+    RECOMMENDED_Q = "What is the recommended operating supply voltage for LM358DR?"
+
+    def test_exact_mpn_bind_adds_mpn_manufacturer_and_source_metadata(self):
+        result = answer_datasheet_question(_fixture_document(), self.RECOMMENDED_Q)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["requested_mpn"], "LM358DR")
+        self.assertEqual(result["manufacturer"], "Texas Instruments")
+        self.assertEqual(result["source_document"]["filename"], "lm358dr-datasheet.pdf")
+        self.assertEqual(
+            result["source_document"]["source_url"], "https://fixture.invalid/lm358dr.pdf"
+        )
+        self.assertTrue(result["identity"]["mpn_verified"])
+        self.assertTrue(result["identity"]["manufacturer_verified"])
+
+    def test_wrong_component_citation_is_rejected(self):
+        document = _fixture_document(requested_mpn="LM2904DR")
+        result = answer_datasheet_question(document, self.RECOMMENDED_Q)
+        self.assertTrue(result["answer"].startswith(NEEDS_VERIFICATION_ANSWER))
+        self.assertEqual(result["answer_kind"], "needs_verification")
+        self.assertEqual(result["citations"], [])
+        self.assertEqual(result["evidence"], [])
+        self.assertFalse(result["identity"]["mpn_verified"])
+        self.assertEqual(result["requested_mpn"], "LM2904DR")
+        self.assertNotRegex(result["answer"], r"32\s*V")
+
+    def test_prefix_of_longer_mpn_does_not_bind(self):
+        document = _fixture_document(requested_mpn="LM358")
+        # "LM358" appears as a family prefix, but a longer MPN must not bind to it.
+        document = _fixture_document(requested_mpn="LM358DRG4")
+        result = answer_datasheet_question(document, "What is the package?")
+        self.assertEqual(result["answer_kind"], "needs_verification")
+
+    def test_recommended_supply_is_distinct_from_absolute_maximum(self):
+        result = answer_datasheet_question(_fixture_document(), self.RECOMMENDED_Q)
+        self.assertEqual(result["answer_kind"], "supported")
+        answer = result["answer"]
+        self.assertIn("3 V to 32 V", answer)
+        self.assertIn("1.5 V", answer)
+        self.assertIn("Recommended Operating Conditions", answer)
+        self.assertIn("Page 5", answer)
+        self.assertEqual(result["citations"], ["Page 5"])
+        self.assertTrue(all(item["page"] == 5 for item in result["evidence"]))
+        self.assertTrue(all(item["kind"] == "recommended" for item in result["evidence"]))
+        # Absolute-maximum text (page 4) is never presented as the operating range.
+        self.assertNotIn("Page 4", answer)
+        self.assertNotIn("or 32 V", answer)
+        self.assertNotIn("Absolute Maximum Ratings,", answer)
+
+    def test_absolute_maximum_question_stays_on_absolute_maximum_text(self):
+        result = answer_datasheet_question(
+            _fixture_document(), "What is the absolute maximum supply voltage for LM358DR?"
+        )
+        self.assertTrue(result["ok"])
+        self.assertIn("Page 4", result["citations"])
+        self.assertNotEqual(result["answer_kind"], "needs_verification")
+
+    def test_only_absolute_maximum_never_presented_as_recommended(self):
+        pages = [row for row in json.loads(LM358_FIXTURE.read_text())["pages"] if row["page"] != 5]
+        result = answer_datasheet_question(
+            _fixture_document(pages), self.RECOMMENDED_Q
+        )
+        self.assertTrue(result["answer"].startswith(NEEDS_VERIFICATION_ANSWER))
+        self.assertEqual(result["answer_kind"], "needs_verification")
+        self.assertEqual(result["citations"], ["Page 4"])
+        self.assertIn("not a recommended operating range", result["answer"])
+
+    def test_conflicting_recommended_tables_need_verification_with_citations(self):
+        pages = json.loads(LM358_FIXTURE.read_text())["pages"]
+        pages.append(
+            {
+                "page": 9,
+                "section": "Recommended Operating Conditions",
+                "text": "Recommended Operating Conditions\nSupply voltage, VCC (single supply) 2.7 V to 36 V",
+            }
+        )
+        result = answer_datasheet_question(_fixture_document(pages), self.RECOMMENDED_Q)
+        self.assertTrue(result["answer"].startswith(NEEDS_VERIFICATION_ANSWER))
+        self.assertEqual(result["answer_kind"], "needs_verification")
+        self.assertEqual(result["citations"], ["Page 5", "Page 9"])
+        excerpts = " ".join(item["excerpt"] for item in result["evidence"])
+        self.assertIn("3 V to 32 V", excerpts)
+        self.assertIn("2.7 V to 36 V", excerpts)
+        # No stitched guess merges the two ranges into one answer.
+        self.assertNotIn("Recommended operating supply for", result["answer"])
+
+    def test_variant_ambiguity_needs_verification(self):
+        pages = [
+            {"page": 1, "text": "LM358ADR and LM358DR operational amplifier. Texas Instruments."},
+            {
+                "page": 5,
+                "text": (
+                    "Recommended Operating Conditions\n"
+                    "LM358 Supply voltage, VCC (single supply) 3 V to 32 V\n"
+                    "LM358A Supply voltage, VCC (single supply) 3 V to 30 V"
+                ),
+            },
+        ]
+        result = answer_datasheet_question(
+            _fixture_document(pages, requested_mpn="LM358ADR"), self.RECOMMENDED_Q
+        )
+        self.assertEqual(result["answer_kind"], "needs_verification")
+        self.assertEqual(result["citations"], ["Page 5"])
+
+    def test_other_component_supply_row_is_not_used(self):
+        pages = json.loads(LM358_FIXTURE.read_text())["pages"]
+        pages[2]["text"] += "\nLM393 Supply voltage, VCC 2 V to 36 V"
+        result = answer_datasheet_question(_fixture_document(pages), self.RECOMMENDED_Q)
+        self.assertEqual(result["answer_kind"], "supported")
+        self.assertNotIn("2 V to 36 V", result["answer"])
+
+    def test_missing_evidence_keeps_not_found(self):
+        pages = [
+            {"page": 1, "text": "LM358DR dual operational amplifier. Texas Instruments."},
+            {"page": 2, "text": "Package outline dimensions for SOIC 8-pin device."},
+        ]
+        result = answer_datasheet_question(
+            _fixture_document(pages), "Specify clock frequency."
+        )
+        self.assertEqual(result["answer"], NOT_FOUND_ANSWER)
+        self.assertEqual(result["answer_kind"], "insufficient_evidence")
+        self.assertEqual(result["requested_mpn"], "LM358DR")
+
+    def test_recommended_supply_without_any_supply_text_is_not_needs_verification(self):
+        pages = [{"page": 1, "text": "LM358DR dual operational amplifier. Texas Instruments."}]
+        result = answer_datasheet_question(_fixture_document(pages), self.RECOMMENDED_Q)
+        self.assertNotEqual(result["answer_kind"], "needs_verification")
+
+    def test_migration_payload_binds_pdf_identity_before_answering(self):
+        from apps.api.migration_tools import datasheet_qa_payload
+
+        pdf = _text_pdf_bytes(
+            [
+                "LM358DR dual operational amplifier. Texas Instruments Incorporated.",
+                "Recommended Operating Conditions\nSupply voltage, VCC 3 V to 32 V",
+            ]
+        )
+        bound = datasheet_qa_payload(
+            filename="lm358dr.pdf",
+            payload=pdf,
+            question=self.RECOMMENDED_Q,
+            requested_mpn="LM358DR",
+            manufacturer="Texas Instruments",
+        )
+        self.assertTrue(bound["document"]["bound"])
+        self.assertEqual(bound["document"]["manufacturer"], "Texas Instruments")
+        self.assertIn("3 V to 32 V", bound["answer"])
+
+        unbound = datasheet_qa_payload(
+            filename="lm358dr.pdf",
+            payload=pdf,
+            question=self.RECOMMENDED_Q,
+            requested_mpn="TPS5430",
+        )
+        self.assertFalse(unbound["document"]["bound"])
+        self.assertTrue(unbound["answer"].startswith(NEEDS_VERIFICATION_ANSWER))
+        self.assertEqual(unbound["citations"], [])
+
+    def test_live_datasheet_page_verifies_identity_before_binding(self):
+        approved_pages = (ROOT / "src" / "ui" / "approved_pages.py").read_text(
+            encoding="utf-8"
+        )
+        renderer = approved_pages.split("def render_datasheet_live()", 1)[1]
+        self.assertIn("verify_datasheet_identity(", renderer)
+        self.assertLess(
+            renderer.index("verify_datasheet_identity("),
+            renderer.index("store_document_in_session(st.session_state, document)"),
+        )
+        self.assertIn('document["manufacturer"]', renderer)
