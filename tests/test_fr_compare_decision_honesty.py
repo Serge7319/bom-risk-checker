@@ -110,6 +110,41 @@ class CatalogRetainedCountReconcileTests(unittest.TestCase):
         self.assertNotRegex(summary, r"39 raw catalog matches → 0 retained")
         self.assertEqual(summary.count("raw catalog matches →"), 1)
 
+    def test_provider_retained_rematch_tolerates_supplier_label_aliases(self):
+        """``Mouser Electronics`` rows must still count under providers['Mouser']."""
+        from src.alternative_finder_search import refresh_catalog_retained_after_partition
+
+        discovery = {
+            "catalog_raw_count": 24,
+            "catalog_retained_count": 24,
+            "catalog_filter_summary": "24 raw catalog matches → 24 retained",
+            "providers": {
+                "Mouser": {
+                    "catalog": "ok",
+                    "catalog_raw_count": 24,
+                    "catalog_retained_count": 24,
+                }
+            },
+        }
+        displayed = [
+            {
+                "Alternative Part": f"LM358-ALT-{idx}",
+                "Supplier": "Mouser Electronics",
+                "discovery_channel": "catalog",
+            }
+            for idx in range(24)
+        ]
+        discovery = refresh_catalog_retained_after_partition(discovery, displayed)
+        self.assertEqual(int(discovery["catalog_retained_count"]), 24)
+        self.assertEqual(
+            int(discovery["providers"]["Mouser"]["catalog_retained_count"]),
+            24,
+        )
+        self.assertNotEqual(
+            int(discovery["providers"]["Mouser"]["catalog_retained_count"]),
+            0,
+        )
+
     def test_discovery_channel_preserved_on_salvage_rows(self):
         from src.alternative_engine import build_salvage_candidates_from_discovery
 

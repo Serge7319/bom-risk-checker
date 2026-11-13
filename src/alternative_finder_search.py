@@ -557,6 +557,39 @@ def merge_supplier_failures_into_discovery(
     return discovery
 
 
+def _provider_count_bucket(label: object) -> str:
+    """Canonical provider bucket for retained-count rematch.
+
+    Row ``Supplier`` / ``Evidence Source`` strings often differ from provider
+    dict keys (e.g. ``Mouser Electronics`` vs ``Mouser``). Exact-string rematch
+    produced ``24 raw · 0 retained`` beside a non-zero aggregate.
+    """
+    text = str(label or "").strip().casefold()
+    if not text:
+        return ""
+    compact = (
+        text.replace(" electronics", "")
+        .replace(" electronic", "")
+        .replace(" components", "")
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("_", "")
+    )
+    if "mouser" in compact:
+        return "mouser"
+    if "digikey" in compact or compact in {"digi", "dk"}:
+        return "digikey"
+    if "newark" in compact or "element14" in compact or "farnell" in compact:
+        return "newark"
+    if "octopart" in compact:
+        return "octopart"
+    if "arrow" in compact:
+        return "arrow"
+    if "avnet" in compact:
+        return "avnet"
+    return compact
+
+
 def refresh_catalog_retained_after_partition(
     discovery_metadata: Mapping[str, Any] | None,
     displayed_rows: list[Any] | None,
@@ -599,8 +632,9 @@ def refresh_catalog_retained_after_partition(
             or row.get("Evidence Source")
             or ""
         ).strip()
-        if source:
-            catalog_keys_by_source.setdefault(source, set()).add(key)
+        bucket = _provider_count_bucket(source)
+        if bucket:
+            catalog_keys_by_source.setdefault(bucket, set()).add(key)
     discovery["catalog_retained_count"] = len(catalog_keys)
     if explicit_keys:
         discovery["explicit_retained_count"] = len(explicit_keys)
@@ -611,7 +645,9 @@ def refresh_catalog_retained_after_partition(
                 "catalog_raw_count" in status or "catalog_count" in status
             ):
                 status["catalog_retained_count"] = len(
-                    catalog_keys_by_source.get(source_name, set())
+                    catalog_keys_by_source.get(
+                        _provider_count_bucket(source_name), set()
+                    )
                 )
     raw_total = int(discovery.get("catalog_raw_count") or 0)
     retained_catalog = len(catalog_keys)
