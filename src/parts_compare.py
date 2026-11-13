@@ -275,12 +275,18 @@ def _provenance_aware_evidence_summary(
     *,
     engineering_status: str = "",
 ) -> str:
-    """Customer-facing summary derived from Assessment provenance, not raw Status."""
+    """Customer-facing summary derived from Assessment provenance, not raw Status.
+
+    Catalog-reported differences fold into the need-verification total once (same
+    as customer ``counts.needs_data``) and are not restated as a second count.
+    Listing agreements stay a separate unverified bucket.
+    """
     compatible = int(assessment_counts.get("compatible") or 0)
     listing = int(assessment_counts.get("listing_agreement") or 0)
     material = int(assessment_counts.get("material_difference") or 0)
     catalog_diff = int(assessment_counts.get("catalog_difference") or 0)
-    needs = int(assessment_counts.get("needs_data") or 0) + catalog_diff
+    pure_needs = int(assessment_counts.get("needs_data") or 0)
+    needs = pure_needs + catalog_diff
     conflicting = int(assessment_counts.get("conflicting") or 0)
     status = str(engineering_status or "").strip() or "partial"
     if material or conflicting:
@@ -307,12 +313,10 @@ def _provenance_aware_evidence_summary(
             f"; {material} material "
             f"{'difference' if material == 1 else 'differences'}"
         )
+    # Catalog diffs already fold into the need-verification total above — note
+    # provenance once without restating a second numeric count.
     if catalog_diff:
-        summary += (
-            f"; {catalog_diff} catalog-reported "
-            f"{'difference' if catalog_diff == 1 else 'differences'} "
-            "(fit unverified)"
-        )
+        summary += "; catalog-reported differences remain fit unverified"
     return summary
 
 

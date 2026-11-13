@@ -726,9 +726,26 @@ function ComparePartsInner() {
                 </p>
               </div>
               <div className="cv-compare-counts" aria-label="Comparison attribute counts">
-                <span><strong>{text(evidenceCounts.compatible, "0")}</strong> attributes align</span>
-                <span><strong>{text(evidenceCounts.material_difference, "0")}</strong> differences</span>
-                <span><strong>{text(evidenceCounts.needs_data, String(unknownRows.length))}</strong> unknown</span>
+                <span>
+                  <strong>{text(evidenceCounts.compatible, "0")}</strong>{" "}
+                  {Number(evidenceCounts.compatible) === 1 ? "verified match" : "verified matches"}
+                </span>
+                <span>
+                  <strong>{text(evidenceCounts.listing_agreement, "0")}</strong>{" "}
+                  {Number(evidenceCounts.listing_agreement) === 1
+                    ? "catalog agreement"
+                    : "catalog agreements"}
+                </span>
+                <span>
+                  <strong>{text(evidenceCounts.material_difference, "0")}</strong>{" "}
+                  {Number(evidenceCounts.material_difference) === 1
+                    ? "material difference"
+                    : "material differences"}
+                </span>
+                <span>
+                  <strong>{text(evidenceCounts.needs_data, String(unknownRows.length))}</strong>{" "}
+                  need verification
+                </span>
               </div>
             </div>
             {isMultiCompare ? (

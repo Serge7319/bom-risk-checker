@@ -284,6 +284,29 @@ class Lm358CompareProvenanceTests(unittest.TestCase):
         )
         self.assertIn("fit unverified", summary.casefold())
 
+    def test_provenance_summary_counts_catalog_diff_once_with_listing(self):
+        """Catalog diffs fold into need-verification once; listings stay separate."""
+        from src.parts_compare import _provenance_aware_evidence_summary
+
+        summary = _provenance_aware_evidence_summary(
+            {
+                "compatible": 0,
+                "listing_agreement": 1,
+                "material_difference": 0,
+                "catalog_difference": 1,
+                "needs_data": 0,
+                "conflicting": 0,
+            },
+            engineering_status="incomplete",
+        )
+        self.assertIn("0 verified matches", summary)
+        self.assertIn("1 field need verification", summary)
+        self.assertIn("1 catalog agreement", summary)
+        self.assertIn("catalog-reported differences remain fit unverified", summary)
+        # Need-verification total must equal folded catalog_diff (not double-counted).
+        self.assertEqual(summary.count("need verification"), 1)
+        self.assertNotRegex(summary, r"\d+ catalog-reported")
+
     def test_missing_sources_stay_needs_verification(self):
         original, candidate = self._lm358_pair(with_catalog_sources=False)
         comparison = build_datasheet_comparison(original, candidate)
@@ -341,6 +364,19 @@ class UiHandoffContractTests(unittest.TestCase):
         self.assertNotIn("setAnalysisId(defaultAnalysis)", page)
         self.assertIn("Clear BOM", page)
         self.assertIn("No BOM — standalone compare", page)
+
+    def test_compare_kpi_strip_surfaces_listing_agreements_not_attributes_align(self):
+        """Banner/matrix catalog agreements must appear in the KPI strip."""
+        page = (
+            Path(__file__).resolve().parents[1]
+            / "apps/web/src/app/compare-parts/page.tsx"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("attributes align", page)
+        self.assertIn("evidenceCounts.listing_agreement", page)
+        self.assertIn("catalog agreement", page)
+        self.assertIn("verified match", page)
+        self.assertIn("material difference", page)
+        self.assertIn("need verification", page)
 
     def test_find_replacement_never_labels_unverified_qualified(self):
         page = (

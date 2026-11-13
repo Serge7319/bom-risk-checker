@@ -70,24 +70,27 @@ COMPARE_STANDALONE_FIXTURE = {
     "part_a": "LM358DR",
     "part_b": "LM358ADR2G",
     "finding": "Needs verification",
+    # Counts/summary must match the two matrix rows: 1 catalog agree + 1 catalog
+    # differ (folded into needs_data). Never invent extra unknown/agreement buckets.
     "engineering_evidence_summary": (
         "Engineering evidence: incomplete — 0 verified matches, "
-        "3 fields need verification; 2 catalog agreements "
-        "(Catalog values agree — fit unverified)"
+        "1 field need verification; 1 catalog agreement "
+        "(Catalog values agree — fit unverified); "
+        "catalog-reported differences remain fit unverified"
     ),
     "counts": {
         "compatible": 0,
-        "listing_agreement": 2,
+        "listing_agreement": 1,
         "material_difference": 0,
-        "needs_data": 3,
+        "needs_data": 1,  # catalog_difference folded for UI need-verification KPI
         "conflicting": 0,
         "catalog_difference": 1,
     },
     "internal_status_counts": {
-        "Match": 2,
+        "Match": 1,
         "Listing agreement": 0,
         "Different": 1,
-        "Needs data": 3,
+        "Needs data": 0,
         "Conflicting": 0,
     },
     "rows": [
@@ -230,6 +233,7 @@ def main() -> int:
         page.route("**/reports**", on_route)
         page.route("**/auth/**", on_route)
         page.route("http://127.0.0.1:9999/**", on_route)
+        page.route("http://localhost:9999/**", on_route)
 
         session_json = json.dumps(
             {
@@ -292,6 +296,11 @@ def main() -> int:
         assert "Needs verification" in compare_body
         assert "Catalog values agree — fit unverified" in compare_body or "fit unverified" in compare_body.casefold()
         assert "confirmed matches" not in compare_body.casefold()
+        assert "attributes align" not in compare_body.casefold()
+        # KPI strip must reconcile with banner/matrix (1 catalog agree + 1 need verification).
+        assert "1 catalog agreement" in compare_body.casefold()
+        assert "0 verified matches" in compare_body.casefold()
+        assert "1 need verification" in compare_body.casefold()
         # BOM select should be clearable / default standalone
         bom_select = page.locator("#compare-bom-context")
         assert bom_select.count() == 1

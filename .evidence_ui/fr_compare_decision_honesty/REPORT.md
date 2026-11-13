@@ -5,6 +5,8 @@ Focused honesty fixes for Find Replacement outcomes, catalog vs explicit count r
 
 Follow-up: Verified labels require explicit authoritative fit evidence; Compare customer counts/summary derive from Assessment provenance (raw Status kept in `internal_status_counts`); zero retained substitutions are honored.
 
+KPI follow-up: Compare strip surfaces listing agreements / verified / material / need-verification (no “attributes align”); smoke fixture counts match the two matrix rows; catalog diffs fold into need-verification once.
+
 ## Acceptance
 | Item | Status |
 | --- | --- |
