@@ -63,6 +63,9 @@ FIND_REPLACEMENT_FIXTURE = {
 
 
 def _compare_fixture(part_b: str, manufacturer_b: str, analysis_id: str | None = None) -> dict:
+    scope = str(analysis_id or "").strip() or "workspace"
+    # Deterministic non-empty token so the UI can require signed snapshots per scope.
+    token = f"fixture-token.{scope}.{part_b}.{manufacturer_b}".replace(" ", "_")
     return {
         "ok": True,
         "status": "completed",
@@ -96,6 +99,7 @@ def _compare_fixture(part_b: str, manufacturer_b: str, analysis_id: str | None =
             }
         ],
         "analysis_id": analysis_id,
+        "snapshot_token": token,
         "gap": "",
         "family": "Operational amplifier",
         "part_cards": {
@@ -137,6 +141,7 @@ REPORTS_FIXTURE = {
 }
 
 _captured_decisions: list[dict] = []
+_captured_compares: list[dict] = []
 
 
 def _fulfill_json(route, payload, status=200):
@@ -151,6 +156,7 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     report: dict = {"web": WEB, "steps": [], "ok": False}
     _captured_decisions.clear()
+    _captured_compares.clear()
 
     try:
         from playwright.sync_api import sync_playwright
@@ -179,6 +185,13 @@ def main() -> int:
                 manufacturer_b = str(body.get("manufacturer_b") or "").strip()
                 analysis_id = str(body.get("analysis_id") or "").strip() or None
                 brand_map = {mpn: brand for mpn, brand in CANDIDATES}
+                _captured_compares.append(
+                    {
+                        "part_b": part_b,
+                        "manufacturer_b": manufacturer_b,
+                        "analysis_id": analysis_id,
+                    }
+                )
                 echoed = _compare_fixture(
                     part_b or "LM358AN/NOPB",
                     manufacturer_b or brand_map.get(part_b, "Texas Instruments"),
@@ -344,6 +357,41 @@ def main() -> int:
         page.screenshot(path=str(OUT / "02_multi_compare_brands.png"), full_page=True)
         report["steps"].append("multi_compare_visible_brands")
 
+        def assert_record_enabled():
+            page.wait_for_function(
+                """() => {
+                  const buttons = Array.from(document.querySelectorAll('button'));
+                  const target = buttons.find((b) => /^Record decision$/i.test((b.textContent || '').trim()));
+                  return Boolean(target && !target.disabled);
+                }""",
+                timeout=60000,
+            )
+
+        def assert_scope_refresh(expected_analysis_id: str | None, before_count: int):
+            page.wait_for_function(
+                """() => {
+                  const stale = document.querySelector('[data-testid="decision-scope-stale"]');
+                  const progress = document.querySelector('[data-testid="decision-scope-progress"]');
+                  const progressText = (progress && progress.textContent) || '';
+                  return !stale && /Refreshed \\d+ candidates/i.test(progressText);
+                }""",
+                timeout=60000,
+            )
+            refreshed = _captured_compares[before_count:]
+            assert len(refreshed) >= 3, refreshed
+            for mpn, brand in CANDIDATES:
+                matches = [
+                    row
+                    for row in refreshed
+                    if row.get("part_b") == mpn
+                    and str(row.get("analysis_id") or "") == str(expected_analysis_id or "")
+                ]
+                assert matches, (mpn, expected_analysis_id, refreshed)
+                assert any(
+                    brand.casefold() in str(row.get("manufacturer_b") or "").casefold()
+                    for row in matches
+                ), (mpn, brand, matches)
+
         # Decision dialog must visibly select workspace-level, not first BOM.
         page.get_by_role("button", name=re.compile(r"Record a decision", re.I)).click()
         page.wait_for_selector("#decision-dialog-title", timeout=15000)
@@ -352,20 +400,28 @@ def main() -> int:
         selected_label = page.locator("#decision-bom-scope option:checked").inner_text()
         assert "No BOM" in selected_label
         assert "workspace-level" in selected_label.casefold()
-        help_text = page.locator("#decision-bom-scope-help").inner_text()
-        assert "Workspace-level" in help_text or "analysis_id unset" in help_text.casefold()
+
+        # Workspace → BOM: every candidate must re-compare under the BOM.
+        before_bom = len(_captured_compares)
+        scope.select_option(value="fixture-bom-analysis-1")
+        assert_scope_refresh("fixture-bom-analysis-1", before_bom)
+        assert scope.input_value() == "fixture-bom-analysis-1"
+        page.screenshot(path=str(OUT / "03_scope_workspace_to_bom.png"), full_page=True)
+        report["steps"].append("scope_switch_workspace_to_bom")
+
+        # BOM → workspace: every candidate must re-compare with no analysis_id.
+        before_workspace = len(_captured_compares)
+        scope.select_option(value="")
+        assert_scope_refresh(None, before_workspace)
+        assert scope.input_value() == ""
+        page.screenshot(path=str(OUT / "04_scope_bom_to_workspace.png"), full_page=True)
+        report["steps"].append("scope_switch_bom_to_workspace")
+
         page.get_by_label("Reviewer").fill(EMAIL)
         page.get_by_label("Rationale").fill(
-            "Workspace-level multi TI/ST/onsemi decision — no BOM attached."
+            "Workspace-level multi TI/ST/onsemi decision after BOM↔workspace refresh."
         )
-        page.wait_for_function(
-            """() => {
-              const buttons = Array.from(document.querySelectorAll('button'));
-              const target = buttons.find((b) => /^Record decision$/i.test((b.textContent || '').trim()));
-              return Boolean(target && !target.disabled);
-            }""",
-            timeout=10000,
-        )
+        assert_record_enabled()
         page.get_by_role("button", name=re.compile(r"^Record decision$", re.I)).click()
         page.wait_for_selector("text=Decision recorded", timeout=30000)
         assert _captured_decisions, "decision POST was not captured"
@@ -376,7 +432,15 @@ def main() -> int:
         assert brands.get("LM358AN/NOPB") == "Texas Instruments"
         assert brands.get("LM358DT") == "STMicroelectronics"
         assert brands.get("LM358DR2G") == "onsemi"
-        page.screenshot(path=str(OUT / "03_workspace_decision_saved.png"), full_page=True)
+        for entry in snap.get("candidate_snapshots") or []:
+            assert str(entry.get("analysis_id") or "") == ""
+            assert entry.get("snapshot_token")
+            assert entry.get("manufacturer_b") in {
+                "Texas Instruments",
+                "STMicroelectronics",
+                "onsemi",
+            }
+        page.screenshot(path=str(OUT / "05_workspace_decision_saved.png"), full_page=True)
         report["steps"].append("workspace_decision_saved")
 
         page.goto(f"{WEB}/engineering-decisions", wait_until="domcontentloaded")
@@ -387,47 +451,51 @@ def main() -> int:
         assert "Texas Instruments" in decisions_body
         assert "STMicroelectronics" in decisions_body or "LM358DT" in decisions_body
         assert "onsemi" in decisions_body.casefold()
-        page.screenshot(path=str(OUT / "04_workspace_decision_reload.png"), full_page=True)
+        page.screenshot(path=str(OUT / "06_workspace_decision_reload.png"), full_page=True)
         report["steps"].append("workspace_decision_reload")
 
-        # --- BOM-scoped compare stays on the exact BOM ---
+        # --- BOM-scoped multi handoff keeps the exact BOM after save ---
         page.goto(
-            f"{WEB}/compare-parts?part_a=LM358N&part_b=LM358AN%2FNOPB"
-            "&manufacturer_a=Texas%20Instruments&manufacturer_b=Texas%20Instruments"
+            f"{WEB}/compare-parts?part_a=LM358N"
+            "&part_b=LM358AN%2FNOPB&manufacturer_b=Texas%20Instruments"
+            "&part_b=LM358DT&manufacturer_b=STMicroelectronics"
+            "&part_b=LM358DR2G&manufacturer_b=onsemi"
+            "&manufacturer_a=Texas%20Instruments"
             "&analysis_id=fixture-bom-analysis-1",
             wait_until="domcontentloaded",
         )
         assert page.locator("#compare-bom-context").input_value() == "fixture-bom-analysis-1"
+        before_bom_compare = len(_captured_compares)
         page.get_by_role("button", name=re.compile(r"Compare parts", re.I)).click()
-        page.wait_for_selector(".cv-compare-screening", timeout=30000)
-        assert "BOM context attached" in page.locator("#compare-bom-help").inner_text()
-        assert "Other Saved BOM" not in page.locator("#compare-bom-help").inner_text()
+        page.wait_for_selector(".cv-compare-multi-table", timeout=60000)
+        bom_compares = _captured_compares[before_bom_compare:]
+        assert len(bom_compares) >= 3
+        assert all(row.get("analysis_id") == "fixture-bom-analysis-1" for row in bom_compares)
         page.get_by_role("button", name=re.compile(r"Record a decision", re.I)).click()
         page.wait_for_selector("#decision-bom-scope", timeout=15000)
         assert page.locator("#decision-bom-scope").input_value() == "fixture-bom-analysis-1"
         page.get_by_label("Reviewer").fill(EMAIL)
         page.get_by_label("Rationale").fill(
-            "BOM-scoped decision must stay on fixture-bom-analysis-1."
+            "BOM-scoped multi decision must stay on fixture-bom-analysis-1."
         )
-        page.wait_for_function(
-            """() => {
-              const buttons = Array.from(document.querySelectorAll('button'));
-              const target = buttons.find((b) => /^Record decision$/i.test((b.textContent || '').trim()));
-              return Boolean(target && !target.disabled);
-            }""",
-            timeout=10000,
-        )
+        assert_record_enabled()
         page.get_by_role("button", name=re.compile(r"^Record decision$", re.I)).click()
         page.wait_for_selector("text=Decision recorded", timeout=30000)
         bom_decision = _captured_decisions[-1]
         assert bom_decision.get("analysis_id") == "fixture-bom-analysis-1"
-        page.screenshot(path=str(OUT / "05_bom_scoped_decision.png"), full_page=True)
+        bom_snap = bom_decision.get("comparison_snapshot") or {}
+        bom_brands = bom_snap.get("multi_candidate_manufacturers") or {}
+        assert bom_brands.get("LM358AN/NOPB") == "Texas Instruments"
+        assert bom_brands.get("LM358DT") == "STMicroelectronics"
+        assert bom_brands.get("LM358DR2G") == "onsemi"
+        page.screenshot(path=str(OUT / "07_bom_scoped_decision.png"), full_page=True)
         report["steps"].append("bom_scoped_exact_analysis")
 
         browser.close()
 
     report["ok"] = True
     report["captured_decisions"] = len(_captured_decisions)
+    report["captured_compares"] = len(_captured_compares)
     (OUT / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report, indent=2))
     return 0

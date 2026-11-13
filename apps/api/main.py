@@ -1101,6 +1101,17 @@ async def decision_records_post(request: Request) -> JSONResponse:
         # Multi-candidate assemblies must verify every candidate token, then the
         # server rebuilds aggregate matrix/source/identity fields from those
         # verified pairwise payloads only (never trust client aggregates).
+        # Stale/invalid multi tokens fail closed with a refresh-required error —
+        # never silently recompute and persist only the primary candidate.
+        multi_candidate_snapshots = (
+            snapshot_in.get("candidate_snapshots")
+            if isinstance(snapshot_in, dict)
+            else None
+        )
+        is_multi_candidate_submission = (
+            isinstance(multi_candidate_snapshots, list)
+            and len(multi_candidate_snapshots) >= 2
+        )
         trusted_snapshot = None
         if (
             isinstance(snapshot_in, dict)
@@ -1120,9 +1131,22 @@ async def decision_records_post(request: Request) -> JSONResponse:
             comparison.setdefault("ok", True)
             comparison["part_a"] = part_a
             comparison["part_b"] = part_b
-            if requested_analysis_id:
-                comparison["analysis_id"] = requested_analysis_id
+            comparison["analysis_id"] = requested_analysis_id
             comparison["snapshot_reused"] = True
+        elif is_multi_candidate_submission:
+            return _json(
+                {
+                    "ok": False,
+                    "code": "comparison_refresh_required",
+                    "detail": (
+                        "Multi-candidate comparison is out of date for this BOM scope. "
+                        "Re-compare every candidate under the selected Project / BOM, "
+                        "then record the decision again. Cadivor will not silently save "
+                        "only the primary candidate."
+                    ),
+                },
+                409,
+            )
         else:
             comparison = await run_in_threadpool(
                 migration_tools.compare_parts_payload,

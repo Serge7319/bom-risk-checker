@@ -1,11 +1,11 @@
    ▲ Next.js 15.5.9
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 3.6s
+ ✓ Compiled successfully in 3.0s
    Linting and checking validity of types ...
 
 ./src/app/compare-parts/page.tsx
-882:23  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+1015:23  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
 
 ./src/app/layout.tsx
 23:9  Warning: Custom fonts not added in `pages/_document.js` will only load for a single page. This is discouraged. See: https://nextjs.org/docs/messages/no-page-custom-font  @next/next/no-page-custom-font
@@ -24,7 +24,7 @@ Route (app)                                 Size  First Load JS
 ┌ ○ /                                    3.54 kB         182 kB
 ├ ○ /_not-found                            996 B         103 kB
 ├ ○ /bom-analyzer                        6.96 kB         186 kB
-├ ○ /compare-parts                       11.8 kB         191 kB
+├ ○ /compare-parts                       12.5 kB         191 kB
 ├ ○ /cost-optimization                   3.58 kB         183 kB
 ├ ○ /datasheet-qa                         2.1 kB         181 kB
 ├ ○ /design-impact                       3.06 kB         182 kB

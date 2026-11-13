@@ -36,8 +36,15 @@ class UiContractTests(unittest.TestCase):
         page = COMPARE_PAGE.read_text(encoding="utf-8")
         self.assertIn('data-testid="decision-bom-scope"', page)
         self.assertIn("No BOM — workspace-level decision", page)
-        self.assertIn("setDecisionAnalysisId(analysisId.trim())", page)
+        self.assertIn("const scopedId = analysisId.trim()", page)
+        self.assertIn("setDecisionAnalysisId(scopedId)", page)
+        self.assertIn("recompareMultiCandidatesForScope", page)
+        self.assertIn("decisionScopeStale", page)
         self.assertIn("scopedAnalysisId", page)
+        self.assertIn(
+            "Never stamp a new analysis_id onto old tokens — re-compare every candidate.",
+            page,
+        )
         # Must not prefer stale result.analysis_id when opening the dialog.
         self.assertNotIn(
             'setDecisionAnalysisId(String(result?.analysis_id || analysisId || ""))',
