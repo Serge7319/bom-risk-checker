@@ -452,7 +452,14 @@ def build_supply_scenario(
             f"A {stock_reduction_percent}% stock reduction is modeled. Review the components "
             f"with the lowest remaining coverage first."
         )
-    if not recommendations:
+    inventory_evidence_available = bool(known_stock)
+    if not inventory_evidence_available:
+        recommendations = [
+            "Inventory evidence unavailable for this scope. "
+            "Cadivor cannot compute stock-reduction impact without recorded stock on BOM parts. "
+            "Re-run analysis with supplier stock fields, or treat stock-impact results as not established."
+        ]
+    elif not recommendations:
         recommendations.append(
             "The selected scenario does not create a major recorded supply or lifecycle exception."
         )
@@ -460,21 +467,25 @@ def build_supply_scenario(
 
     return {
         "rows": normalized,
-        "impacted": impacted,
-        "project_impact": project_impact,
+        "impacted": impacted if inventory_evidence_available else [],
+        "project_impact": project_impact if inventory_evidence_available else [],
         "build_quantity": max(1, build_quantity),
         "stock_reduction_percent": stock_reduction_percent,
         "supplier_loss": supplier_loss,
         "demand_growth_percent": demand_growth_percent,
         "include_lifecycle_event": include_lifecycle_event,
-        "affected_projects": affected_projects,
-        "shortage_components": shortage_components,
-        "single_source_components": single_source_components,
-        "lifecycle_components": lifecycle_components,
-        "critical_components": critical_components,
-        "shortage_value": shortage_value,
-        "projected_stock_gap": sum(row["Shortage Units"] or 0 for row in normalized),
-        "exposed_components": len(impacted),
+        "affected_projects": affected_projects if inventory_evidence_available else 0,
+        "shortage_components": shortage_components if inventory_evidence_available else 0,
+        "single_source_components": single_source_components if inventory_evidence_available else 0,
+        "lifecycle_components": lifecycle_components if inventory_evidence_available else 0,
+        "critical_components": critical_components if inventory_evidence_available else 0,
+        "shortage_value": shortage_value if inventory_evidence_available else None,
+        "projected_stock_gap": (
+            sum(row["Shortage Units"] or 0 for row in normalized)
+            if inventory_evidence_available
+            else None
+        ),
+        "exposed_components": len(impacted) if inventory_evidence_available else 0,
         "known_stock_components": len(known_stock),
         "unknown_stock_components": len(normalized) - len(known_stock),
         "known_source_components": len(known_source_rows),
@@ -491,6 +502,10 @@ def build_supply_scenario(
         "scenario_summary": scenario_summary,
         "component_count": len(normalized),
         "source_component_record_count": len(source_rows),
+        "inventory_evidence_available": inventory_evidence_available,
+        "inventory_status": (
+            "available" if inventory_evidence_available else "inventory evidence unavailable"
+        ),
     }
 
 

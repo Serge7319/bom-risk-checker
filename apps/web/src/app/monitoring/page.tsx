@@ -226,7 +226,9 @@ function MonitoringPageInner() {
                             title="Explicit email action — not run by Refresh"
                             onClick={() => void runNotify(String(a.id || ""))}
                           >
-                            {notifying === String(a.id || "") ? "Notifying…" : "Notify"}
+                            {a.id && notifying === String(a.id)
+                              ? "Notifying…"
+                              : "Notify"}
                           </button>
                         </td>
                       </tr>

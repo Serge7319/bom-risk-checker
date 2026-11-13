@@ -31,6 +31,47 @@ def test_supply_scenario_does_not_treat_missing_stock_or_sources_as_zero():
     assert result["exposed_components"] == 0
     assert result["shortage_components"] == 0
     assert result["single_source_components"] == 0
+    assert result["inventory_evidence_available"] is False
+    assert result["inventory_status"] == "inventory evidence unavailable"
+    assert result["impacted"] == []
+    assert result["projected_stock_gap"] is None
+    assert any("inventory evidence unavailable" in tip.casefold() for tip in result["recommendations"])
+
+
+def test_supply_scenario_with_inventory_produces_affected_components():
+    """Synthetic BOM with recorded stock must surface affected components."""
+    result = build_supply_scenario(
+        [{"id": "analysis-inv", "project_name": "Inventory BOM"}],
+        [
+            {
+                "analysis_id": "analysis-inv",
+                "mpn": "INV-SHORT",
+                "quantity": 10,
+                "stock_available": 50,
+                "supplier_count": 2,
+                "unit_price": 1.25,
+            },
+            {
+                "analysis_id": "analysis-inv",
+                "mpn": "INV-OK",
+                "quantity": 1,
+                "stock_available": 5000,
+                "supplier_count": 3,
+            },
+        ],
+        build_quantity=10,
+        stock_reduction_percent=50,
+    )
+
+    assert result["inventory_evidence_available"] is True
+    assert result["inventory_status"] == "available"
+    assert result["known_stock_components"] == 2
+    assert result["exposed_components"] >= 1
+    assert result["shortage_components"] >= 1
+    assert result["projected_stock_gap"] is not None
+    assert result["projected_stock_gap"] > 0
+    impacted_mpns = {row["Part Number"] for row in result["impacted"]}
+    assert "INV-SHORT" in impacted_mpns
 
 
 def test_supply_scenario_treats_unknown_text_fields_as_unrecorded_not_zero():

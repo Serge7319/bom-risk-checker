@@ -83,7 +83,14 @@ function SupplyRiskInner() {
 
   if (!session) return null;
   const scenario = (data?.scenario || {}) as Record<string, unknown>;
-  const rows = (scenario.impacted || scenario.rows || []) as Array<Record<string, unknown>>;
+  const inventoryAvailable =
+    data?.inventory_evidence_available !== false &&
+    scenario.inventory_evidence_available !== false &&
+    String(data?.inventory_status || scenario.inventory_status || "") !==
+      "inventory evidence unavailable";
+  const rows = (
+    inventoryAvailable ? scenario.impacted || scenario.rows || [] : []
+  ) as Array<Record<string, unknown>>;
   const scope = String(data?.scope || "").trim();
   const inheritanceNote =
     scopeSource === "url"
@@ -99,7 +106,7 @@ function SupplyRiskInner() {
       : scope === "portfolio"
         ? "Portfolio-wide across saved analyses in this workspace"
         : "Scope unavailable";
-  const sourcePartCount = Number(data?.source_part_count ?? rows.length);
+  const sourcePartCount = Number(data?.source_part_count ?? 0);
   return (
     <Shell session={session}>
       <PageHeader
@@ -175,7 +182,15 @@ function SupplyRiskInner() {
               </div>
               <span className="cv-data-note">{rows.length} component{rows.length === 1 ? "" : "s"}</span>
             </div>
-            {rows.length ? <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+            {!inventoryAvailable ? (
+              <EmptyState
+                icon="risk"
+                title="Inventory evidence unavailable"
+                body="Saved BOM parts in this scope do not include recorded stock. Cadivor will not show a zero-impact result when inventory evidence is missing. Re-analyze with supplier stock fields, or clear scope to another analysis that has inventory."
+                action={<PrimaryLink href="/reports">Choose a saved analysis</PrimaryLink>}
+              />
+            ) : rows.length ? (
+              <div className="cv-table-wrap" style={{ marginTop: 12 }}>
               <table className="cv-table">
                 <thead>
                   <tr>
@@ -198,7 +213,15 @@ function SupplyRiskInner() {
                   ))}
                 </tbody>
               </table>
-            </div> : <EmptyState icon="risk" title="No affected components found" body="The selected BOM has no inventory rows matching this scenario. Try another stock reduction or review the saved analysis." action={<PrimaryLink href="/reports">Choose a saved analysis</PrimaryLink>} />}
+            </div>
+            ) : (
+              <EmptyState
+                icon="risk"
+                title="No affected components found"
+                body="Inventory evidence is present, but no components match this scenario. Try another stock reduction or review the saved analysis."
+                action={<PrimaryLink href="/reports">Choose a saved analysis</PrimaryLink>}
+              />
+            )}
           </section>
         </>
       ) : null}

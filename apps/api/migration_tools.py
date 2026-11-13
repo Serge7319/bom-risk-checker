@@ -2127,6 +2127,7 @@ def supply_risk_payload(
             or analyses[0].get("filename")
             or requested_analysis_id
         )
+    inventory_available = bool(scenario.get("inventory_evidence_available"))
     if scoped:
         gap = (
             f"Scenario scoped to analysis {analysis_label or requested_analysis_id} "
@@ -2141,6 +2142,12 @@ def supply_risk_payload(
             "fields — not live supplier inventory."
         )
         scope = "portfolio"
+    if not inventory_available:
+        gap = (
+            "Inventory evidence unavailable. Saved BOM parts in this scope do not include "
+            "recorded stock, so stock-reduction impact is not established. "
+            "This is not a zero-impact result."
+        )
     return _json_safe(
         {
             "ok": True,
@@ -2151,6 +2158,11 @@ def supply_risk_payload(
             "analysis_label": analysis_label or None,
             "source_part_count": source_part_count,
             "analysis_count": len(analyses),
+            "inventory_evidence_available": inventory_available,
+            "inventory_status": scenario.get("inventory_status")
+            or (
+                "available" if inventory_available else "inventory evidence unavailable"
+            ),
             "parameters": {
                 "build_quantity": max(1, int(build_quantity or 100)),
                 "stock_reduction_percent": int(stock_reduction_percent or 0),

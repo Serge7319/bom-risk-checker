@@ -284,6 +284,7 @@ def _search_digikey_by_part_number(
         return default_digikey_result(requested)
     normalized = normalize_digikey_product(product)
     normalized["searched_part_number"] = requested
+    normalized["retrieved_at"] = _utc_now_iso()
     if is_digikey_distributor_part_number(requested):
         normalized["order_part_number"] = requested
         normalized["digikey_part_number"] = requested
@@ -476,7 +477,7 @@ def search_digikey_substitutions(part_number: str) -> list[dict]:
                     or item.get("Category")
                 ),
                 "stock_total": parse_stock_total(item.get("QuantityAvailable")),
-                "unit_price": _as_number(item.get("UnitPrice"), 0.0),
+                "unit_price": price_number(item.get("UnitPrice")),
                 "product_detail_url": product_url,
                 "image_url": normalize_supplier_image_url(
                     item.get("PhotoUrl") or item.get("PrimaryPhoto"),
@@ -637,8 +638,8 @@ def search_digikey_catalog_candidates(
                 "primary_category": normalized.get("primary_category", ""),
                 "image_url": normalized.get("image_url", ""),
                 "architecture": normalized.get("architecture", ""),
-                "stock_total": normalized.get("stock_total", 0),
-                "unit_price": normalized.get("unit_price", 0.0),
+                "stock_total": normalized.get("stock_total"),
+                "unit_price": normalized.get("unit_price"),
                 "product_detail_url": normalized.get("product_detail_url", ""),
                 "datasheet_url": normalized.get("datasheet_url", ""),
                 "digikey_part_number": normalized.get("digikey_part_number", ""),
@@ -988,22 +989,27 @@ def _digikey_price_break_payload(product: dict):
     return product.get("UnitPrice")
 
 
-def extract_digikey_price(product: dict) -> float:
+def extract_digikey_price(product: dict) -> float | None:
+    """First usable unit price, or ``None`` when DigiKey supplied none.
+
+    Missing / unparsable / non-positive values are never coerced to ``0.0``.
+    """
+    if not isinstance(product, dict):
+        return None
     price_breaks = product.get("UnitPrice") or product.get("StandardPricing") or []
 
-    if isinstance(price_breaks, (int, float)):
-        return price_number(price_breaks) or 0.0
-
-    if isinstance(price_breaks, str):
-        return price_number(price_breaks) or 0.0
+    if isinstance(price_breaks, (int, float, str)) and not isinstance(price_breaks, bool):
+        return price_number(price_breaks)
 
     if isinstance(price_breaks, list) and price_breaks:
         first_break = price_breaks[0]
-
+        if not isinstance(first_break, dict):
+            return None
         price = first_break.get("UnitPrice", first_break.get("Price", ""))
-        return price_number(price) or 0.0
+        return price_number(price)
 
-    return 0.0
+    return None
+
 
 def infer_digikey_lifecycle(product: dict) -> str:
     """Extract DigiKey lifecycle enum labels from scalar or enum-object payloads."""
@@ -1079,10 +1085,10 @@ def default_digikey_result(part_number: str) -> dict:
         "source": "DigiKey",
         "searched_part_number": part_number,
         "lifecycle_status": "Unknown",
-        "stock_total": 0,
+        "stock_total": None,
         "supplier_count": 0,
         "lead_time_weeks": None,
-        "unit_price": 0.0,
+        "unit_price": None,
         "has_alternates": False,
         "manufacturer": "",
         "description": "",

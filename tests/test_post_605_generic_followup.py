@@ -651,6 +651,74 @@ class SupplyRiskScopeClearTests(unittest.TestCase):
         self.assertIn("Scope source: inherited selected analysis from session", source)
         self.assertIn("Portfolio-wide across saved analyses in this workspace", source)
         self.assertIn("Scoped to selected analysis", source)
+        self.assertIn("Inventory evidence unavailable", source)
+        self.assertIn("will not show a zero-impact result", source)
+
+    def test_analysis_scope_with_inventory_returns_affected_components(self):
+        analyses = [
+            {"id": "bom-inv", "project_name": "Inventory BOM", "filename": "inv.csv"},
+            {"id": "bom-other", "project_name": "Other", "filename": "o.csv"},
+        ]
+        parts = [
+            {
+                "analysis_id": "bom-inv",
+                "mpn": "SHORT-1",
+                "quantity": 10,
+                "stock_available": 40,
+                "supplier_count": 2,
+                "unit_price": 2.0,
+            },
+            {
+                "analysis_id": "bom-other",
+                "mpn": "OTHER-1",
+                "quantity": 1,
+                "stock_available": 8,
+            },
+        ]
+        with patch(
+            "apps.api.migration_tools.analyses_and_parts",
+            return_value=(analyses, parts),
+        ):
+            payload = supply_risk_payload(
+                workspace_id="ws-test",
+                analysis_id="bom-inv",
+                build_quantity=10,
+                stock_reduction_percent=50,
+            )
+        self.assertEqual(payload.get("scope"), "analysis")
+        self.assertEqual(payload.get("analysis_id"), "bom-inv")
+        self.assertTrue(payload.get("inventory_evidence_available"))
+        self.assertEqual(payload.get("inventory_status"), "available")
+        scenario = payload.get("scenario") or {}
+        self.assertGreaterEqual(int(scenario.get("exposed_components") or 0), 1)
+        self.assertTrue(scenario.get("impacted"))
+
+    def test_missing_inventory_is_unavailable_not_zero_impact(self):
+        analyses = [{"id": "bom-empty", "project_name": "No Stock", "filename": "ns.csv"}]
+        parts = [
+            {"analysis_id": "bom-empty", "mpn": "NO-STOCK-1", "quantity": 2},
+            {"analysis_id": "bom-empty", "mpn": "NO-STOCK-2", "quantity": 4},
+        ]
+        with patch(
+            "apps.api.migration_tools.analyses_and_parts",
+            return_value=(analyses, parts),
+        ):
+            payload = supply_risk_payload(
+                workspace_id="ws-test",
+                analysis_id="bom-empty",
+                build_quantity=10,
+                stock_reduction_percent=80,
+            )
+        self.assertEqual(payload.get("scope"), "analysis")
+        self.assertFalse(payload.get("inventory_evidence_available"))
+        self.assertEqual(payload.get("inventory_status"), "inventory evidence unavailable")
+        gap = str(payload.get("gap") or "").casefold()
+        self.assertIn("inventory evidence unavailable", gap)
+        self.assertIn("not a zero-impact", gap)
+        scenario = payload.get("scenario") or {}
+        self.assertEqual(scenario.get("impacted"), [])
+        self.assertEqual(int(scenario.get("exposed_components") or 0), 0)
+        self.assertIsNone(scenario.get("projected_stock_gap"))
 
 
 class AmbiguityDoesNotStampIdentityTests(unittest.TestCase):

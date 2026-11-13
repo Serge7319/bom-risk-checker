@@ -5,6 +5,8 @@
   "manufacturer": "Texas Instruments",
   "mpn": "LM358DR",
   "filename": "lm358dr-datasheet.pdf",
+  "source_url": "https://www.ti.com/lit/ds/symlink/lm358.pdf",
+  "source_kind": "official-manufacturer-datasheet",
   "pages": [
     {
       "page": 1,

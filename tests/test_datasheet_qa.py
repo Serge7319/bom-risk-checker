@@ -63,7 +63,14 @@ def _fixture_document(
         "filename": data["filename"],
         "page_count": len(rows),
         "content_fingerprint": "fixture-lm358dr",
-        "source_url": "https://fixture.invalid/lm358dr.pdf",
+        # Official manufacturer datasheet URL (sanitized excerpt fixture only;
+        # PDF bytes are not copied). Citations stay bound to this MPN/mfr.
+        "source_url": str(
+            data.get("source_url") or "https://www.ti.com/lit/ds/symlink/lm358.pdf"
+        ),
+        "source_kind": str(
+            data.get("source_kind") or "official-manufacturer-datasheet"
+        ),
     }
     if requested_mpn:
         document["requested_mpn"] = requested_mpn
@@ -846,10 +853,19 @@ class DatasheetQaPaidPromiseSupplyTests(unittest.TestCase):
         self.assertEqual(result["manufacturer"], "Texas Instruments")
         self.assertEqual(result["source_document"]["filename"], "lm358dr-datasheet.pdf")
         self.assertEqual(
-            result["source_document"]["source_url"], "https://fixture.invalid/lm358dr.pdf"
+            result["source_document"]["source_url"],
+            "https://www.ti.com/lit/ds/symlink/lm358.pdf",
+        )
+        self.assertTrue(
+            str(result["source_document"]["source_url"]).startswith(
+                "https://www.ti.com/"
+            )
         )
         self.assertTrue(result["identity"]["mpn_verified"])
         self.assertTrue(result["identity"]["manufacturer_verified"])
+        self.assertTrue(result["citations"])
+        self.assertEqual(result["requested_mpn"], "LM358DR")
+        self.assertEqual(result["manufacturer"], "Texas Instruments")
 
     def test_wrong_component_citation_is_rejected(self):
         document = _fixture_document(requested_mpn="LM2904DR")

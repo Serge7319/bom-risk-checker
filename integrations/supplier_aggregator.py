@@ -382,7 +382,7 @@ def _safe_supplier_lookup(
 
         # DigiKey brand constraint: reject a hit that does not match the
         # explicitly requested manufacturer (worker-thread safe).
-        if requested_mfr and str(source_name or "") in {"DigiKey", "Newark"}:
+        if requested_mfr and str(source_name or "") in {"DigiKey", "Mouser", "Newark"}:
             result_mfr = str(result.get("manufacturer") or "").strip()
             brand_ok = False
             try:
