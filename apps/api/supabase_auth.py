@@ -327,12 +327,14 @@ def provision_billing_after_verified_signin(
     *,
     access_token: str,
     user: Any,
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """Ensure ``public.users`` Trial (or report-only inactive) once after verify.
 
-    Idempotent: never overwrites paid, Student, or grandfathered billing rows.
-    One-time-report signup metadata yields Subscription inactive (no trial).
-    Syncs migration membership trial fields so both sources agree.
+    Call only from the password sign-in path after email verification — not from
+    bearer resolution. Idempotent under repeat and concurrent sign-ins: never
+    overwrites paid, Student, or grandfathered rows. One-time-report signup
+    metadata yields Subscription inactive (no trial). Syncs migration membership
+    so billing and entitlements agree. Failures raise a clear, retryable error.
     """
     from src.services.user_provisioning import (
         UserProvisioningError,
@@ -347,14 +349,21 @@ def provision_billing_after_verified_signin(
             user,
             operation="next_api_verified_signin_provision",
         )
-    except UserProvisioningError:
-        # Fail soft: entitlements still resolve (inactive) and membership remains.
-        return None
-    except Exception:  # noqa: BLE001
-        return None
+    except UserProvisioningError as exc:
+        raise AuthError(str(exc) or "Could not start your trial. Sign in again.", 503) from exc
+    except AuthError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise AuthError(
+            "Could not start your trial. Sign in again in a moment.",
+            503,
+        ) from exc
 
     if not isinstance(profile, dict):
-        return None
+        raise AuthError(
+            "Could not start your trial. Sign in again in a moment.",
+            503,
+        )
     _sync_membership_with_billing_profile(user_id=user_id, profile=profile)
     _clear_entitlement_cache(access_token)
     return profile
@@ -761,7 +770,7 @@ def resolve_bearer(access_token: str) -> AuthContext:
         workspace_name=user_workspace_name(user),
         allow_create=signup_enabled(),
     )
-    provision_billing_after_verified_signin(access_token=access_token, user=user)
+    # Trial / billing provisioning runs only on password sign-in, not here.
     entitlements = account_entitlements(access_token)
     refreshed = get_auth_store().membership_for_user(user_id) or {}
     trial_started = entitlements.get("trial_started_at")
