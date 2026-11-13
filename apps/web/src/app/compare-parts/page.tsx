@@ -22,6 +22,8 @@ import {
   buildMultiCompareMatrix,
   buildMultiDecisionSnapshot,
   buildMultiSourceRecords,
+  candidateManufacturer,
+  formatCandidateHeading,
   parseCandidateMpns,
   type MultiCompareColumn,
 } from "@/lib/multiCompare";
@@ -147,6 +149,9 @@ function ComparePartsInner() {
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [decisionError, setDecisionError] = useState("");
   const [decisionSuccess, setDecisionSuccess] = useState<DecisionRecord | null>(null);
+  /** True while multi-candidate scope refresh is incomplete or failed. */
+  const [decisionScopeStale, setDecisionScopeStale] = useState(false);
+  const [decisionScopeProgress, setDecisionScopeProgress] = useState("");
 
   useEffect(() => {
     const a = (search.get("part_a") || search.get("a") || "").trim();
@@ -269,7 +274,15 @@ function ComparePartsInner() {
         });
         setResult(data);
         setMultiColumns([]);
-        if (data.analysis_id) setAnalysisId(String(data.analysis_id));
+        // Never attach a BOM the user did not select / hand off.
+        if (selectedAnalysis) {
+          setAnalysisId(selectedAnalysis);
+        } else {
+          setAnalysisId("");
+          if (data.analysis_id) {
+            setResult({ ...data, analysis_id: null });
+          }
+        }
         return;
       }
       // Multi-alternate: compare each candidate against the same design part.
@@ -311,15 +324,24 @@ function ComparePartsInner() {
             },
           )
             .then((data) => {
+              const brand = brandForCandidate(candidate);
+              const stamped: Record<string, unknown> = {
+                ...(data as Record<string, unknown>),
+                analysis_id: selectedAnalysis || null,
+              };
+              if (brand && !stamped.manufacturer_b) {
+                stamped.manufacturer_b = brand;
+              }
               columnsSlot[index] = {
                 mpn: candidate,
-                result: data,
-                rows: (data.rows || []) as Row[],
+                manufacturer: brand || undefined,
+                result: stamped,
+                rows: (stamped.rows || []) as Row[],
               };
               completedCount += 1;
               const nextPending = candidates.find((_, i) => columnsSlot[i] == null);
               publishProgress(nextPending);
-              return { candidate, data };
+              return { candidate, data: stamped };
             })
             .catch((reason) => {
               const detail =
@@ -329,6 +351,7 @@ function ComparePartsInner() {
               failures.push(detail);
               columnsSlot[index] = {
                 mpn: candidate,
+                manufacturer: brandForCandidate(candidate) || undefined,
                 result: {
                   ok: false,
                   status: "comparison_failed",
@@ -336,6 +359,8 @@ function ComparePartsInner() {
                   gap: detail,
                   part_a: partA,
                   part_b: candidate,
+                  manufacturer_b: brandForCandidate(candidate) || null,
+                  analysis_id: selectedAnalysis || null,
                   rows: [],
                 },
                 rows: [],
@@ -356,8 +381,9 @@ function ComparePartsInner() {
       });
       setMultiColumns(columns);
       setResult(columns.find((column) => column.result.ok !== false)?.result || columns[0]?.result || null);
-      const firstAnalysis = columns.find((column) => column.result.analysis_id)?.result.analysis_id;
-      if (firstAnalysis) setAnalysisId(String(firstAnalysis));
+      // Keep the user's explicit BOM selection (or standalone empty) — never the
+      // first/latest saved BOM echoed by a pairwise response.
+      setAnalysisId(selectedAnalysis || "");
       if (failures.length && failures.length === candidates.length) {
         setError(
           `All ${candidates.length} pairwise comparisons failed or timed out. This is not a fit verdict and does not mean there are no candidates. ${failures[0]}`,
@@ -374,8 +400,21 @@ function ComparePartsInner() {
     }
   }
 
+  function normalizeScopeId(value: unknown): string {
+    return String(value || "").trim();
+  }
+
+  function columnMatchesScope(column: MultiCompareColumn, scopedId: string): boolean {
+    return normalizeScopeId(column.result?.analysis_id) === scopedId
+      && Boolean(String(column.result?.snapshot_token || "").trim())
+      && column.result?.ok !== false;
+  }
+
   function openDecisionDialog() {
-    setDecisionAnalysisId(String(result?.analysis_id || analysisId || ""));
+    // Form BOM context is the source of truth — never prefer a stale
+    // result.analysis_id that would make the first saved BOM appear selected.
+    const scopedId = analysisId.trim();
+    setDecisionAnalysisId(scopedId);
     setDecisionPartA(String(result?.part_a || partA || ""));
     setDecisionPartB(
       multiColumns.length > 1
@@ -392,22 +431,138 @@ function ComparePartsInner() {
     setResidualRisk("unknown");
     setDecisionError("");
     setDecisionSuccess(null);
+    const multiReady =
+      multiColumns.length <= 1
+      || multiColumns.every((column) => columnMatchesScope(column, scopedId));
+    setDecisionScopeStale(!multiReady);
+    setDecisionScopeProgress("");
     setDecisionOpen(true);
+  }
+
+  async function recompareMultiCandidatesForScope(scopedId: string): Promise<MultiCompareColumn[]> {
+    if (!session) throw new Error("Sign in to refresh the comparison scope.");
+    const baseline = (decisionPartA || partA || String(result?.part_a || "")).trim();
+    if (!baseline) throw new Error("Current part is required before refreshing BOM scope.");
+    const brandA =
+      manufacturerA.trim()
+      || String(result?.manufacturer_a || "").trim()
+      || "";
+    const candidates = multiColumns.map((column) => ({
+      mpn: column.mpn,
+      manufacturer:
+        column.manufacturer
+        || manufacturerBByMpn[column.mpn]
+        || candidateManufacturer(column)
+        || manufacturerB.trim()
+        || "",
+    }));
+    if (candidates.length < 2) {
+      throw new Error("Multi-candidate scope refresh requires at least two candidates.");
+    }
+    const columnsSlot: Array<MultiCompareColumn | null> = candidates.map(() => null);
+    const failures: string[] = [];
+    let completed = 0;
+    setDecisionScopeProgress(
+      `Refreshing 0 of ${candidates.length} candidates for ${scopedId || "workspace-level"} scope…`,
+    );
+    await Promise.all(
+      candidates.map(async (candidate, index) => {
+        try {
+          const data = await compareParts(
+            session.access_token,
+            baseline,
+            candidate.mpn,
+            scopedId || undefined,
+            { a: datasheetA },
+            {
+              timeoutMs: COMPARE_PARTS_TIMEOUT_MS,
+              manufacturerA: brandA || undefined,
+              manufacturerB: candidate.manufacturer || undefined,
+            },
+          );
+          const stamped: Record<string, unknown> = {
+            ...data,
+            analysis_id: scopedId || null,
+            manufacturer_b: candidate.manufacturer || data.manufacturer_b || null,
+          };
+          if (!String(stamped.snapshot_token || "").trim()) {
+            throw new Error(
+              `Comparison for ${candidate.mpn} did not return a signed snapshot token.`,
+            );
+          }
+          columnsSlot[index] = {
+            mpn: candidate.mpn,
+            manufacturer: candidate.manufacturer || undefined,
+            result: stamped,
+            rows: (stamped.rows || []) as Row[],
+          };
+        } catch (reason) {
+          const detail =
+            reason instanceof Error
+              ? reason.message
+              : `Comparison failed for ${candidate.mpn}.`;
+          failures.push(`${candidate.mpn}: ${detail}`);
+        } finally {
+          completed += 1;
+          setDecisionScopeProgress(
+            `Refreshing ${completed} of ${candidates.length} candidates for ${scopedId || "workspace-level"} scope…`,
+          );
+        }
+      }),
+    );
+    if (failures.length) {
+      throw new Error(
+        `Could not refresh every candidate under the selected scope. ${failures.join(" · ")}`,
+      );
+    }
+    const ready = columnsSlot.filter(Boolean) as MultiCompareColumn[];
+    if (ready.length !== candidates.length) {
+      throw new Error("Multi-candidate scope refresh returned an incomplete comparison set.");
+    }
+    return ready;
   }
 
   async function changeDecisionAnalysis(nextAnalysisId: string) {
     if (!session) return;
     const previousAnalysisId = decisionAnalysisId;
-    setDecisionAnalysisId(nextAnalysisId);
+    const previousColumns = multiColumns;
+    const previousResult = result;
+    const scopedId = nextAnalysisId.trim();
+    setDecisionAnalysisId(scopedId);
+    setAnalysisId(scopedId);
     if (!result) return;
+
     setDecisionBusy(true);
     setDecisionError("");
+    setDecisionScopeStale(true);
+    setDecisionScopeProgress("");
     try {
+      if (multiColumns.length > 1) {
+        // Never stamp a new analysis_id onto old tokens — re-compare every candidate.
+        const refreshed = await recompareMultiCandidatesForScope(scopedId);
+        setMultiColumns(refreshed);
+        const primary =
+          refreshed.find((column) => column.result.ok !== false)?.result
+          || refreshed[0]?.result;
+        if (primary) {
+          setResult({
+            ...(primary as Record<string, unknown>),
+            analysis_id: scopedId || null,
+          });
+        }
+        setDecisionScopeStale(false);
+        setDecisionScopeProgress(
+          `Refreshed ${refreshed.length} candidates under ${scopedId || "workspace-level"} scope.`,
+        );
+        return;
+      }
+
       const data = await compareParts(
         session.access_token,
         decisionPartA || String(result.part_a || partA),
-        decisionPartB || String(result.part_b || partB),
-        nextAnalysisId || undefined,
+        decisionPartB.split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean)[0]
+          || String(result.part_b || partB),
+        scopedId || undefined,
         { a: datasheetA, b: datasheetB },
         {
           manufacturerA:
@@ -420,12 +575,25 @@ function ComparePartsInner() {
             || undefined,
         },
       );
-      setResult(data);
-      setAnalysisId(String(data.analysis_id || ""));
-      setDecisionAnalysisId(String(data.analysis_id || nextAnalysisId || ""));
+      const normalized = {
+        ...data,
+        analysis_id: scopedId || null,
+      };
+      setResult(normalized);
+      setAnalysisId(scopedId);
+      setDecisionAnalysisId(scopedId);
+      setDecisionScopeStale(false);
     } catch (err) {
       setDecisionAnalysisId(previousAnalysisId);
-      setDecisionError(err instanceof Error ? err.message : "Could not refresh the comparison for that BOM.");
+      setAnalysisId(previousAnalysisId);
+      setMultiColumns(previousColumns);
+      setResult(previousResult);
+      setDecisionScopeStale(previousColumns.length > 1);
+      setDecisionError(
+        err instanceof Error
+          ? err.message
+          : "Could not refresh the comparison for that BOM scope.",
+      );
     } finally {
       setDecisionBusy(false);
     }
@@ -461,10 +629,40 @@ function ComparePartsInner() {
         String(manufacturerBByMpn[primaryCandidate] || manufacturerB || "").trim()
         || String(result?.manufacturer_b || "").trim()
         || "";
+      // Explicit decision-dialog BOM selection wins. Empty = workspace-level
+      // (analysis_id=null) — never fall back to a stale comparison analysis_id.
+      const scopedAnalysisId = decisionAnalysisId.trim() || null;
+      const scopedKey = scopedAnalysisId || "";
+      if (multiColumns.length > 1) {
+        if (decisionScopeStale) {
+          throw new Error(
+            "Wait for every candidate to finish refreshing under the selected Project / BOM before recording this decision.",
+          );
+        }
+        const incomplete = multiColumns.filter(
+          (column) => !columnMatchesScope(column, scopedKey),
+        );
+        if (incomplete.length) {
+          throw new Error(
+            `Multi-candidate decision is incomplete for this scope. Re-select Project / BOM to refresh: ${incomplete.map((column) => column.mpn).join(", ")}.`,
+          );
+        }
+      }
+      const columnsForSnapshot = multiColumns.map((column) => ({
+        ...column,
+        manufacturer:
+          column.manufacturer
+          || manufacturerBByMpn[column.mpn]
+          || candidateManufacturer(column)
+          || undefined,
+      }));
       const multiSnapshot: Record<string, unknown> | null =
-        multiColumns.length > 1
+        columnsForSnapshot.length > 1
           ? {
-              ...buildMultiDecisionSnapshot(decisionPartA.trim() || partA.trim(), multiColumns),
+              ...buildMultiDecisionSnapshot(
+                decisionPartA.trim() || partA.trim(),
+                columnsForSnapshot,
+              ),
               ok: true,
               part_a: decisionPartA.trim(),
               part_b: primaryCandidate,
@@ -472,21 +670,19 @@ function ComparePartsInner() {
               manufacturer_b:
                 String(
                   manufacturerBByMpn[primaryCandidate]
-                  || multiColumns[0]?.result?.manufacturer_b
+                  || columnsForSnapshot[0]?.manufacturer
+                  || columnsForSnapshot[0]?.result?.manufacturer_b
                   || resolvedManufacturerB
                   || "",
                 ).trim() || null,
-              analysis_id:
-                decisionAnalysisId ||
-                String(multiColumns[0]?.result.analysis_id || "") ||
-                null,
+              analysis_id: scopedAnalysisId,
             }
           : null;
       const resultMatchesDraft =
         result &&
         String(result.part_a || "").trim().toLowerCase() === decisionPartA.trim().toLowerCase() &&
         String(result.part_b || "").trim().toLowerCase() === primaryCandidate.toLowerCase() &&
-        String(result.analysis_id || "") === String(decisionAnalysisId || "");
+        String(result.analysis_id || "") === String(scopedAnalysisId || "");
       const needsFreshCompare =
         !multiSnapshot && (Boolean(datasheetA || datasheetB) || !resultMatchesDraft);
       const comparison: Record<string, unknown> = multiSnapshot
@@ -496,7 +692,7 @@ function ComparePartsInner() {
               session.access_token,
               decisionPartA.trim(),
               primaryCandidate,
-              decisionAnalysisId || undefined,
+              scopedAnalysisId || undefined,
               { a: datasheetA, b: datasheetB },
               {
                 manufacturerA: resolvedManufacturerA || undefined,
@@ -504,18 +700,22 @@ function ComparePartsInner() {
               },
             )
           : (result as Record<string, unknown>);
-      setResult(comparison);
+      const scopedComparison: Record<string, unknown> = {
+        ...comparison,
+        analysis_id: scopedAnalysisId,
+      };
+      setResult(scopedComparison);
       const snapshotManufacturerA =
-        String(comparison.manufacturer_a || resolvedManufacturerA || "").trim() || null;
+        String(scopedComparison.manufacturer_a || resolvedManufacturerA || "").trim() || null;
       const snapshotManufacturerB =
         String(
-          comparison.manufacturer_b
+          scopedComparison.manufacturer_b
           || manufacturerBByMpn[primaryCandidate]
           || resolvedManufacturerB
           || "",
         ).trim() || null;
       const response = await recordDecision(session.access_token, {
-        analysis_id: String(comparison.analysis_id || decisionAnalysisId || "") || null,
+        analysis_id: scopedAnalysisId,
         part_a: decisionPartA.trim(),
         part_b: primaryCandidate,
         manufacturer_a: snapshotManufacturerA,
@@ -530,7 +730,8 @@ function ComparePartsInner() {
         residual_risk: residualRisk,
         // Reuse the on-screen comparison so the API skips a second full rebuild.
         comparison_snapshot: needsFreshCompare && !multiSnapshot ? null : {
-          ...comparison,
+          ...scopedComparison,
+          analysis_id: scopedAnalysisId,
           manufacturer_a: snapshotManufacturerA,
           manufacturer_b: snapshotManufacturerB,
         },
@@ -686,7 +887,18 @@ function ComparePartsInner() {
                   <button
                     type="button"
                     className="cv-button secondary"
-                    onClick={() => setAnalysisId("")}
+                    onClick={() => {
+                      setAnalysisId("");
+                      if (result) setResult({ ...result, analysis_id: null });
+                      if (multiColumns.length) {
+                        setMultiColumns(
+                          multiColumns.map((column) => ({
+                            ...column,
+                            result: { ...column.result, analysis_id: null },
+                          })),
+                        );
+                      }
+                    }}
                     disabled={busy}
                   >
                     Clear BOM
@@ -872,10 +1084,23 @@ function ComparePartsInner() {
                   <thead>
                     <tr>
                       <th>Property</th>
-                      <th>Current · {text(partA || result?.part_a)}</th>
-                      {multiColumns.map((column) => (
-                        <th key={column.mpn}>Candidate · {column.mpn}</th>
-                      ))}
+                      <th>
+                        Current · {text(partA || result?.part_a)}
+                        {manufacturerA.trim() || result?.manufacturer_a
+                          ? ` · ${text(manufacturerA || result?.manufacturer_a)}`
+                          : ""}
+                      </th>
+                      {multiColumns.map((column) => {
+                        const brand =
+                          column.manufacturer
+                          || manufacturerBByMpn[column.mpn]
+                          || candidateManufacturer(column);
+                        return (
+                          <th key={column.mpn} data-testid={`multi-col-${column.mpn}`}>
+                            {formatCandidateHeading(column.mpn, brand)}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -1040,9 +1265,20 @@ function ComparePartsInner() {
             {isMultiCompare ? (
               <div className="cv-compare-evidence-grid" data-testid="multi-source-records">
                 {multiSourceRecords.map((record) => (
-                  <div className="cv-compare-evidence-item" key={`${record.side}-${record.mpn}`}>
+                  <div
+                    className="cv-compare-evidence-item"
+                    key={`${record.side}-${record.mpn}`}
+                    data-testid={`multi-evidence-${record.mpn}`}
+                  >
                     <span className="cv-compare-part-label">
-                      {record.side} · {record.mpn} · {record.sourceLabel}
+                      {record.side}
+                      {record.manufacturer && !record.side.includes(record.manufacturer)
+                        ? ` · ${record.manufacturer}`
+                        : ""}
+                      {" · "}
+                      {record.mpn}
+                      {" · "}
+                      {record.sourceLabel}
                     </span>
                     {record.retrievalNotes.length ? (
                       <ul>
@@ -1135,77 +1371,66 @@ function ComparePartsInner() {
             </div>
 
             <form onSubmit={onRecordDecision}>
-              {reportOptions.length ? (
-                <>
-                  <label className="cv-field cv-modal-project">
-                    <span>Project / BOM</span>
-                    <select
-                      value={decisionAnalysisId}
-                      onChange={(event) => void changeDecisionAnalysis(event.target.value)}
-                      disabled={decisionBusy}
-                    >
-                      {reportOptions.map((row) => (
-                        <option key={getAnalysisId(row)} value={getAnalysisId(row)}>{reportLabel(row)}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="cv-modal-component-pair">
-                    <label className="cv-field">
-                      <span>Current</span>
-                      <input
-                        value={decisionPartA}
-                        onChange={(event) => setDecisionPartA(event.target.value)}
-                        maxLength={160}
-                        placeholder="Current manufacturer part number"
-                        autoComplete="off"
-                        required
-                      />
-                    </label>
-                    <label className="cv-field">
-                      <span>Candidate part</span>
-                      <input
-                        value={decisionPartB}
-                        onChange={(event) => setDecisionPartB(event.target.value)}
-                        maxLength={160}
-                        placeholder="Candidate manufacturer part number"
-                        autoComplete="off"
-                        required
-                      />
-                    </label>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="cv-modal-context">
-                    <strong>Workspace-level decision</strong>
-                    <span>Not linked to a saved BOM. The comparison will be captured with the decision.</span>
-                  </div>
-                  <div className="cv-modal-component-pair">
-                    <label className="cv-field">
-                      <span>Current</span>
-                      <input
-                        value={decisionPartA}
-                        onChange={(event) => setDecisionPartA(event.target.value)}
-                        maxLength={160}
-                        placeholder="Current manufacturer part number"
-                        autoComplete="off"
-                        required
-                      />
-                    </label>
-                    <label className="cv-field">
-                      <span>Candidate part</span>
-                      <input
-                        value={decisionPartB}
-                        onChange={(event) => setDecisionPartB(event.target.value)}
-                        maxLength={160}
-                        placeholder="Candidate manufacturer part number"
-                        autoComplete="off"
-                        required
-                      />
-                    </label>
-                  </div>
-                </>
-              )}
+              <label className="cv-field cv-modal-project">
+                <span>Project / BOM</span>
+                <select
+                  id="decision-bom-scope"
+                  data-testid="decision-bom-scope"
+                  value={decisionAnalysisId}
+                  onChange={(event) => void changeDecisionAnalysis(event.target.value)}
+                  disabled={decisionBusy}
+                  aria-describedby="decision-bom-scope-help"
+                >
+                  <option value="">No BOM — workspace-level decision</option>
+                  {reportOptions.map((row) => (
+                    <option key={getAnalysisId(row)} value={getAnalysisId(row)}>
+                      {reportLabel(row)}
+                    </option>
+                  ))}
+                </select>
+                <p className="cv-small-note" id="decision-bom-scope-help" style={{ marginTop: 6 }}>
+                  {decisionAnalysisId
+                    ? `Linked to BOM ${reportLabel(
+                        reportOptions.find((row) => getAnalysisId(row) === decisionAnalysisId)
+                        || { id: decisionAnalysisId },
+                      )}.`
+                    : "Workspace-level decision — not linked to a saved BOM. Saved with analysis_id unset."}
+                </p>
+                {decisionScopeProgress ? (
+                  <p className="cv-small-note" data-testid="decision-scope-progress" style={{ marginTop: 6 }}>
+                    {decisionScopeProgress}
+                  </p>
+                ) : null}
+                {decisionScopeStale ? (
+                  <p className="cv-error" role="status" data-testid="decision-scope-stale" style={{ marginTop: 6 }}>
+                    Candidate comparisons for this Project / BOM are still refreshing. Recording is blocked until every candidate finishes under the selected scope.
+                  </p>
+                ) : null}
+              </label>
+              <div className="cv-modal-component-pair">
+                <label className="cv-field">
+                  <span>Current</span>
+                  <input
+                    value={decisionPartA}
+                    onChange={(event) => setDecisionPartA(event.target.value)}
+                    maxLength={160}
+                    placeholder="Current manufacturer part number"
+                    autoComplete="off"
+                    required
+                  />
+                </label>
+                <label className="cv-field">
+                  <span>Candidate part</span>
+                  <input
+                    value={decisionPartB}
+                    onChange={(event) => setDecisionPartB(event.target.value)}
+                    maxLength={160}
+                    placeholder="Candidate manufacturer part number"
+                    autoComplete="off"
+                    required
+                  />
+                </label>
+              </div>
 
               <div className="cv-form-grid cv-form-grid-two cv-modal-grid">
                 <label className="cv-field">
@@ -1310,9 +1535,11 @@ function ComparePartsInner() {
                 <button
                   type="submit"
                   className="cv-button primary"
-                  disabled={decisionBusy || !decisionPartA.trim() || !decisionPartB.trim() || !reviewer.trim() || !rationale.trim() || (decision === "approve_alternate" && !APPROVAL_CHECKS.every((item) => validationChecks.includes(item))) || (["conditional_approval", "defer_for_validation"].includes(decision) && !followUpAction.trim()) || (decision === "accept_residual_risk" && residualRisk === "unknown")}
+                  disabled={decisionBusy || decisionScopeStale || !decisionPartA.trim() || !decisionPartB.trim() || !reviewer.trim() || !rationale.trim() || (decision === "approve_alternate" && !APPROVAL_CHECKS.every((item) => validationChecks.includes(item))) || (["conditional_approval", "defer_for_validation"].includes(decision) && !followUpAction.trim()) || (decision === "accept_residual_risk" && residualRisk === "unknown")}
                 >
-                  {decisionBusy ? "Saving comparison and decision…" : "Record decision"}
+                  {decisionBusy
+                    ? (decisionScopeProgress ? "Refreshing candidates…" : "Saving comparison and decision…")
+                    : "Record decision"}
                 </button>
               </div>
             </form>

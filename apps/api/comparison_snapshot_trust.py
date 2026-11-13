@@ -36,6 +36,8 @@ SNAPSHOT_CONTENT_KEYS: tuple[str, ...] = (
     "gap",
     "manufacturer_a",
     "manufacturer_b",
+    "multi_candidate_mpns",
+    "multi_candidate_manufacturers",
 )
 
 _SNAPSHOT_TTL_SECONDS = 60 * 60 * 12  # 12h, aligned with sandbox JWT TTL
@@ -81,7 +83,20 @@ def _normalize_part(value: object) -> str:
 
 
 def _normalize_analysis_id(value: object) -> str:
+    """Normalize analysis scope. Empty string means workspace-level (no BOM)."""
     return str(value or "").strip()
+
+
+def analysis_scopes_match(*values: object) -> bool:
+    """True only when every value normalizes to the same BOM / workspace scope.
+
+    Workspace-level (null/empty) must match exactly — a BOM-issued token must
+    never verify under an empty request scope, or vice versa.
+    """
+    if not values:
+        return True
+    normalized = [_normalize_analysis_id(value) for value in values]
+    return all(item == normalized[0] for item in normalized)
 
 
 def issue_snapshot_token(
@@ -193,10 +208,9 @@ def _verify_pairwise_snapshot_token(
     claim_aid = _normalize_analysis_id(claims.get("aid"))
     request_aid = _normalize_analysis_id(analysis_id)
     snapshot_aid = _normalize_analysis_id(snapshot.get("analysis_id"))
-    # Requested analysis ID (when present) must match both claim and payload.
-    if request_aid and (request_aid != claim_aid or request_aid != snapshot_aid):
-        return False
-    if claim_aid and snapshot_aid and claim_aid != snapshot_aid:
+    # Exact scope match for request, token claim, and snapshot payload — including
+    # null/empty workspace-level scope. BOM tokens must not verify as workspace.
+    if not analysis_scopes_match(request_aid, claim_aid, snapshot_aid):
         return False
     if _normalize_part(claims.get("a")) != _normalize_part(part_a):
         return False
@@ -317,10 +331,16 @@ def rebuild_multi_source_records(
     evidence = primary.get("evidence_sources")
     evidence = evidence if isinstance(evidence, dict) else {}
     part_a_sources = evidence.get("part_a") if isinstance(evidence.get("part_a"), list) else []
+    part_cards = primary.get("part_cards") if isinstance(primary.get("part_cards"), dict) else {}
+    part_a_card = part_cards.get("a") if isinstance(part_cards.get("a"), dict) else {}
+    manufacturer_a = _text(
+        primary.get("manufacturer_a") or part_a_card.get("manufacturer"), ""
+    )
     records.append(
         {
-            "side": "Part A",
+            "side": f"Part A · {manufacturer_a}" if manufacturer_a else "Part A",
             "mpn": _text(primary.get("part_a") or part_a, part_a),
+            "manufacturer": manufacturer_a,
             "sourceLabel": _text(primary.get("source_a"), "Not stated"),
             "retrievalNotes": [
                 (
@@ -362,10 +382,17 @@ def rebuild_multi_source_records(
         evidence = entry.get("evidence_sources")
         evidence = evidence if isinstance(evidence, dict) else {}
         part_b_sources = evidence.get("part_b") if isinstance(evidence.get("part_b"), list) else []
+        entry_cards = entry.get("part_cards") if isinstance(entry.get("part_cards"), dict) else {}
+        part_b_card = entry_cards.get("b") if isinstance(entry_cards.get("b"), dict) else {}
+        manufacturer_b = _text(
+            entry.get("manufacturer_b") or part_b_card.get("manufacturer"), ""
+        )
+        side = f"Candidate · {mpn} · {manufacturer_b}" if manufacturer_b else f"Candidate · {mpn}"
         records.append(
             {
-                "side": f"Candidate · {mpn}",
+                "side": side,
                 "mpn": _text(entry.get("part_b") or mpn, mpn),
+                "manufacturer": manufacturer_b,
                 "sourceLabel": _text(entry.get("source_b"), "Not stated"),
                 "retrievalNotes": [
                     (
@@ -422,6 +449,14 @@ def rebuild_multi_snapshot_from_candidates(
         _normalize_part(entry.get("part_b") or entry.get("mpn"))
         for entry in verified_candidates
     ]
+    multi_candidate_manufacturers: dict[str, str] = {}
+    for entry in verified_candidates:
+        mpn = _normalize_part(entry.get("part_b") or entry.get("mpn"))
+        cards = entry.get("part_cards") if isinstance(entry.get("part_cards"), dict) else {}
+        card_b = cards.get("b") if isinstance(cards.get("b"), dict) else {}
+        brand = _text(entry.get("manufacturer_b") or card_b.get("manufacturer"), "")
+        if mpn and brand:
+            multi_candidate_manufacturers[mpn] = brand
     rebuilt = {
         key: primary.get(key)
         for key in SNAPSHOT_CONTENT_KEYS
@@ -431,8 +466,12 @@ def rebuild_multi_snapshot_from_candidates(
             "ok": True,
             "part_a": _normalize_part(part_a),
             "part_b": _normalize_part(part_b),
-            "analysis_id": _normalize_analysis_id(analysis_id or primary.get("analysis_id")),
+            "analysis_id": _normalize_analysis_id(analysis_id) or None,
+            "manufacturer_a": _text(primary.get("manufacturer_a"), ""),
+            "manufacturer_b": multi_candidate_manufacturers.get(candidate_mpns[0], "")
+            or _text(primary.get("manufacturer_b"), ""),
             "multi_candidate_mpns": candidate_mpns,
+            "multi_candidate_manufacturers": multi_candidate_manufacturers,
             "multi_matrix": rebuild_multi_matrix(part_a, verified_candidates),
             "multi_source_records": rebuild_multi_source_records(part_a, verified_candidates),
             # Preserve verified pairwise payloads (tokens included) for audit.
@@ -481,10 +520,11 @@ def _collect_verified_multi_candidates(
         return None
     if _normalize_part(snapshot.get("part_a")).casefold() != _normalize_part(part_a).casefold():
         return None
-    request_aid = _normalize_analysis_id(analysis_id)
-    snapshot_aid = _normalize_analysis_id(snapshot.get("analysis_id"))
-    if request_aid and snapshot_aid and request_aid != snapshot_aid:
+    if not analysis_scopes_match(analysis_id, snapshot.get("analysis_id")):
         return None
+    for entry in verified:
+        if not analysis_scopes_match(analysis_id, entry.get("analysis_id")):
+            return None
     return verified
 
 
@@ -592,9 +632,8 @@ def materialize_snapshot_for_reuse(
         "ok": True,
         "part_a": _normalize_part(part_a),
         "part_b": _normalize_part(part_b),
-        "analysis_id": _normalize_analysis_id(
-            analysis_id or snapshot.get("analysis_id")
-        ),
+        # Keep the requested scope exactly (empty = workspace-level).
+        "analysis_id": _normalize_analysis_id(analysis_id) or None,
     }
     for key in SNAPSHOT_CONTENT_KEYS:
         if key in snapshot:

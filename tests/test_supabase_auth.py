@@ -555,3 +555,24 @@ def test_signup_requires_explicit_email_and_abuse_protection_acknowledgments(
     )
     assert response.status_code == 503
     assert supabase_client.app.state.fake_auth.signup_payloads == []
+
+
+def test_decision_scope_and_snapshot_token_suites_in_ci() -> None:
+    """Ensure decision-scope suites run in the AF regression pytest step."""
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "tests/test_comparison_snapshot_scope_tokens.py",
+            "tests/test_fr_compare_decision_scope_multi_mfr.py",
+            "-q",
+        ],
+        cwd=root,
+        check=False,
+    )
+    assert completed.returncode == 0

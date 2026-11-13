@@ -1,0 +1,15 @@
+{
+  "web": "http://127.0.0.1:3019",
+  "steps": [
+    "standalone_fr_select_three",
+    "multi_compare_visible_brands",
+    "scope_switch_workspace_to_bom",
+    "scope_switch_bom_to_workspace",
+    "workspace_decision_saved",
+    "workspace_decision_reload",
+    "bom_scoped_exact_analysis"
+  ],
+  "ok": true,
+  "captured_decisions": 2,
+  "captured_compares": 12
+}

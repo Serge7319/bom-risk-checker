@@ -19,6 +19,8 @@ export type CompareRow = Record<string, unknown>;
 
 export type MultiCompareColumn = {
   mpn: string;
+  /** Independent manufacturer identity for this candidate (never assumed from Part A). */
+  manufacturer?: string;
   result: CompareRow;
   rows: CompareRow[];
 };
@@ -32,6 +34,7 @@ export type MultiMatrixRow = {
   unit: string;
   candidates: Array<{
     mpn: string;
+    manufacturer: string;
     value: string;
     source: string;
     valueClass: string;
@@ -46,6 +49,23 @@ function text(value: unknown, fallback = "—") {
   return valueText || fallback;
 }
 
+export function candidateManufacturer(
+  column: Pick<MultiCompareColumn, "mpn" | "manufacturer" | "result">,
+): string {
+  return String(
+    column.manufacturer
+    || column.result?.manufacturer_b
+    || (column.result?.part_cards as { b?: { manufacturer?: unknown } } | undefined)?.b?.manufacturer
+    || "",
+  ).trim();
+}
+
+/** Visible multi-compare heading: MPN plus independent manufacturer when known. */
+export function formatCandidateHeading(mpn: string, manufacturer?: string): string {
+  const brand = String(manufacturer || "").trim();
+  return brand ? `Candidate · ${mpn} · ${brand}` : `Candidate · ${mpn}`;
+}
+
 export function buildMultiCompareMatrix(
   currentMpn: string,
   columns: MultiCompareColumn[],
@@ -54,6 +74,7 @@ export function buildMultiCompareMatrix(
   const byAttribute = new Map<string, MultiMatrixRow>();
 
   for (const column of columns) {
+    const brand = candidateManufacturer(column);
     for (const row of column.rows) {
       const attribute = text(row.Attribute || row.attribute, "");
       if (!attribute) continue;
@@ -77,6 +98,7 @@ export function buildMultiCompareMatrix(
       }
       matrix.candidates.push({
         mpn: column.mpn,
+        manufacturer: brand,
         value: text(row["Part B"] || row.part_b),
         source: text(row["Part B source"], "Not stated"),
         valueClass: text(row["Part B value class"], "unknown"),
@@ -94,6 +116,7 @@ export function buildMultiCompareMatrix(
       if (present.has(column.mpn.toLowerCase())) continue;
       matrix.candidates.push({
         mpn: column.mpn,
+        manufacturer: candidateManufacturer(column),
         value: "—",
         source: "Not stated",
         valueClass: "unknown",
@@ -115,6 +138,7 @@ export function buildMultiCompareMatrix(
 export type MultiSourceRecord = {
   side: string;
   mpn: string;
+  manufacturer: string;
   sourceLabel: string;
   retrievalNotes: string[];
   fieldEvidence: Array<{
@@ -138,9 +162,17 @@ export function buildMultiSourceRecords(
     const evidence = (first.result.evidence_sources || {}) as {
       part_a?: Array<Record<string, unknown>>;
     };
+    const partAManufacturer = String(
+      first.result.manufacturer_a
+      || (first.result.part_cards as { a?: { manufacturer?: unknown } } | undefined)?.a?.manufacturer
+      || "",
+    ).trim();
     records.push({
-      side: "Part A",
+      side: partAManufacturer
+        ? `Part A · ${partAManufacturer}`
+        : "Part A",
       mpn: text(first.result.part_a || currentMpn, currentMpn),
+      manufacturer: partAManufacturer,
       sourceLabel: text(first.result.source_a, "Not stated"),
       retrievalNotes: (evidence.part_a || []).map((row) => {
         const label = text(row.label || row.name || row.source || row.url, "Source");
@@ -162,9 +194,11 @@ export function buildMultiSourceRecords(
     const evidence = (column.result.evidence_sources || {}) as {
       part_b?: Array<Record<string, unknown>>;
     };
+    const brand = candidateManufacturer(column);
     records.push({
-      side: `Candidate · ${column.mpn}`,
+      side: formatCandidateHeading(column.mpn, brand),
       mpn: text(column.result.part_b || column.mpn, column.mpn),
+      manufacturer: brand,
       sourceLabel: text(column.result.source_b, "Not stated"),
       retrievalNotes: (evidence.part_b || []).map((row) => {
         const label = text(row.label || row.name || row.source || row.url, "Source");
@@ -193,22 +227,40 @@ export function buildMultiDecisionSnapshot(
   const sourceRecords = buildMultiSourceRecords(currentMpn, columns);
   const primary = columns[0]?.result || {};
   const candidateMpns = columns.map((column) => column.mpn);
+  const multiCandidateManufacturers: Record<string, string> = {};
   // Keep each pairwise compare payload intact (including snapshot_token) so the
   // decision API can verify every candidate server-side.
   const candidateSnapshots = columns.map((column) => {
+    const brand = candidateManufacturer(column);
+    if (brand) multiCandidateManufacturers[column.mpn] = brand;
     const result = { ...(column.result || {}) } as Record<string, unknown>;
     result.mpn = column.mpn;
     result.part_a = text(result.part_a || currentMpn, currentMpn);
     result.part_b = text(result.part_b || column.mpn, column.mpn);
+    // Preserve this candidate's manufacturer independently of Part A / primary.
+    if (brand) result.manufacturer_b = brand;
+    const cards: Record<string, unknown> = {
+      ...((result.part_cards as Record<string, unknown>) || {}),
+    };
+    const cardB: Record<string, unknown> = {
+      ...((cards.b as Record<string, unknown>) || {}),
+      mpn: column.mpn,
+    };
+    if (brand) cardB.manufacturer = brand;
+    cards.b = cardB;
+    result.part_cards = cards;
     return result;
   });
+  const primaryBrand = candidateManufacturer(columns[0] || { mpn: "", result: {} });
   return {
     ...primary,
     ok: true,
     part_a: text(primary.part_a || currentMpn, currentMpn),
     // Decision primary part_b is the first verified candidate.
     part_b: text(primary.part_b || candidateMpns[0], candidateMpns[0] || ""),
+    manufacturer_b: primaryBrand || primary.manufacturer_b || null,
     multi_candidate_mpns: candidateMpns,
+    multi_candidate_manufacturers: multiCandidateManufacturers,
     multi_matrix: matrix,
     multi_source_records: sourceRecords,
     candidate_snapshots: candidateSnapshots,
