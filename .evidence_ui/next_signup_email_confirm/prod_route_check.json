@@ -1,0 +1,10 @@
+{
+  "url_path": "/login",
+  "query_present_on_request": true,
+  "http_status": 200,
+  "final_path": "https://app.cadivor.com/login",
+  "title": "Cadivor",
+  "not_404": true,
+  "login_shell_visible": true,
+  "deployed_build_note": "Production currently shows auto-confirm (Confirming email\u2026) from main; click-to-confirm ships in this PR."
+}

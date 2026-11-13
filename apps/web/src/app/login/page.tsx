@@ -15,6 +15,12 @@ import {
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
+import {
+  parseSignupConfirmParams,
+  SIGNUP_CONFIRM_EXPIRED_MESSAGE,
+  stripSignupConfirmParams,
+  verifySignupEmail,
+} from "@/lib/signupEmailConfirm";
 
 type InvitePreview = {
   email: string;
@@ -23,15 +29,13 @@ type InvitePreview = {
   expires_at?: string;
 };
 
+type ConfirmPhase = "none" | "ready" | "success" | "invalid";
+
 function LoginInner() {
   const router = useRouter();
   const search = useSearchParams();
   const inviteToken = (search.get("invite") || "").trim();
-  const confirmationTokenHash = (search.get("token_hash") || "").trim();
-  const confirmationType = (search.get("type") || "").trim();
   const emailAlreadyConfirmed = search.get("email-confirmed") === "1";
-  const confirmationStarted = useRef<string | null>(null);
-  const confirmationInFlight = useRef(false);
 
   const [mode, setMode] = useState<"signin" | "create">(
     inviteToken ? "create" : "signin",
@@ -42,7 +46,6 @@ function LoginInner() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [confirmingEmail, setConfirmingEmail] = useState(false);
   const [signupEnabled, setSignupEnabled] = useState(false);
   const [invitationsEnabled, setInvitationsEnabled] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -50,17 +53,47 @@ function LoginInner() {
   const [inviteError, setInviteError] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
-  useEffect(() => {
-    // The signup confirmation callback must finish before the existing-session
-    // redirect check runs. In particular, an already signed-in account should
-    // not redirect away from a confirmation link opened in the same browser.
-    if (
-      confirmationTokenHash ||
-      emailAlreadyConfirmed ||
-      confirmationInFlight.current
-    ) return;
+  // Signup email confirmation: stage hash in memory; never verifyOtp in an effect.
+  const stagedTokenHash = useRef<string | null>(null);
+  const stagedOnce = useRef(false);
+  const [confirmPhase, setConfirmPhase] = useState<ConfirmPhase>("none");
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [confirmMessage, setConfirmMessage] = useState("");
 
-    if (new URLSearchParams(window.location.search).get("reason") === "session-refresh") {
+  useEffect(() => {
+    if (stagedOnce.current) return;
+    stagedOnce.current = true;
+
+    const parsed = parseSignupConfirmParams(
+      new URLSearchParams(window.location.search),
+    );
+    if (parsed.kind === "ready") {
+      stagedTokenHash.current = parsed.tokenHash;
+      setConfirmPhase("ready");
+      return;
+    }
+    if (parsed.kind === "invalid") {
+      stagedTokenHash.current = null;
+      setConfirmPhase("invalid");
+      setConfirmMessage(SIGNUP_CONFIRM_EXPIRED_MESSAGE);
+      stripSignupConfirmParams();
+      return;
+    }
+    if (emailAlreadyConfirmed) {
+      setNotice(
+        "Email confirmed. Sign in with this address to finish activating your workspace.",
+      );
+    }
+  }, [emailAlreadyConfirmed]);
+
+  useEffect(() => {
+    // Do not redirect away while a confirmation surface is active.
+    if (confirmPhase !== "none" || stagedTokenHash.current) return;
+
+    if (
+      new URLSearchParams(window.location.search).get("reason") ===
+      "session-refresh"
+    ) {
       setSessionExpired(true);
     }
 
@@ -74,93 +107,35 @@ function LoginInner() {
     }
 
     let active = true;
-    void client.auth.getSession().then(({ data, error: sessionError }) => {
-      if (!active) return;
-      const authUser = data.session?.user;
-      const matchesSavedUser = Boolean(
-        authUser &&
-          (savedSession.user_id
-            ? savedSession.user_id === authUser.id
-            : savedSession.email.trim().toLowerCase() ===
-              (authUser.email || "").trim().toLowerCase()),
-      );
-      if (!sessionError && data.session && matchesSavedUser) {
-        router.replace("/");
-      } else {
+    void client.auth
+      .getSession()
+      .then(({ data, error: sessionError }) => {
+        if (!active) return;
+        const authUser = data.session?.user;
+        const matchesSavedUser = Boolean(
+          authUser &&
+            (savedSession.user_id
+              ? savedSession.user_id === authUser.id
+              : savedSession.email.trim().toLowerCase() ===
+                (authUser.email || "").trim().toLowerCase()),
+        );
+        if (!sessionError && data.session && matchesSavedUser) {
+          router.replace("/");
+        } else {
+          clearSession();
+          setSessionExpired(true);
+        }
+      })
+      .catch(() => {
+        if (!active) return;
         clearSession();
         setSessionExpired(true);
-      }
-    }).catch(() => {
-      if (!active) return;
-      clearSession();
-      setSessionExpired(true);
-    });
+      });
 
     return () => {
       active = false;
     };
-  }, [confirmationTokenHash, emailAlreadyConfirmed, router]);
-
-  useEffect(() => {
-    if (!confirmationTokenHash) {
-      if (emailAlreadyConfirmed) {
-        setNotice("Email confirmed. Sign in with this address to finish activating your workspace.");
-      }
-      return;
-    }
-
-    if (confirmationStarted.current === confirmationTokenHash) return;
-    confirmationStarted.current = confirmationTokenHash;
-    confirmationInFlight.current = true;
-
-    // Remove the one-time credential from the address bar before making a
-    // request. Never include it in UI messages or logs.
-    const cleanCallbackUrl = (confirmed: boolean) => {
-      const safeUrl = new URL(window.location.href);
-      safeUrl.searchParams.delete("token_hash");
-      safeUrl.searchParams.delete("type");
-      safeUrl.searchParams.delete("email-confirmed");
-      if (confirmed) safeUrl.searchParams.set("email-confirmed", "1");
-      window.history.replaceState(window.history.state, "", safeUrl.toString());
-    };
-    cleanCallbackUrl(false);
-
-    if (confirmationType !== "email") {
-      setError("This confirmation link is invalid or expired. Request a new confirmation email.");
-      confirmationInFlight.current = false;
-      return;
-    }
-
-    const client = getSupabaseBrowserClient();
-    if (!client) {
-      setError("Email confirmation could not start. Request a new confirmation email and try again.");
-      confirmationInFlight.current = false;
-      return;
-    }
-
-    setBusy(true);
-    setConfirmingEmail(true);
-    setError("");
-    void client.auth
-      .verifyOtp({ token_hash: confirmationTokenHash, type: "email" })
-      .then(({ data, error: verificationError }) => {
-        if (verificationError || !data.user) {
-          setError("This confirmation link is invalid, expired, or already used. Request a new confirmation email.");
-          return;
-        }
-        if (data.user.email) setEmail(data.user.email);
-        cleanCallbackUrl(true);
-        setNotice("Email confirmed. Sign in with this address to finish activating your workspace.");
-      })
-      .catch(() => {
-        setError("Email confirmation could not be completed. Request a new confirmation email and try again.");
-      })
-      .finally(() => {
-        setBusy(false);
-        setConfirmingEmail(false);
-        confirmationInFlight.current = false;
-      });
-  }, [confirmationTokenHash, confirmationType, emailAlreadyConfirmed]);
+  }, [confirmPhase, router]);
 
   useEffect(() => {
     fetchAuthConfig()
@@ -202,6 +177,51 @@ function LoginInner() {
       active = false;
     };
   }, [inviteToken]);
+
+  async function onConfirmEmail() {
+    const tokenHash = stagedTokenHash.current;
+    if (!tokenHash || confirmBusy) return;
+
+    // Strip the one-time credential from the address bar immediately before verify.
+    stripSignupConfirmParams();
+    stagedTokenHash.current = null;
+
+    const client = getSupabaseBrowserClient();
+    if (!client) {
+      setConfirmPhase("invalid");
+      setConfirmMessage(SIGNUP_CONFIRM_EXPIRED_MESSAGE);
+      return;
+    }
+
+    setConfirmBusy(true);
+    setConfirmMessage("");
+    setError("");
+    try {
+      const result = await verifySignupEmail(client, tokenHash);
+      if (!result.ok) {
+        setConfirmPhase("invalid");
+        setConfirmMessage(result.message);
+        return;
+      }
+      if (result.email) setEmail(result.email);
+      setConfirmPhase("success");
+      setConfirmMessage(
+        "Your email has been confirmed successfully. Sign in to access your workspace.",
+      );
+      setNotice(
+        "Email confirmed. Sign in with this address to finish activating your workspace.",
+      );
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
+
+  function dismissConfirmToSignIn() {
+    stagedTokenHash.current = null;
+    setConfirmPhase("none");
+    setConfirmMessage("");
+    setMode("signin");
+  }
 
   async function onSignIn(event: FormEvent) {
     event.preventDefault();
@@ -258,6 +278,131 @@ function LoginInner() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (confirmPhase === "ready") {
+    return (
+      <div className="cv-login">
+        <div className="cv-card cv-login-card" data-testid="signup-confirm-ready">
+          <div className="cv-brand" style={{ marginBottom: 18, paddingBottom: 0 }}>
+            <span className="cv-mark" aria-hidden>
+              C
+            </span>
+            <div>
+              <strong>Cadivor</strong>
+              <small>Engineering Intelligence</small>
+            </div>
+          </div>
+          <div className="cv-eyebrow">Cadivor · Email confirmation</div>
+          <p className="cv-small-note" role="status" style={{ marginTop: 0 }}>
+            Email link ready
+          </p>
+          <h1 style={{ margin: "0 0 6px", fontSize: 26, letterSpacing: "-0.03em" }}>
+            Confirm your email to continue
+          </h1>
+          <p className="cv-page-description" style={{ marginTop: 6 }}>
+            Click below once to confirm this address. Email scanners that open the
+            link alone will not consume it.
+          </p>
+          <button
+            className="cv-button primary"
+            style={{ width: "100%", marginTop: 18 }}
+            type="button"
+            data-testid="signup-confirm-submit"
+            onClick={() => void onConfirmEmail()}
+            disabled={confirmBusy}
+          >
+            {confirmBusy ? "Confirming email…" : "Confirm email"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (confirmPhase === "success") {
+    return (
+      <div className="cv-login">
+        <div
+          className="cv-card cv-login-card"
+          data-testid="signup-confirm-success"
+        >
+          <div className="cv-brand" style={{ marginBottom: 18, paddingBottom: 0 }}>
+            <span className="cv-mark" aria-hidden>
+              C
+            </span>
+            <div>
+              <strong>Cadivor</strong>
+              <small>Engineering Intelligence</small>
+            </div>
+          </div>
+          <div className="cv-eyebrow">Email confirmed</div>
+          <p className="cv-small-note" role="status" style={{ marginTop: 0 }}>
+            Confirmation complete
+          </p>
+          <h1 style={{ margin: "0 0 6px", fontSize: 26, letterSpacing: "-0.03em" }}>
+            Continue to Cadivor
+          </h1>
+          <p className="cv-page-description" style={{ marginTop: 6 }}>
+            {confirmMessage ||
+              "Your email has been confirmed. Sign in to access your workspace."}
+          </p>
+          <button
+            className="cv-button primary"
+            style={{ width: "100%", marginTop: 18 }}
+            type="button"
+            data-testid="signup-confirm-continue-login"
+            onClick={dismissConfirmToSignIn}
+          >
+            Continue to sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (confirmPhase === "invalid") {
+    return (
+      <div className="cv-login">
+        <div
+          className="cv-card cv-login-card"
+          data-testid="signup-confirm-invalid"
+        >
+          <div className="cv-brand" style={{ marginBottom: 18, paddingBottom: 0 }}>
+            <span className="cv-mark" aria-hidden>
+              C
+            </span>
+            <div>
+              <strong>Cadivor</strong>
+              <small>Engineering Intelligence</small>
+            </div>
+          </div>
+          <div className="cv-eyebrow">Email confirmation</div>
+          <p className="cv-small-note" role="status" style={{ marginTop: 0 }}>
+            Confirmation link unavailable
+          </p>
+          <h1 style={{ margin: "0 0 6px", fontSize: 26, letterSpacing: "-0.03em" }}>
+            This link can’t be used
+          </h1>
+          <p className="cv-page-description" style={{ marginTop: 6 }} role="alert">
+            {confirmMessage || SIGNUP_CONFIRM_EXPIRED_MESSAGE}
+          </p>
+          <button
+            className="cv-button primary"
+            style={{ width: "100%", marginTop: 18 }}
+            type="button"
+            data-testid="signup-confirm-return-login"
+            onClick={dismissConfirmToSignIn}
+          >
+            Return to sign in
+          </button>
+          <p className="cv-auth-switch">
+            <Link href="/signup">Create Account</Link>
+            {" · "}
+            <Link href="/reset-password">Reset password</Link>
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -381,9 +526,7 @@ function LoginInner() {
           }
         >
           {busy
-            ? confirmingEmail
-              ? "Confirming email…"
-              : mode === "create"
+            ? mode === "create"
               ? "Creating account…"
               : "Signing in…"
             : mode === "create"

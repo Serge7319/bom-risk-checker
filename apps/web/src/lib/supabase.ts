@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { signupConfirmCallbackInUrl } from "@/lib/signupEmailConfirm";
 
 let browserClient: SupabaseClient | null = null;
 
@@ -17,11 +18,16 @@ export function getSupabaseBrowserClient(): SupabaseClient | null {
   if (!url || !key) return null;
 
   if (!browserClient) {
+    // Signup confirm links use token_hash in the query. Do not let the Auth
+    // client auto-consume the URL on load — Cadivor verifies only after click.
+    const detectSessionInUrl = !signupConfirmCallbackInUrl(
+      new URLSearchParams(window.location.search),
+    );
     browserClient = createClient(url, key, {
       auth: {
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl,
         flowType: "pkce",
       },
     });
