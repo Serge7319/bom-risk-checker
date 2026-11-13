@@ -98,12 +98,15 @@ repository tests alone.
   token contract onto `RedirectTo`:
 
   ```html
-  href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email"
+  href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&amp;type=email"
   ```
 
-  The resulting URL is `/login?token_hash=…&type=email`. Next.js stages the
-  hash and shows **Confirm email**; `verifyOtp` runs only after that click
-  so link scanners do not consume the one-time token.
+  Because `CADIVOR_SIGNUP_REDIRECT_URL` is exactly `https://app.cadivor.com/login`
+  (no query string), the template must start the query with `?token_hash=…`,
+  not a bare `&token_hash=…`. The resulting URL is
+  `/login?token_hash=…&type=email`. Next.js stages the hash and shows
+  **Confirm email**; `verifyOtp` runs only after that click so link scanners
+  do not consume the one-time token.
 - Test signup confirmation and password recovery end to end.
 
 ### Stripe

@@ -69,14 +69,25 @@ def test_api_signup_redirect_helper_requires_https_login_allowlist():
 
 
 def test_docs_confirm_sign_up_template_uses_token_hash_type_email():
+    """Confirm sign up href must use ?token_hash= because RedirectTo has no query."""
     audit = _read(ROOT / "docs" / "EMAIL_DELIVERY_AUDIT.md")
     assert "CADIVOR_SIGNUP_REDIRECT_URL" in audit
     assert "https://app.cadivor.com/login" in audit
-    assert "token_hash={{ .TokenHash }}" in audit or "token_hash={{ .TokenHash }}" in audit.replace(
-        "&amp;", "&"
-    )
-    assert "type=email" in audit
     assert "Confirm sign up" in audit
+    expected = (
+        'href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&amp;type=email"'
+    )
+    assert expected in audit
+    # A bare &token_hash before the first ? produces a broken URL for
+    # CADIVOR_SIGNUP_REDIRECT_URL=https://app.cadivor.com/login.
+    bare_amp = re.search(
+        r'href="\{\{\s*\.RedirectTo\s*\}\}(?:&|&amp;)token_hash=',
+        audit,
+    )
+    assert bare_amp is None, (
+        "Confirm sign up template must use ?token_hash= when RedirectTo "
+        "has no query string; found a leading &token_hash="
+    )
 
 
 @pytest.mark.skipif(
