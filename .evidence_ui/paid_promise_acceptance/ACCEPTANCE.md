@@ -82,4 +82,4 @@ Status legend: PASS | FAIL | BLOCKED | NOT TESTED
 | Next lint/build | PASS | |
 | Synthetic browser / repeat-upload harness | PASS | `D_journey/` |
 | Production second-user live check | BLOCKED | User manual |
-| CI on final PR head | NOT TESTED | Pending push |
+| CI on final PR head | PASS | Head `b949b63909fcb2eb5a24cdadbac121c8b4c07353`: regression-tests, billing-contract, Cloudflare Pages SUCCESS |
