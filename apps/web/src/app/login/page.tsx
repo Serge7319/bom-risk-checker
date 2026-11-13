@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, Suspense, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -27,6 +27,11 @@ function LoginInner() {
   const router = useRouter();
   const search = useSearchParams();
   const inviteToken = (search.get("invite") || "").trim();
+  const confirmationTokenHash = (search.get("token_hash") || "").trim();
+  const confirmationType = (search.get("type") || "").trim();
+  const emailAlreadyConfirmed = search.get("email-confirmed") === "1";
+  const confirmationStarted = useRef<string | null>(null);
+  const confirmationInFlight = useRef(false);
 
   const [mode, setMode] = useState<"signin" | "create">(
     inviteToken ? "create" : "signin",
@@ -37,6 +42,7 @@ function LoginInner() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirmingEmail, setConfirmingEmail] = useState(false);
   const [signupEnabled, setSignupEnabled] = useState(false);
   const [invitationsEnabled, setInvitationsEnabled] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -45,6 +51,15 @@ function LoginInner() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   useEffect(() => {
+    // The signup confirmation callback must finish before the existing-session
+    // redirect check runs. In particular, an already signed-in account should
+    // not redirect away from a confirmation link opened in the same browser.
+    if (
+      confirmationTokenHash ||
+      emailAlreadyConfirmed ||
+      confirmationInFlight.current
+    ) return;
+
     if (new URLSearchParams(window.location.search).get("reason") === "session-refresh") {
       setSessionExpired(true);
     }
@@ -84,7 +99,68 @@ function LoginInner() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [confirmationTokenHash, emailAlreadyConfirmed, router]);
+
+  useEffect(() => {
+    if (!confirmationTokenHash) {
+      if (emailAlreadyConfirmed) {
+        setNotice("Email confirmed. Sign in with this address to finish activating your workspace.");
+      }
+      return;
+    }
+
+    if (confirmationStarted.current === confirmationTokenHash) return;
+    confirmationStarted.current = confirmationTokenHash;
+    confirmationInFlight.current = true;
+
+    // Remove the one-time credential from the address bar before making a
+    // request. Never include it in UI messages or logs.
+    const cleanCallbackUrl = (confirmed: boolean) => {
+      const safeUrl = new URL(window.location.href);
+      safeUrl.searchParams.delete("token_hash");
+      safeUrl.searchParams.delete("type");
+      safeUrl.searchParams.delete("email-confirmed");
+      if (confirmed) safeUrl.searchParams.set("email-confirmed", "1");
+      window.history.replaceState(window.history.state, "", safeUrl.toString());
+    };
+    cleanCallbackUrl(false);
+
+    if (confirmationType !== "email") {
+      setError("This confirmation link is invalid or expired. Request a new confirmation email.");
+      confirmationInFlight.current = false;
+      return;
+    }
+
+    const client = getSupabaseBrowserClient();
+    if (!client) {
+      setError("Email confirmation could not start. Request a new confirmation email and try again.");
+      confirmationInFlight.current = false;
+      return;
+    }
+
+    setBusy(true);
+    setConfirmingEmail(true);
+    setError("");
+    void client.auth
+      .verifyOtp({ token_hash: confirmationTokenHash, type: "email" })
+      .then(({ data, error: verificationError }) => {
+        if (verificationError || !data.user) {
+          setError("This confirmation link is invalid, expired, or already used. Request a new confirmation email.");
+          return;
+        }
+        if (data.user.email) setEmail(data.user.email);
+        cleanCallbackUrl(true);
+        setNotice("Email confirmed. Sign in with this address to finish activating your workspace.");
+      })
+      .catch(() => {
+        setError("Email confirmation could not be completed. Request a new confirmation email and try again.");
+      })
+      .finally(() => {
+        setBusy(false);
+        setConfirmingEmail(false);
+        confirmationInFlight.current = false;
+      });
+  }, [confirmationTokenHash, confirmationType, emailAlreadyConfirmed]);
 
   useEffect(() => {
     fetchAuthConfig()
@@ -288,7 +364,7 @@ function LoginInner() {
             />
           </>
         ) : null}
-        {error ? <div className="cv-error">{error}</div> : null}
+        {error ? <div className="cv-error" role="alert">{error}</div> : null}
         {mode === "signin" ? (
           <p className="cv-auth-switch" style={{ marginTop: 8, marginBottom: 0 }}>
             <Link href="/reset-password">Forgot password?</Link>
@@ -305,7 +381,9 @@ function LoginInner() {
           }
         >
           {busy
-            ? mode === "create"
+            ? confirmingEmail
+              ? "Confirming email…"
+              : mode === "create"
               ? "Creating account…"
               : "Signing in…"
             : mode === "create"
