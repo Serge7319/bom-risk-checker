@@ -30,9 +30,12 @@ class UserProvisioningTests(unittest.TestCase):
         self.assertEqual(row["email"], "user@example.com")
         self.assertEqual(row["plan"], "Trial")
         self.assertEqual(row["monthly_upload_count"], 0)
+        self.assertTrue(row["trial_started_at"])
         self.assertTrue(row["trial_ends_at"])
         self.assertNotIn("stripe_customer_id", row)
+        started = datetime.fromisoformat(row["trial_started_at"])
         end = datetime.fromisoformat(row["trial_ends_at"])
+        self.assertEqual((end - started).days, 14)
         delta = end - datetime.now(timezone.utc)
         self.assertGreater(delta.total_seconds(), 13 * 24 * 3600)
         self.assertLess(delta.total_seconds(), 15 * 24 * 3600)
@@ -63,15 +66,17 @@ class UserProvisioningTests(unittest.TestCase):
         self.assertEqual(profile["plan"], "Professional")
         supabase.table.return_value.insert.assert_not_called()
 
-    def test_recent_trigger_created_starter_row_is_repaired_to_trial(self):
-        created_at = datetime.now(timezone.utc) - timedelta(minutes=2)
+    def test_starter_without_trial_history_is_repaired_from_signin_now(self):
+        """Broken-flow Starter rows get a full 14 days from this sign-in, not created_at."""
+        auth_created_at = datetime.now(timezone.utc) - timedelta(days=15)
         auth_user = self._auth_user()
-        auth_user.created_at = created_at.isoformat()
+        auth_user.created_at = auth_created_at.isoformat()
         auth_user.user_metadata["cadivor_signup_intent"] = "standard_trial"
         existing = {
             "id": "user-1",
             "email": "user@example.com",
             "plan": "Starter",
+            "trial_started_at": None,
             "trial_ends_at": None,
             "stripe_customer_id": None,
             "stripe_subscription_id": None,
@@ -79,19 +84,23 @@ class UserProvisioningTests(unittest.TestCase):
             "stripe_subscription_status": None,
             "plan_grandfather_source": None,
             "role": "user",
-        }
-        updated = {
-            **existing,
-            "plan": "Trial",
-            "trial_ends_at": (created_at + timedelta(days=14)).isoformat(),
+            "created_at": auth_created_at.isoformat(),
         }
         update_query = MagicMock()
         update_query.eq.return_value = update_query
         update_query.is_.return_value = update_query
         update_query.select.return_value = update_query
-        update_query.execute.return_value = types.SimpleNamespace(data=[updated])
         supabase = MagicMock()
         supabase.table.return_value.update.return_value = update_query
+
+        before = datetime.now(timezone.utc)
+
+        def _capture_update(payload):
+            updated = {**existing, **payload}
+            update_query.execute.return_value = types.SimpleNamespace(data=[updated])
+            return update_query
+
+        supabase.table.return_value.update.side_effect = _capture_update
 
         with patch(
             "src.services.user_provisioning.execute_supabase_read",
@@ -99,28 +108,31 @@ class UserProvisioningTests(unittest.TestCase):
         ):
             profile, created = ensure_user_profile(supabase, auth_user)
 
+        after = datetime.now(timezone.utc)
         self.assertFalse(created)
         self.assertEqual(profile["plan"], "Trial")
         self.assertEqual(resolve_effective_plan(profile)[0], "Trial")
-        self.assertEqual(
-            datetime.fromisoformat(profile["trial_ends_at"]),
-            created_at + timedelta(days=14),
-        )
-        supabase.table.return_value.update.assert_called_once_with(
-            {"plan": "Trial", "trial_ends_at": (created_at + timedelta(days=14)).isoformat()}
-        )
+        started = datetime.fromisoformat(profile["trial_started_at"])
+        ends = datetime.fromisoformat(profile["trial_ends_at"])
+        self.assertEqual((ends - started).days, 14)
+        self.assertGreaterEqual(started, before - timedelta(seconds=1))
+        self.assertLessEqual(started, after + timedelta(seconds=1))
+        # Must not use auth.users.created_at as the trial clock.
+        self.assertNotEqual(started.date(), auth_created_at.date())
         update_query.eq.assert_any_call("id", "user-1")
         update_query.eq.assert_any_call("plan", "Starter")
         update_query.is_.assert_any_call("trial_ends_at", "null")
+        update_query.is_.assert_any_call("trial_started_at", "null")
 
-    def test_old_starter_profile_is_not_converted_to_trial(self):
+    def test_starter_with_prior_trial_history_is_not_converted(self):
         auth_user = self._auth_user()
-        auth_user.created_at = (datetime.now(timezone.utc) - timedelta(days=15)).isoformat()
+        auth_user.user_metadata["cadivor_signup_intent"] = "standard_trial"
         existing = {
             "id": "user-1",
             "email": "user@example.com",
             "plan": "Starter",
-            "trial_ends_at": None,
+            "trial_started_at": "2025-01-01T00:00:00+00:00",
+            "trial_ends_at": "2025-01-15T00:00:00+00:00",
         }
         supabase = MagicMock()
         with patch(
@@ -135,12 +147,12 @@ class UserProvisioningTests(unittest.TestCase):
 
     def test_report_only_starter_profile_is_not_converted_to_trial(self):
         auth_user = self._auth_user()
-        auth_user.created_at = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
         auth_user.user_metadata["cadivor_signup_intent"] = "one_time_report"
         existing = {
             "id": "user-1",
             "email": "user@example.com",
             "plan": "Starter",
+            "trial_started_at": None,
             "trial_ends_at": None,
         }
         supabase = MagicMock()
@@ -153,6 +165,115 @@ class UserProvisioningTests(unittest.TestCase):
         self.assertFalse(created)
         self.assertEqual(profile, existing)
         supabase.table.return_value.update.assert_not_called()
+
+    def test_protected_billing_profiles_are_not_converted_to_trial(self):
+        auth_user = self._auth_user()
+        auth_user.user_metadata["cadivor_signup_intent"] = "standard_trial"
+        protected = [
+            {"plan": "Professional", "stripe_subscription_status": "active"},
+            {"plan": "Student"},
+            {
+                "plan": "Starter",
+                "plan_grandfather_source": "beta",
+                "trial_started_at": None,
+                "trial_ends_at": None,
+            },
+            {
+                "plan": "Starter",
+                "stripe_customer_id": "cus_x",
+                "trial_started_at": None,
+                "trial_ends_at": None,
+            },
+        ]
+        for extra in protected:
+            existing = {
+                "id": "user-1",
+                "email": "user@example.com",
+                "trial_started_at": None,
+                "trial_ends_at": None,
+                **extra,
+            }
+            supabase = MagicMock()
+            with patch(
+                "src.services.user_provisioning.execute_supabase_read",
+                return_value=types.SimpleNamespace(data=[existing]),
+            ):
+                profile, created = ensure_user_profile(supabase, auth_user)
+            self.assertFalse(created)
+            self.assertEqual(profile, existing)
+            supabase.table.return_value.update.assert_not_called()
+
+    def test_concurrent_starter_repair_is_idempotent(self):
+        auth_user = self._auth_user()
+        auth_user.user_metadata["cadivor_signup_intent"] = "standard_trial"
+        existing = {
+            "id": "user-1",
+            "email": "user@example.com",
+            "plan": "Starter",
+            "trial_started_at": None,
+            "trial_ends_at": None,
+            "stripe_customer_id": None,
+            "stripe_subscription_id": None,
+            "stripe_price_id": None,
+            "stripe_subscription_status": None,
+            "plan_grandfather_source": None,
+            "role": "user",
+        }
+        winner = {
+            **existing,
+            "plan": "Trial",
+            "trial_started_at": "2026-11-13T18:00:00+00:00",
+            "trial_ends_at": "2026-11-27T18:00:00+00:00",
+        }
+        update_query = MagicMock()
+        update_query.eq.return_value = update_query
+        update_query.is_.return_value = update_query
+        update_query.select.return_value = update_query
+        # First concurrent updater already wrote Trial; this update returns empty.
+        update_query.execute.return_value = types.SimpleNamespace(data=[])
+        supabase = MagicMock()
+        supabase.table.return_value.update.return_value = update_query
+
+        with patch(
+            "src.services.user_provisioning.execute_supabase_read",
+            side_effect=[
+                types.SimpleNamespace(data=[existing]),
+                types.SimpleNamespace(data=[winner]),
+            ],
+        ):
+            profile, created = ensure_user_profile(supabase, auth_user)
+
+        self.assertFalse(created)
+        self.assertEqual(profile, winner)
+        self.assertEqual(profile["trial_started_at"], winner["trial_started_at"])
+
+    def test_failed_starter_repair_raises_retryable_error(self):
+        auth_user = self._auth_user()
+        auth_user.user_metadata["cadivor_signup_intent"] = "standard_trial"
+        existing = {
+            "id": "user-1",
+            "email": "user@example.com",
+            "plan": "Starter",
+            "trial_started_at": None,
+            "trial_ends_at": None,
+            "stripe_customer_id": None,
+            "role": "user",
+        }
+        update_query = MagicMock()
+        update_query.eq.return_value = update_query
+        update_query.is_.return_value = update_query
+        update_query.select.return_value = update_query
+        update_query.execute.side_effect = RuntimeError("db down")
+        supabase = MagicMock()
+        supabase.table.return_value.update.return_value = update_query
+
+        with patch(
+            "src.services.user_provisioning.execute_supabase_read",
+            return_value=types.SimpleNamespace(data=[existing]),
+        ):
+            with self.assertRaises(UserProvisioningError) as ctx:
+                ensure_user_profile(supabase, auth_user)
+        self.assertIn("Sign in again", str(ctx.exception))
 
     def test_missing_user_row_is_created(self):
         supabase = MagicMock()

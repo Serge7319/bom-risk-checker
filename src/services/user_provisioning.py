@@ -39,13 +39,13 @@ def _parse_timestamp(value: Any) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def _recent_default_trial_profile(auth_user: Any, profile: dict[str, Any]) -> bool:
-    """Identify only a fresh Auth account with the legacy trigger's Starter row.
+def _eligible_starter_trial_repair(auth_user: Any, profile: dict[str, Any]) -> bool:
+    """Starter row with no trial or billing history may receive a first Trial.
 
-    Some deployments create ``public.users`` at Auth signup with plan=Starter.
-    That row wins the insert race in ``ensure_user_profile`` and previously
-    bypassed the normal Trial default. Repair is limited to a new account's
-    first 14 days and an otherwise untouched, unbilled profile.
+    Includes trigger-created Starter rows from the broken signup flow. Timing
+    does **not** use ``auth.users.created_at`` — the clock starts at repair /
+    first verified sign-in. Paid, Student, grandfathered, and one-time-report
+    accounts are never eligible.
     """
     metadata = getattr(auth_user, "user_metadata", {}) or {}
     if not isinstance(metadata, dict):
@@ -57,6 +57,8 @@ def _recent_default_trial_profile(auth_user: Any, profile: dict[str, Any]) -> bo
     if str(profile.get("plan") or "").strip().lower() != "starter":
         return False
     if profile.get("trial_ends_at") not in (None, ""):
+        return False
+    if profile.get("trial_started_at") not in (None, ""):
         return False
     if str(profile.get("role") or "").strip().lower() == "admin":
         return False
@@ -71,14 +73,7 @@ def _recent_default_trial_profile(auth_user: Any, profile: dict[str, Any]) -> bo
     )
     if any(str(profile.get(key) or "").strip() for key in protected_billing_fields):
         return False
-
-    created_at = _parse_timestamp(getattr(auth_user, "created_at", None))
-    if created_at is None:
-        return False
-    now = datetime.now(timezone.utc)
-    trial_end = created_at + timedelta(days=TRIAL_DAYS)
-    age = now - created_at
-    return timedelta(0) <= age < timedelta(days=TRIAL_DAYS) and trial_end > now
+    return True
 
 
 def repair_recent_default_trial_profile(
@@ -86,19 +81,24 @@ def repair_recent_default_trial_profile(
     auth_user: Any,
     profile: dict[str, Any],
 ) -> dict[str, Any]:
-    """Promote a fresh trigger-created Starter row to its signup Trial once.
+    """Promote an eligible Starter row to Trial starting at this sign-in.
 
-    Safe to call on a loaded profile: ordinary, older, paid, and report-only
-    accounts return immediately without a database mutation.
+    The full 14-day window is measured from *now*, not Auth ``created_at``.
+    Safe to call repeatedly: paid, Student, grandfathered, one-time-report,
+    and already-trialed profiles return unchanged. Concurrent updates stay
+    idempotent via conditional filters on plan and empty billing fields.
     """
-    if not _recent_default_trial_profile(auth_user, profile):
+    if not _eligible_starter_trial_repair(auth_user, profile):
         return profile
 
-    created_at = _parse_timestamp(getattr(auth_user, "created_at", None))
-    if created_at is None:
-        return profile
-    trial_end = (created_at + timedelta(days=TRIAL_DAYS)).isoformat()
-    payload = {"plan": "Trial", "trial_ends_at": trial_end}
+    now = datetime.now(timezone.utc)
+    trial_start = now.isoformat()
+    trial_end = (now + timedelta(days=TRIAL_DAYS)).isoformat()
+    payload = {
+        "plan": "Trial",
+        "trial_started_at": trial_start,
+        "trial_ends_at": trial_end,
+    }
 
     try:
         query = (
@@ -111,6 +111,7 @@ def repair_recent_default_trial_profile(
         # between the initial read and the update. Only filter columns present
         # in this schema/profile so older deployments remain compatible.
         for field in (
+            "trial_started_at",
             "trial_ends_at",
             "stripe_customer_id",
             "stripe_subscription_id",
@@ -124,13 +125,13 @@ def repair_recent_default_trial_profile(
         updated = getattr(response, "data", None)
         if isinstance(updated, list) and updated and isinstance(updated[0], dict):
             return updated[0]
-    except Exception:
-        # Profile recovery must not prevent a valid Auth session from opening.
-        return profile
+    except Exception as exc:
+        raise UserProvisioningError(
+            "Could not start the Cadivor trial. Sign in again in a moment."
+        ) from exc
 
-    # PostgREST may return no representation if the update was rejected by a
-    # concurrent change or RLS. Re-read so callers never assume a Trial that
-    # was not persisted.
+    # PostgREST may return no representation if a concurrent sign-in already
+    # completed the repair. Re-read; a Trial row is success, Starter is not.
     try:
         refreshed = _select_user_profile(
             supabase,
@@ -138,10 +139,16 @@ def repair_recent_default_trial_profile(
             operation="ensure_user_profile_after_trial_repair",
         )
         if refreshed.data:
-            return refreshed.data[0]
-    except SupabaseReadTransportError:
-        pass
-    return profile
+            row = refreshed.data[0]
+            if str(row.get("plan") or "").strip().lower() == "trial":
+                return row
+    except SupabaseReadTransportError as exc:
+        raise UserProvisioningError(
+            "Could not confirm the Cadivor trial. Sign in again in a moment."
+        ) from exc
+    raise UserProvisioningError(
+        "Could not start the Cadivor trial. Sign in again in a moment."
+    )
 
 
 def build_default_user_row(auth_user: Any) -> dict[str, Any]:
@@ -156,16 +163,20 @@ def build_default_user_row(auth_user: Any) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     # Preserve compatibility with schemas that require trial_ends_at to be
     # populated. The inactive plan means this timestamp never grants a trial.
-    trial_ends_at = (
-        (now - timedelta(seconds=1)).isoformat()
-        if report_only
-        else (now + timedelta(days=TRIAL_DAYS)).isoformat()
-    )
+    if report_only:
+        trial_started_at = now.isoformat()
+        trial_ends_at = (now - timedelta(seconds=1)).isoformat()
+        plan = "Subscription inactive"
+    else:
+        trial_started_at = now.isoformat()
+        trial_ends_at = (now + timedelta(days=TRIAL_DAYS)).isoformat()
+        plan = "Trial"
 
     return {
         "id": user_id,
         "email": email,
-        "plan": "Subscription inactive" if report_only else "Trial",
+        "plan": plan,
+        "trial_started_at": trial_started_at,
         "trial_ends_at": trial_ends_at,
         "monthly_upload_count": 0,
         "full_name": _safe_text(metadata.get("full_name"), _safe_text(metadata.get("name"), "")),
