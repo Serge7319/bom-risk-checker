@@ -1,7 +1,7 @@
 """Production Supabase Auth path for the Next migration API (mocked Auth client)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +12,7 @@ from apps.api import supabase_auth
 from apps.api.main import app
 from apps.api.sandbox_auth import get_auth_store, reset_auth_store_for_tests
 from apps.api.workspace_store import reset_store_for_tests
+from src.services.user_provisioning import build_default_user_row
 
 
 class _FakeUser:
@@ -112,13 +113,71 @@ def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
     monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
 
     fake = _FakeAuth()
+    billing_profiles: dict[str, dict] = {}
 
     def _fake_client(_url: str, _key: str, **_kwargs):
-        return SimpleNamespace(auth=fake)
+        postgrest = SimpleNamespace(auth=lambda _token: None)
+        return SimpleNamespace(auth=fake, postgrest=postgrest)
 
     monkeypatch.setattr("supabase.create_client", _fake_client)
+
+    def _ensure_profile(supabase, auth_user, **_kwargs):
+        del supabase
+        user_id = str(getattr(auth_user, "id", "") or "")
+        existing = billing_profiles.get(user_id)
+        if existing is not None:
+            return dict(existing), False
+        row = build_default_user_row(auth_user)
+        billing_profiles[user_id] = dict(row)
+        return dict(row), True
+
+    monkeypatch.setattr(
+        "src.services.user_provisioning.ensure_user_profile",
+        _ensure_profile,
+    )
+
     def _billing_action(*, access_token: str, action: str, **_kwargs):
+        user = fake._by_token.get(access_token)
+        profile = billing_profiles.get(str(getattr(user, "id", "") or ""), {})
         if action == "entitlements":
+            plan = str(profile.get("plan") or "Trial")
+            started = profile.get("trial_started_at")
+            ends = profile.get("trial_ends_at")
+            if plan == "Trial" and ends:
+                end_dt = datetime.fromisoformat(str(ends).replace("Z", "+00:00"))
+                remaining = max(
+                    0,
+                    int(
+                        (
+                            end_dt - datetime.now(timezone.utc)
+                        ).total_seconds()
+                        // 86400
+                    )
+                    + 1,
+                )
+                return {
+                    "ok": True,
+                    "plan": "Trial",
+                    "trial_started_at": started,
+                    "trial_ends_at": ends,
+                    "trial_status": "trialing",
+                    "trial_days_remaining": remaining,
+                }, 200
+            if plan.lower() == "student":
+                return {"ok": True, "plan": "Student"}, 200
+            if str(profile.get("plan_grandfather_source") or "").strip():
+                return {"ok": True, "plan": "Grandfathered beta"}, 200
+            billing_status = str(
+                profile.get("stripe_subscription_status") or ""
+            ).strip().lower()
+            if plan in {"Starter", "Professional", "Business", "Enterprise"} and (
+                billing_status in {"active", "trialing"} or plan == "Enterprise"
+            ):
+                return {"ok": True, "plan": plan}, 200
+            if plan == "Subscription inactive":
+                return {"ok": True, "plan": "Subscription inactive"}, 200
+            # Seeded fixture users without a provisioned billing row keep a
+            # stable Trial snapshot so existing login tests stay deterministic.
             return {
                 "ok": True,
                 "plan": "Trial",
@@ -143,6 +202,8 @@ def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
         "apps.api.subscription_billing_service.request_action",
         _billing_action,
     )
+    # Expose billing store for focused assertions.
+    # Attached after client creation below.
     for account in fake.users.values():
         user = account["user"]
         supabase_auth.ensure_owner_membership(
@@ -156,6 +217,7 @@ def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
     sa._REPORTS.clear()
     client = TestClient(app)
     client.app.state.fake_auth = fake
+    client.app.state.billing_profiles = billing_profiles
     return client
 
 
@@ -283,6 +345,14 @@ def test_entitlement_snapshot_is_authoritative_and_login_does_not_reset_membersh
     store._data["users"][user_id]["plan"] = "Business"
     store._data["memberships"][user_id]["role"] = "engineer"
     store.save()
+    # Existing paid billing row is preserved; membership plan is aligned to it.
+    supabase_client.app.state.billing_profiles[user_id] = {
+        "id": user_id,
+        "email": "owner@cadivor.test",
+        "plan": "Business",
+        "stripe_subscription_status": "active",
+        "stripe_customer_id": "cus_owner",
+    }
 
     login = supabase_client.post(
         "/auth/login",
@@ -290,7 +360,7 @@ def test_entitlement_snapshot_is_authoritative_and_login_does_not_reset_membersh
     )
 
     assert login.status_code == 200
-    assert login.json()["plan"] == "Trial"
+    assert login.json()["plan"] == "Business"
     assert store._data["users"][user_id]["plan"] == "Business"
     assert store._data["memberships"][user_id]["role"] == "engineer"
 
@@ -432,6 +502,7 @@ def test_verified_signup_provisions_workspace_and_starts_trial_once(
         "https://cadivor-next-web-prod-production.up.railway.app/login"
     )
     assert payload["options"]["data"]["workspace_name"] == "Acme Hardware"
+    assert payload["options"]["data"]["cadivor_signup_intent"] == "standard_trial"
     user = fake.users["new@cadivor.test"]["user"]
     assert get_auth_store().membership_for_user(user.id) is None
 
@@ -441,6 +512,7 @@ def test_verified_signup_provisions_workspace_and_starts_trial_once(
     )
     assert unverified.status_code == 403
     assert get_auth_store().membership_for_user(user.id) is None
+    assert user.id not in client.app.state.billing_profiles
 
     user.email_confirmed_at = "2026-11-05T10:00:00+00:00"
     login = client.post(
@@ -450,15 +522,27 @@ def test_verified_signup_provisions_workspace_and_starts_trial_once(
     assert login.status_code == 200, login.text
     body = login.json()
     assert body["workspace"] == "Acme Hardware"
+    assert body["plan"] == "Trial"
     assert body["trial_status"] == "trialing"
     started = datetime.fromisoformat(body["trial_started_at"])
     ends = datetime.fromisoformat(body["trial_ends_at"])
     assert (ends - started).days == 14
 
+    billing = client.app.state.billing_profiles[user.id]
+    assert billing["plan"] == "Trial"
+    assert billing["trial_started_at"] == body["trial_started_at"]
+    assert billing["trial_ends_at"] == body["trial_ends_at"]
+    membership = get_auth_store().membership_for_user(user.id)
+    assert membership is not None
+    assert membership["trial_started_at"] == body["trial_started_at"]
+    assert membership["trial_ends_at"] == body["trial_ends_at"]
+    assert membership["subscription_status"] == "trialing"
+
     headers = {"Authorization": f"Bearer {body['access_token']}"}
     me = client.get("/auth/me", headers=headers)
     assert me.status_code == 200
     assert me.json()["trial_ends_at"] == body["trial_ends_at"]
+    assert me.json()["plan"] == "Trial"
 
     again = client.post(
         "/auth/login",
@@ -467,6 +551,7 @@ def test_verified_signup_provisions_workspace_and_starts_trial_once(
     assert again.status_code == 200
     assert again.json()["trial_started_at"] == body["trial_started_at"]
     assert again.json()["trial_ends_at"] == body["trial_ends_at"]
+    assert again.json()["plan"] == "Trial"
 
 
 def test_signup_redirect_must_be_allowlisted_https(
@@ -584,6 +669,163 @@ def test_signup_requires_explicit_email_and_abuse_protection_acknowledgments(
     )
     assert response.status_code == 503
     assert supabase_client.app.state.fake_auth.signup_payloads == []
+
+
+def test_trial_signup_login_allows_analysis_and_saved_report(
+    supabase_client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("CADIVOR_SELF_SERVE_SIGNUP_ENABLED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_EMAIL_CONFIRMATION_CONFIRMED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_ABUSE_PROTECTION_CONFIRMED", "1")
+    monkeypatch.setenv(
+        "CADIVOR_SIGNUP_REDIRECT_URL",
+        "https://app.cadivor.com/login",
+    )
+    monkeypatch.setenv("CADIVOR_WEB_ORIGINS", "https://app.cadivor.com")
+    client = supabase_client
+    assert (
+        client.post(
+            "/auth/signup",
+            json={
+                "email": "trial-analyze@cadivor.test",
+                "password": "long-password-123",
+                "workspace_name": "Trial Analyze",
+                "accepted_terms": True,
+            },
+        ).status_code
+        == 202
+    )
+    fake = client.app.state.fake_auth
+    user = fake.users["trial-analyze@cadivor.test"]["user"]
+    user.email_confirmed_at = "2026-11-13T12:00:00+00:00"
+    login = client.post(
+        "/auth/login",
+        json={
+            "email": "trial-analyze@cadivor.test",
+            "password": "long-password-123",
+        },
+    )
+    assert login.status_code == 200, login.text
+    assert login.json()["plan"] == "Trial"
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    analyzed = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("bom.csv", b"MPN,Quantity\nLM358DR,1\n", "text/csv")},
+    )
+    assert analyzed.status_code == 200, analyzed.text
+    analysis_id = analyzed.json()["analysis_id"]
+    saved = client.get(f"/reports/{analysis_id}", headers=headers)
+    assert saved.status_code == 200
+    assert saved.json()["analysis_id"] == analysis_id
+
+
+def test_one_time_report_signup_does_not_receive_trial(
+    supabase_client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("CADIVOR_SELF_SERVE_SIGNUP_ENABLED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_EMAIL_CONFIRMATION_CONFIRMED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_ABUSE_PROTECTION_CONFIRMED", "1")
+    monkeypatch.setenv(
+        "CADIVOR_SIGNUP_REDIRECT_URL", "https://app.cadivor.com/login"
+    )
+    monkeypatch.setenv("CADIVOR_WEB_ORIGINS", "https://app.cadivor.com")
+    client = supabase_client
+    fake = client.app.state.fake_auth
+    user = _FakeUser(
+        "44444444-4444-4444-4444-444444444444",
+        "report-only@cadivor.test",
+        email_confirmed_at="2026-11-13T12:00:00+00:00",
+        user_metadata={"cadivor_signup_intent": "one_time_report"},
+    )
+    fake.users["report-only@cadivor.test"] = {
+        "password": "long-password-123",
+        "user": user,
+        "token": "supabase-access-token-report",
+    }
+    fake._by_token["supabase-access-token-report"] = user
+    login = client.post(
+        "/auth/login",
+        json={"email": "report-only@cadivor.test", "password": "long-password-123"},
+    )
+    assert login.status_code == 200, login.text
+    body = login.json()
+    assert body["plan"] == "Subscription inactive"
+    assert "trial_status" not in body or body.get("trial_status") in {
+        None,
+        "trial_expired",
+    }
+    billing = client.app.state.billing_profiles[user.id]
+    assert billing["plan"] == "Subscription inactive"
+    membership = get_auth_store().membership_for_user(user.id)
+    assert membership["subscription_status"] == "inactive"
+
+
+def test_paid_student_and_grandfathered_plans_are_preserved_on_signin(
+    supabase_client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("CADIVOR_SELF_SERVE_SIGNUP_ENABLED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_EMAIL_CONFIRMATION_CONFIRMED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_ABUSE_PROTECTION_CONFIRMED", "1")
+    monkeypatch.setenv(
+        "CADIVOR_SIGNUP_REDIRECT_URL", "https://app.cadivor.com/login"
+    )
+    monkeypatch.setenv("CADIVOR_WEB_ORIGINS", "https://app.cadivor.com")
+    client = supabase_client
+    fake = client.app.state.fake_auth
+    cases = [
+        (
+            "paid@cadivor.test",
+            "55555555-5555-5555-5555-555555555555",
+            {
+                "id": "55555555-5555-5555-5555-555555555555",
+                "email": "paid@cadivor.test",
+                "plan": "Professional",
+                "stripe_subscription_status": "active",
+                "stripe_customer_id": "cus_paid",
+            },
+            "Professional",
+        ),
+        (
+            "student@cadivor.test",
+            "66666666-6666-6666-6666-666666666666",
+            {
+                "id": "66666666-6666-6666-6666-666666666666",
+                "email": "student@cadivor.test",
+                "plan": "Student",
+            },
+            "Student",
+        ),
+        (
+            "gf@cadivor.test",
+            "77777777-7777-7777-7777-777777777777",
+            {
+                "id": "77777777-7777-7777-7777-777777777777",
+                "email": "gf@cadivor.test",
+                "plan": "Starter",
+                "plan_grandfather_source": "beta",
+            },
+            "Grandfathered beta",
+        ),
+    ]
+    for email, user_id, profile, expected_plan in cases:
+        user = _FakeUser(
+            user_id,
+            email,
+            email_confirmed_at="2026-01-01T00:00:00+00:00",
+            user_metadata={"cadivor_signup_intent": "standard_trial"},
+        )
+        token = f"supabase-access-token-{email}"
+        fake.users[email] = {"password": "long-password-123", "user": user, "token": token}
+        fake._by_token[token] = user
+        client.app.state.billing_profiles[user_id] = dict(profile)
+        login = client.post(
+            "/auth/login",
+            json={"email": email, "password": "long-password-123"},
+        )
+        assert login.status_code == 200, login.text
+        assert login.json()["plan"] == expected_plan
+        assert client.app.state.billing_profiles[user_id]["plan"] == profile["plan"]
 
 
 def test_decision_scope_and_snapshot_token_suites_in_ci() -> None:

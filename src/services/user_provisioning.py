@@ -97,8 +97,13 @@ def repair_recent_default_trial_profile(
     created_at = _parse_timestamp(getattr(auth_user, "created_at", None))
     if created_at is None:
         return profile
+    trial_start = created_at.isoformat()
     trial_end = (created_at + timedelta(days=TRIAL_DAYS)).isoformat()
-    payload = {"plan": "Trial", "trial_ends_at": trial_end}
+    payload = {
+        "plan": "Trial",
+        "trial_started_at": trial_start,
+        "trial_ends_at": trial_end,
+    }
 
     try:
         query = (
@@ -156,16 +161,20 @@ def build_default_user_row(auth_user: Any) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     # Preserve compatibility with schemas that require trial_ends_at to be
     # populated. The inactive plan means this timestamp never grants a trial.
-    trial_ends_at = (
-        (now - timedelta(seconds=1)).isoformat()
-        if report_only
-        else (now + timedelta(days=TRIAL_DAYS)).isoformat()
-    )
+    if report_only:
+        trial_started_at = now.isoformat()
+        trial_ends_at = (now - timedelta(seconds=1)).isoformat()
+        plan = "Subscription inactive"
+    else:
+        trial_started_at = now.isoformat()
+        trial_ends_at = (now + timedelta(days=TRIAL_DAYS)).isoformat()
+        plan = "Trial"
 
     return {
         "id": user_id,
         "email": email,
-        "plan": "Subscription inactive" if report_only else "Trial",
+        "plan": plan,
+        "trial_started_at": trial_started_at,
         "trial_ends_at": trial_ends_at,
         "monthly_upload_count": 0,
         "full_name": _safe_text(metadata.get("full_name"), _safe_text(metadata.get("name"), "")),

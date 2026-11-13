@@ -666,6 +666,43 @@ class _FileAuthStore:
                 "subscription_status": status,
             }
 
+    def sync_membership_from_billing(
+        self,
+        *,
+        user_id: str,
+        plan: str,
+        trial_started_at: str | None = None,
+        trial_ends_at: str | None = None,
+        subscription_status: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Align migration membership trial fields with the billing profile."""
+        plan_n = str(plan or "").strip() or "Subscription inactive"
+        with _LOCK:
+            membership = self._data["memberships"].get(user_id)
+            if not membership:
+                return None
+            account = self._data["users"].get(user_id)
+            if account is not None:
+                account["plan"] = plan_n
+            membership["subscription_status"] = (
+                subscription_status
+                or membership.get("subscription_status")
+                or ("trialing" if plan_n == "Trial" else "inactive")
+            )
+            if trial_started_at:
+                membership["trial_started_at"] = trial_started_at
+            if trial_ends_at:
+                membership["trial_ends_at"] = trial_ends_at
+            self.save()
+            return {
+                "user_id": user_id,
+                "workspace_id": membership.get("workspace_id"),
+                "plan": plan_n,
+                "trial_started_at": membership.get("trial_started_at"),
+                "trial_ends_at": membership.get("trial_ends_at"),
+                "subscription_status": membership.get("subscription_status"),
+            }
+
     def revoke(self, jti: str, exp: int) -> None:
         with _LOCK:
             self._data["revoked"][jti] = {"exp": exp, "revoked_at": int(time.time())}
@@ -1084,6 +1121,58 @@ class _PostgresAuthStore:
             "trial_started_at": membership.get("trial_started_at"),
             "trial_ends_at": membership.get("trial_ends_at"),
             "subscription_status": membership.get("subscription_status") or "trialing",
+        }
+
+    def sync_membership_from_billing(
+        self,
+        *,
+        user_id: str,
+        plan: str,
+        trial_started_at: str | None = None,
+        trial_ends_at: str | None = None,
+        subscription_status: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Align migration membership trial fields with the billing profile."""
+        self.ensure_schema()
+        plan_n = str(plan or "").strip() or "Subscription inactive"
+        status_n = subscription_status or (
+            "trialing" if plan_n == "Trial" else "inactive"
+        )
+        with _LOCK:
+            with self._connect() as conn:
+                membership = conn.execute(
+                    "SELECT workspace_id, trial_started_at, trial_ends_at, "
+                    "subscription_status FROM migration_workspace_members "
+                    "WHERE user_id = %s ORDER BY created_at NULLS LAST LIMIT 1",
+                    (user_id,),
+                ).fetchone()
+                if not membership:
+                    return None
+                workspace_id = membership["workspace_id"]
+                started = trial_started_at or membership.get("trial_started_at")
+                ends = trial_ends_at or membership.get("trial_ends_at")
+                conn.execute(
+                    "UPDATE migration_users SET plan = %s WHERE id = %s",
+                    (plan_n, user_id),
+                )
+                conn.execute(
+                    """
+                    UPDATE migration_workspace_members
+                    SET trial_started_at = COALESCE(%s, trial_started_at),
+                        trial_ends_at = COALESCE(%s, trial_ends_at),
+                        subscription_status = %s
+                    WHERE user_id = %s AND workspace_id = %s
+                    """,
+                    (started, ends, status_n, user_id, workspace_id),
+                )
+                conn.commit()
+        return {
+            "user_id": user_id,
+            "workspace_id": workspace_id,
+            "plan": plan_n,
+            "trial_started_at": started,
+            "trial_ends_at": ends,
+            "subscription_status": status_n,
         }
 
     def revoke(self, jti: str, exp: int) -> None:

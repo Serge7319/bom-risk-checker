@@ -265,8 +265,99 @@ def _client(*, flow_type: str | None = None):
     return create_client(url, key)
 
 
+def _user_scoped_client(access_token: str):
+    """Anon-key client authorized as this user for ``public.users`` RLS writes."""
+    client = _client()
+    token = (access_token or "").strip()
+    if not token:
+        raise AuthError("Missing bearer token")
+    try:
+        client.postgrest.auth(token)
+    except Exception as exc:  # noqa: BLE001
+        raise AuthError("Could not authorize the billing profile client", 503) from exc
+    return client
+
+
 def _token_fingerprint(access_token: str) -> str:
     return hashlib.sha256(access_token.encode("utf-8")).hexdigest()
+
+
+def _clear_entitlement_cache(access_token: str) -> None:
+    with _ENTITLEMENT_CACHE_LOCK:
+        _ENTITLEMENT_CACHE.pop(_token_fingerprint(access_token), None)
+
+
+def _subscription_status_for_plan(plan: str) -> str:
+    normalized = str(plan or "").strip().lower()
+    if normalized == "trial":
+        return "trialing"
+    if normalized in {"trial expired", "expired trial"}:
+        return "trial_expired"
+    if normalized in {
+        "starter",
+        "professional",
+        "business",
+        "enterprise",
+        "student",
+        "grandfathered beta",
+    }:
+        return "active"
+    return "inactive"
+
+
+def _sync_membership_with_billing_profile(
+    *,
+    user_id: str,
+    profile: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Copy billing plan/trial fields onto the migration membership row."""
+    plan = str(profile.get("plan") or "Subscription inactive").strip()
+    started = _normalize_datetime(profile.get("trial_started_at"))
+    ends = _normalize_datetime(profile.get("trial_ends_at"))
+    return get_auth_store().sync_membership_from_billing(
+        user_id=user_id,
+        plan=plan,
+        trial_started_at=started,
+        trial_ends_at=ends,
+        subscription_status=_subscription_status_for_plan(plan),
+    )
+
+
+def provision_billing_after_verified_signin(
+    *,
+    access_token: str,
+    user: Any,
+) -> dict[str, Any] | None:
+    """Ensure ``public.users`` Trial (or report-only inactive) once after verify.
+
+    Idempotent: never overwrites paid, Student, or grandfathered billing rows.
+    One-time-report signup metadata yields Subscription inactive (no trial).
+    Syncs migration membership trial fields so both sources agree.
+    """
+    from src.services.user_provisioning import (
+        UserProvisioningError,
+        ensure_user_profile,
+    )
+
+    user_id, _email = _user_payload(user)
+    try:
+        scoped = _user_scoped_client(access_token)
+        profile, _created = ensure_user_profile(
+            scoped,
+            user,
+            operation="next_api_verified_signin_provision",
+        )
+    except UserProvisioningError:
+        # Fail soft: entitlements still resolve (inactive) and membership remains.
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+
+    if not isinstance(profile, dict):
+        return None
+    _sync_membership_with_billing_profile(user_id=user_id, profile=profile)
+    _clear_entitlement_cache(access_token)
+    return profile
 
 
 def _workspace_ids_for_owner(user_id: str, email: str) -> tuple[str, str]:
@@ -466,9 +557,14 @@ def signup(
     email_n, workspace_n, captcha_token = validate_signup_fields(
         email, password, workspace_name, captcha_token=captcha_token
     )
+    from src.signup_intent import standard_trial_signup_metadata
+
     options: dict[str, Any] = {
         "email_redirect_to": _signup_redirect_url(),
-        "data": {"workspace_name": workspace_n},
+        "data": {
+            "workspace_name": workspace_n,
+            **standard_trial_signup_metadata(),
+        },
     }
     if captcha_token:
         options["captcha_token"] = captcha_token
@@ -563,7 +659,33 @@ def login(
         accept_invites="always",
         prefer_invite_id=_invite_hint(invite_token),
     )
+    provision_billing_after_verified_signin(access_token=access_token, user=user)
+    # Re-read membership after billing sync so trial fields agree.
+    refreshed = get_auth_store().membership_for_user(user_id) or {}
     entitlements = account_entitlements(access_token)
+    # Prefer entitlement trial clock; fall back to synced membership when Edge
+    # omits start/end but membership was aligned from public.users.
+    trial_payload = {
+        key: entitlements[key]
+        for key in (
+            "trial_started_at",
+            "trial_ends_at",
+            "trial_status",
+            "trial_days_remaining",
+        )
+        if key in entitlements
+    }
+    if entitlements.get("plan") == "Trial":
+        membership_trial = _trial_fields(refreshed or membership)
+        for key in ("trial_started_at", "trial_ends_at"):
+            if not trial_payload.get(key) and membership_trial.get(key):
+                trial_payload[key] = membership_trial[key]
+        if "trial_status" not in trial_payload:
+            trial_payload["trial_status"] = membership_trial.get("trial_status")
+        if "trial_days_remaining" not in trial_payload:
+            trial_payload["trial_days_remaining"] = membership_trial.get(
+                "trial_days_remaining"
+            )
     expires_in = int(
         getattr(session, "expires_in", None)
         or (session.get("expires_in") if isinstance(session, dict) else 0)
@@ -582,16 +704,7 @@ def login(
         "mode": "supabase-jwt",
         "sandbox_only": False,
         "production_auth": True,
-        **{
-            key: entitlements[key]
-            for key in (
-                "trial_started_at",
-                "trial_ends_at",
-                "trial_status",
-                "trial_days_remaining",
-            )
-            if key in entitlements
-        },
+        **trial_payload,
     }
 
 
@@ -648,7 +761,15 @@ def resolve_bearer(access_token: str) -> AuthContext:
         workspace_name=user_workspace_name(user),
         allow_create=signup_enabled(),
     )
+    provision_billing_after_verified_signin(access_token=access_token, user=user)
     entitlements = account_entitlements(access_token)
+    refreshed = get_auth_store().membership_for_user(user_id) or {}
+    trial_started = entitlements.get("trial_started_at")
+    trial_ends = entitlements.get("trial_ends_at")
+    if entitlements.get("plan") == "Trial":
+        membership_trial = _trial_fields(refreshed or membership)
+        trial_started = trial_started or membership_trial.get("trial_started_at")
+        trial_ends = trial_ends or membership_trial.get("trial_ends_at")
     return AuthContext(
         user_id=membership["user_id"],
         email=membership["email"],
@@ -658,8 +779,8 @@ def resolve_bearer(access_token: str) -> AuthContext:
         access_token=access_token,
         jti=fingerprint,
         mode="supabase-jwt",
-        trial_started_at=entitlements.get("trial_started_at"),
-        trial_ends_at=entitlements.get("trial_ends_at"),
+        trial_started_at=trial_started,
+        trial_ends_at=trial_ends,
         trial_status=entitlements.get("trial_status"),
         trial_days_remaining=entitlements.get("trial_days_remaining"),
     )

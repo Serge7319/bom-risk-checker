@@ -30,9 +30,12 @@ class UserProvisioningTests(unittest.TestCase):
         self.assertEqual(row["email"], "user@example.com")
         self.assertEqual(row["plan"], "Trial")
         self.assertEqual(row["monthly_upload_count"], 0)
+        self.assertTrue(row["trial_started_at"])
         self.assertTrue(row["trial_ends_at"])
         self.assertNotIn("stripe_customer_id", row)
+        started = datetime.fromisoformat(row["trial_started_at"])
         end = datetime.fromisoformat(row["trial_ends_at"])
+        self.assertEqual((end - started).days, 14)
         delta = end - datetime.now(timezone.utc)
         self.assertGreater(delta.total_seconds(), 13 * 24 * 3600)
         self.assertLess(delta.total_seconds(), 15 * 24 * 3600)
@@ -107,7 +110,11 @@ class UserProvisioningTests(unittest.TestCase):
             created_at + timedelta(days=14),
         )
         supabase.table.return_value.update.assert_called_once_with(
-            {"plan": "Trial", "trial_ends_at": (created_at + timedelta(days=14)).isoformat()}
+            {
+                "plan": "Trial",
+                "trial_started_at": created_at.isoformat(),
+                "trial_ends_at": (created_at + timedelta(days=14)).isoformat(),
+            }
         )
         update_query.eq.assert_any_call("id", "user-1")
         update_query.eq.assert_any_call("plan", "Starter")
