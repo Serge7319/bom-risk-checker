@@ -1,8 +1,10 @@
 """Synthetic migration API — no Stripe, email, or live suppliers."""
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from starlette.testclient import TestClient
 
@@ -148,6 +150,162 @@ def test_boms_validate_rejects_oversize_with_413():
     body = response.json()
     assert body.get("code") == "payload_too_large"
     assert "10 MB" in body.get("detail", "")
+
+
+def test_boms_analyze_enforces_the_same_upload_size_limit(monkeypatch):
+    """The analysis API must enforce the preview's size contract server-side."""
+    from apps.api import bom_validation
+
+    monkeypatch.setattr(bom_validation, "MAX_BOM_UPLOAD_BYTES", 8)
+    client = TestClient(app)
+    login = client.post(
+        "/auth/login",
+        json={"email": SMOKE_EMAIL, "password": SMOKE_PASSWORD},
+    )
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    reports_before = client.get("/reports", headers=headers).json()["reports"]
+    projects_before = client.get("/projects", headers=headers).json()["projects"]
+
+    response = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("oversized.csv", b"x" * 9, "text/csv")},
+        data={"project_name": "Must not persist", "bom_name": "Oversized", "revision": "A"},
+    )
+
+    assert response.status_code == 413, response.text
+    assert response.json()["code"] == "payload_too_large"
+    assert client.get("/reports", headers=headers).json()["reports"] == reports_before
+    assert client.get("/projects", headers=headers).json()["projects"] == projects_before
+
+
+def test_boms_analyze_rejects_invalid_content_before_persisting():
+    """Direct API callers cannot bypass the BOM validation preview gate."""
+    client = TestClient(app)
+    login = client.post(
+        "/auth/login",
+        json={"email": SMOKE_EMAIL, "password": SMOKE_PASSWORD},
+    )
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    reports_before = client.get("/reports", headers=headers).json()["reports"]
+    projects_before = client.get("/projects", headers=headers).json()["projects"]
+
+    invalid_boms = (
+        ("missing-mpn.csv", b"Description,Quantity\nresistor,1\n"),
+        ("blank-mpn.csv", b"MPN,Quantity\n,1\n"),
+    )
+    for filename, payload in invalid_boms:
+        response = client.post(
+            "/boms/analyze",
+            headers=headers,
+            files={"file": (filename, payload, "text/csv")},
+            data={
+                "project_name": "Must not persist",
+                "bom_name": filename,
+                "revision": "A",
+            },
+        )
+        assert response.status_code == 400, response.text
+        body = response.json()
+        assert body["code"] == "bom_validation_failed"
+        assert body["validation"]["can_analyze"] is False
+
+    assert client.get("/reports", headers=headers).json()["reports"] == reports_before
+    assert client.get("/projects", headers=headers).json()["projects"] == projects_before
+
+
+def test_csv_and_xlsx_revisions_reopen_after_sign_in_and_stay_workspace_scoped():
+    """Both supported intake formats persist project/BOM revisions across sign-in."""
+    client = TestClient(app)
+    login = client.post(
+        "/auth/login",
+        json={"email": SMOKE_EMAIL, "password": SMOKE_PASSWORD},
+    )
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    xlsx_buffer = io.BytesIO()
+    pd.DataFrame(
+        {
+            "MPN": ["LM358N", "LM358P"],
+            "Quantity": [2, 1],
+            "Manufacturer": ["Texas Instruments", "Texas Instruments"],
+        }
+    ).to_excel(xlsx_buffer, index=False)
+    uploads = (
+        (
+            "controller.csv",
+            b"MPN,Quantity,Manufacturer\nLM358N,2,Texas Instruments\nLM358P,1,Texas Instruments\n",
+            "text/csv",
+            "A",
+        ),
+        (
+            "controller.xlsx",
+            xlsx_buffer.getvalue(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "B",
+        ),
+    )
+    saved: list[dict] = []
+    for filename, payload, content_type, revision in uploads:
+        validated = client.post(
+            "/boms/validate",
+            headers=headers,
+            files={"file": (filename, payload, content_type)},
+        )
+        assert validated.status_code == 200, validated.text
+        assert validated.json()["can_analyze"] is True
+
+        analyzed = client.post(
+            "/boms/analyze",
+            headers=headers,
+            files={"file": (filename, payload, content_type)},
+            data={
+                "project_name": "Intake persistence smoke",
+                "bom_name": "Controller BOM",
+                "revision": revision,
+            },
+        )
+        assert analyzed.status_code == 200, analyzed.text
+        record = analyzed.json()
+        assert record["persisted"] is True
+        assert record["project_id"]
+        assert record["bom_id"]
+        assert record["revision"] == revision
+        assert record["bom_name"] == "Controller BOM"
+        reopened = client.get(f"/reports/{record['analysis_id']}", headers=headers)
+        assert reopened.status_code == 200, reopened.text
+        assert reopened.json()["revision"] == revision
+        saved.append(record)
+
+    # A fresh access token for the same user can reopen both persisted revisions.
+    relogin = client.post(
+        "/auth/login",
+        json={"email": SMOKE_EMAIL, "password": SMOKE_PASSWORD},
+    )
+    relogin_headers = {"Authorization": f"Bearer {relogin.json()['access_token']}"}
+    listed = client.get("/reports", headers=relogin_headers)
+    assert listed.status_code == 200, listed.text
+    by_id = {row["id"]: row for row in listed.json()["reports"]}
+    assert {record["analysis_id"] for record in saved} <= set(by_id)
+    assert {
+        by_id[record["analysis_id"]]["revision"] for record in saved
+    } == {"A", "B"}
+    assert len({record["project_id"] for record in saved}) == 1
+    assert len({record["bom_id"] for record in saved}) == 1
+
+    other_login = client.post(
+        "/auth/login",
+        json={
+            "email": SANDBOX_SEED_USERS[1]["email"],
+            "password": SANDBOX_SEED_USERS[1]["password"],
+        },
+    )
+    other_headers = {"Authorization": f"Bearer {other_login.json()['access_token']}"}
+    hidden = client.get(f"/reports/{saved[0]['analysis_id']}", headers=other_headers)
+    assert hidden.status_code == 404
 
 
 def test_two_reports_keep_requested_analysis_selected_for_monitoring():

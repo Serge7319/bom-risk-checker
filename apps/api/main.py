@@ -35,7 +35,6 @@ from apps.api.synthetic_analyze import (  # noqa: E402
     delete_report,
     get_report,
     list_reports,
-    parse_bom_bytes,
 )
 from apps.api.sandbox_auth import (  # noqa: E402
     AuthError,
@@ -513,18 +512,50 @@ async def boms_analyze(request: Request) -> JSONResponse:
     if upload is None:
         return _json({"detail": "Missing file"}, 400)
     filename = getattr(upload, "filename", None) or "bom.csv"
-    payload = await upload.read()
+    # Keep the analyze endpoint under the same upload limit as the validation
+    # preview. The browser disables oversized files, but the API must enforce
+    # the contract independently for direct callers as well.
+    payload = await upload.read(bom_validation.MAX_BOM_UPLOAD_BYTES + 1)
+    if len(payload) > bom_validation.MAX_BOM_UPLOAD_BYTES:
+        return _json(
+            {
+                "detail": "BOM file must be 10 MB or smaller.",
+                "code": "payload_too_large",
+                "ok": False,
+                "can_analyze": False,
+            },
+            413,
+        )
     if not payload:
-        return _json({"detail": "Empty file"}, 400)
+        return _json(
+            {
+                "detail": "Empty file",
+                "code": "bom_validation_failed",
+                "ok": False,
+                "can_analyze": False,
+            },
+            400,
+        )
+
+    # Validation is authoritative on the server. Do not depend on the UI's
+    # preview gate: malformed or empty-part files must not consume plan/report
+    # credits or create projects, BOMs, revisions, and empty analyses.
+    preview = bom_validation.validation_preview(filename, payload)
+    if not preview.get("can_analyze"):
+        return _json(
+            {
+                "detail": "BOM validation failed. Analysis was not saved.",
+                "code": "bom_validation_failed",
+                "ok": False,
+                "can_analyze": False,
+                "validation": preview,
+            },
+            400,
+        )
     project_name = str(form.get("project_name") or "").strip() or None
     bom_name = str(form.get("bom_name") or "").strip() or None
     revision = str(form.get("revision") or "").strip() or None
-    try:
-        parsed_bom = parse_bom_bytes(filename, payload)
-        part_numbers = parsed_bom.get("mpn_normalized", parsed_bom.get("mpn"))
-        unique_part_count = len({str(value).strip().casefold() for value in part_numbers if str(value).strip()})
-    except Exception as exc:  # noqa: BLE001
-        return _json({"detail": str(exc)}, 400)
+    unique_part_count = int(preview.get("unique_part_count") or 0)
 
     analysis_id = str(uuid.uuid4())
     reserved_order_id = ""
