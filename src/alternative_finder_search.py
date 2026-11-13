@@ -606,6 +606,7 @@ def refresh_catalog_retained_after_partition(
     catalog_keys: set[str] = set()
     catalog_keys_by_source: dict[str, set[str]] = {}
     explicit_keys: set[str] = set()
+    explicit_keys_by_source: dict[str, set[str]] = {}
     for row in displayed_rows or []:
         if not isinstance(row, dict):
             continue
@@ -619,13 +620,6 @@ def refresh_catalog_retained_after_partition(
         )
         if not key:
             continue
-        if channel == "explicit":
-            explicit_keys.add(key)
-            continue
-        # Missing channel defaults to catalog; explicit rows are tagged upstream.
-        if channel and channel != "catalog":
-            continue
-        catalog_keys.add(key)
         source = str(
             row.get("source")
             or row.get("Supplier")
@@ -633,21 +627,34 @@ def refresh_catalog_retained_after_partition(
             or ""
         ).strip()
         bucket = _provider_count_bucket(source)
+        if channel == "explicit":
+            explicit_keys.add(key)
+            if bucket:
+                explicit_keys_by_source.setdefault(bucket, set()).add(key)
+            continue
+        # Missing channel defaults to catalog; explicit rows are tagged upstream.
+        if channel and channel != "catalog":
+            continue
+        catalog_keys.add(key)
         if bucket:
             catalog_keys_by_source.setdefault(bucket, set()).add(key)
     discovery["catalog_retained_count"] = len(catalog_keys)
-    if explicit_keys:
-        discovery["explicit_retained_count"] = len(explicit_keys)
+    # Always publish retained explicit count, including zero when substitutions
+    # were filtered out — never leave a stale non-zero from pre-partition.
+    discovery["explicit_retained_count"] = len(explicit_keys)
     providers_meta = discovery.get("providers")
     if isinstance(providers_meta, dict):
         for source_name, status in providers_meta.items():
-            if isinstance(status, dict) and (
-                "catalog_raw_count" in status or "catalog_count" in status
-            ):
+            if not isinstance(status, dict):
+                continue
+            bucket = _provider_count_bucket(source_name)
+            if "catalog_raw_count" in status or "catalog_count" in status:
                 status["catalog_retained_count"] = len(
-                    catalog_keys_by_source.get(
-                        _provider_count_bucket(source_name), set()
-                    )
+                    catalog_keys_by_source.get(bucket, set())
+                )
+            if "explicit_raw_count" in status or "explicit_count" in status:
+                status["explicit_retained_count"] = len(
+                    explicit_keys_by_source.get(bucket, set())
                 )
     raw_total = int(discovery.get("catalog_raw_count") or 0)
     retained_catalog = len(catalog_keys)

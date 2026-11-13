@@ -43,12 +43,27 @@ class OutcomeWordingLm358Tests(unittest.TestCase):
             {
                 "Alternative Part": "LM358P",
                 "Classification": "Compatible",
-                "fit": "compatible",
+                "fit": "compatible — datasheet-backed",
+                "evidence_class": "manufacturer-datasheet",
+                "authoritative_fit_evidence": True,
             }
         ]
         self.assertEqual(
             search_outcome_label(OUTCOME_SUCCESS, candidates=candidates),
             LABEL_VERIFIED_REPLACEMENTS,
+        )
+
+    def test_compatible_without_authoritative_evidence_is_fit_unverified(self):
+        candidates = [
+            {
+                "Alternative Part": "LM358P",
+                "Classification": "Compatible",
+                "fit": "compatible",
+            }
+        ]
+        self.assertEqual(
+            search_outcome_label(OUTCOME_SUCCESS, candidates=candidates),
+            LABEL_SUPPLIER_LISTED_FIT_UNVERIFIED,
         )
 
     def test_compatible_with_qualification_required_is_fit_unverified(self):
@@ -70,7 +85,16 @@ class OutcomeWordingLm358Tests(unittest.TestCase):
             search_outcome_label("candidates_found", candidates=unverified),
             LABEL_SUPPLIER_LISTED_FIT_UNVERIFIED,
         )
-        verified = [{"classification": "Compatible"}]
+        classification_only = [{"classification": "Compatible"}]
+        self.assertEqual(
+            search_outcome_label("candidates_found", candidates=classification_only),
+            LABEL_SUPPLIER_LISTED_FIT_UNVERIFIED,
+        )
+        verified = [{
+            "classification": "Compatible",
+            "authoritative_fit_evidence": True,
+            "evidence_class": "manufacturer-datasheet",
+        }]
         self.assertEqual(
             search_outcome_label("candidates_found", candidates=verified),
             LABEL_VERIFIED_REPLACEMENTS,

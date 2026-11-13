@@ -60,8 +60,21 @@ class OutcomeHonestyTests(unittest.TestCase):
             LABEL_SUPPLIER_LISTED_FIT_UNVERIFIED,
         )
 
-    def test_verified_fit_control_keeps_verified_label(self):
+    def test_compatible_alone_is_not_verified_without_authoritative_evidence(self):
         row = {"Classification": "Compatible", "fit": "compatible"}
+        self.assertFalse(candidate_has_verified_fit(row))
+        self.assertEqual(
+            search_outcome_label(OUTCOME_SUCCESS, candidates=[row]),
+            LABEL_SUPPLIER_LISTED_FIT_UNVERIFIED,
+        )
+
+    def test_verified_fit_control_requires_authoritative_evidence(self):
+        row = {
+            "Classification": "Compatible",
+            "fit": "compatible — datasheet-backed engineering review",
+            "evidence_class": "manufacturer-datasheet",
+            "authoritative_fit_evidence": True,
+        }
         self.assertTrue(candidate_has_verified_fit(row))
         self.assertEqual(
             search_outcome_label(OUTCOME_SUCCESS, candidates=[row]),
@@ -142,6 +155,30 @@ class CatalogRetainedCountReconcileTests(unittest.TestCase):
         )
         self.assertNotEqual(
             int(discovery["providers"]["Mouser"]["catalog_retained_count"]),
+            0,
+        )
+
+    def test_zero_retained_explicit_substitutions_are_honored(self):
+        from src.alternative_finder_search import refresh_catalog_retained_after_partition
+
+        discovery = {
+            "catalog_raw_count": 0,
+            "explicit_count": 2,
+            "explicit_retained_count": 2,
+            "providers": {
+                "DigiKey": {
+                    "substitutions": "ok",
+                    "explicit_count": 2,
+                    "explicit_raw_count": 2,
+                    "explicit_retained_count": 2,
+                }
+            },
+        }
+        # Family partition dropped every explicit row.
+        discovery = refresh_catalog_retained_after_partition(discovery, [])
+        self.assertEqual(int(discovery["explicit_retained_count"]), 0)
+        self.assertEqual(
+            int(discovery["providers"]["DigiKey"]["explicit_retained_count"]),
             0,
         )
 
@@ -234,11 +271,18 @@ class Lm358CompareProvenanceTests(unittest.TestCase):
         full = build_parts_comparison(original, candidate, extract_linked_datasheets=False)
         self.assertNotEqual(full["finding"], FINDING_MATERIAL)
         self.assertNotEqual(full["finding"], FINDING_COMPATIBLE)
-        self.assertIn("parametric", str(full.get("engineering_evidence_summary") or "").casefold())
-        self.assertNotIn(
-            "confirmed matches",
-            str(full.get("engineering_evidence_summary") or "").casefold(),
+        summary = str(full.get("engineering_evidence_summary") or "")
+        self.assertNotIn("confirmed matches", summary.casefold())
+        # Customer counts come from Assessments, not raw Status Match buckets.
+        self.assertEqual(int(full["counts"].get("compatible") or 0), 0)
+        self.assertGreaterEqual(int(full["counts"].get("needs_data") or 0), 1)
+        # Raw numeric Status comparisons remain available internally.
+        self.assertGreaterEqual(int(full["internal_status_counts"].get("Different") or 0), 1)
+        self.assertEqual(
+            int(full["count_aliases"].get("Different") or 0),
+            int(full["internal_status_counts"].get("Different") or 0),
         )
+        self.assertIn("fit unverified", summary.casefold())
 
     def test_missing_sources_stay_needs_verification(self):
         original, candidate = self._lm358_pair(with_catalog_sources=False)

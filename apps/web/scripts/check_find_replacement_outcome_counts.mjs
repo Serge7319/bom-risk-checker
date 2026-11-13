@@ -1,5 +1,40 @@
 /** Pure checks for Find Replacement outcome + catalog vs explicit provider labels. */
 
+const AUTHORITATIVE_FIT_MARKERS = [
+  "manufacturer-datasheet",
+  "uploaded-manufacturer-datasheet",
+  "datasheet-backed",
+  "engineering-verified",
+  "authoritative fit",
+  "authoritative-fit",
+];
+
+function candidateHasAuthoritativeFitEvidence(row) {
+  if (
+    row.authoritative_fit_evidence === true
+    || row.engineering_fit_verified === true
+    || row.datasheet_fit_verified === true
+  ) {
+    return true;
+  }
+  const evidenceText = [
+    "evidence_class",
+    "Evidence Class",
+    "fit_evidence",
+    "Fit Evidence",
+    "fit",
+    "Fit",
+    "Evidence Source",
+    "evidence_source",
+    "Recommendation",
+    "rationale",
+  ]
+    .map((key) => String(row[key] || ""))
+    .join(" ")
+    .toLowerCase();
+  return AUTHORITATIVE_FIT_MARKERS.some((marker) => evidenceText.includes(marker));
+}
+
 function candidateHasVerifiedFit(row) {
   const fitText = ["fit", "Fit", "disposition", "Candidate Disposition"]
     .map((key) => String(row[key] || ""))
@@ -8,13 +43,20 @@ function candidateHasVerifiedFit(row) {
   if (fitText.includes("not qualified") || fitText.includes("qualification required")) {
     return false;
   }
+  let claimsCompatible = false;
   for (const key of ["classification", "Classification", "category", "Category", "fit", "Fit"]) {
     const value = String(row[key] || "").trim().toLowerCase();
     if (!value) continue;
-    if (value === "compatible" || value === "verified direct substitute") return true;
-    if (value.startsWith("compatible ")) return true;
+    if (value === "compatible" || value === "verified direct substitute") {
+      claimsCompatible = true;
+      break;
+    }
+    if (value.startsWith("compatible ")) {
+      claimsCompatible = true;
+      break;
+    }
   }
-  return false;
+  return claimsCompatible && candidateHasAuthoritativeFitEvidence(row);
 }
 
 function searchOutcomeLabel(outcome, explicitLabel, candidates) {
@@ -66,10 +108,12 @@ function providerRetainedCatalogCount(state) {
 }
 
 function providerExplicitSubstitutionCount(state) {
-  const retained = Number(state.explicit_retained_count);
-  if (Number.isFinite(retained) && retained > 0) return retained;
+  if (state.explicit_retained_count !== undefined && state.explicit_retained_count !== null) {
+    const retained = Number(state.explicit_retained_count);
+    return Number.isFinite(retained) && retained >= 0 ? retained : null;
+  }
   const explicit = Number(state.explicit_count);
-  return Number.isFinite(explicit) && explicit > 0 ? explicit : 0;
+  return Number.isFinite(explicit) && explicit >= 0 ? explicit : null;
 }
 
 function providerOutcomeLabel(state) {
@@ -93,10 +137,12 @@ function providerOutcomeLabel(state) {
       parts.push(`${rawCount} raw catalog matches`);
     }
   }
-  if (explicitCount > 0) {
+  if (explicitCount !== null && explicitCount > 0) {
     parts.push(
       `${explicitCount} supplier substitution${explicitCount === 1 ? "" : "s"}`,
     );
+  } else if (explicitCount === 0 && Number(state.explicit_count) > 0) {
+    parts.push("0 retained supplier substitutions");
   }
   if (parts.length) return parts.join("; ");
   if (
@@ -128,8 +174,18 @@ assert(
 
 assert(
   searchOutcomeLabel("success", "", [{ classification: "Compatible" }])
-    === "Verified replacements found",
-  "Compatible evidence may keep verified wording",
+    === "Supplier-listed candidates found — fit unverified",
+  "Compatible classification alone must not claim Verified without authoritative evidence",
+);
+
+assert(
+  searchOutcomeLabel("success", "", [{
+    classification: "Compatible",
+    fit: "compatible",
+    authoritative_fit_evidence: true,
+    evidence_class: "manufacturer-datasheet",
+  }]) === "Verified replacements found",
+  "Authoritative datasheet fit evidence may keep verified wording",
 );
 
 assert(
@@ -172,6 +228,25 @@ assert(
     explicit_retained_count: 2,
   }) === "3 raw catalog matches · 1 retained; 2 supplier substitutions",
   "Mixed catalog + explicit must keep categories separate",
+);
+
+assert(
+  providerOutcomeLabel({
+    catalog: "ok",
+    substitutions: "ok",
+    catalog_raw_count: 0,
+    explicit_count: 2,
+    explicit_retained_count: 0,
+  }) === "0 retained supplier substitutions",
+  "Zero retained substitutions must not fall back to raw explicit_count",
+);
+
+assert(
+  providerExplicitSubstitutionCount({
+    explicit_count: 5,
+    explicit_retained_count: 0,
+  }) === 0,
+  "explicit_retained_count=0 must be honored",
 );
 
 assert(

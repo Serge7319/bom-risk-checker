@@ -61,22 +61,19 @@ _VERIFIED_FIT_TOKENS = frozenset(
     }
 )
 
+# Authoritative engineering-fit markers. Supplier Classification/Compatible alone
+# never upgrades the search outcome to "Verified replacements found".
+_AUTHORITATIVE_FIT_EVIDENCE_MARKERS = (
+    "manufacturer-datasheet",
+    "uploaded-manufacturer-datasheet",
+    "datasheet-backed",
+    "engineering-verified",
+    "authoritative fit",
+    "authoritative-fit",
+)
 
-def candidate_has_verified_fit(row: Mapping[str, Any] | None) -> bool:
-    """True only when candidate fields claim Compatible / verified-direct fit.
 
-    Fit status wins: ``not qualified`` / ``qualification required`` never count
-    as verified even when Classification still says Compatible from a supplier
-    substitute relationship.
-    """
-    if not isinstance(row, Mapping):
-        return False
-    fit_text = " ".join(
-        str(row.get(key) or "")
-        for key in ("fit", "Fit", "Candidate Disposition", "disposition")
-    ).casefold()
-    if "not qualified" in fit_text or "qualification required" in fit_text:
-        return False
+def _candidate_claims_compatible_fit(row: Mapping[str, Any]) -> bool:
     for key in (
         "Classification",
         "Category",
@@ -94,6 +91,53 @@ def candidate_has_verified_fit(row: Mapping[str, Any] | None) -> bool:
         if value == "compatible" or value.startswith("compatible "):
             return True
     return False
+
+
+def _candidate_has_authoritative_fit_evidence(row: Mapping[str, Any]) -> bool:
+    """True only with an explicit engineering/datasheet fit-evidence claim."""
+    for flag in (
+        "authoritative_fit_evidence",
+        "engineering_fit_verified",
+        "datasheet_fit_verified",
+    ):
+        if row.get(flag) is True:
+            return True
+    evidence_text = " ".join(
+        str(row.get(key) or "")
+        for key in (
+            "evidence_class",
+            "Evidence Class",
+            "fit_evidence",
+            "Fit Evidence",
+            "fit",
+            "Fit",
+            "Evidence Source",
+            "evidence_source",
+            "Recommendation",
+            "rationale",
+        )
+    ).casefold()
+    return any(marker in evidence_text for marker in _AUTHORITATIVE_FIT_EVIDENCE_MARKERS)
+
+
+def candidate_has_verified_fit(row: Mapping[str, Any] | None) -> bool:
+    """True only with Compatible claim AND explicit authoritative fit evidence.
+
+    Fit status wins: ``not qualified`` / ``qualification required`` never count
+    as verified. Supplier Classification ``Compatible`` / ``Verified direct
+    substitute`` alone is not enough without datasheet/engineering evidence.
+    """
+    if not isinstance(row, Mapping):
+        return False
+    fit_text = " ".join(
+        str(row.get(key) or "")
+        for key in ("fit", "Fit", "Candidate Disposition", "disposition")
+    ).casefold()
+    if "not qualified" in fit_text or "qualification required" in fit_text:
+        return False
+    if not _candidate_claims_compatible_fit(row):
+        return False
+    return _candidate_has_authoritative_fit_evidence(row)
 
 
 def candidates_have_verified_fit(candidates: list[Any] | None) -> bool:

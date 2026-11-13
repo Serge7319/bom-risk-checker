@@ -270,6 +270,52 @@ def claim_compare_parts_submit(
     return True
 
 
+def _provenance_aware_evidence_summary(
+    assessment_counts: Mapping[str, int],
+    *,
+    engineering_status: str = "",
+) -> str:
+    """Customer-facing summary derived from Assessment provenance, not raw Status."""
+    compatible = int(assessment_counts.get("compatible") or 0)
+    listing = int(assessment_counts.get("listing_agreement") or 0)
+    material = int(assessment_counts.get("material_difference") or 0)
+    catalog_diff = int(assessment_counts.get("catalog_difference") or 0)
+    needs = int(assessment_counts.get("needs_data") or 0) + catalog_diff
+    conflicting = int(assessment_counts.get("conflicting") or 0)
+    status = str(engineering_status or "").strip() or "partial"
+    if material or conflicting:
+        status = "conflicts documented"
+    elif compatible and not listing and not needs and not material and not conflicting:
+        status = "complete"
+    elif not compatible and not material and (listing or needs):
+        status = "incomplete" if needs >= max(1, listing) else "partial"
+
+    parts = [
+        f"Engineering evidence: {status} — {compatible} verified "
+        f"{'match' if compatible == 1 else 'matches'}",
+        f"{needs} {'field' if needs == 1 else 'fields'} need verification",
+    ]
+    summary = f"{parts[0]}, {parts[1]}"
+    if listing:
+        summary += (
+            f"; {listing} catalog "
+            f"{'agreement' if listing == 1 else 'agreements'} "
+            "(Catalog values agree — fit unverified)"
+        )
+    if material:
+        summary += (
+            f"; {material} material "
+            f"{'difference' if material == 1 else 'differences'}"
+        )
+    if catalog_diff:
+        summary += (
+            f"; {catalog_diff} catalog-reported "
+            f"{'difference' if catalog_diff == 1 else 'differences'} "
+            "(fit unverified)"
+        )
+    return summary
+
+
 def map_status_to_assessment(status: str) -> str:
     """Backward-compatible status→assessment map (no provenance context).
 
@@ -1281,6 +1327,39 @@ def build_parts_comparison(
         )
 
     user_rows = user_facing_compare_rows(rows)
+    # Customer-facing counts/summary come from provenance-aware Assessments.
+    # Raw Status Match/Different/Needs data stay in count_aliases for internals.
+    assessment_counts = {
+        "compatible": 0,
+        "listing_agreement": 0,
+        "material_difference": 0,
+        "catalog_difference": 0,
+        "needs_data": 0,
+        "conflicting": 0,
+    }
+    for row in user_rows:
+        label = str(row.get("Assessment") or "").strip()
+        if label == FINDING_COMPATIBLE:
+            assessment_counts["compatible"] += 1
+        elif label == FINDING_LISTING_AGREEMENT:
+            assessment_counts["listing_agreement"] += 1
+        elif label == FINDING_MATERIAL:
+            assessment_counts["material_difference"] += 1
+        elif label == FINDING_CATALOG_DIFFERENCE:
+            assessment_counts["catalog_difference"] += 1
+        elif label == FINDING_CONFLICTING:
+            assessment_counts["conflicting"] += 1
+        else:
+            assessment_counts["needs_data"] += 1
+
+    provenance_summary = _provenance_aware_evidence_summary(
+        assessment_counts,
+        engineering_status=str(
+            assessment.get("engineering_evidence_status")
+            or confidence.get("engineering_evidence_status")
+            or ""
+        ),
+    )
     # Overall finding must not outrank honest row assessments. Catalog-only or
     # unknown-evidence rows never mint a Compatible fit verdict. Material is
     # kept only when a row assessment truly carries authoritative evidence.
@@ -1349,18 +1428,36 @@ def build_parts_comparison(
         ),
         "family_mismatch": bool(family_meta["family_mismatch"]),
         "finding": finding,
-        "engineering_evidence_summary": assessment.get("engineering_evidence_summary", ""),
+        # Provenance-aware customer summary; raw parametric text remains available
+        # via engineering_evidence_summary_raw for diagnostics.
+        "engineering_evidence_summary": provenance_summary
+        or assessment.get("engineering_evidence_summary", ""),
+        "engineering_evidence_summary_raw": assessment.get(
+            "engineering_evidence_summary", ""
+        ),
         "engineering_evidence_status": assessment.get("engineering_evidence_status", ""),
-        # Snake-case buckets only so sum(counts.values()) equals row count.
-        # Status-label aliases remain available via count_aliases for legacy UI.
+        # Customer-facing counts from Assessment provenance. Catalog differences
+        # contribute to needs_data so UI unknown/difference KPIs stay honest.
         "counts": {
-            "compatible": int(counts.get("Match") or 0),
-            "listing_agreement": int(counts.get("Listing agreement") or 0),
-            "material_difference": int(counts.get("Different") or 0),
-            "needs_data": int(counts.get("Needs data") or 0),
-            "conflicting": int(counts.get("Conflicting") or 0),
+            "compatible": int(assessment_counts["compatible"]),
+            "listing_agreement": int(assessment_counts["listing_agreement"]),
+            "material_difference": int(assessment_counts["material_difference"]),
+            "needs_data": int(
+                assessment_counts["needs_data"]
+                + assessment_counts["catalog_difference"]
+            ),
+            "conflicting": int(assessment_counts["conflicting"]),
+            "catalog_difference": int(assessment_counts["catalog_difference"]),
         },
+        # Raw internal Status buckets (Match/Different/…) preserved for ranking.
         "count_aliases": {
+            "Match": int(counts.get("Match") or 0),
+            "Listing agreement": int(counts.get("Listing agreement") or 0),
+            "Different": int(counts.get("Different") or 0),
+            "Needs data": int(counts.get("Needs data") or 0),
+            "Conflicting": int(counts.get("Conflicting") or 0),
+        },
+        "internal_status_counts": {
             "Match": int(counts.get("Match") or 0),
             "Listing agreement": int(counts.get("Listing agreement") or 0),
             "Different": int(counts.get("Different") or 0),
