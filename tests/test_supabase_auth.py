@@ -428,6 +428,9 @@ def test_verified_signup_provisions_workspace_and_starts_trial_once(
     fake = client.app.state.fake_auth
     payload = fake.signup_payloads[0]
     assert payload["options"]["email_redirect_to"].endswith("/login")
+    assert payload["options"]["email_redirect_to"] == (
+        "https://cadivor-next-web-prod-production.up.railway.app/login"
+    )
     assert payload["options"]["data"]["workspace_name"] == "Acme Hardware"
     user = fake.users["new@cadivor.test"]["user"]
     assert get_auth_store().membership_for_user(user.id) is None
@@ -489,6 +492,32 @@ def test_signup_redirect_must_be_allowlisted_https(
     )
     assert response.status_code == 503
     assert supabase_client.app.state.fake_auth.signup_payloads == []
+
+
+def test_production_signup_redirect_uses_app_cadivor_login(
+    supabase_client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    """Password signup email_redirect_to must be the Next /login confirmation URL."""
+    monkeypatch.setenv("CADIVOR_SELF_SERVE_SIGNUP_ENABLED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_EMAIL_CONFIRMATION_CONFIRMED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_ABUSE_PROTECTION_CONFIRMED", "1")
+    monkeypatch.setenv(
+        "CADIVOR_SIGNUP_REDIRECT_URL",
+        "https://app.cadivor.com/login",
+    )
+    monkeypatch.setenv("CADIVOR_WEB_ORIGINS", "https://app.cadivor.com")
+    response = supabase_client.post(
+        "/auth/signup",
+        json={
+            "email": "prod-redirect@cadivor.test",
+            "password": "long-password-123",
+            "workspace_name": "Prod Redirect",
+            "accepted_terms": True,
+        },
+    )
+    assert response.status_code == 202, response.text
+    payload = supabase_client.app.state.fake_auth.signup_payloads[-1]
+    assert payload["options"]["email_redirect_to"] == "https://app.cadivor.com/login"
 
 
 def test_expired_trial_is_read_only_for_new_bom_analysis(

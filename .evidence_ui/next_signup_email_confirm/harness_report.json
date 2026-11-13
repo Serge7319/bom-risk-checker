@@ -1,0 +1,10 @@
+{
+  "web": "http://127.0.0.1:3025",
+  "load_verify_count": 0,
+  "click_verify_count": 1,
+  "confirm_ui_visible": true,
+  "url_cleared_after_click": true,
+  "expired_stayed_on_login": true,
+  "expired_message_visible": true,
+  "ok": true
+}

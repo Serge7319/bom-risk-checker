@@ -65,7 +65,7 @@ For example, a minimal anchor is:
 ~~~
 
 3. Add a short body such as **Sign in to Cadivor to unlock your complete BOM audit. This link can be used once.** Save the Magic Link or OTP template. Do not hard-code `cadivor_stress_report=1` in a global template: `RedirectTo` already carries it for this request. The app opens a confirmation screen; the user must press **Confirm email and continue** before Supabase consumes the one-time link. This extra click protects against email link scanners that pre-open messages.
-4. The link should begin with the request redirect URL and then include `token_hash` and `type=email`. Do not share the full live URL; it is a one-time sign-in credential. **Click it, press the confirmation button, and verify the actual Reports result**; the appearance of an email alone does not complete the test. If you also want to customize password-based signup emails, edit **Confirm sign up** separately; it is not used by the public audit's OTP request.
+4. The link should begin with the request redirect URL and then include `token_hash` and `type=email`. Do not share the full live URL; it is a one-time sign-in credential. **Click it, press the confirmation button, and verify the actual Reports result**; the appearance of an email alone does not complete the test. If you also want to customize password-based signup emails, edit **Confirm sign up** separately; it is not used by the public audit's OTP request. For password signup, use the same `token_hash` + `type=email` append on `RedirectTo`, with `CADIVOR_SIGNUP_REDIRECT_URL=https://app.cadivor.com/login`, so Next `/login` can stage-then-confirm without calling `verifyOtp` on page load.
 
 ## 5. Cloudflare: sign requests reaching the app
 

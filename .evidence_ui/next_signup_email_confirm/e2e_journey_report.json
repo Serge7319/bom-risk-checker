@@ -1,0 +1,47 @@
+{
+  "journey": "signup → confirm email → sign in → Core BOM Journey",
+  "production_base": "https://app.cadivor.com",
+  "stages": [
+    {
+      "id": 1,
+      "name": "Deployed confirmation route HTTP status",
+      "result": "pass",
+      "detail": "/login?token_hash=probe&type=email returned HTTP 200; login shell rendered; not a Next 404."
+    },
+    {
+      "id": 2,
+      "name": "Fresh self-serve signup",
+      "result": "pass",
+      "detail": "Submitted Create workspace on /signup; UI showed verification-email pending copy."
+    },
+    {
+      "id": 3,
+      "name": "Open confirmation email link",
+      "result": "fail",
+      "detail": "Gmail inbox requires interactive Google sign-in in this browser; cannot retrieve the confirmation link without user auth. Stopping here."
+    },
+    {
+      "id": 4,
+      "name": "Confirm email click (no verify on load)",
+      "result": "blocked",
+      "detail": "Depends on stage 3. Local harness against this PR build proved load_verify_count=0 and click_verify_count=1. Production still serves the pre-fix auto-verify build (shows Confirming email… on load)."
+    },
+    {
+      "id": 5,
+      "name": "Account confirmed + sign in",
+      "result": "blocked",
+      "detail": "Depends on stage 3–4."
+    },
+    {
+      "id": 6,
+      "name": "Core BOM Journey (BOM Analyzer upload/run)",
+      "result": "blocked",
+      "detail": "Depends on stage 5."
+    }
+  ],
+  "failing_stage": "Open confirmation email link",
+  "notes": [
+    "Do not merge or deploy until review.",
+    "Token values were not written to this report or screenshots."
+  ]
+}

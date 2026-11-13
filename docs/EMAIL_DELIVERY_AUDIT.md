@@ -89,6 +89,21 @@ repository tests alone.
 - Set the sender to a verified Cadivor-domain identity.
 - Confirm the production site URL and allowed redirect URLs include
   `https://app.cadivor.com/**`.
+- Set Railway / API `CADIVOR_SIGNUP_REDIRECT_URL` to
+  `https://app.cadivor.com/login` (must be HTTPS and listed in
+  `CADIVOR_WEB_ORIGINS`). Self-serve signup passes this as
+  `email_redirect_to`.
+- In **Authentication → Email Templates → Confirm sign up** (password
+  signup, not Magic Link), set the confirmation link to append Cadivor's
+  token contract onto `RedirectTo`:
+
+  ```html
+  href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=email"
+  ```
+
+  The resulting URL is `/login?token_hash=…&type=email`. Next.js stages the
+  hash and shows **Confirm email**; `verifyOtp` runs only after that click
+  so link scanners do not consume the one-time token.
 - Test signup confirmation and password recovery end to end.
 
 ### Stripe
