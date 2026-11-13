@@ -71,20 +71,21 @@ COMPARE_STANDALONE_FIXTURE = {
     "part_b": "LM358ADR2G",
     "finding": "Needs verification",
     # Counts/summary must match the two matrix rows: 1 catalog agree + 1 catalog
-    # differ (folded into needs_data). Never invent extra unknown/agreement buckets.
+    # differ (needs_data primary). catalog_difference stays nested in breakdown.
     "engineering_evidence_summary": (
         "Engineering evidence: incomplete — 0 verified matches, "
         "1 field need verification; 1 catalog agreement "
         "(Catalog values agree — fit unverified); "
         "catalog-reported differences remain fit unverified"
     ),
+    "engineering_evidence_status": "incomplete",
     "counts": {
         "compatible": 0,
         "listing_agreement": 1,
         "material_difference": 0,
-        "needs_data": 1,  # catalog_difference folded for UI need-verification KPI
+        "needs_data": 1,
         "conflicting": 0,
-        "catalog_difference": 1,
+        "breakdown": {"catalog_difference": 1},
     },
     "internal_status_counts": {
         "Match": 1,

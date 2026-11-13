@@ -26,8 +26,12 @@ from src.parts_compare import (
     FINDING_LISTING_AGREEMENT,
     FINDING_MATERIAL,
     FINDING_NEEDS_VERIFICATION,
+    _customer_counts_from_assessments,
+    _provenance_aware_evidence_status,
+    _provenance_aware_evidence_summary,
     assess_compare_row,
     build_parts_comparison,
+    primary_count_total,
 )
 from tests.fixtures.sandbox_auth_accounts import (
     SANDBOX_SEED_USERS,
@@ -276,6 +280,19 @@ class Lm358CompareProvenanceTests(unittest.TestCase):
         # Customer counts come from Assessments, not raw Status Match buckets.
         self.assertEqual(int(full["counts"].get("compatible") or 0), 0)
         self.assertGreaterEqual(int(full["counts"].get("needs_data") or 0), 1)
+        self.assertNotIn("catalog_difference", full["counts"])
+        self.assertGreaterEqual(
+            int((full["counts"].get("breakdown") or {}).get("catalog_difference") or 0),
+            1,
+        )
+        self.assertEqual(primary_count_total(full["counts"]), len(full.get("rows") or []))
+        # Customer status is provenance-derived; raw Status stays diagnostic.
+        self.assertIn(
+            full["engineering_evidence_status"],
+            {"incomplete", "partial", "conflicts documented", "complete"},
+        )
+        self.assertIn(str(full["engineering_evidence_status"]), summary)
+        self.assertIn("engineering_evidence_status_raw", full)
         # Raw numeric Status comparisons remain available internally.
         self.assertGreaterEqual(int(full["internal_status_counts"].get("Different") or 0), 1)
         self.assertEqual(
@@ -286,8 +303,6 @@ class Lm358CompareProvenanceTests(unittest.TestCase):
 
     def test_provenance_summary_counts_catalog_diff_once_with_listing(self):
         """Catalog diffs fold into need-verification once; listings stay separate."""
-        from src.parts_compare import _provenance_aware_evidence_summary
-
         summary = _provenance_aware_evidence_summary(
             {
                 "compatible": 0,
@@ -297,8 +312,9 @@ class Lm358CompareProvenanceTests(unittest.TestCase):
                 "needs_data": 0,
                 "conflicting": 0,
             },
-            engineering_status="incomplete",
+            engineering_status="complete",  # ignored — status comes from assessments
         )
+        self.assertIn("incomplete", summary)  # not raw "complete"
         self.assertIn("0 verified matches", summary)
         self.assertIn("1 field need verification", summary)
         self.assertIn("1 catalog agreement", summary)
@@ -306,6 +322,79 @@ class Lm358CompareProvenanceTests(unittest.TestCase):
         # Need-verification total must equal folded catalog_diff (not double-counted).
         self.assertEqual(summary.count("need verification"), 1)
         self.assertNotRegex(summary, r"\d+ catalog-reported")
+
+    def test_customer_counts_additive_with_nested_catalog_breakdown(self):
+        assessments = {
+            "compatible": 2,
+            "listing_agreement": 1,
+            "material_difference": 1,
+            "catalog_difference": 2,
+            "needs_data": 3,
+            "conflicting": 0,
+        }
+        counts = _customer_counts_from_assessments(assessments)
+        self.assertEqual(counts["needs_data"], 5)
+        self.assertEqual(counts["breakdown"]["catalog_difference"], 2)
+        self.assertNotIn("catalog_difference", counts)
+        # Primary buckets sum to row total (2+1+1+5+0).
+        self.assertEqual(primary_count_total(counts), 9)
+
+    def test_mixed_evidence_counts_sum_to_row_total(self):
+        """Mixed Compatible / listing / catalog-diff / needs rows stay additive."""
+        original, candidate = self._lm358_pair(with_catalog_sources=True)
+        mixed_rows = [
+            {
+                "Attribute": "Package",
+                "Assessment": FINDING_COMPATIBLE,
+                "Status": "Match",
+            },
+            {
+                "Attribute": "Lifecycle",
+                "Assessment": FINDING_LISTING_AGREEMENT,
+                "Status": "Match",
+            },
+            {
+                "Attribute": "Input offset",
+                "Assessment": FINDING_CATALOG_DIFFERENCE,
+                "Status": "Different",
+            },
+            {
+                "Attribute": "Pinout",
+                "Assessment": FINDING_NEEDS_VERIFICATION,
+                "Status": "Needs data",
+            },
+            {
+                "Attribute": "Supply current",
+                "Assessment": FINDING_MATERIAL,
+                "Status": "Different",
+            },
+        ]
+        with patch(
+            "src.parts_compare.user_facing_compare_rows",
+            return_value=mixed_rows,
+        ):
+            full = build_parts_comparison(
+                original, candidate, extract_linked_datasheets=False
+            )
+        counts = full["counts"]
+        self.assertEqual(int(counts.get("compatible") or 0), 1)
+        self.assertEqual(int(counts.get("listing_agreement") or 0), 1)
+        self.assertEqual(int(counts.get("material_difference") or 0), 1)
+        self.assertEqual(int(counts.get("needs_data") or 0), 2)  # catalog + pure needs
+        self.assertEqual(
+            int((counts.get("breakdown") or {}).get("catalog_difference") or 0), 1
+        )
+        self.assertNotIn("catalog_difference", counts)
+        self.assertEqual(primary_count_total(counts), len(mixed_rows))
+        self.assertEqual(primary_count_total(counts), len(full.get("rows") or []))
+        summary = str(full.get("engineering_evidence_summary") or "")
+        status = str(full.get("engineering_evidence_status") or "")
+        self.assertEqual(status, "conflicts documented")  # material present
+        self.assertIn(status, summary)
+        self.assertNotIn("confirmed matches", summary.casefold())
+        # Raw parametric status retained only as diagnostics.
+        self.assertIn("engineering_evidence_status_raw", full)
+        self.assertIn("internal_status_counts", full)
 
     def test_missing_sources_stay_needs_verification(self):
         original, candidate = self._lm358_pair(with_catalog_sources=False)

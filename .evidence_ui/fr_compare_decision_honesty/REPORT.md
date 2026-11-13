@@ -7,6 +7,8 @@ Follow-up: Verified labels require explicit authoritative fit evidence; Compare 
 
 KPI follow-up: Compare strip surfaces listing agreements / verified / material / need-verification (no “attributes align”); smoke fixture counts match the two matrix rows; catalog diffs fold into need-verification once.
 
+Additive-counts follow-up: customer summary/status derive from Assessment provenance only (raw Status stays `*_raw` / `internal_status_counts`); primary count buckets are additive with `catalog_difference` nested under `counts.breakdown`.
+
 ## Acceptance
 | Item | Status |
 | --- | --- |

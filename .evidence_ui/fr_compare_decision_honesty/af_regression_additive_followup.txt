@@ -1,0 +1,13 @@
+/Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/legacy-supplier-report/tests/test_fr_compare_decision_honesty.py:9: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+  from starlette.testclient import TestClient
+2026-11-13 03:07:09.986 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-11-13 03:07:09.989 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+2026-11-13 03:07:09.989 WARNING streamlit.runtime.caching.cache_data_api: No runtime found, using MemoryCacheStorageManager
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=catalog_search category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=true
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=catalog_search category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=true
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Newark stage=catalog_search category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=true
+ALT_FINDER_SUPPLIER_DIAG request_id=unknown supplier=Mouser stage=catalog_search category=provider_response subreason=zero_results status_code=none retryable=false retained_candidates=true
+----------------------------------------------------------------------
+Ran 55 tests in 0.053s
+
+OK

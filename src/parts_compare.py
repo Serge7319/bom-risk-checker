@@ -270,6 +270,68 @@ def claim_compare_parts_submit(
     return True
 
 
+_CUSTOMER_COUNT_PRIMARY_KEYS = (
+    "compatible",
+    "listing_agreement",
+    "material_difference",
+    "needs_data",
+    "conflicting",
+)
+
+
+def _customer_counts_from_assessments(
+    assessment_counts: Mapping[str, int],
+) -> dict[str, Any]:
+    """Build additive customer count buckets from Assessment provenance.
+
+    Primary buckets sum to the row total. ``catalog_difference`` is nested under
+    ``breakdown`` so it remains available without double-counting against
+    ``needs_data`` (catalog diffs contribute to the need-verification primary).
+    """
+    compatible = int(assessment_counts.get("compatible") or 0)
+    listing = int(assessment_counts.get("listing_agreement") or 0)
+    material = int(assessment_counts.get("material_difference") or 0)
+    catalog_diff = int(assessment_counts.get("catalog_difference") or 0)
+    pure_needs = int(assessment_counts.get("needs_data") or 0)
+    conflicting = int(assessment_counts.get("conflicting") or 0)
+    return {
+        "compatible": compatible,
+        "listing_agreement": listing,
+        "material_difference": material,
+        "needs_data": pure_needs + catalog_diff,
+        "conflicting": conflicting,
+        "breakdown": {
+            "catalog_difference": catalog_diff,
+        },
+    }
+
+
+def primary_count_total(counts: Mapping[str, Any] | None) -> int:
+    """Sum of additive customer primary count buckets."""
+    payload = counts or {}
+    return sum(int(payload.get(key) or 0) for key in _CUSTOMER_COUNT_PRIMARY_KEYS)
+
+
+def _provenance_aware_evidence_status(
+    assessment_counts: Mapping[str, int],
+) -> str:
+    """Customer-facing evidence status from Assessment provenance only."""
+    compatible = int(assessment_counts.get("compatible") or 0)
+    listing = int(assessment_counts.get("listing_agreement") or 0)
+    material = int(assessment_counts.get("material_difference") or 0)
+    catalog_diff = int(assessment_counts.get("catalog_difference") or 0)
+    pure_needs = int(assessment_counts.get("needs_data") or 0)
+    needs = pure_needs + catalog_diff
+    conflicting = int(assessment_counts.get("conflicting") or 0)
+    if material or conflicting:
+        return "conflicts documented"
+    if compatible and not listing and not needs and not material and not conflicting:
+        return "complete"
+    if not compatible and not material and (listing or needs):
+        return "incomplete" if needs >= max(1, listing) else "partial"
+    return "partial"
+
+
 def _provenance_aware_evidence_summary(
     assessment_counts: Mapping[str, int],
     *,
@@ -279,22 +341,17 @@ def _provenance_aware_evidence_summary(
 
     Catalog-reported differences fold into the need-verification total once (same
     as customer ``counts.needs_data``) and are not restated as a second count.
-    Listing agreements stay a separate unverified bucket.
+    Listing agreements stay a separate unverified bucket. Raw parametric status
+    is ignored for the customer string (kept only as diagnostics upstream).
     """
+    _ = engineering_status  # Raw status is diagnostics-only; status comes from assessments.
     compatible = int(assessment_counts.get("compatible") or 0)
     listing = int(assessment_counts.get("listing_agreement") or 0)
     material = int(assessment_counts.get("material_difference") or 0)
     catalog_diff = int(assessment_counts.get("catalog_difference") or 0)
     pure_needs = int(assessment_counts.get("needs_data") or 0)
     needs = pure_needs + catalog_diff
-    conflicting = int(assessment_counts.get("conflicting") or 0)
-    status = str(engineering_status or "").strip() or "partial"
-    if material or conflicting:
-        status = "conflicts documented"
-    elif compatible and not listing and not needs and not material and not conflicting:
-        status = "complete"
-    elif not compatible and not material and (listing or needs):
-        status = "incomplete" if needs >= max(1, listing) else "partial"
+    status = _provenance_aware_evidence_status(assessment_counts)
 
     parts = [
         f"Engineering evidence: {status} — {compatible} verified "
@@ -1356,14 +1413,14 @@ def build_parts_comparison(
         else:
             assessment_counts["needs_data"] += 1
 
-    provenance_summary = _provenance_aware_evidence_summary(
-        assessment_counts,
-        engineering_status=str(
-            assessment.get("engineering_evidence_status")
-            or confidence.get("engineering_evidence_status")
-            or ""
-        ),
+    raw_evidence_status = str(
+        assessment.get("engineering_evidence_status")
+        or confidence.get("engineering_evidence_status")
+        or ""
     )
+    provenance_status = _provenance_aware_evidence_status(assessment_counts)
+    provenance_summary = _provenance_aware_evidence_summary(assessment_counts)
+    customer_counts = _customer_counts_from_assessments(assessment_counts)
     # Overall finding must not outrank honest row assessments. Catalog-only or
     # unknown-evidence rows never mint a Compatible fit verdict. Material is
     # kept only when a row assessment truly carries authoritative evidence.
@@ -1432,27 +1489,17 @@ def build_parts_comparison(
         ),
         "family_mismatch": bool(family_meta["family_mismatch"]),
         "finding": finding,
-        # Provenance-aware customer summary; raw parametric text remains available
-        # via engineering_evidence_summary_raw for diagnostics.
+        # Provenance-aware customer summary/status; raw parametric text/status
+        # remain available via *_raw / internal_status_counts for diagnostics.
         "engineering_evidence_summary": provenance_summary
         or assessment.get("engineering_evidence_summary", ""),
         "engineering_evidence_summary_raw": assessment.get(
             "engineering_evidence_summary", ""
         ),
-        "engineering_evidence_status": assessment.get("engineering_evidence_status", ""),
-        # Customer-facing counts from Assessment provenance. Catalog differences
-        # contribute to needs_data so UI unknown/difference KPIs stay honest.
-        "counts": {
-            "compatible": int(assessment_counts["compatible"]),
-            "listing_agreement": int(assessment_counts["listing_agreement"]),
-            "material_difference": int(assessment_counts["material_difference"]),
-            "needs_data": int(
-                assessment_counts["needs_data"]
-                + assessment_counts["catalog_difference"]
-            ),
-            "conflicting": int(assessment_counts["conflicting"]),
-            "catalog_difference": int(assessment_counts["catalog_difference"]),
-        },
+        "engineering_evidence_status": provenance_status,
+        "engineering_evidence_status_raw": raw_evidence_status,
+        # Additive Assessment buckets. catalog_difference lives under breakdown.
+        "counts": customer_counts,
         # Raw internal Status buckets (Match/Different/…) preserved for ranking.
         "count_aliases": {
             "Match": int(counts.get("Match") or 0),
