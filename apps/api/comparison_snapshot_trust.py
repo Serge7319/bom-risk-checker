@@ -36,6 +36,8 @@ SNAPSHOT_CONTENT_KEYS: tuple[str, ...] = (
     "gap",
     "manufacturer_a",
     "manufacturer_b",
+    "multi_candidate_mpns",
+    "multi_candidate_manufacturers",
 )
 
 _SNAPSHOT_TTL_SECONDS = 60 * 60 * 12  # 12h, aligned with sandbox JWT TTL
@@ -317,10 +319,16 @@ def rebuild_multi_source_records(
     evidence = primary.get("evidence_sources")
     evidence = evidence if isinstance(evidence, dict) else {}
     part_a_sources = evidence.get("part_a") if isinstance(evidence.get("part_a"), list) else []
+    part_cards = primary.get("part_cards") if isinstance(primary.get("part_cards"), dict) else {}
+    part_a_card = part_cards.get("a") if isinstance(part_cards.get("a"), dict) else {}
+    manufacturer_a = _text(
+        primary.get("manufacturer_a") or part_a_card.get("manufacturer"), ""
+    )
     records.append(
         {
-            "side": "Part A",
+            "side": f"Part A · {manufacturer_a}" if manufacturer_a else "Part A",
             "mpn": _text(primary.get("part_a") or part_a, part_a),
+            "manufacturer": manufacturer_a,
             "sourceLabel": _text(primary.get("source_a"), "Not stated"),
             "retrievalNotes": [
                 (
@@ -362,10 +370,17 @@ def rebuild_multi_source_records(
         evidence = entry.get("evidence_sources")
         evidence = evidence if isinstance(evidence, dict) else {}
         part_b_sources = evidence.get("part_b") if isinstance(evidence.get("part_b"), list) else []
+        entry_cards = entry.get("part_cards") if isinstance(entry.get("part_cards"), dict) else {}
+        part_b_card = entry_cards.get("b") if isinstance(entry_cards.get("b"), dict) else {}
+        manufacturer_b = _text(
+            entry.get("manufacturer_b") or part_b_card.get("manufacturer"), ""
+        )
+        side = f"Candidate · {mpn} · {manufacturer_b}" if manufacturer_b else f"Candidate · {mpn}"
         records.append(
             {
-                "side": f"Candidate · {mpn}",
+                "side": side,
                 "mpn": _text(entry.get("part_b") or mpn, mpn),
+                "manufacturer": manufacturer_b,
                 "sourceLabel": _text(entry.get("source_b"), "Not stated"),
                 "retrievalNotes": [
                     (
@@ -422,6 +437,14 @@ def rebuild_multi_snapshot_from_candidates(
         _normalize_part(entry.get("part_b") or entry.get("mpn"))
         for entry in verified_candidates
     ]
+    multi_candidate_manufacturers: dict[str, str] = {}
+    for entry in verified_candidates:
+        mpn = _normalize_part(entry.get("part_b") or entry.get("mpn"))
+        cards = entry.get("part_cards") if isinstance(entry.get("part_cards"), dict) else {}
+        card_b = cards.get("b") if isinstance(cards.get("b"), dict) else {}
+        brand = _text(entry.get("manufacturer_b") or card_b.get("manufacturer"), "")
+        if mpn and brand:
+            multi_candidate_manufacturers[mpn] = brand
     rebuilt = {
         key: primary.get(key)
         for key in SNAPSHOT_CONTENT_KEYS
@@ -432,7 +455,11 @@ def rebuild_multi_snapshot_from_candidates(
             "part_a": _normalize_part(part_a),
             "part_b": _normalize_part(part_b),
             "analysis_id": _normalize_analysis_id(analysis_id or primary.get("analysis_id")),
+            "manufacturer_a": _text(primary.get("manufacturer_a"), ""),
+            "manufacturer_b": multi_candidate_manufacturers.get(candidate_mpns[0], "")
+            or _text(primary.get("manufacturer_b"), ""),
             "multi_candidate_mpns": candidate_mpns,
+            "multi_candidate_manufacturers": multi_candidate_manufacturers,
             "multi_matrix": rebuild_multi_matrix(part_a, verified_candidates),
             "multi_source_records": rebuild_multi_source_records(part_a, verified_candidates),
             # Preserve verified pairwise payloads (tokens included) for audit.

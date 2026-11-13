@@ -215,9 +215,37 @@ function EngineeringDecisionsPageInner() {
                       <td>{record.created_at ? new Date(record.created_at).toLocaleDateString() : "—"}</td>
                       <td>
                         <strong>{record.project_name || "Workspace"}</strong>
-                        <div className="cv-muted">{record.bom_name || "No BOM linked"}{record.revision ? ` · rev ${record.revision}` : ""}</div>
+                        <div className="cv-muted">
+                          {record.analysis_id
+                            ? `${record.bom_name || "Saved BOM"}${record.revision ? ` · rev ${record.revision}` : ""}`
+                            : "No BOM — workspace-level decision"}
+                        </div>
                       </td>
-                      <td><strong>{record.part_a} → {record.part_b}</strong></td>
+                      <td>
+                        <strong>
+                          {record.part_a}
+                          {record.manufacturer_a ? ` (${record.manufacturer_a})` : ""}
+                          {" → "}
+                          {record.part_b}
+                          {record.manufacturer_b ? ` (${record.manufacturer_b})` : ""}
+                        </strong>
+                        {(() => {
+                          const snapshot = (record.comparison_snapshot || {}) as Record<string, unknown>;
+                          const multiMpns = Array.isArray(snapshot.multi_candidate_mpns)
+                            ? (snapshot.multi_candidate_mpns as unknown[]).map((item) => String(item || "").trim()).filter(Boolean)
+                            : [];
+                          const brands = (snapshot.multi_candidate_manufacturers || {}) as Record<string, unknown>;
+                          if (multiMpns.length < 2) return null;
+                          return (
+                            <div className="cv-small-note" data-testid="decision-multi-manufacturers">
+                              {multiMpns.map((mpn) => {
+                                const brand = String(brands[mpn] || "").trim();
+                                return brand ? `${mpn} · ${brand}` : mpn;
+                              }).join(" · ")}
+                            </div>
+                          );
+                        })()}
+                      </td>
                       <td>
                         <span className="cv-badge blue">{record.decision_label}</span>
                         <div className="cv-muted">{record.reviewer}</div>

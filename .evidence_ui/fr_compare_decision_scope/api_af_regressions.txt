@@ -1,0 +1,8 @@
+..........................................................               [100%]
+=============================== warnings summary ===============================
+tests/test_fr_compare_decision_scope_multi_mfr.py:11
+  /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/fr-compare-decision-scope/tests/test_fr_compare_decision_scope_multi_mfr.py:11: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+58 passed, 1 warning in 3.37s

@@ -1173,6 +1173,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "manufacturer_a",
                 "manufacturer_b",
                 "multi_candidate_mpns",
+                "multi_candidate_manufacturers",
                 "multi_matrix",
                 "multi_source_records",
                 "candidate_snapshots",
