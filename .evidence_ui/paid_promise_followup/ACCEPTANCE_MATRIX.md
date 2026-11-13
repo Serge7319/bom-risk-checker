@@ -2,7 +2,7 @@
 
 **PR:** https://github.com/Serge7319/bom-risk-checker/pull/626  
 **Branch:** `release/paid-promise-followup-gaps`  
-**Head:** `ab4b80b3b9571f5c8af093dbe05565d4fcd47fb9`
+**Head:** `6c7c7f2267b720c9c05e0cc8a8d9f2f11b0d222e` (CI-verified tip; later evidence-only commits may advance tip)
 **Base:** `main` (merged PR #625)  
 **Evidence dir:** `.evidence_ui/paid_promise_followup/`  
 **Verdict:** **Paid workflow is NOT accepted** while required production checks remain BLOCKED.
@@ -21,7 +21,7 @@
 | 10 | Two-user isolation in CI (workspaces, BOMs, reports, exports, decisions) | **PASS** (CI suite) | Postgres cutover + file-store suite via roadmap-gates hook |
 | 11 | Production isolation with a second verified account | **BLOCKED** | Not exercised. No monitoring emails / no duplicate decisions. |
 | 12 | Supplier offer rows show listing URL + retrieval time | **PASS** | `tests/test_procurement_offer_display.py` |
-| 13 | CI status on this PR head (must include new suites) | **PENDING** | Suites run via `test_paid_promise_followup_pytest_suites_in_existing_ci_gate`. Intended workflow YAML: `alternative_finder_tests.intended.yml` (OAuth lacks workflow scope to push `.github/workflows`). Exact run URL in `CI_RUN.md`. |
+| 13 | CI status on this PR head (must include new suites) | **PASS** | Run https://github.com/Serge7319/bom-risk-checker/actions/runs/43530288479 on `6c7c7f2267b720c9c05e0cc8a8d9f2f11b0d222e` — **success**. Suites included via `test_paid_promise_followup_pytest_suites_in_existing_ci_gate` (not a green run that omitted them). Intended workflow YAML: `alternative_finder_tests.intended.yml` (OAuth lacks `workflow` scope). |
 
 ## Explicit non-claims
 

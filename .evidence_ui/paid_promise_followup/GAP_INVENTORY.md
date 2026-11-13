@@ -18,7 +18,7 @@ Legend: **PASS** | **BLOCKED** | **PARTIAL**
 | File-store + Postgres two-user isolation in CI | **PASS** | File-store via roadmap-gates hook; Postgres already in AF workflow |
 | Production 2nd-account isolation | **BLOCKED** | Not exercised |
 | Offer URL + retrieved_at display | **PASS** | Procurement page + unit contract |
-| CI run including new suites on PR head | **PENDING** | See `CI_RUN.md` |
+| CI run including new suites on PR head | **PASS** | https://github.com/Serge7319/bom-risk-checker/actions/runs/43530288479 success on `6c7c7f2` with suite gate |
 
 ## Follow-up closeout
 
