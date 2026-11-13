@@ -1,9 +1,13 @@
 # Paid-promise follow-up acceptance matrix
 
+**PR:** https://github.com/Serge7319/bom-risk-checker/pull/626  
 **Branch:** `release/paid-promise-followup-gaps`  
+**Head:** `241584408a796d14b49c87659a488a936646ef80`  
 **Base:** `main` @ `2c44ce3` (merged PR #625)  
 **Evidence dir:** `.evidence_ui/paid_promise_followup/`  
 **Verdict:** **Paid workflow is NOT accepted** while required production checks remain BLOCKED.
+
+
 
 | # | Check | Result | Commands / evidence |
 |---|---|---|---|
@@ -18,7 +22,7 @@
 | 9 | Family-only / wrong-part / identity-uncertain → Needs verification | **PASS** | Same suites (`test_wrong_component_citation_is_rejected`, `test_prefix_of_longer_mpn_does_not_bind`, `test_variant_ambiguity_needs_verification`, API wrong-part abstention). |
 | 10 | Two-user isolation in CI (workspaces, BOMs, reports, exports, decisions) | **PASS** (CI suite) | Disposable Postgres already in AF workflow; this PR also wires `tests/test_workspace_isolation.py` (file-store). Commands: `python -m pytest tests/test_cutover_disposable_db.py -q`; `python -m pytest tests/test_workspace_isolation.py -q`. |
 | 11 | Production isolation with a second verified account | **BLOCKED** | No second production account exercised in this follow-up. Do not claim production isolation. |
-| 12 | CI status for this PR head | **PENDING → see PR checks** | Postgres two-user isolation already in AF workflow. Extra suite wiring is in `.evidence_ui/paid_promise_followup/CI_WORKFLOW_DELTA.md` (push of `.github/workflows/*` blocked: OAuth token lacks `workflow` scope). |
+| 12 | CI status for this PR head | **PENDING** (regression-tests in progress; Cloudflare Pages PASS) | Run: https://github.com/Serge7319/bom-risk-checker/actions/runs/43527520259 — Postgres two-user isolation already in AF workflow. Extra suite wiring: `CI_WORKFLOW_DELTA.md` (YAML push blocked without `workflow` scope). |
 
 ## Explicit non-claims
 
