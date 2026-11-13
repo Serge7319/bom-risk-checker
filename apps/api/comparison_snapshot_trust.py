@@ -34,6 +34,8 @@ SNAPSHOT_CONTENT_KEYS: tuple[str, ...] = (
     "package_dimension_evidence",
     "review_warnings",
     "gap",
+    "manufacturer_a",
+    "manufacturer_b",
 )
 
 _SNAPSHOT_TTL_SECONDS = 60 * 60 * 12  # 12h, aligned with sandbox JWT TTL

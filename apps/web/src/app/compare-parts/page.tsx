@@ -100,12 +100,17 @@ function reportDate(value: unknown) {
     : date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function replacementHref(partNumber: string, analysisId: string) {
+function replacementHref(partNumber: string, analysisId: string, manufacturer?: string) {
   const query = new URLSearchParams();
   if (partNumber.trim()) query.set("mpn", partNumber.trim());
+  if (manufacturer?.trim()) query.set("manufacturer", manufacturer.trim());
   if (analysisId) query.set("analysis_id", analysisId);
   const suffix = query.toString();
   return suffix ? `/find-replacement?${suffix}` : "/find-replacement";
+}
+
+function parseAlignedList(raw: string[], limit = 4): string[] {
+  return raw.slice(0, limit).map((item) => String(item || "").trim());
 }
 
 function ComparePartsInner() {
@@ -114,6 +119,9 @@ function ComparePartsInner() {
   const dialogRef = useRef<HTMLDivElement>(null);
   const [partA, setPartA] = useState("");
   const [partB, setPartB] = useState("");
+  const [manufacturerA, setManufacturerA] = useState("");
+  const [manufacturerB, setManufacturerB] = useState("");
+  const [manufacturerBByMpn, setManufacturerBByMpn] = useState<Record<string, string>>({});
   const [datasheetA, setDatasheetA] = useState<File | null>(null);
   const [datasheetB, setDatasheetB] = useState<File | null>(null);
   const [analysisId, setAnalysisId] = useState("");
@@ -147,8 +155,30 @@ function ComparePartsInner() {
     const b = joined.length
       ? joined.join(", ")
       : (search.get("part_b") || search.get("b") || "").trim();
+    const mfrA = (
+      search.get("manufacturer_a")
+      || search.get("manufacturer")
+      || ""
+    ).trim();
+    const mfrBList = parseAlignedList(
+      search.getAll("manufacturer_b").concat(search.getAll("manufacturerB")),
+      4,
+    );
+    const byMpn: Record<string, string> = {};
+    joined.forEach((mpn, index) => {
+      const brand = String(mfrBList[index] || "").trim();
+      if (mpn && brand) byMpn[mpn] = brand;
+    });
     if (a) setPartA(a);
     if (b) setPartB(b);
+    if (mfrA) setManufacturerA(mfrA);
+    if (joined.length === 1 && mfrBList[0]) {
+      setManufacturerB(mfrBList[0]);
+    } else if (!joined.length) {
+      const singleB = (search.get("manufacturer_b") || "").trim();
+      if (singleB) setManufacturerB(singleB);
+    }
+    if (Object.keys(byMpn).length) setManufacturerBByMpn(byMpn);
   }, [search]);
 
   useEffect(() => {
@@ -208,6 +238,9 @@ function ComparePartsInner() {
         throw new Error("Candidate MPNs must differ from the current design part.");
       }
       const baselineMpn = partA.trim();
+      const brandA = manufacturerA.trim();
+      const brandForCandidate = (mpn: string) =>
+        String(manufacturerBByMpn[mpn] || manufacturerB || "").trim();
       if (candidates.length === 1) {
         setProgress({
           total: 1,
@@ -222,7 +255,11 @@ function ComparePartsInner() {
           candidates[0],
           selectedAnalysis,
           { a: datasheetA, b: datasheetB },
-          { timeoutMs: COMPARE_PARTS_TIMEOUT_MS },
+          {
+            timeoutMs: COMPARE_PARTS_TIMEOUT_MS,
+            manufacturerA: brandA || undefined,
+            manufacturerB: brandForCandidate(candidates[0]) || undefined,
+          },
         );
         setProgress({
           total: 1,
@@ -267,7 +304,11 @@ function ComparePartsInner() {
             candidate,
             selectedAnalysis,
             { a: datasheetA },
-            { timeoutMs: COMPARE_PARTS_TIMEOUT_MS },
+            {
+              timeoutMs: COMPARE_PARTS_TIMEOUT_MS,
+              manufacturerA: brandA || undefined,
+              manufacturerB: brandForCandidate(candidate) || undefined,
+            },
           )
             .then((data) => {
               columnsSlot[index] = {
@@ -368,6 +409,16 @@ function ComparePartsInner() {
         decisionPartB || String(result.part_b || partB),
         nextAnalysisId || undefined,
         { a: datasheetA, b: datasheetB },
+        {
+          manufacturerA:
+            manufacturerA.trim()
+            || String(result.manufacturer_a || "").trim()
+            || undefined,
+          manufacturerB:
+            manufacturerB.trim()
+            || String(result.manufacturer_b || "").trim()
+            || undefined,
+        },
       );
       setResult(data);
       setAnalysisId(String(data.analysis_id || ""));
@@ -402,13 +453,29 @@ function ComparePartsInner() {
         multiColumns[0]?.mpn ||
         decisionPartB.trim().split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean)[0] ||
         decisionPartB.trim();
-      const multiSnapshot =
+      const resolvedManufacturerA =
+        manufacturerA.trim()
+        || String(result?.manufacturer_a || "").trim()
+        || "";
+      const resolvedManufacturerB =
+        String(manufacturerBByMpn[primaryCandidate] || manufacturerB || "").trim()
+        || String(result?.manufacturer_b || "").trim()
+        || "";
+      const multiSnapshot: Record<string, unknown> | null =
         multiColumns.length > 1
           ? {
               ...buildMultiDecisionSnapshot(decisionPartA.trim() || partA.trim(), multiColumns),
               ok: true,
               part_a: decisionPartA.trim(),
               part_b: primaryCandidate,
+              manufacturer_a: resolvedManufacturerA || null,
+              manufacturer_b:
+                String(
+                  manufacturerBByMpn[primaryCandidate]
+                  || multiColumns[0]?.result?.manufacturer_b
+                  || resolvedManufacturerB
+                  || "",
+                ).trim() || null,
               analysis_id:
                 decisionAnalysisId ||
                 String(multiColumns[0]?.result.analysis_id || "") ||
@@ -422,7 +489,7 @@ function ComparePartsInner() {
         String(result.analysis_id || "") === String(decisionAnalysisId || "");
       const needsFreshCompare =
         !multiSnapshot && (Boolean(datasheetA || datasheetB) || !resultMatchesDraft);
-      const comparison = multiSnapshot
+      const comparison: Record<string, unknown> = multiSnapshot
         ? multiSnapshot
         : needsFreshCompare
           ? await compareParts(
@@ -431,13 +498,28 @@ function ComparePartsInner() {
               primaryCandidate,
               decisionAnalysisId || undefined,
               { a: datasheetA, b: datasheetB },
+              {
+                manufacturerA: resolvedManufacturerA || undefined,
+                manufacturerB: resolvedManufacturerB || undefined,
+              },
             )
           : (result as Record<string, unknown>);
       setResult(comparison);
+      const snapshotManufacturerA =
+        String(comparison.manufacturer_a || resolvedManufacturerA || "").trim() || null;
+      const snapshotManufacturerB =
+        String(
+          comparison.manufacturer_b
+          || manufacturerBByMpn[primaryCandidate]
+          || resolvedManufacturerB
+          || "",
+        ).trim() || null;
       const response = await recordDecision(session.access_token, {
         analysis_id: String(comparison.analysis_id || decisionAnalysisId || "") || null,
         part_a: decisionPartA.trim(),
         part_b: primaryCandidate,
+        manufacturer_a: snapshotManufacturerA,
+        manufacturer_b: snapshotManufacturerB,
         decision,
         reviewer,
         rationale,
@@ -447,7 +529,11 @@ function ComparePartsInner() {
         follow_up_due_date: followUpDueDate || null,
         residual_risk: residualRisk,
         // Reuse the on-screen comparison so the API skips a second full rebuild.
-        comparison_snapshot: needsFreshCompare && !multiSnapshot ? null : comparison,
+        comparison_snapshot: needsFreshCompare && !multiSnapshot ? null : {
+          ...comparison,
+          manufacturer_a: snapshotManufacturerA,
+          manufacturer_b: snapshotManufacturerB,
+        },
       }, { a: datasheetA, b: datasheetB });
       setDecisionSuccess(response.record);
       setDecisionOpen(false);
@@ -505,7 +591,11 @@ function ComparePartsInner() {
                     ? "Sample / offline evidence"
                     : "Ready to compare"}
             </span>
-            <SecondaryLink href={replacementHref(String(result?.part_a || partA), String(result?.analysis_id || analysisId))}>Find a replacement</SecondaryLink>
+            <SecondaryLink href={replacementHref(
+              String(result?.part_a || partA),
+              String(result?.analysis_id || analysisId),
+              String(result?.manufacturer_a || manufacturerA || ""),
+            )}>Find a replacement</SecondaryLink>
             <button
               type="button"
               className="cv-button primary"
@@ -530,6 +620,19 @@ function ComparePartsInner() {
               autoComplete="off"
               required
             />
+            <label htmlFor="manufacturer-a" style={{ marginTop: 10 }}>
+              Current · manufacturer (identity constraint)
+            </label>
+            <input
+              id="manufacturer-a"
+              value={manufacturerA}
+              onChange={(e) => setManufacturerA(e.target.value)}
+              placeholder="e.g. Texas Instruments"
+              autoComplete="organization"
+            />
+            <p className="cv-small-note" style={{ marginTop: 6 }}>
+              Required for dual-source MPNs such as LM358N. Typed text constrains lookup; it is not identity proof by itself.
+            </p>
           </div>
           <div className="cv-field">
             <label htmlFor="part-b">Candidate · MPN (1–4, comma or newline separated)</label>
@@ -542,8 +645,18 @@ function ComparePartsInner() {
               required
               rows={3}
             />
+            <label htmlFor="manufacturer-b" style={{ marginTop: 10 }}>
+              Candidate · manufacturer (independent of Part A)
+            </label>
+            <input
+              id="manufacturer-b"
+              value={manufacturerB}
+              onChange={(e) => setManufacturerB(e.target.value)}
+              placeholder="Candidate brand when known"
+              autoComplete="organization"
+            />
             <p className="cv-small-note" style={{ marginTop: 6 }}>
-              Multi-candidate mode builds one property matrix versus the current part. It does not imply drop-in compatibility or auto-approve any alternate.
+              Multi-candidate mode builds one property matrix versus the current part. Each candidate brand stays independent of Part A and does not imply drop-in compatibility.
             </p>
           </div>
         </div>

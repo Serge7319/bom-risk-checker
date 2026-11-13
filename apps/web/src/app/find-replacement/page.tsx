@@ -206,16 +206,37 @@ function providerHasRawCatalogMatches(outcome: string): boolean {
   return /\d+\s+raw catalog matches/i.test(outcome) || /returned \d+ leads/i.test(outcome);
 }
 
-function compareHref(partA: string, partB?: string | string[], analysisId?: string) {
+function compareHref(
+  partA: string,
+  partB?: string | string[],
+  analysisId?: string,
+  opts?: {
+    manufacturerA?: string;
+    manufacturerB?: string | string[];
+  },
+) {
   const query = new URLSearchParams({ part_a: partA });
+  const manufacturerA = String(opts?.manufacturerA || "").trim();
+  if (manufacturerA) query.set("manufacturer_a", manufacturerA);
   const candidates = Array.isArray(partB)
     ? partB
     : partB
       ? [partB]
       : [];
-  for (const candidate of candidates.slice(0, 4)) {
-    if (candidate.trim()) query.append("part_b", candidate.trim());
-  }
+  const manufacturersB = Array.isArray(opts?.manufacturerB)
+    ? opts?.manufacturerB || []
+    : opts?.manufacturerB
+      ? [opts.manufacturerB]
+      : [];
+  candidates.slice(0, 4).forEach((candidate, index) => {
+    const mpn = candidate.trim();
+    if (!mpn) return;
+    query.append("part_b", mpn);
+    const brand = String(manufacturersB[index] || "").trim();
+    // Keep manufacturer_b aligned with each part_b (including empty slots) so
+    // multi-candidate handoffs preserve per-side identity independently.
+    query.append("manufacturer_b", brand);
+  });
   // Only attach BOM context when this search was opened from a valid BOM row.
   if (analysisId) query.set("analysis_id", analysisId);
   return `/compare-parts?${query.toString()}`;
@@ -280,6 +301,19 @@ function FindReplacementInner() {
           "",
       )
     : "";
+  // Part A identity for Compare handoff: resolved original, else requested brand.
+  const compareManufacturerA = String(
+    original.manufacturer
+      || result?.requested_manufacturer
+      || manufacturer
+      || "",
+  ).trim();
+  const manufacturerForCandidate = (candMpn: string) => {
+    const row = [...candidates, ...unclassifiedLeads, ...unfilteredLeads].find(
+      (item) => String(item.mpn || "").trim() === candMpn.trim(),
+    );
+    return String(row?.manufacturer || "").trim();
+  };
   const contextNotice = String(result?.context_unavailable || "").trim();
   const discovery = (result?.discovery || {}) as Record<string, unknown>;
   const providerStatus = (discovery.providers || {}) as Record<string, Record<string, unknown>>;
@@ -551,6 +585,12 @@ function FindReplacementInner() {
                                 String(result.requested_mpn || mpn),
                                 selectedCandidates.slice(0, 4),
                                 compareAnalysisId || undefined,
+                                {
+                                  manufacturerA: compareManufacturerA,
+                                  manufacturerB: selectedCandidates
+                                    .slice(0, 4)
+                                    .map((cand) => manufacturerForCandidate(cand)),
+                                },
                               )
                             : "#"
                         }
@@ -633,6 +673,10 @@ function FindReplacementInner() {
                                       String(result.requested_mpn || mpn),
                                       cand,
                                       compareAnalysisId || undefined,
+                                      {
+                                        manufacturerA: compareManufacturerA,
+                                        manufacturerB: String(row.manufacturer || "").trim(),
+                                      },
                                     )}
                                   >
                                     Compare →
@@ -694,6 +738,10 @@ function FindReplacementInner() {
                                       String(result.requested_mpn || mpn),
                                       cand,
                                       compareAnalysisId || undefined,
+                                      {
+                                        manufacturerA: compareManufacturerA,
+                                        manufacturerB: String(row.manufacturer || "").trim(),
+                                      },
                                     )}
                                   >
                                     Compare →
@@ -749,6 +797,10 @@ function FindReplacementInner() {
                                       String(result.requested_mpn || mpn),
                                       cand,
                                       compareAnalysisId || undefined,
+                                      {
+                                        manufacturerA: compareManufacturerA,
+                                        manufacturerB: String(row.manufacturer || "").trim(),
+                                      },
                                     )}
                                   >
                                     Compare →
@@ -778,7 +830,9 @@ function FindReplacementInner() {
               </p>
               <div style={{ marginTop: 12 }}>
                 <SecondaryLink
-                  href={compareHref(mpn, undefined, compareAnalysisId || undefined)}
+                  href={compareHref(mpn, undefined, compareAnalysisId || undefined, {
+                    manufacturerA: compareManufacturerA || manufacturer || undefined,
+                  })}
                 >
                   Open Compare Parts
                 </SecondaryLink>

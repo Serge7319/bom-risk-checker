@@ -484,9 +484,21 @@ def public_part_card(part: Mapping[str, Any] | None, *, family: str = "") -> dic
     ).strip()
     datasheet = str(data.get("datasheet_url") or "").strip()
     detail = str(data.get("product_detail_url") or "").strip()
+    identity_status = str(data.get("identity_status") or "").strip()
+    identity_verified = bool(data.get("identity_verified"))
+    requested_mfr = str(data.get("requested_manufacturer") or "").strip()
+    resolved_mfr = str(
+        data.get("resolved_manufacturer") or data.get("manufacturer") or ""
+    ).strip()
+    # Unresolved/ambiguous identity never exposes another brand as the part card.
+    manufacturer = (
+        ""
+        if identity_status in {"unresolved", "ambiguous"}
+        else str(data.get("manufacturer") or "").strip()
+    )
     return {
         "mpn": mpn,
-        "manufacturer": str(data.get("manufacturer") or "").strip(),
+        "manufacturer": manufacturer,
         "description": str(data.get("description") or "").strip(),
         "family": profile.id,
         "family_display_name": profile.display_name,
@@ -499,7 +511,14 @@ def public_part_card(part: Mapping[str, Any] | None, *, family: str = "") -> dic
         "lifecycle_conflict": bool(data.get("lifecycle_conflict")),
         "datasheet_url": datasheet if datasheet.startswith(("http://", "https://")) else "",
         "supplier_url": detail if detail.startswith(("http://", "https://")) else "",
-        "found": bool(mpn),
+        "found": bool(mpn) and identity_status not in {"unresolved", "ambiguous"},
+        "requested_manufacturer": requested_mfr,
+        "resolved_manufacturer": resolved_mfr,
+        "identity_verified": identity_verified,
+        "identity_status": identity_status
+        or ("verified" if identity_verified else ("resolved" if manufacturer else "")),
+        "identity_choices": list(data.get("identity_choices") or []),
+        "identity_gap": str(data.get("identity_gap") or "").strip(),
     }
 
 
@@ -1608,14 +1627,169 @@ def _strip_test_fixture_flags(part: Mapping[str, Any] | None) -> dict[str, Any]:
     return _sanitize_production_lookup_part(part)
 
 
-def lookup_part_for_compare(part_number: str) -> dict[str, Any]:
-    """Retrieve normalized supplier data without requiring Octopart."""
+def _unresolved_compare_identity_part(
+    part_number: str,
+    *,
+    requested_manufacturer: str = "",
+    resolved_manufacturer: str = "",
+    identity_status: str = "unresolved",
+    identity_choices: list[dict[str, str]] | None = None,
+    gap: str = "",
+) -> dict[str, Any]:
+    """Fail-closed stub: never borrow another brand's attributes."""
+    mpn = str(part_number or "").strip()
+    requested = str(requested_manufacturer or "").strip()
+    resolved = str(resolved_manufacturer or "").strip()
+    status = str(identity_status or "unresolved").strip() or "unresolved"
+    detail = str(gap or "").strip() or (
+        f"Manufacturer identity for {mpn} is unresolved. "
+        "Cadivor will not silently substitute another brand's attributes."
+    )
+    return {
+        "manufacturer_part_number": mpn,
+        "mpn": mpn,
+        "searched_part_number": mpn,
+        "requested_mpn": mpn,
+        # Never stamp an unverified or mismatched brand as identity.
+        "manufacturer": "",
+        "requested_manufacturer": requested,
+        "resolved_manufacturer": resolved,
+        "identity_verified": False,
+        "identity_status": status,
+        "identity_choices": list(identity_choices or []),
+        "identity_gap": detail,
+        "supplier_data_verified": False,
+        "description": "",
+        "package": "",
+        "lifecycle_status": "Unknown",
+        "datasheet_url": "",
+        "product_detail_url": "",
+    }
+
+
+def _verify_compare_lookup_identity(
+    part_number: str,
+    result: Mapping[str, Any] | None,
+    *,
+    requested_manufacturer: str = "",
+) -> dict[str, Any]:
+    """Treat manufacturer text as a lookup constraint, not proof.
+
+    When a brand is requested, the returned source manufacturer must match.
+    When no brand is requested and the MPN has dual-source evidence, stay
+    explicitly unresolved instead of silently picking a stock winner.
+    Each side is verified independently (Part B is not assumed to match Part A).
+    """
+    requested = str(part_number or "").strip()
+    requested_mfr = str(requested_manufacturer or "").strip()
+    payload = dict(result or {})
+    resolved_mfr = str(payload.get("manufacturer") or "").strip()
+
+    try:
+        from apps.api.manufacturer_identity import (
+            manufacturers_match,
+            multi_brand_choices_for_mpn,
+        )
+    except Exception:  # noqa: BLE001
+        manufacturers_match = None  # type: ignore[assignment]
+        multi_brand_choices_for_mpn = None  # type: ignore[assignment]
+
+    choices: list[dict[str, str]] = []
+    if callable(multi_brand_choices_for_mpn):
+        try:
+            choices = list(multi_brand_choices_for_mpn(requested) or [])
+        except Exception:  # noqa: BLE001
+            choices = []
+
+    if requested_mfr:
+        matched = False
+        if resolved_mfr and callable(manufacturers_match):
+            try:
+                matched = bool(
+                    manufacturers_match(requested_mfr, resolved_mfr, mpn=requested)
+                )
+            except Exception:  # noqa: BLE001
+                matched = resolved_mfr.casefold() == requested_mfr.casefold()
+        elif resolved_mfr:
+            matched = resolved_mfr.casefold() == requested_mfr.casefold()
+        if matched:
+            payload["requested_manufacturer"] = requested_mfr
+            payload["resolved_manufacturer"] = resolved_mfr
+            payload["identity_verified"] = True
+            payload["identity_status"] = "verified"
+            payload["identity_choices"] = choices
+            return payload
+        gap = (
+            f"Could not verify {requested} as {requested_mfr}. "
+            "Typed manufacturer text alone is not identity proof, and Cadivor "
+            "will not use another brand's attributes for this comparison."
+        )
+        if resolved_mfr:
+            gap = (
+                f"Requested {requested_mfr} for {requested}, but the supplier "
+                f"source resolved to {resolved_mfr}. Comparison stays Needs "
+                "verification without borrowing the other brand's values."
+            )
+        return _unresolved_compare_identity_part(
+            requested,
+            requested_manufacturer=requested_mfr,
+            resolved_manufacturer=resolved_mfr,
+            identity_status="unresolved",
+            identity_choices=choices,
+            gap=gap,
+        )
+
+    # No brand constraint: dual-source MPNs must not silently pick a winner.
+    if len(choices) >= 2:
+        return _unresolved_compare_identity_part(
+            requested,
+            requested_manufacturer="",
+            resolved_manufacturer=resolved_mfr,
+            identity_status="ambiguous",
+            identity_choices=choices,
+            gap=(
+                f"More than one manufacturer identity is listed for {requested}. "
+                "Select the intended identity before comparing. Cadivor will not "
+                "silently substitute another brand."
+            ),
+        )
+
+    # Unconstrained single-source (or unknown) lookups stay open. Do not treat a
+    # missing manufacturer label as identity failure — that path is for requested
+    # brand mismatches and dual-source ambiguity only.
+    payload["requested_manufacturer"] = ""
+    payload["resolved_manufacturer"] = resolved_mfr
+    payload["identity_verified"] = bool(resolved_mfr)
+    payload["identity_status"] = "resolved" if resolved_mfr else "unconstrained"
+    payload["identity_choices"] = choices
+    return payload
+
+
+def _identity_blocks_compare(side: Mapping[str, Any] | None) -> bool:
+    """Fail closed only for ambiguous dual-source or failed brand verification."""
+    status = str((side or {}).get("identity_status") or "").strip()
+    return status in {"ambiguous", "unresolved"}
+
+
+def lookup_part_for_compare(
+    part_number: str,
+    manufacturer: str = "",
+) -> dict[str, Any]:
+    """Retrieve normalized supplier data without requiring Octopart.
+
+    ``manufacturer`` is a lookup constraint. The returned source brand must
+    verify against it; mismatches and dual-source ambiguity fail closed.
+    """
     from integrations.supplier_aggregator import get_best_part_data
 
     requested = str(part_number or "").strip()
+    requested_mfr = str(manufacturer or "").strip()
     if not requested:
         return {}
-    result = get_best_part_data(requested) or {}
+    try:
+        result = get_best_part_data(requested, manufacturer=requested_mfr) or {}
+    except TypeError:
+        result = get_best_part_data(requested) or {}
     health = result.get("provider_health") if isinstance(result.get("provider_health"), dict) else {}
     # Strip diagnostics / raw provider payloads before they can reach the UI layer.
     sanitized = {
@@ -1634,7 +1808,12 @@ def lookup_part_for_compare(part_number: str) -> dict[str, Any]:
     }
     # Defense in depth: never promote synthetic fixture Mounting/Lifecycle stubs.
     sanitized = _sanitize_production_lookup_part(sanitized)
-    if health:
+    sanitized = _verify_compare_lookup_identity(
+        requested,
+        sanitized,
+        requested_manufacturer=requested_mfr,
+    )
+    if health and sanitized.get("identity_status") not in {"unresolved", "ambiguous"}:
         sanitized["catalog_search"] = {
             "configured_count": health.get("configured_count"),
             "successful_count": health.get("successful_count"),
@@ -1690,19 +1869,30 @@ def run_compare_parts(
     part_a_mpn: str,
     part_b_mpn: str,
     *,
+    manufacturer_a: str = "",
+    manufacturer_b: str = "",
     datasheets: Mapping[str, Any] | None = None,
     datasheet_uploads: Mapping[str, Any] | None = None,
     extract_linked_datasheets: bool = True,
 ) -> dict[str, Any]:
-    """End-to-end Compare Parts run used by the authenticated page."""
+    """End-to-end Compare Parts run used by the authenticated page.
+
+    ``manufacturer_a`` / ``manufacturer_b`` are independent lookup constraints.
+    Each side is verified against its own requested identity — Part B is never
+    assumed to match Part A.
+    """
     a = str(part_a_mpn or "").strip()
     b = str(part_b_mpn or "").strip()
+    mfr_a = str(manufacturer_a or "").strip()
+    mfr_b = str(manufacturer_b or "").strip()
     if not a or not b:
         return {
             "status": STATUS_FAILED,
             "error": "Enter both Part A and Part B manufacturer part numbers.",
             "part_a": a,
             "part_b": b,
+            "manufacturer_a": mfr_a,
+            "manufacturer_b": mfr_b,
         }
     if _normalize_mpn(a) == _normalize_mpn(b):
         return {
@@ -1710,9 +1900,14 @@ def run_compare_parts(
             "error": "Part A and Part B must be different manufacturer part numbers.",
             "part_a": a,
             "part_b": b,
+            "manufacturer_a": mfr_a,
+            "manufacturer_b": mfr_b,
         }
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="compare-part-lookup") as executor:
-        data_a, data_b = list(executor.map(lookup_part_for_compare, (a, b)))
+        future_a = executor.submit(lookup_part_for_compare, a, mfr_a)
+        future_b = executor.submit(lookup_part_for_compare, b, mfr_b)
+        data_a = future_a.result()
+        data_b = future_b.result()
     supplied: dict[str, Any] = {}
     if isinstance(datasheets, Mapping):
         if isinstance(datasheets.get("a"), Mapping):
@@ -1723,7 +1918,7 @@ def run_compare_parts(
     if "a" not in supplied and uploads.get("a") is not None:
         built = _datasheet_from_upload_payload(
             uploads.get("a"),
-            manufacturer=str(data_a.get("manufacturer") or ""),
+            manufacturer=str(data_a.get("manufacturer") or mfr_a or ""),
             mpn=a,
         )
         if built is not None:
@@ -1731,14 +1926,21 @@ def run_compare_parts(
     if "b" not in supplied and uploads.get("b") is not None:
         built = _datasheet_from_upload_payload(
             uploads.get("b"),
-            manufacturer=str(data_b.get("manufacturer") or ""),
+            manufacturer=str(data_b.get("manufacturer") or mfr_b or ""),
             mpn=b,
         )
         if built is not None:
             supplied["b"] = built
+    # Unresolved identity must not pull linked datasheets or catalog attributes.
+    extract_a = extract_linked_datasheets and str(
+        data_a.get("identity_status") or ""
+    ) not in {"unresolved", "ambiguous"}
+    extract_b = extract_linked_datasheets and str(
+        data_b.get("identity_status") or ""
+    ) not in {"unresolved", "ambiguous"}
     document_inputs = (
-        (data_a, supplied.get("a"), a),
-        (data_b, supplied.get("b"), b),
+        (data_a, supplied.get("a"), a, extract_a),
+        (data_b, supplied.get("b"), b, extract_b),
     )
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="compare-part-document") as executor:
         documents = list(
@@ -1746,7 +1948,7 @@ def run_compare_parts(
                 lambda item: _comparison_document(
                     item[0],
                     item[1] if isinstance(item[1], Mapping) else None,
-                    extract_linked=extract_linked_datasheets,
+                    extract_linked=bool(item[3]),
                     mpn=item[2],
                 ),
                 document_inputs,
@@ -1761,17 +1963,63 @@ def run_compare_parts(
         datasheet_b=documents[1],
         extract_linked_datasheets=False,
     )
+    identity_blocked = _identity_blocks_compare(data_a) or _identity_blocks_compare(
+        data_b
+    )
+    if identity_blocked:
+        # Never allow Compatible when either side's manufacturer identity failed.
+        comparison["finding"] = FINDING_NEEDS_VERIFICATION
+        comparison["overall_finding"] = FINDING_NEEDS_VERIFICATION
+        gaps = [
+            str(side.get("identity_gap") or "").strip()
+            for side in (data_a, data_b)
+            if _identity_blocks_compare(side)
+        ]
+        note = " ".join(gap for gap in gaps if gap) or (
+            "Manufacturer identity is unresolved or ambiguous. "
+            "Comparison stays Needs verification."
+        )
+        warnings = list(comparison.get("review_warnings") or [])
+        warnings.append(note)
+        comparison["review_warnings"] = warnings
+        # Drop borrowed attribute rows when identity failed closed.
+        comparison["rows"] = []
+        comparison["diagnostic_rows"] = []
+        if isinstance(comparison.get("counts"), dict):
+            comparison["counts"] = {
+                "compatible": 0,
+                "listing_agreement": 0,
+                "material_difference": 0,
+                "needs_data": 0,
+                "conflicting": 0,
+                "breakdown": {"catalog_difference": 0},
+            }
+        comparison["engineering_evidence_summary"] = (
+            f"Engineering evidence: incomplete — manufacturer identity unresolved. {note}"
+        )
+        comparison["engineering_evidence_status"] = "incomplete"
     supplier_data_missing = not comparison["part_a"]["found"] and not comparison["part_b"]["found"]
+    error = ""
+    if identity_blocked:
+        error = str(
+            data_a.get("identity_gap")
+            or data_b.get("identity_gap")
+            or "Manufacturer identity could not be verified for this comparison."
+        )
+    elif supplier_data_missing:
+        error = (
+            "Cadivor could not retrieve supplier data for these parts. The comparison below "
+            "shows the fields that still need evidence; it does not infer compatibility."
+        )
     return {
-        "status": STATUS_FAILED if supplier_data_missing else STATUS_COMPLETED,
+        "status": STATUS_FAILED if (supplier_data_missing or identity_blocked) else STATUS_COMPLETED,
         "part_a": a,
         "part_b": b,
+        "manufacturer_a": mfr_a,
+        "manufacturer_b": mfr_b,
         "comparison": comparison,
-        "error": (
-            "Cadivor could not retrieve supplier data for these parts. The comparison below shows the fields that still need evidence; it does not infer compatibility."
-            if supplier_data_missing
-            else ""
-        ),
+        "error": error,
+        "identity_blocked": identity_blocked,
     }
 
 

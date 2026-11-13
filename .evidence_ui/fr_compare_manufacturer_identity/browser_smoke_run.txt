@@ -1,0 +1,14 @@
+{
+  "web": "http://127.0.0.1:3018",
+  "steps": [
+    "standalone_find_replacement_ti",
+    "candidate_to_compare_handoff",
+    "standalone_compare",
+    "bom_scoped_compare",
+    "clear_bom_context",
+    "decision_save_reload"
+  ],
+  "ok": true,
+  "decision_page_loaded": true,
+  "decision_pair_visible": true
+}

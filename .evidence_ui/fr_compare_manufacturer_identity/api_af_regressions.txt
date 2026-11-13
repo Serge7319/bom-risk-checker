@@ -1,0 +1,25 @@
+........................................................................ [ 75%]
+.......................                                                  [100%]
+=============================== warnings summary ===============================
+tests/test_fr_compare_manufacturer_identity.py:11
+  /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/fr-compare-manufacturer-identity/tests/test_fr_compare_manufacturer_identity.py:11: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+tests/test_datasheet_comparison.py::DatasheetComparisonTests::test_pdf_with_octet_stream_content_type_uses_pdf_size_limit
+tests/test_datasheet_comparison.py::DatasheetComparisonTests::test_pdf_with_octet_stream_content_type_uses_pdf_size_limit
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+tests/test_datasheet_comparison.py::DatasheetComparisonTests::test_pdf_with_octet_stream_content_type_uses_pdf_size_limit
+tests/test_datasheet_comparison.py::DatasheetComparisonTests::test_pdf_with_octet_stream_content_type_uses_pdf_size_limit
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+tests/test_datasheet_comparison.py::DatasheetComparisonTests::test_pdf_with_octet_stream_content_type_uses_pdf_size_limit
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+tests/test_datasheet_comparison.py::DatasheetComparisonTests::test_pdf_with_octet_stream_content_type_uses_pdf_size_limit
+  /opt/anaconda3/lib/python3.12/site-packages/fitz/__init__.py:17: FutureWarning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+95 passed, 7 warnings in 3.01s
+sys:1: DeprecationWarning: builtin type swigvarlink has no __module__ attribute

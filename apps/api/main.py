@@ -868,13 +868,16 @@ async def compare_parts_post(request: Request) -> JSONResponse:
     datasheet_uploads: dict[str, Any] = {}
     if "multipart/form-data" in str(request.headers.get("content-type") or "").lower():
         try:
-            form = await request.form(max_files=2, max_fields=8)
+            # part_a/b, analysis_id, manufacturer_a/b (+ optional extras)
+            form = await request.form(max_files=2, max_fields=16)
         except Exception:  # noqa: BLE001
             return _json({"detail": "Invalid multipart comparison request."}, 400)
         body = {
             "part_a": form.get("part_a"),
             "part_b": form.get("part_b"),
             "analysis_id": form.get("analysis_id"),
+            "manufacturer_a": form.get("manufacturer_a"),
+            "manufacturer_b": form.get("manufacturer_b"),
         }
         for side, field_name in (("a", "datasheet_a"), ("b", "datasheet_b")):
             upload = form.get(field_name)
@@ -903,6 +906,8 @@ async def compare_parts_post(request: Request) -> JSONResponse:
             part_a=str(body.get("part_a") or ""),
             part_b=str(body.get("part_b") or ""),
             analysis_id=body.get("analysis_id") or None,
+            manufacturer_a=str(body.get("manufacturer_a") or "") or None,
+            manufacturer_b=str(body.get("manufacturer_b") or "") or None,
             use_latest_if_missing=False,
             datasheet_uploads=datasheet_uploads or None,
         )
@@ -967,7 +972,8 @@ async def decision_records_post(request: Request) -> JSONResponse:
         try:
             form = await request.form(max_files=2, max_fields=40)
             body = {key: form.get(key) for key in (
-                "analysis_id", "part_a", "part_b", "decision", "reviewer", "rationale",
+                "analysis_id", "part_a", "part_b", "manufacturer_a", "manufacturer_b",
+                "decision", "reviewer", "rationale",
                 "validation_checks", "follow_up_action", "follow_up_owner",
                 "follow_up_due_date", "residual_risk", "comparison_snapshot",
             )}
@@ -1003,6 +1009,25 @@ async def decision_records_post(request: Request) -> JSONResponse:
 
     part_a = str(body.get("part_a") or "").strip()
     part_b = str(body.get("part_b") or "").strip()
+    snapshot_in_early = body.get("comparison_snapshot")
+    manufacturer_a = str(
+        body.get("manufacturer_a")
+        or (
+            (snapshot_in_early or {}).get("manufacturer_a")
+            if isinstance(snapshot_in_early, dict)
+            else ""
+        )
+        or ""
+    ).strip()
+    manufacturer_b = str(
+        body.get("manufacturer_b")
+        or (
+            (snapshot_in_early or {}).get("manufacturer_b")
+            if isinstance(snapshot_in_early, dict)
+            else ""
+        )
+        or ""
+    ).strip()
     decision = str(body.get("decision") or "").strip()
     reviewer = str(body.get("reviewer") or "").strip()
     rationale = str(body.get("rationale") or "").strip()
@@ -1105,6 +1130,8 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 part_a=part_a,
                 part_b=part_b,
                 analysis_id=requested_analysis_id,
+                manufacturer_a=manufacturer_a or None,
+                manufacturer_b=manufacturer_b or None,
                 use_latest_if_missing=False,
                 datasheet_uploads=datasheet_uploads or None,
             )
@@ -1118,6 +1145,12 @@ async def decision_records_post(request: Request) -> JSONResponse:
             if analysis_id
             else None
         )
+        # Preserve requested identities even when snapshot reuse omitted them.
+        if isinstance(comparison, dict):
+            if manufacturer_a and not comparison.get("manufacturer_a"):
+                comparison["manufacturer_a"] = manufacturer_a
+            if manufacturer_b and not comparison.get("manufacturer_b"):
+                comparison["manufacturer_b"] = manufacturer_b
         snapshot = {
             key: comparison.get(key)
             for key in (
@@ -1137,6 +1170,8 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "package_dimension_evidence",
                 "review_warnings",
                 "gap",
+                "manufacturer_a",
+                "manufacturer_b",
                 "multi_candidate_mpns",
                 "multi_matrix",
                 "multi_source_records",
@@ -1159,6 +1194,8 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "revision": (report or {}).get("revision"),
                 "part_a": part_a,
                 "part_b": part_b,
+                "manufacturer_a": manufacturer_a or comparison.get("manufacturer_a") or None,
+                "manufacturer_b": manufacturer_b or comparison.get("manufacturer_b") or None,
                 "decision": decision,
                 "decision_label": _DECISION_LABELS[decision],
                 "reviewer": reviewer,

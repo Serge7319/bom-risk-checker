@@ -528,6 +528,8 @@ export type DecisionRecord = {
   revision?: string | null;
   part_a: string;
   part_b: string;
+  manufacturer_a?: string | null;
+  manufacturer_b?: string | null;
   decision: string;
   decision_label: string;
   reviewer: string;
@@ -558,6 +560,8 @@ export async function recordDecision(
     analysis_id?: string | null;
     part_a: string;
     part_b: string;
+    manufacturer_a?: string | null;
+    manufacturer_b?: string | null;
     decision: string;
     reviewer: string;
     rationale: string;
@@ -604,13 +608,22 @@ export async function compareParts(
   partB: string,
   analysisId?: string,
   datasheets?: { a?: File | null; b?: File | null },
-  options?: { signal?: AbortSignal; timeoutMs?: number },
+  options?: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    manufacturerA?: string | null;
+    manufacturerB?: string | null;
+  },
 ) {
+  const manufacturerA = String(options?.manufacturerA || "").trim();
+  const manufacturerB = String(options?.manufacturerB || "").trim();
   const body = datasheets?.a || datasheets?.b ? new FormData() : null;
   if (body) {
     body.append("part_a", partA);
     body.append("part_b", partB);
     body.append("analysis_id", analysisId || "");
+    if (manufacturerA) body.append("manufacturer_a", manufacturerA);
+    if (manufacturerB) body.append("manufacturer_b", manufacturerB);
     if (datasheets?.a) body.append("datasheet_a", datasheets.a);
     if (datasheets?.b) body.append("datasheet_b", datasheets.b);
   }
@@ -634,6 +647,8 @@ export async function compareParts(
         part_a: partA,
         part_b: partB,
         analysis_id: analysisId || null,
+        manufacturer_a: manufacturerA || null,
+        manufacturer_b: manufacturerB || null,
       }),
     });
   } catch (err) {

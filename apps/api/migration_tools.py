@@ -338,11 +338,15 @@ def compare_parts_payload(
     part_a: str,
     part_b: str,
     analysis_id: str | None = None,
+    manufacturer_a: str | None = None,
+    manufacturer_b: str | None = None,
     use_latest_if_missing: bool = True,
     datasheet_uploads: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     a = str(part_a or "").strip()
     b = str(part_b or "").strip()
+    mfr_a = str(manufacturer_a or "").strip()
+    mfr_b = str(manufacturer_b or "").strip()
     if not a or not b:
         return {
             "ok": False,
@@ -367,6 +371,8 @@ def compare_parts_payload(
             part_a=a,
             part_b=b,
             analysis_id=analysis_id,
+            manufacturer_a=mfr_a,
+            manufacturer_b=mfr_b,
             datasheet_uploads=datasheet_uploads,
             extract_linked_datasheets=True,
         )
@@ -376,6 +382,8 @@ def compare_parts_payload(
             part_a=a,
             part_b=b,
             analysis_id=analysis_id,
+            manufacturer_a=mfr_a,
+            manufacturer_b=mfr_b,
             datasheet_uploads=datasheet_uploads,
         )
 
@@ -392,6 +400,8 @@ def compare_parts_payload(
             if key:
                 by_mpn[key] = part
 
+    from src.parts_compare import _verify_compare_lookup_identity
+
     source_a = "synthetic-preview"
     source_b = "synthetic-preview"
     if a.casefold() in by_mpn:
@@ -404,6 +414,16 @@ def compare_parts_payload(
         source_b = "synthetic-preview-analysis"
     else:
         data_b = synthetic_compare_part(b)
+    data_a = _verify_compare_lookup_identity(
+        a, data_a, requested_manufacturer=mfr_a
+    )
+    data_b = _verify_compare_lookup_identity(
+        b, data_b, requested_manufacturer=mfr_b
+    )
+    identity_blocked = any(
+        str(side.get("identity_status") or "") in {"unresolved", "ambiguous"}
+        for side in (data_a, data_b)
+    )
 
     comparison = build_parts_comparison(
         data_a,
@@ -412,6 +432,10 @@ def compare_parts_payload(
         part_b_mpn=b,
         extract_linked_datasheets=False,
     )
+    if identity_blocked:
+        comparison["finding"] = "Needs verification"
+        comparison["rows"] = []
+        comparison["engineering_evidence_status"] = "incomplete"
     # Prefer rows that already carry Assessment from build_parts_comparison so
     # family-mismatch verdicts are not collapsed to "Needs data".
     raw_rows = comparison.get("rows") or comparison.get("comparison_rows") or []
@@ -501,6 +525,16 @@ def compare_parts_payload(
     ]
     analysis_context = str((report or {}).get("id") or "") or None
 
+    if identity_blocked:
+        finding = "Needs verification"
+        rows = []
+        gap = str(
+            data_a.get("identity_gap")
+            or data_b.get("identity_gap")
+            or gap
+            or "Manufacturer identity could not be verified for this comparison."
+        )
+
     return _json_safe(
         {
             "ok": True,
@@ -509,6 +543,8 @@ def compare_parts_payload(
             "analysis_id": analysis_context,
             "part_a": a,
             "part_b": b,
+            "manufacturer_a": mfr_a,
+            "manufacturer_b": mfr_b,
             "source_a": source_a,
             "source_b": source_b,
             "gap": gap,
@@ -575,6 +611,8 @@ def _comparison_payload_from_engine(
     mode: str,
     upload_a: bool = False,
     upload_b: bool = False,
+    manufacturer_a: str = "",
+    manufacturer_b: str = "",
 ) -> dict[str, Any]:
     comparison = engine_result.get("comparison")
     if not isinstance(comparison, dict):
@@ -606,6 +644,10 @@ def _comparison_payload_from_engine(
         )
     counts = comparison.get("counts") or {}
     finding = str(comparison.get("finding") or comparison.get("overall_finding") or "Needs data / engineering validation")
+    if engine_result.get("identity_blocked"):
+        finding = "Needs verification"
+    mfr_a = str(manufacturer_a or engine_result.get("manufacturer_a") or "").strip()
+    mfr_b = str(manufacturer_b or engine_result.get("manufacturer_b") or "").strip()
     return _json_safe({
         "ok": True,
         "status": STATUS_COMPLETED,
@@ -614,6 +656,8 @@ def _comparison_payload_from_engine(
         "workspace_id": workspace_id,
         "part_a": part_a,
         "part_b": part_b,
+        "manufacturer_a": mfr_a,
+        "manufacturer_b": mfr_b,
         "source_a": source_a,
         "source_b": source_b,
         "gap": gap,
@@ -653,6 +697,8 @@ def _legacy_compare_parts_payload(
     analysis_id: str | None,
     datasheet_uploads: dict[str, Any] | None,
     extract_linked_datasheets: bool,
+    manufacturer_a: str = "",
+    manufacturer_b: str = "",
 ) -> dict[str, Any]:
     from src.parts_compare import run_compare_parts
 
@@ -660,10 +706,12 @@ def _legacy_compare_parts_payload(
     result = run_compare_parts(
         part_a,
         part_b,
+        manufacturer_a=manufacturer_a,
+        manufacturer_b=manufacturer_b,
         datasheet_uploads=datasheet_uploads,
         extract_linked_datasheets=extract_linked_datasheets,
     )
-    return _comparison_payload_from_engine(
+    payload = _comparison_payload_from_engine(
         workspace_id=workspace_id,
         part_a=part_a,
         part_b=part_b,
@@ -672,7 +720,10 @@ def _legacy_compare_parts_payload(
         mode="legacy-supplier-engine",
         upload_a=bool((datasheet_uploads or {}).get("a")),
         upload_b=bool((datasheet_uploads or {}).get("b")),
+        manufacturer_a=manufacturer_a,
+        manufacturer_b=manufacturer_b,
     )
+    return payload
 
 
 def _uploaded_compare_parts_payload(
@@ -682,8 +733,15 @@ def _uploaded_compare_parts_payload(
     part_b: str,
     analysis_id: str | None,
     datasheet_uploads: dict[str, Any],
+    manufacturer_a: str = "",
+    manufacturer_b: str = "",
 ) -> dict[str, Any]:
-    from src.parts_compare import build_parts_comparison, _datasheet_from_upload_payload
+    from src.parts_compare import (
+        build_parts_comparison,
+        _datasheet_from_upload_payload,
+        _identity_blocks_compare,
+        _verify_compare_lookup_identity,
+    )
 
     report = _require_analysis(analysis_id, workspace_id=workspace_id) if analysis_id else None
     from_report: dict[str, dict[str, Any]] = {}
@@ -693,13 +751,25 @@ def _uploaded_compare_parts_payload(
             if key:
                 from_report[key] = part
 
-    data_a = synthetic_compare_part(part_a, from_report=from_report.get(part_a.casefold()))
-    data_b = synthetic_compare_part(part_b, from_report=from_report.get(part_b.casefold()))
+    data_a = _verify_compare_lookup_identity(
+        part_a,
+        synthetic_compare_part(part_a, from_report=from_report.get(part_a.casefold())),
+        requested_manufacturer=manufacturer_a,
+    )
+    data_b = _verify_compare_lookup_identity(
+        part_b,
+        synthetic_compare_part(part_b, from_report=from_report.get(part_b.casefold())),
+        requested_manufacturer=manufacturer_b,
+    )
     doc_a = _datasheet_from_upload_payload(
-        datasheet_uploads.get("a"), manufacturer=str(data_a.get("manufacturer") or ""), mpn=part_a
+        datasheet_uploads.get("a"),
+        manufacturer=str(data_a.get("manufacturer") or manufacturer_a or ""),
+        mpn=part_a,
     ) if datasheet_uploads.get("a") else None
     doc_b = _datasheet_from_upload_payload(
-        datasheet_uploads.get("b"), manufacturer=str(data_b.get("manufacturer") or ""), mpn=part_b
+        datasheet_uploads.get("b"),
+        manufacturer=str(data_b.get("manufacturer") or manufacturer_b or ""),
+        mpn=part_b,
     ) if datasheet_uploads.get("b") else None
     comparison = build_parts_comparison(
         data_a,
@@ -710,7 +780,22 @@ def _uploaded_compare_parts_payload(
         datasheet_b=doc_b,
         extract_linked_datasheets=False,
     )
-    result = {"comparison": comparison, "error": ""}
+    identity_blocked = _identity_blocks_compare(data_a) or _identity_blocks_compare(
+        data_b
+    )
+    if identity_blocked:
+        comparison["finding"] = "Needs verification"
+        comparison["rows"] = []
+        comparison["engineering_evidence_status"] = "incomplete"
+    result = {
+        "comparison": comparison,
+        "error": (
+            str(data_a.get("identity_gap") or data_b.get("identity_gap") or "")
+            if identity_blocked
+            else ""
+        ),
+        "identity_blocked": identity_blocked,
+    }
     return _comparison_payload_from_engine(
         workspace_id=workspace_id,
         part_a=part_a,
@@ -720,6 +805,8 @@ def _uploaded_compare_parts_payload(
         mode="uploaded-datasheet-review",
         upload_a=bool(doc_a),
         upload_b=bool(doc_b),
+        manufacturer_a=manufacturer_a,
+        manufacturer_b=manufacturer_b,
     )
 
 
