@@ -1,0 +1,18 @@
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'eslint-visitor-keys@5.0.1',
+npm warn EBADENGINE   required: { node: '^20.19.0 || ^22.13.0 || >=24' },
+npm warn EBADENGINE   current: { node: 'v22.6.0', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn deprecated eslint@9.39.5: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+
+added 365 packages, and audited 366 packages in 44s
+
+144 packages are looking for funding
+  run `npm fund` for details
+
+10 vulnerabilities (6 moderate, 3 high, 1 critical)
+
+To address all issues, run:
+  npm audit fix
+
+Run `npm audit` for details.
