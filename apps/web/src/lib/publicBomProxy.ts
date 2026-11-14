@@ -95,10 +95,14 @@ export async function readPublicBomAuditForm(
 
   const contentType = request.headers.get("content-type") || "";
   try {
+    // Copy into a standalone ArrayBuffer so BodyInit typing accepts the payload.
+    const bytes = limited.buffer;
+    const ab = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(ab).set(bytes);
     const reconstructed = new Request(request.url, {
       method: "POST",
       headers: contentType ? { "content-type": contentType } : undefined,
-      body: limited.buffer,
+      body: ab,
     });
     return { form: await reconstructed.formData() };
   } catch {
