@@ -6,7 +6,9 @@ import hashlib
 import hmac
 import time
 import types
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -273,72 +275,104 @@ def test_public_bom_stress_lead_sends_verification_once(client: TestClient):
     assert request_full.call_args.kwargs["source"] == "utm:guide"
 
 
+class _AtomicClaimStore:
+    """In-process stand-in for cadivor_claim_public_bom_verification."""
+
+    def __init__(self):
+        import threading
+
+        self.lock = threading.Lock()
+        self.report = {
+            "id": "report-1",
+            "row_count": 6,
+            "status": "ready",
+            "work_email": None,
+            "results": [],
+        }
+        self.lead = {
+            "report_id": "report-1",
+            "work_email": "engineer@company.com",
+            "verification_sent_at": None,
+        }
+        self.current = ""
+        self._pending_update = None
+        self._pending_upsert = None
+        self._rpc_name = ""
+        self._rpc_params = None
+        self.cooldown_seconds = funnel.VERIFICATION_RESEND_COOLDOWN_SECONDS
+
+    def table(self, name):
+        self.current = name
+        self._pending_update = None
+        self._pending_upsert = None
+        self._rpc_name = ""
+        return self
+
+    def rpc(self, name, params):
+        self._rpc_name = name
+        self._rpc_params = params
+        return self
+
+    def select(self, *_):
+        return self
+
+    def update(self, payload):
+        self._pending_update = payload
+        return self
+
+    def upsert(self, payload, **_):
+        self._pending_upsert = payload
+        return self
+
+    def eq(self, *_):
+        return self
+
+    def single(self):
+        return self
+
+    def _claim_rpc(self) -> bool:
+        params = self._rpc_params or {}
+        email = str(params.get("p_work_email") or "").strip().lower()
+        cooldown = int(params.get("p_cooldown_seconds") or self.cooldown_seconds)
+        with self.lock:
+            prior = self.lead.get("verification_sent_at")
+            if prior:
+                prior_dt = datetime.fromisoformat(str(prior).replace("Z", "+00:00"))
+                if prior_dt.tzinfo is None:
+                    prior_dt = prior_dt.replace(tzinfo=timezone.utc)
+                if prior_dt > datetime.now(timezone.utc) - timedelta(seconds=cooldown):
+                    return False
+            if self.lead.get("work_email") != email:
+                return False
+            self.lead["verification_sent_at"] = datetime.now(timezone.utc).isoformat()
+            return True
+
+    def execute(self):
+        if self._rpc_name == "cadivor_claim_public_bom_verification":
+            return types.SimpleNamespace(data=self._claim_rpc())
+        if self.current == "cadivor_public_bom_stress_tests":
+            if self._pending_update is not None:
+                self.report = {**self.report, **self._pending_update}
+                self._pending_update = None
+                return types.SimpleNamespace(data=[{"id": "report-1"}])
+            return types.SimpleNamespace(data=dict(self.report))
+        if self._pending_upsert is not None:
+            prior_sent = self.lead.get("verification_sent_at")
+            self.lead = {**self.lead, **self._pending_upsert}
+            if "verification_sent_at" not in self._pending_upsert:
+                self.lead["verification_sent_at"] = prior_sent
+            self._pending_upsert = None
+            return types.SimpleNamespace(data=[{"report_id": "report-1"}])
+        if self._pending_update is not None:
+            self.lead = {**self.lead, **self._pending_update}
+            self._pending_update = None
+            return types.SimpleNamespace(data=[{"report_id": "report-1"}])
+        return types.SimpleNamespace(data=dict(self.lead))
+
+
 def test_request_full_report_repeat_does_not_resend_email():
     """Durable cooldown: second call for same lead skips the mailer (mocked)."""
-
-    class FakeStore:
-        def __init__(self):
-            self.report = {
-                "id": "report-1",
-                "row_count": 6,
-                "status": "ready",
-                "work_email": None,
-                "results": [],
-            }
-            self.lead = {
-                "report_id": "report-1",
-                "work_email": "engineer@company.com",
-                "verification_sent_at": None,
-            }
-            self.current = ""
-            self._pending_update = None
-            self._pending_upsert = None
-
-        def table(self, name):
-            self.current = name
-            self._pending_update = None
-            self._pending_upsert = None
-            return self
-
-        def select(self, *_):
-            return self
-
-        def update(self, payload):
-            self._pending_update = payload
-            return self
-
-        def upsert(self, payload, **_):
-            self._pending_upsert = payload
-            return self
-
-        def eq(self, *_):
-            return self
-
-        def single(self):
-            return self
-
-        def execute(self):
-            if self.current == "cadivor_public_bom_stress_tests":
-                if self._pending_update is not None:
-                    self.report = {**self.report, **self._pending_update}
-                    self._pending_update = None
-                    return types.SimpleNamespace(data=[{"id": "report-1"}])
-                return types.SimpleNamespace(data=dict(self.report))
-            if self._pending_upsert is not None:
-                # Preserve durable verification claim across lead upserts.
-                prior_sent = self.lead.get("verification_sent_at")
-                self.lead = {**self.lead, **self._pending_upsert}
-                if "verification_sent_at" not in self._pending_upsert:
-                    self.lead["verification_sent_at"] = prior_sent
-                self._pending_upsert = None
-                return types.SimpleNamespace(data=[{"report_id": "report-1"}])
-            if self._pending_update is not None:
-                self.lead = {**self.lead, **self._pending_update}
-                self._pending_update = None
-                return types.SimpleNamespace(data=[{"report_id": "report-1"}])
-            return types.SimpleNamespace(data=dict(self.lead))
-
-    store = FakeStore()
+    store = _AtomicClaimStore()
     sends: list[str] = []
     header = _signed_visitor()
     with (
@@ -372,40 +406,53 @@ def test_request_full_report_repeat_does_not_resend_email():
         assert sends == ["engineer@company.com"]
 
 
-def test_claim_verification_send_respects_cooldown_window():
-    now = datetime(2026, 11, 14, 12, 0, tzinfo=timezone.utc)
-    recent = (now - timedelta(minutes=5)).isoformat()
+def test_claim_verification_send_uses_atomic_rpc():
+    store = _AtomicClaimStore()
+    store.lead["verification_sent_at"] = datetime.now(timezone.utc).isoformat()
+    with patch.object(funnel, "_service_client", return_value=store):
+        assert funnel.claim_verification_send("report-1", "engineer@company.com") is False
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "supabase/migrations/20261114_public_bom_lead_verification_cooldown.sql"
+    ).read_text()
+    assert "cadivor_claim_public_bom_verification" in migration
+    assert "pg_advisory_xact_lock" in migration
 
-    class Fake:
-        def __init__(self):
-            self.row = {
-                "report_id": "report-1",
-                "work_email": "a@b.com",
-                "verification_sent_at": recent,
-            }
 
-        def table(self, *_):
-            return self
+def test_concurrent_claims_send_exactly_one_verification_email():
+    """Only one concurrent request may win the DB claim and call the mailer."""
+    import threading
 
-        def select(self, *_):
-            return self
+    store = _AtomicClaimStore()
+    sends: list[str] = []
+    send_lock = threading.Lock()
+    header = _signed_visitor()
 
-        def update(self, *_):
-            raise AssertionError("must not update during cooldown")
+    def fake_send(address: str) -> None:
+        with send_lock:
+            sends.append(address)
 
-        def eq(self, *_):
-            return self
-
-        def single(self):
-            return self
-
-        def execute(self):
-            return types.SimpleNamespace(data=dict(self.row))
-
-    with patch.object(funnel, "_service_client", return_value=Fake()):
-        assert (
-            funnel.claim_verification_send("report-1", "a@b.com", now=now) is False
+    def worker(_idx: int):
+        return funnel.request_full_report(
+            "report-1",
+            "engineer@company.com",
+            header,
+            source="homepage_stress_test",
         )
+
+    with (
+        patch.object(funnel, "_service_client", return_value=store),
+        patch.object(funnel, "get_secret", return_value=HMAC_SECRET),
+        patch.object(funnel, "send_report_verification", side_effect=fake_send),
+    ):
+        with ThreadPoolExecutor(max_workers=12) as pool:
+            futures = [pool.submit(worker, i) for i in range(20)]
+            results = [future.result() for future in as_completed(futures)]
+
+    sent_flags = [sent for _, sent in results]
+    assert sum(1 for flag in sent_flags if flag) == 1
+    assert sends == ["engineer@company.com"]
+
 
 
 def test_public_audit_failure_logs_do_not_embed_bom_or_tokens(client: TestClient, caplog):

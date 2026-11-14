@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { evaluatePublicBomAuditContentLength } from "@/lib/publicBomUploadLimit.js";
+import {
+  evaluatePublicBomAuditContentLength,
+  MAX_PUBLIC_BOM_REQUEST_BYTES,
+  readBodyWithByteLimit,
+} from "@/lib/publicBomUploadLimit.js";
 
 /**
  * Server-side API origin for anonymous public-audit proxies.
@@ -43,18 +47,68 @@ async function proxyJson(upstream: Response): Promise<NextResponse> {
   return NextResponse.json(body, { status: upstream.status });
 }
 
-/** Reject oversized/missing Content-Length before buffering multipart bodies. */
-export function rejectOversizedPublicBomAudit(
+/**
+ * Bound the multipart body before parsing.
+ * Content-Length is an early reject when present; otherwise stream with a cap
+ * (browsers may omit Content-Length on FormData uploads).
+ */
+export async function readPublicBomAuditForm(
   request: NextRequest,
-): NextResponse | null {
-  const verdict = evaluatePublicBomAuditContentLength(
+): Promise<{ form: FormData } | { response: NextResponse }> {
+  const lengthVerdict = evaluatePublicBomAuditContentLength(
     request.headers.get("content-length"),
   );
-  if (verdict.ok) return null;
-  return NextResponse.json(
-    { detail: verdict.detail },
-    { status: verdict.status },
+  if (!lengthVerdict.ok) {
+    return {
+      response: NextResponse.json(
+        { detail: lengthVerdict.detail },
+        { status: lengthVerdict.status },
+      ),
+    };
+  }
+
+  if (!lengthVerdict.stream) {
+    try {
+      return { form: await request.formData() };
+    } catch {
+      return {
+        response: NextResponse.json(
+          { detail: "Invalid multipart upload." },
+          { status: 400 },
+        ),
+      };
+    }
+  }
+
+  const limited = await readBodyWithByteLimit(
+    request.body,
+    MAX_PUBLIC_BOM_REQUEST_BYTES,
   );
+  if (!limited.ok) {
+    return {
+      response: NextResponse.json(
+        { detail: limited.detail },
+        { status: limited.status },
+      ),
+    };
+  }
+
+  const contentType = request.headers.get("content-type") || "";
+  try {
+    const reconstructed = new Request(request.url, {
+      method: "POST",
+      headers: contentType ? { "content-type": contentType } : undefined,
+      body: limited.buffer,
+    });
+    return { form: await reconstructed.formData() };
+  } catch {
+    return {
+      response: NextResponse.json(
+        { detail: "Invalid multipart upload." },
+        { status: 400 },
+      ),
+    };
+  }
 }
 
 /** GET /public/bom-stress/status → FastAPI */
@@ -85,17 +139,16 @@ export async function proxyPublicBomStatus(
 export async function proxyPublicBomAudit(
   request: NextRequest,
 ): Promise<NextResponse> {
-  const rejected = rejectOversizedPublicBomAudit(request);
-  if (rejected) return rejected;
+  const parsed = await readPublicBomAuditForm(request);
+  if ("response" in parsed) return parsed.response;
   try {
-    const form = await request.formData();
     const res = await fetch(`${apiBase()}/public/bom-stress/audit`, {
       method: "POST",
       headers: {
         Accept: "application/json",
         "X-Cadivor-Visitor": visitorHeader(request),
       },
-      body: form,
+      body: parsed.form,
       cache: "no-store",
     });
     return proxyJson(res);

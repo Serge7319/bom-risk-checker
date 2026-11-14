@@ -349,14 +349,70 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertIn(("work_email", "engineer@company.com"), query.filters)
 
     def test_supplier_outage_is_unverified_not_a_fabricated_high_risk_dependency(self):
-        supplier_module = types.SimpleNamespace(get_best_part_data=lambda _: {
-            "supplier_data_verified": False, "stock_total": 0,
-            "lifecycle_status": "Unknown", "supplier_count": 0,
-        })
+        supplier_module = types.SimpleNamespace(
+            get_best_part_data=lambda mpn, manufacturer="": {
+                "supplier_data_verified": False, "stock_total": 0,
+                "lifecycle_status": "Unknown", "supplier_count": 0,
+            }
+        )
         with patch.dict(sys.modules, {"integrations.supplier_aggregator": supplier_module}):
             _, result = funnel._enrich_one(0, {"mpn": "PART1", "quantity": 2})
         self.assertFalse(result["verified"])
         self.assertEqual(result["risk"], "Needs verification")
+        self.assertIsNone(result["stock"])
+
+    def test_enrich_one_passes_bom_manufacturer_into_get_best_part_data(self):
+        seen = []
+
+        def fake_get_best(mpn, manufacturer=""):
+            seen.append((mpn, manufacturer))
+            return {
+                "supplier_data_verified": True,
+                "manufacturer": "Texas Instruments",
+                "manufacturer_part_number": "LM358DR",
+                "lifecycle_status": "Active",
+                "total_market_stock": 100,
+                "stock_data_sources": ["DigiKey"],
+                "stock_data_complete": True,
+                "lead_time_weeks": 2,
+                "supplier_count": 1,
+                "sources_available": "DigiKey",
+                "provider_health": {"summary_message": "1 of 1 sources responded"},
+            }
+
+        supplier_module = types.SimpleNamespace(get_best_part_data=fake_get_best)
+        with patch.dict(sys.modules, {"integrations.supplier_aggregator": supplier_module}):
+            _, result = funnel._enrich_one(
+                0,
+                {"mpn": "LM358DR", "quantity": 4, "manufacturer": "Texas Instruments"},
+            )
+        self.assertEqual(seen, [("LM358DR", "Texas Instruments")])
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["manufacturer"], "Texas Instruments")
+
+    def test_enrich_one_conflicting_or_unverifiable_identity_stays_unverified(self):
+        def fake_get_best(mpn, manufacturer=""):
+            # Aggregator returns unverified when requested brand cannot be matched.
+            self.assertEqual(manufacturer, "Analog Devices")
+            return {
+                "supplier_data_verified": False,
+                "manufacturer": "Texas Instruments",
+                "manufacturer_part_number": mpn,
+                "lifecycle_status": "Active",
+                "total_market_stock": 999,
+                "supplier_count": 1,
+            }
+
+        supplier_module = types.SimpleNamespace(get_best_part_data=fake_get_best)
+        with patch.dict(sys.modules, {"integrations.supplier_aggregator": supplier_module}):
+            _, result = funnel._enrich_one(
+                0,
+                {"mpn": "LM358DR", "quantity": 1, "manufacturer": "Analog Devices"},
+            )
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["lifecycle"], "Unverified")
+        self.assertEqual(result["risk"], "Needs verification")
+        self.assertEqual(result["manufacturer"], "")
         self.assertIsNone(result["stock"])
 
     def test_email_link_uses_existing_verified_callback_without_password(self):

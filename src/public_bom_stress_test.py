@@ -166,7 +166,9 @@ def _enrich_one(index: int, row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     from integrations.supplier_aggregator import get_best_part_data
     from src.risk_engine import calculate_risk
 
-    part = get_best_part_data(row["mpn"])
+    # Pass the BOM manufacturer so aggregator identity matching can reject
+    # conflicting or unverifiable supplier brands instead of verifying the wrong hit.
+    part = get_best_part_data(row["mpn"], str(row.get("manufacturer") or ""))
     verified = bool(part.get("supplier_data_verified"))
     try:
         lead_time = float(part.get("lead_time_weeks")) if verified else None
@@ -309,49 +311,34 @@ def claim_verification_send(
     now: datetime | None = None,
     cooldown_seconds: int = VERIFICATION_RESEND_COOLDOWN_SECONDS,
 ) -> bool:
-    """Claim a verification-email send slot for this report/email.
+    """Atomically claim a verification-email send slot for this report/email.
 
-    Returns True only when this caller wins the slot (never sent, or cooldown
-    elapsed). Repeat POSTs lose the claim and must not call the mailer.
+    Uses the Postgres ``cadivor_claim_public_bom_verification`` RPC so only one
+    concurrent request wins during the cooldown window. Returns True only for
+    the winning caller; losers must not call the mailer.
+
+    ``now`` is accepted for test clocks but the durable claim timestamp is
+    assigned inside the database transaction.
     """
+    del now  # DB clock is authoritative for the atomic claim.
     email = normalize_email_address(address)
-    moment = now or datetime.now(timezone.utc)
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
-    cutoff = moment - timedelta(seconds=max(0, int(cooldown_seconds)))
-    stamp = moment.isoformat()
     try:
-        lead = (
-            _service_client()
-            .table("cadivor_public_bom_leads")
-            .select("report_id,work_email,verification_sent_at")
-            .eq("report_id", report_id)
-            .eq("work_email", email)
-            .single()
-            .execute()
-        ).data
-        if not lead:
-            raise StressTestError("This report is no longer available.")
-        prior = lead.get("verification_sent_at")
-        if prior:
-            try:
-                prior_dt = datetime.fromisoformat(str(prior).replace("Z", "+00:00"))
-                if prior_dt.tzinfo is None:
-                    prior_dt = prior_dt.replace(tzinfo=timezone.utc)
-                if prior_dt > cutoff:
-                    return False
-            except ValueError:
-                return False
         response = (
             _service_client()
-            .table("cadivor_public_bom_leads")
-            .update({"verification_sent_at": stamp})
-            .eq("report_id", report_id)
-            .eq("work_email", email)
-            .select("report_id")
+            .rpc(
+                "cadivor_claim_public_bom_verification",
+                {
+                    "p_report_id": report_id,
+                    "p_work_email": email,
+                    "p_cooldown_seconds": int(max(0, cooldown_seconds)),
+                },
+            )
             .execute()
         )
-        return bool(response.data)
+        claimed = response.data
+        if isinstance(claimed, list):
+            claimed = claimed[0] if claimed else False
+        return claimed is True
     except StressTestError:
         raise
     except Exception:

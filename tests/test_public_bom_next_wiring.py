@@ -47,6 +47,9 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertIn('request.headers.get("x-cadivor-visitor")', proxy)
         self.assertIn('"X-Cadivor-Visitor": visitorHeader(request)', proxy)
         self.assertIn("process.env.CADIVOR_API_BASE", proxy)
+        self.assertIn("readPublicBomAuditForm", proxy)
+        self.assertIn("readBodyWithByteLimit", proxy)
+        self.assertNotIn("Content-Length is required", proxy)
         self.assertLess(
             proxy.index("process.env.CADIVOR_API_BASE"),
             proxy.index("process.env.NEXT_PUBLIC_API_BASE"),
@@ -96,6 +99,15 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertIn(".catch(", failure_chunk)
         self.assertIn("setStatus(null)", failure_chunk)
         self.assertIn("setStatusResolved(true)", page)
+
+    def test_browser_smoke_script_targets_next_app_not_cloudflare_pages(self):
+        smoke = (ROOT / "apps/web/scripts/public_bom_browser_smoke.mjs").read_text()
+        self.assertIn("PUBLIC_BOM_APP_PREVIEW_URL", smoke)
+        self.assertIn("/public-bom-audit", smoke)
+        self.assertIn("public-bom-status-loading", smoke)
+        self.assertIn("public-bom-status-error", smoke)
+        self.assertIn("public-bom-run-audit", smoke)
+        self.assertNotIn("cadivor.pages.dev", smoke)
 
     def test_api_routes_registered_without_auth_context(self):
         main = (ROOT / "apps/api/main.py").read_text()
