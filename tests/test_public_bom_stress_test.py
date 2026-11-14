@@ -277,14 +277,18 @@ class PublicBomStressTest(unittest.TestCase):
         fake = FakeUpdate()
         calls = []
 
-        def reserve(_):
+        def reserve(*_args, **_kwargs):
             calls.append("reserve")
             return "00000000-0000-0000-0000-000000000000"
 
+        def claim_budget(rows):
+            calls.append(("budget", rows))
+
         def enrich(index, row):
             self.assertEqual(calls[0], "reserve")
+            self.assertEqual(calls[1], ("budget", 5))
             return index, {
-                **row, "risk": "High" if index >= 5 else "Low",
+                **row, "risk": "Low",
                 "verified": True, "risk_reasons": [f"private-evidence-{index}"],
                 "lifecycle": "Active", "stock": 7, "lead_time_weeks": 1.0,
                 "supplier_count": 2, "sources": "DigiKey, Mouser",
@@ -292,16 +296,31 @@ class PublicBomStressTest(unittest.TestCase):
 
         csv = ("MPN,Qty\n" + "".join(f"PART{i},1\n" for i in range(10))).encode()
         with patch.object(funnel, "enabled", return_value=True), \
+             patch.object(funnel, "turnstile_enabled", return_value=False), \
              patch.object(funnel, "visitor_hash", return_value="f" * 64), \
              patch.object(funnel, "_reserve", side_effect=reserve), \
+             patch.object(funnel, "_claim_enrichment_budget", side_effect=claim_budget), \
              patch.object(funnel, "_service_client", return_value=fake), \
              patch.object(funnel, "_enrich_one", side_effect=enrich):
             teaser = funnel.run_audit("prototype.csv", csv, "signed")
         self.assertEqual(len(teaser["preview"]), 5)
-        self.assertEqual(teaser["remaining_high_risk"], 5)
+        # Remaining rows are pending stubs — no invented high-risk counts.
+        self.assertEqual(teaser["remaining_count"], 5)
+        self.assertEqual(teaser["remaining_high_risk"], 0)
+        self.assertEqual(teaser["remaining_pending"], 5)
         self.assertEqual(len(fake.saved["results"]), 10)
-        self.assertNotIn("PART5", str(teaser))
+        self.assertEqual(fake.saved["preview_enriched_count"], 5)
+        self.assertTrue(all(
+            fake.saved["results"][i].get("enrichment_pending") for i in range(5, 10)
+        ))
+        self.assertEqual(sum(1 for _ in calls if _ == "reserve" or (isinstance(_, tuple) and _[0] == "budget")), 2)
+        self.assertNotIn("PART5", str(teaser["preview"]))
         self.assertNotIn("private-evidence-5", str(teaser))
+        # Only the first five rows hit supplier enrichment.
+        self.assertEqual(
+            sum(1 for row in fake.saved["results"] if not row.get("enrichment_pending")),
+            5,
+        )
 
     def test_full_results_require_a_confirmed_supabase_identity_with_matching_email(self):
         class FakeQuery:

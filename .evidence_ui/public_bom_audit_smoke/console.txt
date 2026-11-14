@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "results": {
+    "base": "http://127.0.0.1:13017",
+    "statusLoadingSeen": true,
+    "statusEnabledUpload": true,
+    "auditUploadOk": true,
+    "leadSubmitOk": true,
+    "statusErrorPath": true,
+    "anonymousTurnstileBlocksSubmit": true,
+    "qaSessionSubmitsWithoutToken": true,
+    "normalSignedInStillNeedsTurnstile": true,
+    "clientQaFlagDoesNotBypass": true
+  }
+}

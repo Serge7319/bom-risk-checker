@@ -18,6 +18,7 @@ export type PublicBomPreviewRow = {
   lifecycle_evidence_summary?: string;
   risk_reasons?: string[];
   checked_at?: string;
+  enrichment_pending?: boolean;
 };
 
 export type PublicBomAuditReport = {
@@ -27,6 +28,10 @@ export type PublicBomAuditReport = {
   remaining_count: number;
   remaining_high_risk: number;
   remaining_unverified: number;
+  remaining_pending?: number;
+  preview_enriched_count?: number;
+  qa_mode?: boolean;
+  full_enriched?: boolean;
 };
 
 export type PublicBomStatus = {
@@ -35,6 +40,10 @@ export type PublicBomStatus = {
   preview_rows: number;
   max_rows: number;
   max_bytes: number;
+  turnstile_required?: boolean;
+  /** Server-verified confirmed allowlisted QA session only. Never a client flag. */
+  qa_verified?: boolean;
+  daily_enriched_row_limit?: number;
 };
 
 export type PublicBomVerifiedReport = {
@@ -43,6 +52,10 @@ export type PublicBomVerifiedReport = {
   row_count?: number;
   results: PublicBomPreviewRow[];
   created_at?: string;
+  full_enriched?: boolean;
+  full_enriched_at?: string;
+  qa_mode?: boolean;
+  preview_enriched_count?: number;
 };
 
 export const PUBLIC_BOM_STRESS_FLAG = "cadivor_stress_report";
@@ -69,23 +82,75 @@ async function readError(res: Response): Promise<string> {
 }
 
 /** Same-origin Next route handlers forward the Cloudflare visitor header. */
-export async function fetchPublicBomStatus(): Promise<PublicBomStatus> {
-  const res = await fetch("/api/public/bom-stress/status", { method: "GET" });
+export async function fetchPublicBomStatus(
+  accessToken?: string | null,
+): Promise<PublicBomStatus> {
+  const headers: Record<string, string> = {};
+  const token = String(accessToken || "").trim();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch("/api/public/bom-stress/status", {
+    method: "GET",
+    headers,
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error(await readError(res));
   return res.json() as Promise<PublicBomStatus>;
 }
 
 export async function runPublicBomAudit(
   file: File,
+  options?: { turnstileToken?: string | null; accessToken?: string | null },
 ): Promise<PublicBomAuditReport> {
   const body = new FormData();
   body.append("file", file, file.name);
+  const token = String(options?.turnstileToken || "").trim();
+  if (token) body.append("cf-turnstile-response", token);
+  const headers: Record<string, string> = {};
+  const accessToken = String(options?.accessToken || "").trim();
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   const res = await fetch("/api/public/bom-stress/audit", {
     method: "POST",
+    headers,
     body,
   });
   if (!res.ok) throw new Error(await readError(res));
   return res.json() as Promise<PublicBomAuditReport>;
+}
+
+/** Finish deferred supplier lookups after confirmed email ownership. */
+export async function completePublicBomAudit(
+  accessToken: string,
+  reportId?: string | null,
+): Promise<PublicBomVerifiedReport> {
+  const res = await fetch("/api/public/bom-stress/complete", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      report_id: normalizeStressReportId(reportId || "") || undefined,
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  const payload = (await res.json()) as {
+    ok?: boolean;
+    report?: PublicBomVerifiedReport;
+  };
+  if (!payload.report) throw new Error("Verified public audit not found.");
+  return payload.report;
+}
+
+export function verifiedReportExportHref(
+  reportId?: string | null,
+  format: "csv" | "xlsx" = "csv",
+): string {
+  const params = new URLSearchParams({ format });
+  const safeId = normalizeStressReportId(reportId || "");
+  if (safeId) params.set("report_id", safeId);
+  return `/api/public/bom-stress/verified-report/export?${params.toString()}`;
 }
 
 export async function requestPublicBomFullReport(input: {

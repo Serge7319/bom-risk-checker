@@ -6,6 +6,8 @@
     "liveOtp": false,
     "base": "http://127.0.0.1:13017",
     "authorizedVisible": true,
+    "completedRemaining": true,
+    "downloadCsv": true,
     "crossUserHidden": true,
     "reopenAfterReload": true
   }
