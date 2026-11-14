@@ -15,10 +15,19 @@ const STRIP_PARAM_KEYS = [
   "token_hash",
   "type",
   "email-confirmed",
+  "cadivor_stress_report",
   "error",
   "error_code",
   "error_description",
 ] as const;
+
+export const STRESS_REPORT_QUERY_FLAG = "cadivor_stress_report";
+
+/** True when the confirmation URL is for the public BOM audit unlock path. */
+export function stressReportRequested(search: URLSearchParams): boolean {
+  const value = (search.get(STRESS_REPORT_QUERY_FLAG) || "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
 
 export type SignupConfirmParse =
   | { kind: "none" }
@@ -67,7 +76,13 @@ export function stripSignupConfirmParams(href?: string): string {
 }
 
 export type VerifySignupEmailResult =
-  | { ok: true; email?: string; sessionReady: boolean }
+  | {
+      ok: true;
+      email?: string;
+      sessionReady: boolean;
+      accessToken?: string;
+      refreshToken?: string;
+    }
   | { ok: false; message: string };
 
 type VerifyOtpClient = {
@@ -78,7 +93,10 @@ type VerifyOtpClient = {
     }) => Promise<{
       data: {
         user: { email?: string | null } | null;
-        session: unknown;
+        session: {
+          access_token?: string;
+          refresh_token?: string;
+        } | null;
       };
       error: { message?: string } | null;
     }>;
@@ -102,10 +120,14 @@ export async function verifySignupEmail(
     if (error || !data.user) {
       return { ok: false, message: SIGNUP_CONFIRM_EXPIRED_MESSAGE };
     }
+    const accessToken = data.session?.access_token || undefined;
+    const refreshToken = data.session?.refresh_token || undefined;
     return {
       ok: true,
       email: data.user.email || undefined,
-      sessionReady: Boolean(data.session),
+      sessionReady: Boolean(data.session?.access_token),
+      accessToken,
+      refreshToken,
     };
   } catch {
     return { ok: false, message: SIGNUP_CONFIRM_EXPIRED_MESSAGE };

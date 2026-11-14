@@ -67,7 +67,8 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True})
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path.startswith("/public/bom-stress/status"):
+        path = self.path.split("?", 1)[0]
+        if path.startswith("/public/bom-stress/status"):
             self._json(
                 {
                     "ok": True,
@@ -75,6 +76,31 @@ class Handler(BaseHTTPRequestHandler):
                     "preview_rows": 5,
                     "max_rows": 30,
                     "max_bytes": 1_000_000,
+                }
+            )
+            return
+        if path.startswith("/public/bom-stress/verified-report"):
+            auth = self.headers.get("Authorization") or ""
+            if not auth.lower().startswith("bearer "):
+                self._json({"detail": "Missing bearer token"}, 401)
+                return
+            token = auth.split(" ", 1)[1].strip()
+            if token == "cross-user-token":
+                self._json({"detail": "Verified public audit not found."}, 404)
+                return
+            if token != "owner-token":
+                self._json({"detail": "Unauthorized"}, 401)
+                return
+            self._json(
+                {
+                    "ok": True,
+                    "report": {
+                        "id": "preview-report-1",
+                        "filename": "preview-bom.csv",
+                        "row_count": 2,
+                        "created_at": "2026-11-14T00:00:00+00:00",
+                        "results": REPORT["preview"],
+                    },
                 }
             )
             return

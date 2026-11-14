@@ -387,6 +387,7 @@ def test_public_bom_audit_pytest_suites_in_existing_ci_gate():
         "tests/test_public_bom_next_wiring.py",
         "tests/test_public_bom_upload_limit.py",
         "tests/test_public_bom_stress_test.py",
+        "tests/test_public_bom_verified_report_api.py",
     ]
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", *targets, "-q", "--tb=line"],

@@ -48,6 +48,7 @@ function PublicBomAuditInner() {
   const [email, setEmail] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [pendingEmail, setPendingEmail] = useState("");
+  const [verificationSent, setVerificationSent] = useState(true);
   const [leadBusy, setLeadBusy] = useState(false);
   const [leadError, setLeadError] = useState("");
 
@@ -106,6 +107,7 @@ function PublicBomAuditInner() {
         source: leadSource,
       });
       setPendingEmail(result.email);
+      setVerificationSent(result.verification_sent !== false);
     } catch (err) {
       setLeadError(
         err instanceof Error ? err.message : "Could not send the verification link.",
@@ -120,6 +122,7 @@ function PublicBomAuditInner() {
     setFile(null);
     setError("");
     setPendingEmail("");
+    setVerificationSent(true);
     setLeadError("");
     setEmail("");
     setAcceptedTerms(false);
@@ -323,10 +326,14 @@ function PublicBomAuditInner() {
             )}
 
             {pendingEmail ? (
-              <p className="cv-success-note" role="status">
-                Check {pendingEmail} for your Cadivor verification email. Open
-                its link to confirm your address, then continue to Reports for
-                the complete audit.
+              <p
+                className="cv-success-note"
+                role="status"
+                data-testid="public-bom-lead-status"
+              >
+                {verificationSent
+                  ? `Check ${pendingEmail} for your Cadivor verification email. Open its link to confirm your address, then continue to Reports for the complete audit.`
+                  : `A verification email was already sent recently to ${pendingEmail}. Check that inbox (and spam), or wait before requesting another link. Your complete audit still unlocks in Reports after you confirm.`}
               </p>
             ) : (
               <form className="cv-public-stress-lead" onSubmit={onLead}>

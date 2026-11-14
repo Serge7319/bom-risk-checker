@@ -2,19 +2,17 @@
 
 **Not Cloudflare Pages.** Marketing `*.cadivor.pages.dev` is out of scope for this check.
 
+## Stub upload / lead smoke (signed-out)
+
 | Field | Value |
 | --- | --- |
+| Kind | **stub-api upload + lead** |
 | App preview | `http://127.0.0.1:13017` (local Next.js `next dev`) |
 | Stub API | `http://127.0.0.1:18080` (`scripts/public_bom_preview_api.py`) |
 | Runner | `apps/web/scripts/public_bom_browser_smoke.mjs` (Playwright) |
 | Result | **PASS** |
-
-Checks exercised (signed-out):
-
-- status loading visible, then enabled upload
-- multipart BOM upload → preliminary audit
-- lead submission → verification email confirmation copy
-- forced status `503` → unavailable/error UI, upload hidden
+| Proves | status → upload → preliminary audit → lead email-request UI |
+| Does **not** prove | email confirmation, verified-report ownership, Reports handoff |
 
 ```json
 {
@@ -29,3 +27,32 @@ Checks exercised (signed-out):
   }
 }
 ```
+
+## Report-delivery smoke (authenticated handoff)
+
+| Field | Value |
+| --- | --- |
+| Kind | **report-delivery** (stub bearer gate; not live Supabase OTP) |
+| App preview | `http://127.0.0.1:13017` |
+| Stub API | bearer-gated `/public/bom-stress/verified-report` |
+| Runner | `apps/web/scripts/public_bom_report_delivery_smoke.mjs` |
+| Result | **PASS** |
+| Proves | owner token loads full audit in Reports; cross-user denied; reopen after reload via cache + re-fetch |
+| Does **not** prove | live OTP email delivery / Supabase confirm click |
+
+```json
+{
+  "ok": true,
+  "results": {
+    "kind": "report-delivery",
+    "stubApi": true,
+    "liveOtp": false,
+    "base": "http://127.0.0.1:13017",
+    "authorizedVisible": true,
+    "crossUserHidden": true,
+    "reopenAfterReload": true
+  }
+}
+```
+
+Live OTP confirmation remains an environment check outside this stub smoke.

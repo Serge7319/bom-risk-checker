@@ -1897,6 +1897,31 @@ async def public_bom_stress_lead(request: Request) -> JSONResponse:
     )
 
 
+async def public_bom_stress_verified_get(request: Request) -> JSONResponse:
+    """Return the full public audit only for the verified session email owner.
+
+    Authorization uses the bearer JWT → Supabase user email (via
+    ``verified_report``). Caller-supplied email query/body values are ignored.
+    """
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    token = _bearer_token(request)
+    # Explicitly ignore any client-supplied email; ownership is token-derived.
+    _ = request.query_params.get("email")
+    report_id = str(request.query_params.get("report_id") or "").strip() or None
+    try:
+        from src.public_bom_stress_test import verified_report
+
+        report = await run_in_threadpool(
+            verified_report, token, report_id=report_id
+        )
+    except Exception:  # noqa: BLE001
+        logging.exception("public_bom_stress_verified_failed")
+        return _json({"detail": "Verified public audit unavailable."}, 503)
+    if not report:
+        return _json({"detail": "Verified public audit not found."}, 404)
+    return _json({"ok": True, "report": report})
 
 
 async def monitoring_refresh_post(request: Request) -> JSONResponse:
@@ -2913,6 +2938,11 @@ app = Starlette(
         Route("/public/bom-stress/status", public_bom_stress_status, methods=["GET"]),
         Route("/public/bom-stress/audit", public_bom_stress_audit, methods=["POST"]),
         Route("/public/bom-stress/lead", public_bom_stress_lead, methods=["POST"]),
+        Route(
+            "/public/bom-stress/verified-report",
+            public_bom_stress_verified_get,
+            methods=["GET"],
+        ),
     ],
     middleware=[
         Middleware(

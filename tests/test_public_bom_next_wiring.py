@@ -109,6 +109,39 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertIn("public-bom-run-audit", smoke)
         self.assertNotIn("cadivor.pages.dev", smoke)
 
+    def test_verified_report_handoff_wiring(self):
+        main = (ROOT / "apps/api/main.py").read_text()
+        login = (ROOT / "apps/web/src/app/login/page.tsx").read_text()
+        reports = (ROOT / "apps/web/src/app/reports/page.tsx").read_text()
+        middleware = (ROOT / "apps/web/src/middleware.ts").read_text()
+        page = (ROOT / "apps/web/src/app/public-bom-audit/page.tsx").read_text()
+        proxy = (
+            ROOT / "apps/web/src/app/api/public/bom-stress/verified-report/route.ts"
+        ).read_text()
+        delivery = (
+            ROOT / "apps/web/scripts/public_bom_report_delivery_smoke.mjs"
+        ).read_text()
+        self.assertIn('/public/bom-stress/verified-report', main)
+        self.assertIn("verified_report", main)
+        verified_handler = main[main.index("public_bom_stress_verified_get") :][
+            :1800
+        ]
+        self.assertIn("_auth_context", verified_handler)
+        self.assertIn("markStressReportPending", login)
+        self.assertIn("/reports?public_bom_stress=1", login)
+        self.assertIn("public-bom-verified-report", reports)
+        self.assertIn("fetchVerifiedPublicBomReport", reports)
+        self.assertIn("cacheVerifiedPublicBomReport", reports)
+        self.assertIn("cadivor_signup_confirm", middleware)
+        self.assertIn("verification_sent", page)
+        self.assertIn("already sent recently", page)
+        self.assertIn("params.delete(\"email\")", proxy)
+        self.assertIn("Authorization: auth", proxy)
+        self.assertIn("public-bom-verified-table", delivery)
+        self.assertIn("report-delivery", delivery)
+        self.assertIn("stubApi: true", delivery)
+        self.assertIn("liveOtp: false", delivery)
+
     def test_api_routes_registered_without_auth_context(self):
         main = (ROOT / "apps/api/main.py").read_text()
         for path in (
