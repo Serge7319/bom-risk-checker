@@ -1784,6 +1784,145 @@ async def compliance_pack_get(request: Request) -> JSONResponse:
     return _json(compliance_packs.build_pack(report, pack_type))
 
 
+def _visitor_header(request: Request) -> str:
+    """Cloudflare Worker signed identity for anonymous public-audit rate limits."""
+    for name, value in request.headers.items():
+        if str(name).lower() == "x-cadivor-visitor":
+            return str(value or "")
+    return ""
+
+
+async def public_bom_stress_status(_: Request) -> JSONResponse:
+    """Unauthenticated feature flag for the marketing free 5-part audit."""
+    from src.public_bom_stress_test import MAX_BYTES, MAX_ROWS, PREVIEW_ROWS, enabled
+
+    return _json(
+        {
+            "ok": True,
+            "enabled": bool(enabled()),
+            "preview_rows": PREVIEW_ROWS,
+            "max_rows": MAX_ROWS,
+            "max_bytes": MAX_BYTES,
+        }
+    )
+
+
+async def public_bom_stress_audit(request: Request) -> JSONResponse:
+    """Anonymous BOM teaser: first five enriched rows only; no account required."""
+    from src.public_bom_stress_test import (
+        MAX_BYTES,
+        StressTestError,
+        enabled,
+        run_audit,
+    )
+
+    if not enabled():
+        return _json(
+            {"detail": "The free BOM stress test is being prepared. Please check back soon."},
+            503,
+        )
+    try:
+        form = await request.form(max_files=1, max_fields=8)
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid multipart upload."}, 400)
+    upload = form.get("file")
+    if upload is None or not callable(getattr(upload, "read", None)):
+        return _json({"detail": "Missing file"}, 400)
+    filename = str(getattr(upload, "filename", None) or "bom.csv")
+    payload = await upload.read(MAX_BYTES + 1)
+    if len(payload) > MAX_BYTES:
+        return _json({"detail": "Upload a CSV or XLSX BOM smaller than 1 MB."}, 413)
+    try:
+        report = await run_in_threadpool(
+            run_audit, filename, payload, _visitor_header(request)
+        )
+    except StressTestError as exc:
+        from src.public_bom_stress_test import PUBLIC_BOM_LIMIT_MESSAGE
+
+        status = 429 if str(exc) == PUBLIC_BOM_LIMIT_MESSAGE else 400
+        return _json({"detail": str(exc)}, status)
+    except Exception:  # noqa: BLE001
+        logging.exception("public_bom_stress_audit_failed")
+        return _json({"detail": "The audit could not be completed. Please try later."}, 503)
+    return _json({"ok": True, **report})
+
+
+async def public_bom_stress_lead(request: Request) -> JSONResponse:
+    """Capture email + send verification link for the locked remaining rows."""
+    from src.public_bom_stress_test import (
+        StressTestError,
+        enabled,
+        lead_source_from_query,
+        request_full_report,
+    )
+
+    if not enabled():
+        return _json(
+            {"detail": "The free BOM stress test is being prepared. Please check back soon."},
+            503,
+        )
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not body.get("accepted_terms"):
+        return _json(
+            {"detail": "Accept the Terms of Service and Privacy Policy to continue."},
+            400,
+        )
+    report_id = str(body.get("report_id") or "").strip()
+    email = str(body.get("email") or "").strip()
+    if not report_id or not email:
+        return _json({"detail": "Report id and email are required."}, 400)
+    source = str(body.get("source") or "").strip()
+    if not source:
+        source = lead_source_from_query(request.query_params)
+    try:
+        address, verification_sent = await run_in_threadpool(
+            request_full_report,
+            report_id,
+            email,
+            _visitor_header(request),
+            source=source,
+        )
+    except StressTestError as exc:
+        return _json({"detail": str(exc)}, 400)
+    except Exception:  # noqa: BLE001
+        logging.exception("public_bom_stress_lead_failed")
+        return _json({"detail": "Could not send the verification link. Please try again later."}, 503)
+    return _json(
+        {"ok": True, "email": address, "verification_sent": bool(verification_sent)}
+    )
+
+
+async def public_bom_stress_verified_get(request: Request) -> JSONResponse:
+    """Return the full public audit only for the verified session email owner.
+
+    Authorization uses the bearer JWT → Supabase user email (via
+    ``verified_report``). Caller-supplied email query/body values are ignored.
+    """
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    token = _bearer_token(request)
+    # Explicitly ignore any client-supplied email; ownership is token-derived.
+    _ = request.query_params.get("email")
+    from src.public_bom_stress_test import normalize_stress_report_id, verified_report
+
+    # Selector only — verified_report still requires the session email owns it.
+    report_id = normalize_stress_report_id(request.query_params.get("report_id"))
+    try:
+        report = await run_in_threadpool(
+            verified_report, token, report_id=report_id
+        )
+    except Exception:  # noqa: BLE001
+        logging.exception("public_bom_stress_verified_failed")
+        return _json({"detail": "Verified public audit unavailable."}, 503)
+    if not report:
+        return _json({"detail": "Verified public audit not found."}, 404)
+    return _json({"ok": True, "report": report})
 
 
 async def monitoring_refresh_post(request: Request) -> JSONResponse:
@@ -2797,6 +2936,14 @@ app = Starlette(
         Route("/integrations/connectors/sync", connectors_sync_post, methods=["POST"]),
         Route("/integrations/service-readiness", service_readiness_get, methods=["GET"]),
         Route("/compliance/{pack_type}", compliance_pack_get, methods=["GET"]),
+        Route("/public/bom-stress/status", public_bom_stress_status, methods=["GET"]),
+        Route("/public/bom-stress/audit", public_bom_stress_audit, methods=["POST"]),
+        Route("/public/bom-stress/lead", public_bom_stress_lead, methods=["POST"]),
+        Route(
+            "/public/bom-stress/verified-report",
+            public_bom_stress_verified_get,
+            methods=["GET"],
+        ),
     ],
     middleware=[
         Middleware(

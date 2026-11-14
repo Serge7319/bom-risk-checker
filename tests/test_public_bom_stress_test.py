@@ -21,6 +21,12 @@ class PublicBomStressTest(unittest.TestCase):
         homepage = (root / "marketing-web/index.html").read_text()
         script = (root / "marketing-web/app.js").read_text()
         entrypoint = (root / "streamlit_app.py").read_text()
+        next_page = (root / "apps/web/src/app/public-bom-audit/page.tsx").read_text()
+        next_middleware = (root / "apps/web/src/middleware.ts").read_text()
+        next_audit_route = (
+            root / "apps/web/src/app/api/public/bom-stress/audit/route.ts"
+        ).read_text()
+        api_main = (root / "apps/api/main.py").read_text()
         self.assertIn('id="bomStressTestFrame"', homepage)
         self.assertIn('id="bomStressTestSection"', homepage)
         self.assertNotIn('id="bomStressTestFullPage"', homepage)
@@ -37,6 +43,16 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertIn("params.set(key, value.slice(0, 80))", script)
         self.assertLess(entrypoint.index('st.query_params.get("public"'),
                         entrypoint.index("ensure_authenticated_or_stop()"))
+        # Next.js production app restores the marketing iframe path without login.
+        self.assertIn('pathname = "/public-bom-audit"', next_middleware)
+        self.assertIn('public") || "").trim().toLowerCase() !== "stress"', next_middleware)
+        self.assertIn('data-testid="public-bom-audit"', next_page)
+        self.assertNotIn("useRequireSession", next_page)
+        self.assertIn("cv-stress-site-header", next_page)
+        self.assertIn("Email my full report", next_page)
+        self.assertIn("proxyPublicBomAudit", next_audit_route)
+        self.assertIn('Route("/public/bom-stress/audit"', api_main)
+        self.assertIn("X-Cadivor-Visitor", (root / "apps/web/src/lib/publicBomProxy.ts").read_text())
 
     def test_direct_audit_keeps_brand_without_distraction_links_or_embedded_header(self):
         rendered = []
@@ -333,14 +349,70 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertIn(("work_email", "engineer@company.com"), query.filters)
 
     def test_supplier_outage_is_unverified_not_a_fabricated_high_risk_dependency(self):
-        supplier_module = types.SimpleNamespace(get_best_part_data=lambda _: {
-            "supplier_data_verified": False, "stock_total": 0,
-            "lifecycle_status": "Unknown", "supplier_count": 0,
-        })
+        supplier_module = types.SimpleNamespace(
+            get_best_part_data=lambda mpn, manufacturer="": {
+                "supplier_data_verified": False, "stock_total": 0,
+                "lifecycle_status": "Unknown", "supplier_count": 0,
+            }
+        )
         with patch.dict(sys.modules, {"integrations.supplier_aggregator": supplier_module}):
             _, result = funnel._enrich_one(0, {"mpn": "PART1", "quantity": 2})
         self.assertFalse(result["verified"])
         self.assertEqual(result["risk"], "Needs verification")
+        self.assertIsNone(result["stock"])
+
+    def test_enrich_one_passes_bom_manufacturer_into_get_best_part_data(self):
+        seen = []
+
+        def fake_get_best(mpn, manufacturer=""):
+            seen.append((mpn, manufacturer))
+            return {
+                "supplier_data_verified": True,
+                "manufacturer": "Texas Instruments",
+                "manufacturer_part_number": "LM358DR",
+                "lifecycle_status": "Active",
+                "total_market_stock": 100,
+                "stock_data_sources": ["DigiKey"],
+                "stock_data_complete": True,
+                "lead_time_weeks": 2,
+                "supplier_count": 1,
+                "sources_available": "DigiKey",
+                "provider_health": {"summary_message": "1 of 1 sources responded"},
+            }
+
+        supplier_module = types.SimpleNamespace(get_best_part_data=fake_get_best)
+        with patch.dict(sys.modules, {"integrations.supplier_aggregator": supplier_module}):
+            _, result = funnel._enrich_one(
+                0,
+                {"mpn": "LM358DR", "quantity": 4, "manufacturer": "Texas Instruments"},
+            )
+        self.assertEqual(seen, [("LM358DR", "Texas Instruments")])
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["manufacturer"], "Texas Instruments")
+
+    def test_enrich_one_conflicting_or_unverifiable_identity_stays_unverified(self):
+        def fake_get_best(mpn, manufacturer=""):
+            # Aggregator returns unverified when requested brand cannot be matched.
+            self.assertEqual(manufacturer, "Analog Devices")
+            return {
+                "supplier_data_verified": False,
+                "manufacturer": "Texas Instruments",
+                "manufacturer_part_number": mpn,
+                "lifecycle_status": "Active",
+                "total_market_stock": 999,
+                "supplier_count": 1,
+            }
+
+        supplier_module = types.SimpleNamespace(get_best_part_data=fake_get_best)
+        with patch.dict(sys.modules, {"integrations.supplier_aggregator": supplier_module}):
+            _, result = funnel._enrich_one(
+                0,
+                {"mpn": "LM358DR", "quantity": 1, "manufacturer": "Analog Devices"},
+            )
+        self.assertFalse(result["verified"])
+        self.assertEqual(result["lifecycle"], "Unverified")
+        self.assertEqual(result["risk"], "Needs verification")
+        self.assertEqual(result["manufacturer"], "")
         self.assertIsNone(result["stock"])
 
     def test_email_link_uses_existing_verified_callback_without_password(self):
@@ -350,13 +422,19 @@ class PublicBomStressTest(unittest.TestCase):
         supabase = types.SimpleNamespace(create_client=lambda *_: auth)
         callback = types.SimpleNamespace(
             signup_confirmation_redirect_url=lambda: "https://app.cadivor.com/?cadivor_signup_confirm=1")
+        report_id = "11111111-1111-4111-8111-111111111111"
         with patch.dict(sys.modules, {
             "supabase": supabase, "src.auth_signup_confirmation": callback,
         }), patch.object(funnel, "get_secret", return_value="configured"):
-            funnel.send_report_verification("Director@Company.com")
+            funnel.send_report_verification(
+                "Director@Company.com", report_id=report_id
+            )
         self.assertEqual(sent[0]["email"], "director@company.com")
         self.assertTrue(sent[0]["options"]["should_create_user"])
-        self.assertIn("cadivor_signup_confirm=1", sent[0]["options"]["email_redirect_to"])
+        redirect = sent[0]["options"]["email_redirect_to"]
+        self.assertIn("cadivor_signup_confirm=1", redirect)
+        self.assertIn("cadivor_stress_report=1", redirect)
+        self.assertIn(f"cadivor_stress_report_id={report_id}", redirect)
 
     def test_verified_email_callback_hands_off_to_reports_only_after_success(self):
         fake_st = types.ModuleType("streamlit")

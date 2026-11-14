@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "results": {
+    "kind": "report-delivery",
+    "stubApi": true,
+    "liveOtp": false,
+    "base": "http://127.0.0.1:13017",
+    "authorizedVisible": true,
+    "crossUserHidden": true,
+    "reopenAfterReload": true
+  }
+}

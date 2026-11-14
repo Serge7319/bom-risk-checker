@@ -6,11 +6,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   clearSession,
   fetchAuthConfig,
+  fetchMe,
   getSession,
   login,
   lookupInvitation,
   registerFromInvitation,
   setSession,
+  type Session,
 } from "@/lib/api";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
@@ -18,9 +20,16 @@ import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
 import {
   parseSignupConfirmParams,
   SIGNUP_CONFIRM_EXPIRED_MESSAGE,
+  stressReportIdFromSearch,
+  stressReportRequested,
   stripSignupConfirmParams,
   verifySignupEmail,
 } from "@/lib/signupEmailConfirm";
+import {
+  consumeStressReportPending,
+  markStressReportPending,
+  reportsHandoffHref,
+} from "@/lib/publicBomStress";
 
 type InvitePreview = {
   email: string;
@@ -64,9 +73,13 @@ function LoginInner() {
     if (stagedOnce.current) return;
     stagedOnce.current = true;
 
-    const parsed = parseSignupConfirmParams(
-      new URLSearchParams(window.location.search),
-    );
+    const params = new URLSearchParams(window.location.search);
+    // Stage before stripping so OTP redirects keep the public-audit unlock intent
+    // and the specific report_id selector from the verification email link.
+    if (stressReportRequested(params)) {
+      markStressReportPending(stressReportIdFromSearch(params));
+    }
+    const parsed = parseSignupConfirmParams(params);
     if (parsed.kind === "ready") {
       stagedTokenHash.current = parsed.tokenHash;
       setConfirmPhase("ready");
@@ -204,12 +217,46 @@ function LoginInner() {
         return;
       }
       if (result.email) setEmail(result.email);
+
+      const stressHandoff = consumeStressReportPending();
+      if (stressHandoff.pending && result.sessionReady && result.accessToken) {
+        try {
+          const me = await fetchMe(result.accessToken);
+          const session: Session = {
+            access_token: result.accessToken,
+            refresh_token: result.refreshToken,
+            email: me.email || result.email || "",
+            workspace: me.workspace,
+            workspace_id: me.workspace_id,
+            user_id: me.user_id,
+            plan: me.plan,
+            mode: me.mode,
+            trial_started_at: me.trial_started_at,
+            trial_ends_at: me.trial_ends_at,
+            trial_status: me.trial_status,
+            trial_days_remaining: me.trial_days_remaining,
+          };
+          await setSession(session);
+          router.replace(reportsHandoffHref(stressHandoff.reportId));
+          return;
+        } catch {
+          // Fall through to sign-in handoff if session bootstrap fails.
+          markStressReportPending(stressHandoff.reportId);
+        }
+      } else if (stressHandoff.pending) {
+        markStressReportPending(stressHandoff.reportId);
+      }
+
       setConfirmPhase("success");
       setConfirmMessage(
-        "Your email has been confirmed successfully. Sign in to access your workspace.",
+        stressHandoff.pending
+          ? "Your email has been confirmed. Sign in to open your complete BOM audit in Reports."
+          : "Your email has been confirmed successfully. Sign in to access your workspace.",
       );
       setNotice(
-        "Email confirmed. Sign in with this address to finish activating your workspace.",
+        stressHandoff.pending
+          ? "Email confirmed. Sign in to unlock your free BOM audit in Reports."
+          : "Email confirmed. Sign in with this address to finish activating your workspace.",
       );
     } finally {
       setConfirmBusy(false);
@@ -231,7 +278,12 @@ function LoginInner() {
     try {
       const session = await login(email, password);
       await setSession(session);
-      router.replace("/");
+      const stressHandoff = consumeStressReportPending();
+      router.replace(
+        stressHandoff.pending
+          ? reportsHandoffHref(stressHandoff.reportId)
+          : "/",
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

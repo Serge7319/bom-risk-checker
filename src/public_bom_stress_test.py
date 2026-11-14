@@ -28,8 +28,26 @@ PREVIEW_ROWS = 5
 MAX_XLSX_UNCOMPRESSED = 8_000_000
 VISITOR_HEADER = "X-Cadivor-Visitor"
 PUBLIC_BOM_LIMIT_MESSAGE = "This connection has used its two free BOM audits in the last 24 hours."
+VERIFICATION_RESEND_COOLDOWN_SECONDS = 15 * 60
+# Carried on the OTP email_redirect_to and confirmation handoff (selector only).
+STRESS_REPORT_ID_QUERY_PARAM = "cadivor_stress_report_id"
+
+
 class StressTestError(ValueError):
     """An actionable validation or availability error for the public funnel."""
+
+
+def normalize_stress_report_id(value: Any) -> str | None:
+    """Accept only UUID-shaped report ids for redirect/query selectors."""
+    text = str(value or "").strip()
+    if not text or len(text) > 64:
+        return None
+    try:
+        import uuid
+
+        return str(uuid.UUID(text))
+    except (TypeError, ValueError, AttributeError):
+        return None
 
 
 def enabled() -> bool:
@@ -165,7 +183,9 @@ def _enrich_one(index: int, row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     from integrations.supplier_aggregator import get_best_part_data
     from src.risk_engine import calculate_risk
 
-    part = get_best_part_data(row["mpn"])
+    # Pass the BOM manufacturer so aggregator identity matching can reject
+    # conflicting or unverifiable supplier brands instead of verifying the wrong hit.
+    part = get_best_part_data(row["mpn"], str(row.get("manufacturer") or ""))
     verified = bool(part.get("supplier_data_verified"))
     try:
         lead_time = float(part.get("lead_time_weeks")) if verified else None
@@ -301,25 +321,109 @@ def capture_lead(report_id: str, address: str, *, source: str = "homepage_stress
     return email
 
 
-def send_report_verification(address: str) -> None:
+def claim_verification_send(
+    report_id: str,
+    address: str,
+    *,
+    now: datetime | None = None,
+    cooldown_seconds: int = VERIFICATION_RESEND_COOLDOWN_SECONDS,
+) -> bool:
+    """Atomically claim a verification-email send slot for this report/email.
+
+    Uses the Postgres ``cadivor_claim_public_bom_verification`` RPC so only one
+    concurrent request wins during the cooldown window. Returns True only for
+    the winning caller; losers must not call the mailer.
+
+    ``now`` is accepted for test clocks but the durable claim timestamp is
+    assigned inside the database transaction.
+    """
+    del now  # DB clock is authoritative for the atomic claim.
+    email = normalize_email_address(address)
+    try:
+        response = (
+            _service_client()
+            .rpc(
+                "cadivor_claim_public_bom_verification",
+                {
+                    "p_report_id": report_id,
+                    "p_work_email": email,
+                    "p_cooldown_seconds": int(max(0, cooldown_seconds)),
+                },
+            )
+            .execute()
+        )
+        claimed = response.data
+        if isinstance(claimed, list):
+            claimed = claimed[0] if claimed else False
+        return claimed is True
+    except StressTestError:
+        raise
+    except Exception:
+        raise StressTestError("We could not save your request. Please try again.") from None
+
+
+def release_verification_claim(report_id: str, address: str) -> None:
+    """Clear a claimed send slot after a mailer failure so the user can retry."""
+    email = normalize_email_address(address)
+    try:
+        _service_client().table("cadivor_public_bom_leads").update({
+            "verification_sent_at": None,
+        }).eq("report_id", report_id).eq("work_email", email).execute()
+    except Exception:
+        return
+
+
+def request_full_report(
+    report_id: str,
+    address: str,
+    signed_header: str,
+    *,
+    source: str = "homepage_stress_test",
+) -> tuple[str, bool]:
+    """Validate visitor HMAC, capture the lead, and send at most one email per cooldown.
+
+    Returns ``(email, verification_sent)``. Does not send real mail in tests when
+    ``send_report_verification`` is mocked.
+    """
+    visitor_hash(signed_header)
+    email = capture_lead(report_id, address, source=source)
+    if not claim_verification_send(report_id, email):
+        return email, False
+    try:
+        send_report_verification(email, report_id=report_id)
+    except StressTestError:
+        release_verification_claim(report_id, email)
+        raise
+    return email, True
+
+
+def send_report_verification(address: str, *, report_id: str | None = None) -> None:
     """Provision/sign in by email link, using Cadivor's verified callback.
 
     The Supabase Magic Link email template must send TokenHash + type=email to
     `signup_confirmation_redirect_url()`; see the rollout document. No session
     is trusted until the existing callback verifies the token hash.
+
+    ``report_id`` is appended as a selector only; Reports still authorizes via
+    the confirmed session email before returning that BOM.
     """
     email = normalize_email_address(address)
+    safe_report_id = normalize_stress_report_id(report_id)
     try:
         from supabase import create_client
         from src.auth_signup_confirmation import signup_confirmation_redirect_url
+        from urllib.parse import urlencode
 
+        redirect = signup_confirmation_redirect_url() + "&cadivor_stress_report=1"
+        if safe_report_id:
+            redirect += "&" + urlencode({STRESS_REPORT_ID_QUERY_PARAM: safe_report_id})
         auth = create_client(get_secret("SUPABASE_URL", required=True),
                              get_secret("SUPABASE_KEY", required=True))
         auth.auth.sign_in_with_otp({
             "email": email,
             "options": {
                 "should_create_user": True,
-                "email_redirect_to": signup_confirmation_redirect_url() + "&cadivor_stress_report=1",
+                "email_redirect_to": redirect,
             },
         })
     except Exception:
@@ -327,7 +431,11 @@ def send_report_verification(address: str) -> None:
 
 
 def verified_report(access_token: str, *, report_id: str | None = None) -> dict[str, Any] | None:
-    """Authorization is rechecked against Supabase Auth, not an email form value."""
+    """Authorization is rechecked against Supabase Auth, not an email form value.
+
+    ``report_id`` selects which owned lead-captured audit to open. Ownership is
+    always the bearer session's confirmed email; a foreign id returns None.
+    """
     if not enabled() or not access_token:
         return None
     try:
@@ -338,14 +446,23 @@ def verified_report(access_token: str, *, report_id: str | None = None) -> dict[
         if not user or not getattr(user, "email_confirmed_at", None):
             return None
         email = normalize_email_address(getattr(user, "email", ""))
+        if not email:
+            return None
         cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        query = (_service_client().table("cadivor_public_bom_stress_tests")
-                 .select("id,filename,row_count,results,created_at")
-                 .eq("work_email", email).eq("status", "lead_captured")
-                 .gte("created_at", cutoff)
-                 .order("created_at", desc=True).limit(1))
-        if report_id:
-            query = query.eq("id", report_id)
+        selected_id = normalize_stress_report_id(report_id)
+        query = (
+            _service_client()
+            .table("cadivor_public_bom_stress_tests")
+            .select("id,filename,row_count,results,created_at")
+            .eq("work_email", email)
+            .eq("status", "lead_captured")
+            .gte("created_at", cutoff)
+        )
+        if selected_id:
+            # Selector only — still constrained by work_email above.
+            query = query.eq("id", selected_id).limit(1)
+        else:
+            query = query.order("created_at", desc=True).limit(1)
         rows = query.execute().data or []
         return rows[0] if rows else None
     except Exception:

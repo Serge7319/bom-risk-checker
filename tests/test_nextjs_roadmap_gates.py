@@ -370,3 +370,33 @@ def test_paid_promise_followup_pytest_suites_in_existing_ci_gate():
         "paid-promise follow-up pytest suites failed\n"
         f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
     )
+
+
+def test_public_bom_audit_pytest_suites_in_existing_ci_gate():
+    """Run anonymous public BOM audit suites from the disposable-Postgres CI step.
+
+    Keeps Next.js public-route coverage on PR heads without editing workflow YAML
+    when the OAuth token lacks the ``workflow`` scope.
+    """
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    targets = [
+        "tests/test_public_bom_stress_api.py",
+        "tests/test_public_bom_next_wiring.py",
+        "tests/test_public_bom_upload_limit.py",
+        "tests/test_public_bom_stress_test.py",
+        "tests/test_public_bom_verified_report_api.py",
+    ]
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", *targets, "-q", "--tb=line"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, (
+        "public BOM audit pytest suites failed\n"
+        f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    )

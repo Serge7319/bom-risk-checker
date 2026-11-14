@@ -149,6 +149,7 @@ def _clear_signup_confirm_query_params() -> None:
     for key in (
         SIGNUP_CONFIRM_CALLBACK_MARKER,
         "cadivor_stress_report",
+        "cadivor_stress_report_id",
         REPORT_PURCHASE_QUERY_PARAM,
         "token_hash",
         "type",
