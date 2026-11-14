@@ -152,7 +152,7 @@ def test_public_bom_stress_audit_returns_preview_only(client: TestClient):
         "remaining_unverified": 0,
     }
 
-    def fake_run(filename, payload, signed_header):
+    def fake_run(filename, payload, signed_header, **_kwargs):
         assert filename.endswith(".csv")
         assert payload.startswith(b"MPN")
         assert signed_header == "v1;signed"
@@ -183,6 +183,10 @@ def test_public_bom_stress_audit_returns_preview_only(client: TestClient):
         "remaining_count",
         "remaining_high_risk",
         "remaining_unverified",
+        "remaining_pending",
+        "preview_enriched_count",
+        "qa_mode",
+        "full_enriched",
     }
 
 

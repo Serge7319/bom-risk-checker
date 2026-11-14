@@ -64,7 +64,7 @@ class PublicBomNextWiringTests(unittest.TestCase):
         page = (ROOT / "apps/web/src/app/public-bom-audit/page.tsx").read_text()
         client = (ROOT / "apps/web/src/lib/publicBomStress.ts").read_text()
         self.assertNotIn("useRequireSession", page)
-        self.assertNotIn("getSession", page)
+        # getSession is optional (QA bearer); the page must not require a session.
         self.assertIn('data-testid="public-bom-audit"', page)
         self.assertIn("cv-stress-site-header", page)
         self.assertIn('fetch("/api/public/bom-stress/status"', client)
@@ -81,7 +81,9 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertIn('data-testid="public-bom-status-error"', page)
         self.assertIn('data-testid="public-bom-status-unavailable"', page)
         self.assertIn("STATUS_UNAVAILABLE_MESSAGE", page)
-        self.assertIn("disabled={!file || busy || !auditEnabled}", page)
+        self.assertIn("!file ||", page)
+        self.assertIn("!auditEnabled", page)
+        self.assertIn("turnstile_required", page)
         # Upload UI is gated on confirmed enabled=true, not merely "not disabled".
         self.assertIn("{auditEnabled && !report ? (", page)
         self.assertNotIn("{!disabled && !report ? (", page)
@@ -151,6 +153,18 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertIn("PUBLIC_BOM_STRESS_REPORT_ID_FLAG", helpers)
         self.assertIn("reportsHandoffHref", helpers)
         self.assertIn("STRESS_REPORT_ID_QUERY_FLAG", confirm)
+        self.assertIn("completePublicBomAudit", helpers)
+        self.assertIn("validate_turnstile", funnel)
+        self.assertIn("complete_audit", funnel)
+        self.assertIn("CADIVOR_PUBLIC_BOM_QA_EMAILS", funnel)
+        self.assertIn("DEFAULT_DAILY_ENRICHED_ROWS", funnel)
+        self.assertIn("/public/bom-stress/complete", main)
+        self.assertIn("TurnstileWidget", page)
+        migration = (
+            ROOT / "supabase/migrations/20261114_public_bom_abuse_protections.sql"
+        ).read_text()
+        self.assertIn("cadivor_claim_public_bom_enrichment_budget", migration)
+        self.assertIn("cadivor_reserve_public_bom_stress_test_qa", migration)
 
     def test_api_routes_registered_without_auth_context(self):
         main = (ROOT / "apps/api/main.py").read_text()

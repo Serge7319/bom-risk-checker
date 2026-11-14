@@ -1794,7 +1794,14 @@ def _visitor_header(request: Request) -> str:
 
 async def public_bom_stress_status(_: Request) -> JSONResponse:
     """Unauthenticated feature flag for the marketing free 5-part audit."""
-    from src.public_bom_stress_test import MAX_BYTES, MAX_ROWS, PREVIEW_ROWS, enabled
+    from src.public_bom_stress_test import (
+        MAX_BYTES,
+        MAX_ROWS,
+        PREVIEW_ROWS,
+        daily_enriched_row_limit,
+        enabled,
+        turnstile_enabled,
+    )
 
     return _json(
         {
@@ -1803,14 +1810,18 @@ async def public_bom_stress_status(_: Request) -> JSONResponse:
             "preview_rows": PREVIEW_ROWS,
             "max_rows": MAX_ROWS,
             "max_bytes": MAX_BYTES,
+            "turnstile_required": bool(turnstile_enabled()),
+            "daily_enriched_row_limit": int(daily_enriched_row_limit()),
         }
     )
 
 
 async def public_bom_stress_audit(request: Request) -> JSONResponse:
-    """Anonymous BOM teaser: first five enriched rows only; no account required."""
+    """Anonymous BOM teaser: supplier lookups only for the first five rows."""
     from src.public_bom_stress_test import (
         MAX_BYTES,
+        PUBLIC_BOM_BUDGET_MESSAGE,
+        PUBLIC_BOM_LIMIT_MESSAGE,
         StressTestError,
         enabled,
         run_audit,
@@ -1822,7 +1833,7 @@ async def public_bom_stress_audit(request: Request) -> JSONResponse:
             503,
         )
     try:
-        form = await request.form(max_files=1, max_fields=8)
+        form = await request.form(max_files=1, max_fields=12)
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid multipart upload."}, 400)
     upload = form.get("file")
@@ -1832,15 +1843,38 @@ async def public_bom_stress_audit(request: Request) -> JSONResponse:
     payload = await upload.read(MAX_BYTES + 1)
     if len(payload) > MAX_BYTES:
         return _json({"detail": "Upload a CSV or XLSX BOM smaller than 1 MB."}, 413)
+    # Never authorize from client qa/email flags — only optional bearer for QA allowlist.
+    turnstile_token = str(
+        form.get("cf-turnstile-response")
+        or form.get("turnstile_token")
+        or ""
+    ).strip() or None
+    access_token = _bearer_token(request) or None
+    remoteip = None
+    forwarded = (request.headers.get("cf-connecting-ip") or "").strip()
+    if forwarded:
+        remoteip = forwarded.split(",")[0].strip()
     try:
+        from functools import partial
+
         report = await run_in_threadpool(
-            run_audit, filename, payload, _visitor_header(request)
+            partial(
+                run_audit,
+                turnstile_token=turnstile_token,
+                access_token=access_token,
+                remoteip=remoteip,
+            ),
+            filename,
+            payload,
+            _visitor_header(request),
         )
     except StressTestError as exc:
-        from src.public_bom_stress_test import PUBLIC_BOM_LIMIT_MESSAGE
-
-        status = 429 if str(exc) == PUBLIC_BOM_LIMIT_MESSAGE else 400
-        return _json({"detail": str(exc)}, status)
+        detail = str(exc)
+        if detail in {PUBLIC_BOM_LIMIT_MESSAGE, PUBLIC_BOM_BUDGET_MESSAGE}:
+            status = 429
+        else:
+            status = 400
+        return _json({"detail": detail}, status)
     except Exception:  # noqa: BLE001
         logging.exception("public_bom_stress_audit_failed")
         return _json({"detail": "The audit could not be completed. Please try later."}, 503)
@@ -1914,8 +1948,10 @@ async def public_bom_stress_verified_get(request: Request) -> JSONResponse:
     # Selector only — verified_report still requires the session email owns it.
     report_id = normalize_stress_report_id(request.query_params.get("report_id"))
     try:
+        from functools import partial
+
         report = await run_in_threadpool(
-            verified_report, token, report_id=report_id
+            partial(verified_report, report_id=report_id), token
         )
     except Exception:  # noqa: BLE001
         logging.exception("public_bom_stress_verified_failed")
@@ -1923,6 +1959,101 @@ async def public_bom_stress_verified_get(request: Request) -> JSONResponse:
     if not report:
         return _json({"detail": "Verified public audit not found."}, 404)
     return _json({"ok": True, "report": report})
+
+
+async def public_bom_stress_complete_post(request: Request) -> JSONResponse:
+    """Enrich remaining pending rows after confirmed email ownership."""
+    from src.public_bom_stress_test import (
+        PUBLIC_BOM_BUDGET_MESSAGE,
+        PUBLIC_BOM_EMAIL_QUOTA_MESSAGE,
+        StressTestError,
+        complete_audit,
+        enabled,
+        normalize_stress_report_id,
+    )
+
+    if not enabled():
+        return _json(
+            {"detail": "The free BOM stress test is being prepared. Please check back soon."},
+            503,
+        )
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    token = _bearer_token(request)
+    body: dict[str, Any] = {}
+    try:
+        raw = await request.body()
+        if raw:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                body = parsed
+    except Exception:  # noqa: BLE001
+        body = {}
+    # Ignore any client email/qa flags; ownership is bearer-derived inside complete_audit.
+    _ = body.get("email")
+    _ = body.get("qa")
+    report_id = normalize_stress_report_id(
+        body.get("report_id") or request.query_params.get("report_id")
+    )
+    try:
+        report = await run_in_threadpool(complete_audit, token, report_id)
+    except StressTestError as exc:
+        detail = str(exc)
+        if detail in {PUBLIC_BOM_EMAIL_QUOTA_MESSAGE, PUBLIC_BOM_BUDGET_MESSAGE}:
+            return _json({"detail": detail}, 429)
+        if "not found" in detail.lower():
+            return _json({"detail": detail}, 404)
+        return _json({"detail": detail}, 400)
+    except Exception:  # noqa: BLE001
+        logging.exception("public_bom_stress_complete_failed")
+        return _json({"detail": "Could not finish the audit. Please try later."}, 503)
+    return _json({"ok": True, "report": report})
+
+
+async def public_bom_stress_verified_export_get(request: Request) -> Response:
+    """CSV/XLSX download for an owned, fully enriched public audit."""
+    from src.public_bom_stress_test import (
+        StressTestError,
+        enabled,
+        export_verified_report,
+        normalize_stress_report_id,
+    )
+
+    if not enabled():
+        return _json(
+            {"detail": "The free BOM stress test is being prepared. Please check back soon."},
+            503,
+        )
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    token = _bearer_token(request)
+    _ = request.query_params.get("email")
+    report_id = normalize_stress_report_id(request.query_params.get("report_id"))
+    fmt = str(request.query_params.get("format") or "csv").strip().lower()
+    try:
+        from functools import partial
+
+        body, media_type, filename = await run_in_threadpool(
+            partial(export_verified_report, report_id=report_id, format=fmt),
+            token,
+        )
+    except StressTestError as exc:
+        detail = str(exc)
+        status = 404 if "not found" in detail.lower() else 400
+        return _json({"detail": detail}, status)
+    except Exception:  # noqa: BLE001
+        logging.exception("public_bom_stress_export_failed")
+        return _json({"detail": "Export unavailable."}, 503)
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 async def monitoring_refresh_post(request: Request) -> JSONResponse:
@@ -2942,6 +3073,16 @@ app = Starlette(
         Route(
             "/public/bom-stress/verified-report",
             public_bom_stress_verified_get,
+            methods=["GET"],
+        ),
+        Route(
+            "/public/bom-stress/complete",
+            public_bom_stress_complete_post,
+            methods=["POST"],
+        ),
+        Route(
+            "/public/bom-stress/verified-report/export",
+            public_bom_stress_verified_export_get,
             methods=["GET"],
         ),
     ],
