@@ -3,6 +3,8 @@
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
+import { TurnstileWidget } from "@/components/TurnstileWidget";
+import { getSession } from "@/lib/api";
 import {
   fetchPublicBomStatus,
   requestPublicBomFullReport,
@@ -10,6 +12,10 @@ import {
   type PublicBomAuditReport,
   type PublicBomStatus,
 } from "@/lib/publicBomStress";
+
+const TURNSTILE_SITE_KEY = (
+  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || ""
+).trim();
 
 const PUBLIC_BOM_LIMIT_MESSAGE =
   "This connection has used its two free BOM audits in the last 24 hours.";
@@ -51,6 +57,7 @@ function PublicBomAuditInner() {
   const [verificationSent, setVerificationSent] = useState(true);
   const [leadBusy, setLeadBusy] = useState(false);
   const [leadError, setLeadError] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -80,15 +87,26 @@ function PublicBomAuditInner() {
   async function onAudit(event: FormEvent) {
     event.preventDefault();
     if (!file || busy || status?.enabled !== true) return;
+    const turnstileRequired = status.turnstile_required === true;
+    if (turnstileRequired && !turnstileToken.trim()) {
+      setError("Complete the security check and try again.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
-      const result = await runPublicBomAudit(file);
+      const session = getSession();
+      const result = await runPublicBomAudit(file, {
+        turnstileToken: turnstileToken || null,
+        accessToken: session?.access_token || null,
+      });
       setReport(result);
       setPendingEmail("");
       setLeadError("");
+      setTurnstileToken("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Audit failed.");
+      setTurnstileToken("");
     } finally {
       setBusy(false);
     }
@@ -221,11 +239,24 @@ function PublicBomAuditInner() {
                   to run another anonymous audit.
                 </p>
               ) : null}
+              {status?.turnstile_required && TURNSTILE_SITE_KEY ? (
+                <TurnstileWidget
+                  siteKey={TURNSTILE_SITE_KEY}
+                  action="public_bom_audit"
+                  onToken={setTurnstileToken}
+                  onExpire={() => setTurnstileToken("")}
+                />
+              ) : null}
               <button
                 type="submit"
                 className="cv-button primary"
                 data-testid="public-bom-run-audit"
-                disabled={!file || busy || !auditEnabled}
+                disabled={
+                  !file ||
+                  busy ||
+                  !auditEnabled ||
+                  (Boolean(status?.turnstile_required) && !turnstileToken.trim())
+                }
               >
                 {busy
                   ? "Checking lifecycle and supplier evidence…"
@@ -309,14 +340,11 @@ function PublicBomAuditInner() {
             {report.remaining_count > 0 ? (
               <div className="cv-stress-locked">
                 <strong>
-                  {report.remaining_count} more components are locked ·{" "}
-                  {report.remaining_high_risk} verified high-risk dependencies
+                  {report.remaining_count} more components are not checked yet
                 </strong>
-                Verify your email to see the full report, including lifecycle,
-                stock, lead time, and evidence.
-                {report.remaining_unverified
-                  ? ` ${report.remaining_unverified} components still need supplier verification.`
-                  : ""}
+                Supplier lookups for those rows run only after you confirm your
+                email. Then open Reports to finish the audit and download the
+                complete results.
               </div>
             ) : (
               <p className="cv-small-note">

@@ -3,9 +3,10 @@
  * Report-delivery smoke for the public BOM audit (Next app preview).
  *
  * Labels:
- * - Uses a local stub API with bearer-gated verified-report (not production Supabase OTP).
- * - Proves the Reports UI loads the full audit after a confirmed session and
- *   reopens it after reload via cache + re-fetch.
+ * - Uses a local stub API with bearer-gated verified-report/complete/export
+ *   (not production Supabase OTP).
+ * - Proves Reports loads the audit, completes remaining rows, downloads CSV,
+ *   and reopens after reload.
  * - Does NOT replace live OTP email delivery; that remains an environment check.
  */
 import { chromium } from "playwright";
@@ -46,6 +47,8 @@ async function main() {
     liveOtp: false,
     base: BASE,
     authorizedVisible: false,
+    completedRemaining: false,
+    downloadCsv: false,
     crossUserHidden: false,
     reopenAfterReload: false,
   };
@@ -70,13 +73,16 @@ async function main() {
     await page.getByText("LM358DR").waitFor({ timeout: 10000 });
     results.authorizedVisible = true;
 
-    // Reload without the query flag — cached + re-fetch should still show the audit.
+    await page.getByText("PENDING0").waitFor({ timeout: 15000 });
+    await page.getByTestId("public-bom-download-csv").waitFor({ timeout: 15000 });
+    results.completedRemaining = true;
+    results.downloadCsv = true;
+
     await page.goto(`${BASE}/reports`, { waitUntil: "domcontentloaded" });
     await page.getByTestId("public-bom-verified-table").waitFor({ timeout: 20000 });
     await page.getByText("LM358DR").waitFor({ timeout: 10000 });
     results.reopenAfterReload = true;
 
-    // Cross-user denial: swap token and ensure the verified table is absent.
     const denied = await browser.newPage();
     await denied.addInitScript((session) => {
       window.localStorage.setItem(
@@ -99,7 +105,13 @@ async function main() {
     results.crossUserHidden = !tableVisible;
     await denied.close();
 
-    if (!results.authorizedVisible || !results.reopenAfterReload || !results.crossUserHidden) {
+    if (
+      !results.authorizedVisible ||
+      !results.completedRemaining ||
+      !results.downloadCsv ||
+      !results.reopenAfterReload ||
+      !results.crossUserHidden
+    ) {
       throw new Error(`Delivery smoke incomplete: ${JSON.stringify(results)}`);
     }
     note(JSON.stringify({ ok: true, results }, null, 2));

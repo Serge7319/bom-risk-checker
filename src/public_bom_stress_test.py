@@ -28,7 +28,20 @@ PREVIEW_ROWS = 5
 MAX_XLSX_UNCOMPRESSED = 8_000_000
 VISITOR_HEADER = "X-Cadivor-Visitor"
 PUBLIC_BOM_LIMIT_MESSAGE = "This connection has used its two free BOM audits in the last 24 hours."
+PUBLIC_BOM_EMAIL_QUOTA_MESSAGE = (
+    "This email already used its free complete BOM audit in the last 30 days."
+)
+PUBLIC_BOM_BUDGET_MESSAGE = (
+    "The free BOM audit has reached today's supplier lookup budget. Please try again tomorrow."
+)
 VERIFICATION_RESEND_COOLDOWN_SECONDS = 15 * 60
+FULL_ENRICHMENT_WINDOW_DAYS = 30
+# Default global UTC-day cap on supplier-enriched rows (preview + complete).
+# Tune via CADIVOR_PUBLIC_BOM_DAILY_ENRICHED_ROWS. Providers have no coded daily
+# caps beyond per-search limit≤25; 500 ≈ 100 anonymous 5-row previews.
+DEFAULT_DAILY_ENRICHED_ROWS = 500
+TURNSTILE_SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+TURNSTILE_EXPECTED_ACTION = "public_bom_audit"
 # Carried on the OTP email_redirect_to and confirmation handoff (selector only).
 STRESS_REPORT_ID_QUERY_PARAM = "cadivor_stress_report_id"
 
@@ -48,6 +61,45 @@ def normalize_stress_report_id(value: Any) -> str | None:
         return str(uuid.UUID(text))
     except (TypeError, ValueError, AttributeError):
         return None
+
+
+def daily_enriched_row_limit() -> int:
+    raw = str(get_secret("CADIVOR_PUBLIC_BOM_DAILY_ENRICHED_ROWS") or "").strip()
+    if not raw:
+        return DEFAULT_DAILY_ENRICHED_ROWS
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEFAULT_DAILY_ENRICHED_ROWS
+
+
+def turnstile_secret() -> str:
+    return str(get_secret("CADIVOR_TURNSTILE_SECRET_KEY") or "").strip()
+
+
+def turnstile_enabled() -> bool:
+    """Turnstile is on whenever the server secret is configured (fail closed)."""
+    return bool(turnstile_secret())
+
+
+def turnstile_expected_hostnames() -> set[str]:
+    raw = str(get_secret("CADIVOR_TURNSTILE_EXPECTED_HOSTNAMES") or "").strip()
+    if not raw:
+        return {"app.cadivor.com", "www.cadivor.com", "localhost", "127.0.0.1"}
+    return {part.strip().lower() for part in raw.split(",") if part.strip()}
+
+
+def qa_emails_allowlist() -> set[str]:
+    """Server-only allowlist. Never populated from request body/query/frontend."""
+    raw = str(get_secret("CADIVOR_PUBLIC_BOM_QA_EMAILS") or "").strip()
+    if not raw:
+        return set()
+    emails: set[str] = set()
+    for part in raw.split(","):
+        candidate = part.strip().lower()
+        if candidate and "@" in candidate:
+            emails.add(candidate)
+    return emails
 
 
 def enabled() -> bool:
@@ -164,11 +216,113 @@ def _service_client():
     return create_client(url, key)
 
 
-def _reserve(ip_hash: str) -> str:
+def validate_turnstile(
+    token: str | None,
+    *,
+    remoteip: str | None = None,
+    expected_action: str = TURNSTILE_EXPECTED_ACTION,
+) -> None:
+    """Server-side Cloudflare Siteverify. Fail closed when Turnstile is enabled."""
+    if not turnstile_enabled():
+        return
+    secret = turnstile_secret()
+    value = str(token or "").strip()
+    if not value:
+        raise StressTestError("Complete the security check and try again.")
     try:
-        response = _service_client().rpc(
-            "cadivor_reserve_public_bom_stress_test", {"p_ip_hash": ip_hash}
-        ).execute()
+        import urllib.parse
+        import urllib.request
+
+        payload = urllib.parse.urlencode(
+            {
+                "secret": secret,
+                "response": value,
+                **({"remoteip": remoteip} if remoteip else {}),
+            }
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            TURNSTILE_SITEVERIFY_URL,
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            body = response.read().decode("utf-8")
+        import json
+
+        result = json.loads(body) if body else {}
+    except Exception:
+        raise StressTestError("The security check could not be verified. Please try again.") from None
+    if not result.get("success"):
+        raise StressTestError("The security check failed. Refresh and try again.")
+    hostname = str(result.get("hostname") or "").strip().lower()
+    if hostname not in turnstile_expected_hostnames():
+        raise StressTestError("The security check failed. Refresh and try again.")
+    action = str(result.get("action") or "").strip()
+    if expected_action and action and action != expected_action:
+        raise StressTestError("The security check failed. Refresh and try again.")
+
+
+def resolve_qa_session(access_token: str | None) -> dict[str, Any] | None:
+    """Return confirmed allowlisted user info from a bearer token, else None.
+
+    Never trusts client-supplied email, QA flags, or report ownership claims.
+    """
+    token = str(access_token or "").strip()
+    allowlist = qa_emails_allowlist()
+    if not token or not allowlist:
+        return None
+    try:
+        from supabase import create_client
+
+        auth = create_client(
+            get_secret("SUPABASE_URL", required=True),
+            get_secret("SUPABASE_KEY", required=True),
+        )
+        user = auth.auth.get_user(token).user
+        if not user or not getattr(user, "email_confirmed_at", None):
+            return None
+        email = normalize_email_address(getattr(user, "email", "") or "")
+        if email not in allowlist:
+            return None
+        return {
+            "email": email,
+            "user_id": str(getattr(user, "id", "") or ""),
+            "qa_mode": True,
+        }
+    except StressTestError:
+        return None
+    except Exception:
+        return None
+
+
+def _confirmed_session_email(access_token: str) -> str | None:
+    token = str(access_token or "").strip()
+    if not token:
+        return None
+    try:
+        from supabase import create_client
+
+        auth = create_client(
+            get_secret("SUPABASE_URL", required=True),
+            get_secret("SUPABASE_KEY", required=True),
+        )
+        user = auth.auth.get_user(token).user
+        if not user or not getattr(user, "email_confirmed_at", None):
+            return None
+        return normalize_email_address(getattr(user, "email", "") or "")
+    except Exception:
+        return None
+
+
+def _reserve(ip_hash: str, *, qa_mode: bool = False) -> str:
+    rpc_name = (
+        "cadivor_reserve_public_bom_stress_test_qa"
+        if qa_mode
+        else "cadivor_reserve_public_bom_stress_test"
+    )
+    try:
+        response = _service_client().rpc(rpc_name, {"p_ip_hash": ip_hash}).execute()
     except Exception as exc:
         if "PUBLIC_BOM_DAILY_LIMIT" in str(exc):
             raise StressTestError(PUBLIC_BOM_LIMIT_MESSAGE) from None
@@ -177,6 +331,104 @@ def _reserve(ip_hash: str) -> str:
     if not report_id:
         raise StressTestError("The audit is temporarily unavailable. Please try later.")
     return report_id
+
+
+def _claim_enrichment_budget(rows: int) -> None:
+    needed = max(0, int(rows))
+    if needed == 0:
+        return
+    limit = daily_enriched_row_limit()
+    try:
+        response = (
+            _service_client()
+            .rpc(
+                "cadivor_claim_public_bom_enrichment_budget",
+                {"p_rows": needed, "p_limit": limit},
+            )
+            .execute()
+        )
+        claimed = response.data
+        if isinstance(claimed, list):
+            claimed = claimed[0] if claimed else False
+        if claimed is not True:
+            raise StressTestError(PUBLIC_BOM_BUDGET_MESSAGE)
+    except StressTestError:
+        raise
+    except Exception:
+        raise StressTestError("The audit is temporarily unavailable. Please try later.") from None
+
+
+def _pending_stub(row: dict[str, Any]) -> dict[str, Any]:
+    """Unevaluated row stored until post-confirm completion (no supplier spend)."""
+    return {
+        "mpn": row["mpn"],
+        "quantity": row["quantity"],
+        "manufacturer": str(row.get("manufacturer") or ""),
+        "matched_mpn": "",
+        "description": "",
+        "lifecycle": "Pending",
+        "stock": None,
+        "stock_sources": [],
+        "stock_data_complete": False,
+        "stock_evidence": "Not checked until email confirmation",
+        "lead_time_weeks": None,
+        "lead_time_source": "",
+        "supplier_count": None,
+        "sources": "",
+        "supplier_coverage": "Supplier lookup deferred until email confirmation",
+        "lifecycle_evidence": [],
+        "lifecycle_evidence_summary": "",
+        "lifecycle_conflict": False,
+        "checked_at": "",
+        "alternate_search_status": "Not checked in the free audit",
+        "risk_reasons": [],
+        "risk": "Pending",
+        "verified": False,
+        "enrichment_pending": True,
+    }
+
+
+def _enrich_failure_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "mpn": row["mpn"],
+        "quantity": row["quantity"],
+        "lifecycle": "Unverified",
+        "stock": None,
+        "lead_time_weeks": None,
+        "supplier_count": None,
+        "sources": "",
+        "risk": "Needs verification",
+        "stock_sources": [],
+        "stock_data_complete": False,
+        "stock_evidence": "Not reported by matched suppliers",
+        "lead_time_source": "",
+        "lifecycle_evidence": [],
+        "lifecycle_evidence_summary": "",
+        "supplier_coverage": "Supplier data could not be verified during this analysis",
+        "lifecycle_conflict": False,
+        "checked_at": "",
+        "alternate_search_status": "Not checked in the free audit",
+        "risk_reasons": [],
+        "verified": False,
+        "enrichment_pending": False,
+    }
+
+
+def _enrich_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not rows:
+        return []
+    results: list[dict[str, Any] | None] = [None] * len(rows)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {pool.submit(_enrich_one, i, row): i for i, row in enumerate(rows)}
+        for future in as_completed(futures):
+            index = futures[future]
+            try:
+                _, payload = future.result()
+                payload["enrichment_pending"] = False
+                results[index] = payload
+            except Exception:
+                results[index] = _enrich_failure_row(rows[index])
+    return [row for row in results if row is not None]
 
 
 def _enrich_one(index: int, row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -243,50 +495,223 @@ def _enrich_one(index: int, row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
     }
 
 
-def run_audit(filename: str, payload: bytes, signed_header: str) -> dict[str, Any]:
+def run_audit(
+    filename: str,
+    payload: bytes,
+    signed_header: str,
+    *,
+    turnstile_token: str | None = None,
+    access_token: str | None = None,
+    remoteip: str | None = None,
+) -> dict[str, Any]:
+    """Anonymous preview: supplier lookups only for the first PREVIEW_ROWS.
+
+    IP 2/24h reserve and Turnstile apply unless a server-verified QA session
+    (confirmed allowlisted bearer) is present. Global daily enrichment budget
+    always applies. Remaining rows are pending stubs until ``complete_audit``.
+    """
     if not enabled():
         raise StressTestError("The public audit is temporarily unavailable.")
+    qa = resolve_qa_session(access_token)
+    qa_mode = bool(qa)
+    if not qa_mode:
+        validate_turnstile(turnstile_token, remoteip=remoteip)
     ip_hash = visitor_hash(signed_header)
     rows = parse_bom(filename, payload)
-    report_id = _reserve(ip_hash)  # Atomic 24h rate gate BEFORE any supplier lookup.
-    results: list[dict[str, Any] | None] = [None] * len(rows)
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = {pool.submit(_enrich_one, i, row): i for i, row in enumerate(rows)}
-        for future in as_completed(futures):
-            index = futures[future]
-            try:
-                _, results[index] = future.result()
-            except Exception:
-                results[index] = {
-                    "mpn": rows[index]["mpn"], "quantity": rows[index]["quantity"],
-                    "lifecycle": "Unverified", "stock": None, "lead_time_weeks": None,
-                    "supplier_count": None, "sources": "", "risk": "Needs verification",
-                    "stock_sources": [], "stock_data_complete": False,
-                    "stock_evidence": "Not reported by matched suppliers",
-                    "lead_time_source": "", "lifecycle_evidence": [],
-                    "lifecycle_evidence_summary": "",
-                    "supplier_coverage": "Supplier data could not be verified during this analysis",
-                    "lifecycle_conflict": False, "checked_at": "",
-                    "alternate_search_status": "Not checked in the free audit",
-                    "risk_reasons": [], "verified": False,
-                }
-    enriched = [row for row in results if row is not None]
+    # Atomic rate gate BEFORE any supplier lookup (QA skips the IP count only).
+    report_id = _reserve(ip_hash, qa_mode=qa_mode)
+    preview_n = min(PREVIEW_ROWS, len(rows))
+    _claim_enrichment_budget(preview_n)
+    preview_rows = rows[:preview_n]
+    pending_rows = rows[preview_n:]
+    enriched_preview = _enrich_rows(preview_rows)
+    stubs = [_pending_stub(row) for row in pending_rows]
+    results = enriched_preview + stubs
     try:
-        _service_client().table("cadivor_public_bom_stress_tests").update({
-            "filename": str(filename)[:180], "row_count": len(rows), "results": enriched,
+        update = {
+            "filename": str(filename)[:180],
+            "row_count": len(rows),
+            "results": results,
             "status": "ready",
-        }).eq("id", report_id).execute()
+            "preview_enriched_count": preview_n,
+            "qa_mode": qa_mode,
+        }
+        _service_client().table("cadivor_public_bom_stress_tests").update(update).eq(
+            "id", report_id
+        ).execute()
     except Exception:
         raise StressTestError("The audit could not be saved. Please try later.") from None
-    # Only the first five enriched records enter the Streamlit response/session.
-    remaining = enriched[PREVIEW_ROWS:]
+    if qa_mode:
+        logging_note = {"event": "public_bom_qa_audit", "report_id": report_id}
+        try:
+            import logging
+
+            logging.info("public_bom_qa_audit %s", logging_note)
+        except Exception:
+            pass
+    remaining_count = len(stubs)
     return {
         "id": report_id,
         "row_count": len(rows),
-        "preview": enriched[:PREVIEW_ROWS],
-        "remaining_count": len(remaining),
-        "remaining_high_risk": sum(row["risk"] == "High" for row in remaining),
-        "remaining_unverified": sum(not row["verified"] for row in remaining),
+        "preview": enriched_preview,
+        "remaining_count": remaining_count,
+        # Unevaluated rows have no supplier risk yet — do not invent High counts.
+        "remaining_high_risk": 0,
+        "remaining_unverified": remaining_count,
+        "remaining_pending": remaining_count,
+        "preview_enriched_count": preview_n,
+        "qa_mode": qa_mode,
+        "full_enriched": False,
+    }
+
+
+def _claim_full_enrichment(
+    email: str,
+    report_id: str,
+    *,
+    bypass_email_quota: bool = False,
+) -> str:
+    try:
+        response = (
+            _service_client()
+            .rpc(
+                "cadivor_claim_public_bom_full_enrichment",
+                {
+                    "p_work_email": email,
+                    "p_report_id": report_id,
+                    "p_window_days": FULL_ENRICHMENT_WINDOW_DAYS,
+                    "p_bypass_email_quota": bool(bypass_email_quota),
+                },
+            )
+            .execute()
+        )
+        status = response.data
+        if isinstance(status, list):
+            status = status[0] if status else ""
+        return str(status or "")
+    except Exception:
+        raise StressTestError("The audit is temporarily unavailable. Please try later.") from None
+
+
+def complete_audit(
+    access_token: str,
+    report_id: str | None = None,
+) -> dict[str, Any]:
+    """Enrich pending stubs after confirmed email ownership. Idempotent.
+
+    Enforces one full supplier-backed free audit per confirmed email / 30 days
+    (QA allowlist bypasses email quota only). Global daily budget still applies.
+    """
+    if not enabled():
+        raise StressTestError("The public audit is temporarily unavailable.")
+    email = _confirmed_session_email(access_token)
+    if not email:
+        raise StressTestError("Confirm your email and sign in to finish this audit.")
+    qa = resolve_qa_session(access_token)
+    selected_id = normalize_stress_report_id(report_id)
+    try:
+        query = (
+            _service_client()
+            .table("cadivor_public_bom_stress_tests")
+            .select(
+                "id,filename,row_count,results,created_at,status,work_email,"
+                "full_enriched_at,qa_mode,preview_enriched_count"
+            )
+            .eq("work_email", email)
+            .eq("status", "lead_captured")
+        )
+        if selected_id:
+            query = query.eq("id", selected_id).limit(1)
+        else:
+            query = query.order("created_at", desc=True).limit(1)
+        rows = query.execute().data or []
+    except Exception:
+        raise StressTestError("Verified public audit not found.") from None
+    if not rows:
+        raise StressTestError("Verified public audit not found.")
+    report = rows[0]
+    owned_id = str(report["id"])
+    claim = _claim_full_enrichment(
+        email,
+        owned_id,
+        bypass_email_quota=bool(qa) or bool(report.get("qa_mode")),
+    )
+    if claim == "quota_exceeded":
+        raise StressTestError(PUBLIC_BOM_EMAIL_QUOTA_MESSAGE)
+    if claim == "not_found":
+        raise StressTestError("Verified public audit not found.")
+    results = list(report.get("results") or [])
+    if claim == "already_complete" or report.get("full_enriched_at"):
+        return {
+            "id": owned_id,
+            "filename": report.get("filename"),
+            "row_count": report.get("row_count"),
+            "results": results,
+            "created_at": report.get("created_at"),
+            "full_enriched": True,
+            "qa_mode": bool(report.get("qa_mode")),
+        }
+    pending_indexes = [
+        index
+        for index, row in enumerate(results)
+        if isinstance(row, dict) and row.get("enrichment_pending")
+    ]
+    if not pending_indexes:
+        # Mark complete even if nothing pending (idempotent refresh path).
+        try:
+            _service_client().table("cadivor_public_bom_stress_tests").update(
+                {"full_enriched_at": datetime.now(timezone.utc).isoformat()}
+            ).eq("id", owned_id).execute()
+        except Exception:
+            pass
+        return {
+            "id": owned_id,
+            "filename": report.get("filename"),
+            "row_count": report.get("row_count"),
+            "results": results,
+            "created_at": report.get("created_at"),
+            "full_enriched": True,
+            "qa_mode": bool(report.get("qa_mode")),
+        }
+    pending_inputs = []
+    for index in pending_indexes:
+        row = results[index]
+        pending_inputs.append(
+            {
+                "mpn": row.get("mpn"),
+                "quantity": row.get("quantity"),
+                "manufacturer": row.get("manufacturer") or "",
+            }
+        )
+    _claim_enrichment_budget(len(pending_inputs))
+    enriched = _enrich_rows(pending_inputs)
+    for offset, index in enumerate(pending_indexes):
+        results[index] = enriched[offset]
+    try:
+        _service_client().table("cadivor_public_bom_stress_tests").update(
+            {
+                "results": results,
+                "full_enriched_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ).eq("id", owned_id).execute()
+        _service_client().table("cadivor_public_bom_leads").update(
+            {
+                "high_risk_count": sum(
+                    row.get("verified") and row.get("risk") == "High" for row in results
+                ),
+                "unverified_count": sum(not row.get("verified") for row in results),
+            }
+        ).eq("report_id", owned_id).execute()
+    except Exception:
+        raise StressTestError("The audit could not be saved. Please try later.") from None
+    return {
+        "id": owned_id,
+        "filename": report.get("filename"),
+        "row_count": report.get("row_count"),
+        "results": results,
+        "created_at": report.get("created_at"),
+        "full_enriched": True,
+        "qa_mode": bool(report.get("qa_mode")),
     }
 
 
@@ -453,7 +878,10 @@ def verified_report(access_token: str, *, report_id: str | None = None) -> dict[
         query = (
             _service_client()
             .table("cadivor_public_bom_stress_tests")
-            .select("id,filename,row_count,results,created_at")
+            .select(
+                "id,filename,row_count,results,created_at,full_enriched_at,"
+                "qa_mode,preview_enriched_count"
+            )
             .eq("work_email", email)
             .eq("status", "lead_captured")
             .gte("created_at", cutoff)
@@ -464,9 +892,42 @@ def verified_report(access_token: str, *, report_id: str | None = None) -> dict[
         else:
             query = query.order("created_at", desc=True).limit(1)
         rows = query.execute().data or []
-        return rows[0] if rows else None
+        if not rows:
+            return None
+        report = rows[0]
+        report["full_enriched"] = bool(report.get("full_enriched_at"))
+        report["qa_mode"] = bool(report.get("qa_mode"))
+        return report
     except Exception:
         return None
+
+
+def export_verified_report(
+    access_token: str,
+    *,
+    report_id: str | None = None,
+    format: str = "csv",
+) -> tuple[bytes, str, str]:
+    """Return (body, media_type, filename) for an owned fully-enriched audit."""
+    report = verified_report(access_token, report_id=report_id)
+    if not report:
+        raise StressTestError("Verified public audit not found.")
+    results = list(report.get("results") or [])
+    if any(isinstance(row, dict) and row.get("enrichment_pending") for row in results):
+        raise StressTestError(
+            "Finish supplier enrichment before downloading the complete audit."
+        )
+    fmt = str(format or "csv").strip().lower()
+    base = re.sub(r"[^A-Za-z0-9._-]+", "-", str(report.get("filename") or "bom-audit"))[
+        :80
+    ].strip("-.") or "bom-audit"
+    if fmt == "xlsx":
+        return (
+            build_audit_xlsx(report),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            f"{base}-complete.xlsx",
+        )
+    return build_audit_csv(results), "text/csv; charset=utf-8", f"{base}-complete.csv"
 
 
 def _safe_export_cell(value: Any) -> Any:

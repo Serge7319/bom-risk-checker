@@ -12,21 +12,7 @@
 | Runner | `apps/web/scripts/public_bom_browser_smoke.mjs` (Playwright) |
 | Result | **PASS** |
 | Proves | status → upload → preliminary audit → lead email-request UI |
-| Does **not** prove | email confirmation, verified-report ownership, Reports handoff |
-
-```json
-{
-  "ok": true,
-  "results": {
-    "base": "http://127.0.0.1:13017",
-    "statusLoadingSeen": true,
-    "statusEnabledUpload": true,
-    "auditUploadOk": true,
-    "leadSubmitOk": true,
-    "statusErrorPath": true
-  }
-}
-```
+| Does **not** prove | email confirmation, verified-report ownership, remaining-row completion |
 
 ## Report-delivery smoke (authenticated handoff)
 
@@ -34,25 +20,16 @@
 | --- | --- |
 | Kind | **report-delivery** (stub bearer gate; not live Supabase OTP) |
 | App preview | `http://127.0.0.1:13017` |
-| Stub API | bearer-gated `/public/bom-stress/verified-report` |
+| Stub API | bearer-gated verified-report + complete + export |
 | Runner | `apps/web/scripts/public_bom_report_delivery_smoke.mjs` |
 | Result | **PASS** |
-| Proves | owner token + `report_id` selector loads full audit in Reports; cross-user denied; reopen after reload via cache + re-fetch |
+| Proves | owner token loads audit; remaining rows complete; CSV download control present; cross-user denied; reopen after reload |
 | Does **not** prove | live OTP email delivery / Supabase confirm click |
 
-```json
-{
-  "ok": true,
-  "results": {
-    "kind": "report-delivery",
-    "stubApi": true,
-    "liveOtp": false,
-    "base": "http://127.0.0.1:13017",
-    "authorizedVisible": true,
-    "crossUserHidden": true,
-    "reopenAfterReload": true
-  }
-}
-```
-
 Live OTP confirmation remains an environment check outside this stub smoke.
+
+## Abuse-protection notes (local)
+
+- Anonymous preview enriches only the first five rows; remaining rows stay pending until complete.
+- Daily enrichment budget default: **500** rows/UTC day (`CADIVOR_PUBLIC_BOM_DAILY_ENRICHED_ROWS`).
+- Turnstile is fail-closed when `CADIVOR_TURNSTILE_SECRET_KEY` is set (local stub smoke runs with Turnstile off).

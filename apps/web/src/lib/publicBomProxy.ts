@@ -146,12 +146,18 @@ export async function proxyPublicBomAudit(
   const parsed = await readPublicBomAuditForm(request);
   if ("response" in parsed) return parsed.response;
   try {
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      "X-Cadivor-Visitor": visitorHeader(request),
+    };
+    // Forward bearer for server-side QA allowlist only (never a client QA flag).
+    const auth = request.headers.get("authorization") || "";
+    if (auth.toLowerCase().startsWith("bearer ")) {
+      headers.Authorization = auth;
+    }
     const res = await fetch(`${apiBase()}/public/bom-stress/audit`, {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "X-Cadivor-Visitor": visitorHeader(request),
-      },
+      headers,
       body: parsed.form,
       cache: "no-store",
     });
@@ -159,6 +165,34 @@ export async function proxyPublicBomAudit(
   } catch (err) {
     const detail =
       err instanceof Error ? err.message : "Public audit request failed.";
+    return NextResponse.json({ detail }, { status: 503 });
+  }
+}
+
+/** POST authenticated remaining-row completion. */
+export async function proxyPublicBomComplete(
+  request: NextRequest,
+): Promise<NextResponse> {
+  const auth = request.headers.get("authorization") || "";
+  if (!auth.toLowerCase().startsWith("bearer ")) {
+    return NextResponse.json({ detail: "Missing bearer token" }, { status: 401 });
+  }
+  try {
+    const body = await request.text();
+    const res = await fetch(`${apiBase()}/public/bom-stress/complete`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: auth,
+      },
+      body,
+      cache: "no-store",
+    });
+    return proxyJson(res);
+  } catch (err) {
+    const detail =
+      err instanceof Error ? err.message : "Could not finish the audit.";
     return NextResponse.json({ detail }, { status: 503 });
   }
 }

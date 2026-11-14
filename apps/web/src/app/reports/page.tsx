@@ -10,10 +10,12 @@ import { Shell } from "@/components/Shell";
 import { listReports } from "@/lib/api";
 import {
   cacheVerifiedPublicBomReport,
+  completePublicBomAudit,
   fetchVerifiedPublicBomReport,
   normalizeStressReportId,
   peekStressReportId,
   readCachedVerifiedPublicBomReport,
+  verifiedReportExportHref,
   type PublicBomVerifiedReport,
 } from "@/lib/publicBomStress";
 import { PAGE_META } from "@/lib/routes";
@@ -34,6 +36,7 @@ function ReportsInner() {
     useState<PublicBomVerifiedReport | null>(null);
   const [stressError, setStressError] = useState("");
   const [stressBusy, setStressBusy] = useState(false);
+  const [completeBusy, setCompleteBusy] = useState(false);
 
   useEffect(() => {
     if (!session) return;
@@ -58,18 +61,33 @@ function ReportsInner() {
     );
     if (cached) setStressReport(cached);
 
+    let cancelled = false;
     setStressBusy(true);
     setStressError("");
-    fetchVerifiedPublicBomReport(session.access_token, selectedReportId)
-      .then((report) => {
+    setCompleteBusy(false);
+
+    (async () => {
+      try {
+        let report = await fetchVerifiedPublicBomReport(
+          session.access_token,
+          selectedReportId,
+        );
+        const pending = (report.results || []).some(
+          (row) => row.enrichment_pending,
+        );
+        if (!report.full_enriched || pending) {
+          setCompleteBusy(true);
+          report = await completePublicBomAudit(
+            session.access_token,
+            report.id || selectedReportId,
+          );
+        }
+        if (cancelled) return;
         setStressReport(report);
         cacheVerifiedPublicBomReport(identity, report);
-      })
-      .catch((err) => {
-        // No verified public audit is normal for most accounts.
-        if (!cached) {
-          setStressReport(null);
-        }
+      } catch (err) {
+        if (cancelled) return;
+        if (!cached) setStressReport(null);
         if (stressHandoff || selectedReportId) {
           setStressError(
             err instanceof Error
@@ -77,8 +95,17 @@ function ReportsInner() {
               : "Your verified public audit is not available yet.",
           );
         }
-      })
-      .finally(() => setStressBusy(false));
+      } finally {
+        if (!cancelled) {
+          setStressBusy(false);
+          setCompleteBusy(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [session, stressHandoff, reportIdFromQuery]);
 
   if (!session) return null;
@@ -107,7 +134,13 @@ function ReportsInner() {
             </div>
           </div>
           {stressBusy && !stressReport ? (
-            <LoadingCard label="Loading your verified public audit…" />
+            <LoadingCard
+              label={
+                completeBusy
+                  ? "Finishing supplier lookups for remaining components…"
+                  : "Loading your verified public audit…"
+              }
+            />
           ) : null}
           {stressError && !stressReport ? (
             <div className="cv-error" role="alert">
@@ -123,7 +156,11 @@ function ReportsInner() {
                 {stressReport.created_at
                   ? ` · ${new Date(stressReport.created_at).toLocaleString()}`
                   : ""}
+                {stressReport.full_enriched ? " · Complete" : ""}
               </p>
+              {completeBusy ? (
+                <LoadingCard label="Finishing supplier lookups for remaining components…" />
+              ) : null}
               <div className="cv-table-wrap">
                 <table className="cv-table" data-testid="public-bom-verified-table">
                   <thead>
@@ -164,6 +201,67 @@ function ReportsInner() {
                   </tbody>
                 </table>
               </div>
+              {stressReport.full_enriched !== false ? (
+                <div
+                  className="cv-actions"
+                  style={{ marginTop: 12, display: "flex", gap: 8 }}
+                >
+                  <a
+                    className="cv-button small"
+                    data-testid="public-bom-download-csv"
+                    href={verifiedReportExportHref(stressReport.id, "csv")}
+                    onClick={async (event) => {
+                      event.preventDefault();
+                      if (!session) return;
+                      const res = await fetch(
+                        verifiedReportExportHref(stressReport.id, "csv"),
+                        {
+                          headers: {
+                            Authorization: `Bearer ${session.access_token}`,
+                          },
+                        },
+                      );
+                      if (!res.ok) return;
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement("a");
+                      link.href = url;
+                      link.download = "bom-audit-complete.csv";
+                      link.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
+                    Download CSV
+                  </a>
+                  <a
+                    className="cv-button small"
+                    data-testid="public-bom-download-xlsx"
+                    href={verifiedReportExportHref(stressReport.id, "xlsx")}
+                    onClick={async (event) => {
+                      event.preventDefault();
+                      if (!session) return;
+                      const res = await fetch(
+                        verifiedReportExportHref(stressReport.id, "xlsx"),
+                        {
+                          headers: {
+                            Authorization: `Bearer ${session.access_token}`,
+                          },
+                        },
+                      );
+                      if (!res.ok) return;
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement("a");
+                      link.href = url;
+                      link.download = "bom-audit-complete.xlsx";
+                      link.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
+                    Download Excel
+                  </a>
+                </div>
+              ) : null}
             </>
           ) : null}
         </section>
