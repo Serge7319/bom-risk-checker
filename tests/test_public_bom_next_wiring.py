@@ -127,10 +127,15 @@ class PublicBomNextWiringTests(unittest.TestCase):
             :1800
         ]
         self.assertIn("_auth_context", verified_handler)
+        helpers = (ROOT / "apps/web/src/lib/publicBomStress.ts").read_text()
+        funnel = (ROOT / "src/public_bom_stress_test.py").read_text()
+        confirm = (ROOT / "apps/web/src/lib/signupEmailConfirm.ts").read_text()
         self.assertIn("markStressReportPending", login)
-        self.assertIn("/reports?public_bom_stress=1", login)
+        self.assertIn("reportsHandoffHref", login)
+        self.assertIn("stressReportIdFromSearch", login)
         self.assertIn("public-bom-verified-report", reports)
         self.assertIn("fetchVerifiedPublicBomReport", reports)
+        self.assertIn("reportIdFromQuery", reports)
         self.assertIn("cacheVerifiedPublicBomReport", reports)
         self.assertIn("cadivor_signup_confirm", middleware)
         self.assertIn("verification_sent", page)
@@ -141,6 +146,11 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertIn("report-delivery", delivery)
         self.assertIn("stubApi: true", delivery)
         self.assertIn("liveOtp: false", delivery)
+        self.assertIn("cadivor_stress_report_id", funnel)
+        self.assertIn("STRESS_REPORT_ID_QUERY_PARAM", funnel)
+        self.assertIn("PUBLIC_BOM_STRESS_REPORT_ID_FLAG", helpers)
+        self.assertIn("reportsHandoffHref", helpers)
+        self.assertIn("STRESS_REPORT_ID_QUERY_FLAG", confirm)
 
     def test_api_routes_registered_without_auth_context(self):
         main = (ROOT / "apps/api/main.py").read_text()

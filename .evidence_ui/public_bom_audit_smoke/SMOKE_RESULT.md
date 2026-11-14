@@ -37,7 +37,7 @@
 | Stub API | bearer-gated `/public/bom-stress/verified-report` |
 | Runner | `apps/web/scripts/public_bom_report_delivery_smoke.mjs` |
 | Result | **PASS** |
-| Proves | owner token loads full audit in Reports; cross-user denied; reopen after reload via cache + re-fetch |
+| Proves | owner token + `report_id` selector loads full audit in Reports; cross-user denied; reopen after reload via cache + re-fetch |
 | Does **not** prove | live OTP email delivery / Supabase confirm click |
 
 ```json

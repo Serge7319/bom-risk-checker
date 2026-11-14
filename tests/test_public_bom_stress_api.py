@@ -381,7 +381,7 @@ def test_request_full_report_repeat_does_not_resend_email():
         patch.object(
             funnel,
             "send_report_verification",
-            side_effect=lambda address: sends.append(address),
+            side_effect=lambda address, report_id=None: sends.append(address),
         ),
     ):
         email, sent_first = funnel.request_full_report(
@@ -428,7 +428,7 @@ def test_concurrent_claims_send_exactly_one_verification_email():
     send_lock = threading.Lock()
     header = _signed_visitor()
 
-    def fake_send(address: str) -> None:
+    def fake_send(address: str, *, report_id: str | None = None) -> None:
         with send_lock:
             sends.append(address)
 

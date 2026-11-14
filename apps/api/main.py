@@ -1909,10 +1909,11 @@ async def public_bom_stress_verified_get(request: Request) -> JSONResponse:
     token = _bearer_token(request)
     # Explicitly ignore any client-supplied email; ownership is token-derived.
     _ = request.query_params.get("email")
-    report_id = str(request.query_params.get("report_id") or "").strip() or None
-    try:
-        from src.public_bom_stress_test import verified_report
+    from src.public_bom_stress_test import normalize_stress_report_id, verified_report
 
+    # Selector only — verified_report still requires the session email owns it.
+    report_id = normalize_stress_report_id(request.query_params.get("report_id"))
+    try:
         report = await run_in_threadpool(
             verified_report, token, report_id=report_id
         )

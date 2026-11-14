@@ -11,6 +11,8 @@ import { listReports } from "@/lib/api";
 import {
   cacheVerifiedPublicBomReport,
   fetchVerifiedPublicBomReport,
+  normalizeStressReportId,
+  peekStressReportId,
   readCachedVerifiedPublicBomReport,
   type PublicBomVerifiedReport,
 } from "@/lib/publicBomStress";
@@ -22,6 +24,7 @@ function ReportsInner() {
   const search = useSearchParams();
   const stressHandoff =
     (search.get("public_bom_stress") || "").trim() === "1";
+  const reportIdFromQuery = normalizeStressReportId(search.get("report_id"));
 
   const [reports, setReports] = useState<Array<Record<string, unknown>>>([]);
   const [gap, setGap] = useState("");
@@ -47,12 +50,17 @@ function ReportsInner() {
   useEffect(() => {
     if (!session) return;
     const identity = session.user_id || session.email;
-    const cached = readCachedVerifiedPublicBomReport(identity);
+    // Prefer the handoff selector, then the last opened report id (reload).
+    const selectedReportId = reportIdFromQuery || peekStressReportId();
+    const cached = readCachedVerifiedPublicBomReport(
+      identity,
+      selectedReportId,
+    );
     if (cached) setStressReport(cached);
 
     setStressBusy(true);
     setStressError("");
-    fetchVerifiedPublicBomReport(session.access_token)
+    fetchVerifiedPublicBomReport(session.access_token, selectedReportId)
       .then((report) => {
         setStressReport(report);
         cacheVerifiedPublicBomReport(identity, report);
@@ -62,7 +70,7 @@ function ReportsInner() {
         if (!cached) {
           setStressReport(null);
         }
-        if (stressHandoff) {
+        if (stressHandoff || selectedReportId) {
           setStressError(
             err instanceof Error
               ? err.message
@@ -71,7 +79,7 @@ function ReportsInner() {
         }
       })
       .finally(() => setStressBusy(false));
-  }, [session, stressHandoff]);
+  }, [session, stressHandoff, reportIdFromQuery]);
 
   if (!session) return null;
 

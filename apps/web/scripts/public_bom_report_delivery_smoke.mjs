@@ -60,9 +60,11 @@ async function main() {
       );
     }, SESSION);
 
-    await page.goto(`${BASE}/reports?public_bom_stress=1`, {
-      waitUntil: "domcontentloaded",
-    });
+    const reportId = "11111111-1111-4111-8111-111111111111";
+    await page.goto(
+      `${BASE}/reports?public_bom_stress=1&report_id=${reportId}`,
+      { waitUntil: "domcontentloaded" },
+    );
     await page.getByTestId("public-bom-verified-report").waitFor({ timeout: 20000 });
     await page.getByTestId("public-bom-verified-table").waitFor({ timeout: 20000 });
     await page.getByText("LM358DR").waitFor({ timeout: 10000 });
@@ -82,9 +84,10 @@ async function main() {
         JSON.stringify({ ...session, access_token: "cross-user-token" }),
       );
     }, SESSION);
-    await denied.goto(`${BASE}/reports?public_bom_stress=1`, {
-      waitUntil: "domcontentloaded",
-    });
+    await denied.goto(
+      `${BASE}/reports?public_bom_stress=1&report_id=${reportId}`,
+      { waitUntil: "domcontentloaded" },
+    );
     await denied
       .getByText("Verified public audit not found")
       .or(denied.getByText("not available"))

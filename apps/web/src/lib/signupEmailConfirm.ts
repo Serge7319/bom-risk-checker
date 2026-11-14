@@ -16,17 +16,30 @@ const STRIP_PARAM_KEYS = [
   "type",
   "email-confirmed",
   "cadivor_stress_report",
+  "cadivor_stress_report_id",
   "error",
   "error_code",
   "error_description",
 ] as const;
 
 export const STRESS_REPORT_QUERY_FLAG = "cadivor_stress_report";
+export const STRESS_REPORT_ID_QUERY_FLAG = "cadivor_stress_report_id";
 
 /** True when the confirmation URL is for the public BOM audit unlock path. */
 export function stressReportRequested(search: URLSearchParams): boolean {
   const value = (search.get(STRESS_REPORT_QUERY_FLAG) || "").trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
+}
+
+/** Specific public-audit report selector carried on the verification link. */
+export function stressReportIdFromSearch(
+  search: URLSearchParams,
+): string | null {
+  const raw = (search.get(STRESS_REPORT_ID_QUERY_FLAG) || "").trim();
+  if (!raw || raw.length > 64) return null;
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRe.test(raw) ? raw.toLowerCase() : null;
 }
 
 export type SignupConfirmParse =

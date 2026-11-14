@@ -20,6 +20,7 @@ import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
 import {
   parseSignupConfirmParams,
   SIGNUP_CONFIRM_EXPIRED_MESSAGE,
+  stressReportIdFromSearch,
   stressReportRequested,
   stripSignupConfirmParams,
   verifySignupEmail,
@@ -27,6 +28,7 @@ import {
 import {
   consumeStressReportPending,
   markStressReportPending,
+  reportsHandoffHref,
 } from "@/lib/publicBomStress";
 
 type InvitePreview = {
@@ -72,9 +74,10 @@ function LoginInner() {
     stagedOnce.current = true;
 
     const params = new URLSearchParams(window.location.search);
-    // Stage before stripping so OTP redirects keep the public-audit unlock intent.
+    // Stage before stripping so OTP redirects keep the public-audit unlock intent
+    // and the specific report_id selector from the verification email link.
     if (stressReportRequested(params)) {
-      markStressReportPending();
+      markStressReportPending(stressReportIdFromSearch(params));
     }
     const parsed = parseSignupConfirmParams(params);
     if (parsed.kind === "ready") {
@@ -215,8 +218,8 @@ function LoginInner() {
       }
       if (result.email) setEmail(result.email);
 
-      const stressPending = consumeStressReportPending();
-      if (stressPending && result.sessionReady && result.accessToken) {
+      const stressHandoff = consumeStressReportPending();
+      if (stressHandoff.pending && result.sessionReady && result.accessToken) {
         try {
           const me = await fetchMe(result.accessToken);
           const session: Session = {
@@ -234,24 +237,24 @@ function LoginInner() {
             trial_days_remaining: me.trial_days_remaining,
           };
           await setSession(session);
-          router.replace("/reports?public_bom_stress=1");
+          router.replace(reportsHandoffHref(stressHandoff.reportId));
           return;
         } catch {
           // Fall through to sign-in handoff if session bootstrap fails.
-          markStressReportPending();
+          markStressReportPending(stressHandoff.reportId);
         }
-      } else if (stressPending) {
-        markStressReportPending();
+      } else if (stressHandoff.pending) {
+        markStressReportPending(stressHandoff.reportId);
       }
 
       setConfirmPhase("success");
       setConfirmMessage(
-        stressPending
+        stressHandoff.pending
           ? "Your email has been confirmed. Sign in to open your complete BOM audit in Reports."
           : "Your email has been confirmed successfully. Sign in to access your workspace.",
       );
       setNotice(
-        stressPending
+        stressHandoff.pending
           ? "Email confirmed. Sign in to unlock your free BOM audit in Reports."
           : "Email confirmed. Sign in with this address to finish activating your workspace.",
       );
@@ -275,8 +278,12 @@ function LoginInner() {
     try {
       const session = await login(email, password);
       await setSession(session);
-      const stressPending = consumeStressReportPending();
-      router.replace(stressPending ? "/reports?public_bom_stress=1" : "/");
+      const stressHandoff = consumeStressReportPending();
+      router.replace(
+        stressHandoff.pending
+          ? reportsHandoffHref(stressHandoff.reportId)
+          : "/",
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

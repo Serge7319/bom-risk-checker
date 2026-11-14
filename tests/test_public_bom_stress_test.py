@@ -422,13 +422,19 @@ class PublicBomStressTest(unittest.TestCase):
         supabase = types.SimpleNamespace(create_client=lambda *_: auth)
         callback = types.SimpleNamespace(
             signup_confirmation_redirect_url=lambda: "https://app.cadivor.com/?cadivor_signup_confirm=1")
+        report_id = "11111111-1111-4111-8111-111111111111"
         with patch.dict(sys.modules, {
             "supabase": supabase, "src.auth_signup_confirmation": callback,
         }), patch.object(funnel, "get_secret", return_value="configured"):
-            funnel.send_report_verification("Director@Company.com")
+            funnel.send_report_verification(
+                "Director@Company.com", report_id=report_id
+            )
         self.assertEqual(sent[0]["email"], "director@company.com")
         self.assertTrue(sent[0]["options"]["should_create_user"])
-        self.assertIn("cadivor_signup_confirm=1", sent[0]["options"]["email_redirect_to"])
+        redirect = sent[0]["options"]["email_redirect_to"]
+        self.assertIn("cadivor_signup_confirm=1", redirect)
+        self.assertIn("cadivor_stress_report=1", redirect)
+        self.assertIn(f"cadivor_stress_report_id={report_id}", redirect)
 
     def test_verified_email_callback_hands_off_to_reports_only_after_success(self):
         fake_st = types.ModuleType("streamlit")

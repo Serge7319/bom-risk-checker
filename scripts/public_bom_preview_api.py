@@ -91,11 +91,17 @@ class Handler(BaseHTTPRequestHandler):
             if token != "owner-token":
                 self._json({"detail": "Unauthorized"}, 401)
                 return
+            from urllib.parse import parse_qs, urlsplit
+
+            qs = parse_qs(urlsplit(self.path).query)
+            report_id = (qs.get("report_id") or ["11111111-1111-4111-8111-111111111111"])[
+                0
+            ]
             self._json(
                 {
                     "ok": True,
                     "report": {
-                        "id": "preview-report-1",
+                        "id": report_id,
                         "filename": "preview-bom.csv",
                         "row_count": 2,
                         "created_at": "2026-11-14T00:00:00+00:00",
