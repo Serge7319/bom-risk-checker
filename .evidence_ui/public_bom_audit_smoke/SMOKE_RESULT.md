@@ -11,7 +11,7 @@
 | Stub API | `http://127.0.0.1:18080` (`scripts/public_bom_preview_api.py`) |
 | Runner | `apps/web/scripts/public_bom_browser_smoke.mjs` (Playwright) |
 | Result | **PASS** |
-| Proves | status → upload → preliminary audit → lead email-request UI |
+| Proves | status → upload → preliminary audit → lead email-request UI; anonymous Turnstile gate; allowlisted QA session submits without token; normal session rejected without token |
 | Does **not** prove | email confirmation, verified-report ownership, remaining-row completion |
 
 ## Report-delivery smoke (authenticated handoff)
@@ -31,5 +31,7 @@ Live OTP confirmation remains an environment check outside this stub smoke.
 ## Abuse-protection notes (local)
 
 - Anonymous preview enriches only the first five rows; remaining rows stay pending until complete.
+- Full enrichment uses an atomic email lease (`full_enrichment_lease_expires_at`) so concurrent claims and retries cannot double-spend the 1/30-day quota.
 - Daily enrichment budget default: **500** rows/UTC day (`CADIVOR_PUBLIC_BOM_DAILY_ENRICHED_ROWS`).
-- Turnstile is fail-closed when `CADIVOR_TURNSTILE_SECRET_KEY` is set (local stub smoke runs with Turnstile off).
+- Turnstile is fail-closed when `CADIVOR_TURNSTILE_SECRET_KEY` is set (requires `success`, allowed hostname, and action exactly `public_bom_audit`).
+- Do **not** deploy until the Supabase abuse-protections migration is applied.

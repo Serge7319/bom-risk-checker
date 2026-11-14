@@ -6,6 +6,9 @@
     "statusEnabledUpload": true,
     "auditUploadOk": true,
     "leadSubmitOk": true,
-    "statusErrorPath": true
+    "statusErrorPath": true,
+    "anonymousTurnstileBlocksSubmit": true,
+    "qaSessionSubmitsWithoutToken": true,
+    "normalSessionRejectedWithoutToken": true
   }
 }

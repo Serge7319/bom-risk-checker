@@ -1965,6 +1965,7 @@ async def public_bom_stress_complete_post(request: Request) -> JSONResponse:
     """Enrich remaining pending rows after confirmed email ownership."""
     from src.public_bom_stress_test import (
         PUBLIC_BOM_BUDGET_MESSAGE,
+        PUBLIC_BOM_COMPLETE_IN_PROGRESS_MESSAGE,
         PUBLIC_BOM_EMAIL_QUOTA_MESSAGE,
         StressTestError,
         complete_audit,
@@ -2002,6 +2003,8 @@ async def public_bom_stress_complete_post(request: Request) -> JSONResponse:
         detail = str(exc)
         if detail in {PUBLIC_BOM_EMAIL_QUOTA_MESSAGE, PUBLIC_BOM_BUDGET_MESSAGE}:
             return _json({"detail": detail}, 429)
+        if detail == PUBLIC_BOM_COMPLETE_IN_PROGRESS_MESSAGE:
+            return _json({"detail": detail}, 409)
         if "not found" in detail.lower():
             return _json({"detail": detail}, 404)
         return _json({"detail": detail}, 400)

@@ -84,6 +84,15 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertIn("!file ||", page)
         self.assertIn("!auditEnabled", page)
         self.assertIn("turnstile_required", page)
+        # Signed-in users may omit the widget; API still rejects non-QA sessions.
+        self.assertIn("hasSession", page)
+        self.assertIn("!signedIn", page)
+        self.assertIn("!hasSession", page)
+        # No client-controlled QA flag on the submit path.
+        self.assertNotIn("qaMode", page)
+        self.assertNotIn("isQa", page)
+        self.assertNotIn("qa_bypass", page)
+        self.assertNotIn("CADIVOR_PUBLIC_BOM_QA_EMAILS", page)
         # Upload UI is gated on confirmed enabled=true, not merely "not disabled".
         self.assertIn("{auditEnabled && !report ? (", page)
         self.assertNotIn("{!disabled && !report ? (", page)
@@ -109,6 +118,9 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertIn("public-bom-status-loading", smoke)
         self.assertIn("public-bom-status-error", smoke)
         self.assertIn("public-bom-run-audit", smoke)
+        self.assertIn("qaSessionSubmitsWithoutToken", smoke)
+        self.assertIn("normalSessionRejectedWithoutToken", smoke)
+        self.assertIn("anonymousTurnstileBlocksSubmit", smoke)
         self.assertNotIn("cadivor.pages.dev", smoke)
 
     def test_verified_report_handoff_wiring(self):
@@ -165,6 +177,9 @@ class PublicBomNextWiringTests(unittest.TestCase):
         ).read_text()
         self.assertIn("cadivor_claim_public_bom_enrichment_budget", migration)
         self.assertIn("cadivor_reserve_public_bom_stress_test_qa", migration)
+        self.assertIn("full_enrichment_lease_expires_at", migration)
+        self.assertIn("p_lease_seconds", migration)
+        self.assertIn("in_progress", migration)
 
     def test_api_routes_registered_without_auth_context(self):
         main = (ROOT / "apps/api/main.py").read_text()

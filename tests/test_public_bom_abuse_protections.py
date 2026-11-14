@@ -85,6 +85,26 @@ def test_turnstile_valid_invalid_and_missing(monkeypatch):
             with pytest.raises(funnel.StressTestError):
                 funnel.validate_turnstile("token-action")
 
+        # Missing action must fail closed (exact match required).
+        missing_action = {
+            "success": True,
+            "hostname": "app.cadivor.com",
+        }
+        with patch("urllib.request.urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(
+                missing_action
+            ).encode()
+            with pytest.raises(funnel.StressTestError):
+                funnel.validate_turnstile("token-missing-action")
+
+        empty_action = {**valid, "action": ""}
+        with patch("urllib.request.urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value.read.return_value = json.dumps(
+                empty_action
+            ).encode()
+            with pytest.raises(funnel.StressTestError):
+                funnel.validate_turnstile("token-empty-action")
+
 
 def test_turnstile_disabled_when_secret_unset(monkeypatch):
     with patch.object(funnel, "get_secret", return_value=""):
@@ -205,13 +225,10 @@ def test_complete_audit_email_quota_idempotent_and_cross_ip():
         def execute(self):
             return types.SimpleNamespace(data=[dict(store)])
 
-    def claim(email, report_id, *, bypass_email_quota=False):
+    def claim(email, report_id, *, bypass_email_quota=False, **_kwargs):
         claims.append(email)
         if store.get("full_enriched_at"):
             return "already_complete"
-        if len(claims) > 1 and not bypass_email_quota and claims[0] == email:
-            # First claim wins; later concurrent treated as already started → complete path
-            pass
         return "claimed"
 
     enrich_batches: list[int] = []
@@ -297,6 +314,57 @@ def test_complete_audit_quota_exceeded_different_report():
         with pytest.raises(funnel.StressTestError) as exc:
             funnel.complete_audit("tok", REPORT_A)
     assert "30 days" in str(exc.value)
+
+
+def test_complete_audit_in_progress_blocks_duplicate_enrich():
+    report = {
+        "id": REPORT_A,
+        "results": [{"mpn": "X", "enrichment_pending": True}],
+        "work_email": "owner@company.com",
+        "status": "lead_captured",
+        "qa_mode": False,
+        "full_enriched_at": None,
+        "filename": "a.csv",
+        "row_count": 1,
+        "created_at": "2026-11-14T00:00:00+00:00",
+    }
+
+    class Query:
+        def table(self, *_):
+            return self
+
+        def select(self, *_):
+            return self
+
+        def eq(self, *_):
+            return self
+
+        def order(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_):
+            return self
+
+        def execute(self):
+            return types.SimpleNamespace(data=[dict(report)])
+
+    with (
+        patch.object(funnel, "enabled", return_value=True),
+        patch.object(
+            funnel, "_confirmed_session_email", return_value="owner@company.com"
+        ),
+        patch.object(funnel, "resolve_qa_session", return_value=None),
+        patch.object(funnel, "_service_client", return_value=Query()),
+        patch.object(funnel, "_claim_full_enrichment", return_value="in_progress"),
+        patch.object(
+            funnel,
+            "_enrich_rows",
+            side_effect=AssertionError("must not enrich while leased"),
+        ),
+    ):
+        with pytest.raises(funnel.StressTestError) as exc:
+            funnel.complete_audit("tok", REPORT_A)
+    assert str(exc.value) == funnel.PUBLIC_BOM_COMPLETE_IN_PROGRESS_MESSAGE
 
 
 def test_qa_bypasses_turnstile_and_ip_quota_only():
@@ -421,6 +489,92 @@ def test_audit_api_rejects_missing_turnstile_when_enabled(client: TestClient):
     assert "security check" in response.json()["detail"].lower()
 
 
+def test_allowlisted_qa_session_submits_without_turnstile_normal_cannot(
+    client: TestClient,
+):
+    """API is authority: confirmed allowlisted QA skips Turnstile; normal cannot.
+
+    No client QA flag — only Authorization bearer → resolve_qa_session.
+    """
+    csv_bytes = b"MPN,Qty\nPART1,1\n"
+
+    # Normal authenticated (non-QA): Turnstile required → reject without token.
+    with (
+        patch("src.public_bom_stress_test.enabled", return_value=True),
+        patch("src.public_bom_stress_test.turnstile_enabled", return_value=True),
+        patch("src.public_bom_stress_test.resolve_qa_session", return_value=None),
+        patch(
+            "src.public_bom_stress_test.validate_turnstile",
+            side_effect=funnel.StressTestError(
+                "Complete the security check and try again."
+            ),
+        ),
+    ):
+        denied = client.post(
+            "/public/bom-stress/audit",
+            files={"file": ("bom.csv", csv_bytes, "text/csv")},
+            headers={
+                "X-Cadivor-Visitor": _signed_visitor(),
+                "Authorization": "Bearer normal-user-token",
+            },
+        )
+    assert denied.status_code == 400
+    assert "security check" in denied.json()["detail"].lower()
+
+    class FakeUpdate:
+        def table(self, *_):
+            return self
+
+        def update(self, payload):
+            self.saved = payload
+            return self
+
+        def eq(self, *_):
+            return self
+
+        def execute(self):
+            return None
+
+    fake = FakeUpdate()
+    # Confirmed allowlisted QA: no Turnstile token, still succeeds via bearer.
+    with (
+        patch("src.public_bom_stress_test.enabled", return_value=True),
+        patch("src.public_bom_stress_test.turnstile_enabled", return_value=True),
+        patch(
+            "src.public_bom_stress_test.resolve_qa_session",
+            return_value={"email": "qa@company.com", "qa_mode": True},
+        ),
+        patch(
+            "src.public_bom_stress_test.validate_turnstile",
+            side_effect=AssertionError("Turnstile must not run for QA"),
+        ),
+        patch("src.public_bom_stress_test.visitor_hash", return_value="c" * 64),
+        patch("src.public_bom_stress_test._reserve", return_value=REPORT_A),
+        patch("src.public_bom_stress_test._claim_enrichment_budget"),
+        patch(
+            "src.public_bom_stress_test._enrich_one",
+            side_effect=lambda i, row: (
+                i,
+                {**row, "verified": True, "risk": "Low", "lifecycle": "Active"},
+            ),
+        ),
+        patch("src.public_bom_stress_test._service_client", return_value=fake),
+    ):
+        allowed = client.post(
+            "/public/bom-stress/audit",
+            files={"file": ("qa.csv", csv_bytes, "text/csv")},
+            headers={
+                "X-Cadivor-Visitor": _signed_visitor(),
+                "Authorization": "Bearer qa-allowlisted-token",
+            },
+        )
+    assert allowed.status_code == 200, allowed.text
+    body = allowed.json()
+    assert body.get("ok") is True
+    assert body.get("qa_mode") is True
+    assert fake.saved["qa_mode"] is True
+
+
 def test_complete_api_requires_auth(client: TestClient):
     with patch("src.public_bom_stress_test.enabled", return_value=True):
         response = client.post("/public/bom-stress/complete", json={})
@@ -439,6 +593,10 @@ def test_migration_defines_budget_and_qa_rpcs():
     assert "cadivor_reserve_public_bom_stress_test_qa" in sql
     assert "qa_mode" in sql
     assert "full_enriched_at" in sql
+    assert "full_enrichment_lease_expires_at" in sql
+    assert "p_lease_seconds" in sql
+    assert "in_progress" in sql
+    assert "pg_advisory_xact_lock" in sql
 
 
 def test_daily_enriched_row_limit_default():

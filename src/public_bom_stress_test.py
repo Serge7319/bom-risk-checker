@@ -36,6 +36,10 @@ PUBLIC_BOM_BUDGET_MESSAGE = (
 )
 VERIFICATION_RESEND_COOLDOWN_SECONDS = 15 * 60
 FULL_ENRICHMENT_WINDOW_DAYS = 30
+FULL_ENRICHMENT_LEASE_SECONDS = 15 * 60
+PUBLIC_BOM_COMPLETE_IN_PROGRESS_MESSAGE = (
+    "Your complete audit is still being prepared. Refresh in a moment."
+)
 # Default global UTC-day cap on supplier-enriched rows (preview + complete).
 # Tune via CADIVOR_PUBLIC_BOM_DAILY_ENRICHED_ROWS. Providers have no coded daily
 # caps beyond per-search limit≤25; 500 ≈ 100 anonymous 5-row previews.
@@ -259,7 +263,8 @@ def validate_turnstile(
     if hostname not in turnstile_expected_hostnames():
         raise StressTestError("The security check failed. Refresh and try again.")
     action = str(result.get("action") or "").strip()
-    if expected_action and action and action != expected_action:
+    # Missing action must fail closed — require an exact match when expected.
+    if not expected_action or action != expected_action:
         raise StressTestError("The security check failed. Refresh and try again.")
 
 
@@ -570,6 +575,7 @@ def _claim_full_enrichment(
     report_id: str,
     *,
     bypass_email_quota: bool = False,
+    lease_seconds: int = FULL_ENRICHMENT_LEASE_SECONDS,
 ) -> str:
     try:
         response = (
@@ -581,6 +587,7 @@ def _claim_full_enrichment(
                     "p_report_id": report_id,
                     "p_window_days": FULL_ENRICHMENT_WINDOW_DAYS,
                     "p_bypass_email_quota": bool(bypass_email_quota),
+                    "p_lease_seconds": int(max(60, lease_seconds)),
                 },
             )
             .execute()
@@ -593,6 +600,41 @@ def _claim_full_enrichment(
         raise StressTestError("The audit is temporarily unavailable. Please try later.") from None
 
 
+def _load_owned_lead_report(
+    email: str, report_id: str | None
+) -> dict[str, Any] | None:
+    selected_id = normalize_stress_report_id(report_id)
+    query = (
+        _service_client()
+        .table("cadivor_public_bom_stress_tests")
+        .select(
+            "id,filename,row_count,results,created_at,status,work_email,"
+            "full_enriched_at,qa_mode,preview_enriched_count,"
+            "full_enrichment_lease_expires_at"
+        )
+        .eq("work_email", email)
+        .eq("status", "lead_captured")
+    )
+    if selected_id:
+        query = query.eq("id", selected_id).limit(1)
+    else:
+        query = query.order("created_at", desc=True).limit(1)
+    rows = query.execute().data or []
+    return rows[0] if rows else None
+
+
+def _completed_report_payload(report: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(report["id"]),
+        "filename": report.get("filename"),
+        "row_count": report.get("row_count"),
+        "results": list(report.get("results") or []),
+        "created_at": report.get("created_at"),
+        "full_enriched": True,
+        "qa_mode": bool(report.get("qa_mode")),
+    }
+
+
 def complete_audit(
     access_token: str,
     report_id: str | None = None,
@@ -600,7 +642,8 @@ def complete_audit(
     """Enrich pending stubs after confirmed email ownership. Idempotent.
 
     Enforces one full supplier-backed free audit per confirmed email / 30 days
-    (QA allowlist bypasses email quota only). Global daily budget still applies.
+    across completed and active in-progress leases (QA allowlist bypasses email
+    quota only). Global daily budget still applies.
     """
     if not enabled():
         raise StressTestError("The public audit is temporarily unavailable.")
@@ -608,28 +651,12 @@ def complete_audit(
     if not email:
         raise StressTestError("Confirm your email and sign in to finish this audit.")
     qa = resolve_qa_session(access_token)
-    selected_id = normalize_stress_report_id(report_id)
     try:
-        query = (
-            _service_client()
-            .table("cadivor_public_bom_stress_tests")
-            .select(
-                "id,filename,row_count,results,created_at,status,work_email,"
-                "full_enriched_at,qa_mode,preview_enriched_count"
-            )
-            .eq("work_email", email)
-            .eq("status", "lead_captured")
-        )
-        if selected_id:
-            query = query.eq("id", selected_id).limit(1)
-        else:
-            query = query.order("created_at", desc=True).limit(1)
-        rows = query.execute().data or []
+        report = _load_owned_lead_report(email, report_id)
     except Exception:
         raise StressTestError("Verified public audit not found.") from None
-    if not rows:
+    if not report:
         raise StressTestError("Verified public audit not found.")
-    report = rows[0]
     owned_id = str(report["id"])
     claim = _claim_full_enrichment(
         email,
@@ -640,17 +667,21 @@ def complete_audit(
         raise StressTestError(PUBLIC_BOM_EMAIL_QUOTA_MESSAGE)
     if claim == "not_found":
         raise StressTestError("Verified public audit not found.")
-    results = list(report.get("results") or [])
     if claim == "already_complete" or report.get("full_enriched_at"):
-        return {
-            "id": owned_id,
-            "filename": report.get("filename"),
-            "row_count": report.get("row_count"),
-            "results": results,
-            "created_at": report.get("created_at"),
-            "full_enriched": True,
-            "qa_mode": bool(report.get("qa_mode")),
-        }
+        return _completed_report_payload(report)
+    if claim == "in_progress":
+        # Another worker holds the lease for this report — do not start duplicate
+        # supplier lookups. Reload once in case completion just landed.
+        try:
+            refreshed = _load_owned_lead_report(email, owned_id)
+        except Exception:
+            refreshed = None
+        if refreshed and refreshed.get("full_enriched_at"):
+            return _completed_report_payload(refreshed)
+        raise StressTestError(PUBLIC_BOM_COMPLETE_IN_PROGRESS_MESSAGE)
+    if claim != "claimed":
+        raise StressTestError("The audit is temporarily unavailable. Please try later.")
+    results = list(report.get("results") or [])
     pending_indexes = [
         index
         for index, row in enumerate(results)
@@ -660,19 +691,16 @@ def complete_audit(
         # Mark complete even if nothing pending (idempotent refresh path).
         try:
             _service_client().table("cadivor_public_bom_stress_tests").update(
-                {"full_enriched_at": datetime.now(timezone.utc).isoformat()}
+                {
+                    "full_enriched_at": datetime.now(timezone.utc).isoformat(),
+                    "full_enrichment_lease_expires_at": None,
+                }
             ).eq("id", owned_id).execute()
         except Exception:
             pass
-        return {
-            "id": owned_id,
-            "filename": report.get("filename"),
-            "row_count": report.get("row_count"),
-            "results": results,
-            "created_at": report.get("created_at"),
-            "full_enriched": True,
-            "qa_mode": bool(report.get("qa_mode")),
-        }
+        report["results"] = results
+        report["full_enriched_at"] = True
+        return _completed_report_payload(report)
     pending_inputs = []
     for index in pending_indexes:
         row = results[index]
@@ -692,6 +720,7 @@ def complete_audit(
             {
                 "results": results,
                 "full_enriched_at": datetime.now(timezone.utc).isoformat(),
+                "full_enrichment_lease_expires_at": None,
             }
         ).eq("id", owned_id).execute()
         _service_client().table("cadivor_public_bom_leads").update(
@@ -704,15 +733,9 @@ def complete_audit(
         ).eq("report_id", owned_id).execute()
     except Exception:
         raise StressTestError("The audit could not be saved. Please try later.") from None
-    return {
-        "id": owned_id,
-        "filename": report.get("filename"),
-        "row_count": report.get("row_count"),
-        "results": results,
-        "created_at": report.get("created_at"),
-        "full_enriched": True,
-        "qa_mode": bool(report.get("qa_mode")),
-    }
+    report["results"] = results
+    report["full_enriched_at"] = True
+    return _completed_report_payload(report)
 
 
 def capture_lead(report_id: str, address: str, *, source: str = "homepage_stress_test") -> str:

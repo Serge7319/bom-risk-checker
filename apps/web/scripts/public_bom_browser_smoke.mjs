@@ -33,7 +33,13 @@ async function main() {
     auditUploadOk: false,
     leadSubmitOk: false,
     statusErrorPath: false,
+    anonymousTurnstileBlocksSubmit: false,
+    qaSessionSubmitsWithoutToken: false,
+    normalSessionRejectedWithoutToken: false,
   };
+
+  const csv =
+    "MPN,Qty,Manufacturer\nLM358DR,2,Texas Instruments\nMCP2551-I/SN,1,Microchip\n";
 
   try {
     // 1) Normal enabled flow: loading then upload + lead.
@@ -50,7 +56,6 @@ async function main() {
     });
     results.statusEnabledUpload = true;
 
-    const csv = "MPN,Qty,Manufacturer\nLM358DR,2,Texas Instruments\nMCP2551-I/SN,1,Microchip\n";
     await page.locator('input[type="file"]').setInputFiles({
       name: "preview-bom.csv",
       mimeType: "text/csv",
@@ -68,7 +73,159 @@ async function main() {
       .waitFor({ timeout: 15000 });
     results.leadSubmitOk = true;
 
-    // 2) Status error path via route interception (still Next app, signed-out).
+    // 2) Turnstile required: anonymous cannot submit without token; session can
+    // attempt submit (API still rejects non-QA). No client QA flag.
+    await page.unroute("**/api/public/bom-stress/status").catch(() => undefined);
+    await page.route("**/api/public/bom-stress/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          enabled: true,
+          turnstile_required: true,
+        }),
+      });
+    });
+    await page.goto(`${BASE}/public-bom-audit?embed=true&qa_smoke=1`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.getByTestId("public-bom-run-audit").waitFor({
+      state: "visible",
+      timeout: 15000,
+    });
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "qa-smoke.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(csv, "utf8"),
+    });
+    const anonDisabled = await page
+      .getByTestId("public-bom-run-audit")
+      .isDisabled();
+    results.anonymousTurnstileBlocksSubmit = anonDisabled;
+    if (!anonDisabled) {
+      throw new Error("Anonymous submit stayed enabled without Turnstile token");
+    }
+
+    // Seed a session so the UI drops the Turnstile gate (API remains authority).
+    await page.evaluate(() => {
+      window.localStorage.setItem(
+        "cadivor_next_session",
+        JSON.stringify({
+          access_token: "qa-allowlisted-smoke-token",
+          email: "qa@company.com",
+          user_id: "qa-user",
+        }),
+      );
+    });
+    await page.goto(`${BASE}/public-bom-audit?embed=true&qa_smoke=1`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.getByTestId("public-bom-run-audit").waitFor({
+      state: "visible",
+      timeout: 15000,
+    });
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "qa-smoke.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(csv, "utf8"),
+    });
+    const sessionEnabled = !(await page
+      .getByTestId("public-bom-run-audit")
+      .isDisabled());
+    if (!sessionEnabled) {
+      throw new Error("Signed-in submit stayed disabled without Turnstile token");
+    }
+
+    let sawQaAudit = false;
+    let sawNormalReject = false;
+    await page.route("**/api/public/bom-stress/audit", async (route) => {
+      const req = route.request();
+      const auth = (req.headers()["authorization"] || "").toLowerCase();
+      // Multipart bodies are opaque here; UI already proved no Turnstile token
+      // was required to click. API authority is asserted by bearer outcome.
+      if (auth.includes("qa-allowlisted-smoke-token")) {
+        sawQaAudit = true;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            filename: "qa-smoke.csv",
+            row_count: 2,
+            preview: [],
+            remaining_count: 0,
+            qa_mode: true,
+            full_enriched: false,
+          }),
+        });
+        return;
+      }
+      if (auth.includes("normal-user-smoke-token")) {
+        sawNormalReject = true;
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({
+            detail: "Complete the security check and try again.",
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: "Complete the security check and try again.",
+        }),
+      });
+    });
+
+    await page.getByTestId("public-bom-run-audit").click();
+    await page.getByText("Preliminary BOM audit").waitFor({ timeout: 15000 });
+    results.qaSessionSubmitsWithoutToken = sawQaAudit;
+    if (!sawQaAudit) {
+      throw new Error("QA session did not submit audit without Turnstile token");
+    }
+
+    // Normal (non-QA) session: UI may allow click; API rejects without token.
+    await page.evaluate(() => {
+      window.localStorage.setItem(
+        "cadivor_next_session",
+        JSON.stringify({
+          access_token: "normal-user-smoke-token",
+          email: "user@company.com",
+          user_id: "normal-user",
+        }),
+      );
+    });
+    await page.goto(`${BASE}/public-bom-audit?embed=true&qa_smoke=1`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.getByTestId("public-bom-run-audit").waitFor({
+      state: "visible",
+      timeout: 15000,
+    });
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "normal-smoke.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(csv, "utf8"),
+    });
+    await page.getByTestId("public-bom-run-audit").click();
+    await page
+      .getByText(/security check/i)
+      .waitFor({ timeout: 15000 });
+    results.normalSessionRejectedWithoutToken = sawNormalReject;
+    if (!sawNormalReject) {
+      throw new Error("Normal session was not rejected without Turnstile token");
+    }
+
+    // 3) Status error path via route interception (still Next app, signed-out).
+    await page.unroute("**/api/public/bom-stress/audit").catch(() => undefined);
+    await page.evaluate(() => {
+      window.localStorage.removeItem("cadivor_next_session");
+    });
     await page.route("**/api/public/bom-stress/status", async (route) => {
       await route.fulfill({
         status: 503,
