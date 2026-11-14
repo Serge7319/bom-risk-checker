@@ -21,6 +21,12 @@ class PublicBomStressTest(unittest.TestCase):
         homepage = (root / "marketing-web/index.html").read_text()
         script = (root / "marketing-web/app.js").read_text()
         entrypoint = (root / "streamlit_app.py").read_text()
+        next_page = (root / "apps/web/src/app/public-bom-audit/page.tsx").read_text()
+        next_middleware = (root / "apps/web/src/middleware.ts").read_text()
+        next_audit_route = (
+            root / "apps/web/src/app/api/public/bom-stress/audit/route.ts"
+        ).read_text()
+        api_main = (root / "apps/api/main.py").read_text()
         self.assertIn('id="bomStressTestFrame"', homepage)
         self.assertIn('id="bomStressTestSection"', homepage)
         self.assertNotIn('id="bomStressTestFullPage"', homepage)
@@ -37,6 +43,16 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertIn("params.set(key, value.slice(0, 80))", script)
         self.assertLess(entrypoint.index('st.query_params.get("public"'),
                         entrypoint.index("ensure_authenticated_or_stop()"))
+        # Next.js production app restores the marketing iframe path without login.
+        self.assertIn('pathname = "/public-bom-audit"', next_middleware)
+        self.assertIn('public") || "").trim().toLowerCase() !== "stress"', next_middleware)
+        self.assertIn('data-testid="public-bom-audit"', next_page)
+        self.assertNotIn("useRequireSession", next_page)
+        self.assertIn("cv-stress-site-header", next_page)
+        self.assertIn("Email my full report", next_page)
+        self.assertIn("proxyPublicBomAudit", next_audit_route)
+        self.assertIn('Route("/public/bom-stress/audit"', api_main)
+        self.assertIn("X-Cadivor-Visitor", (root / "apps/web/src/lib/publicBomProxy.ts").read_text())
 
     def test_direct_audit_keeps_brand_without_distraction_links_or_embedded_header(self):
         rendered = []
