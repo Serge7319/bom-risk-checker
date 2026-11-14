@@ -385,6 +385,7 @@ def test_public_bom_audit_pytest_suites_in_existing_ci_gate():
     targets = [
         "tests/test_public_bom_stress_api.py",
         "tests/test_public_bom_next_wiring.py",
+        "tests/test_public_bom_upload_limit.py",
         "tests/test_public_bom_stress_test.py",
     ]
     proc = subprocess.run(

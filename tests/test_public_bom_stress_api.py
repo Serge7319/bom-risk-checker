@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import time
+import types
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
 from starlette.testclient import TestClient
 
 from apps.api.main import app
+from src import public_bom_stress_test as funnel
 from src.public_bom_stress_test import (
     MAX_BYTES,
     PUBLIC_BOM_LIMIT_MESSAGE,
@@ -15,9 +21,20 @@ from src.public_bom_stress_test import (
 )
 
 
+HMAC_SECRET = "a" * 48
+
+
 @pytest.fixture()
 def client() -> TestClient:
     return TestClient(app)
+
+
+def _signed_visitor(ip: str = "203.0.113.10", *, now: int | None = None) -> str:
+    stamp = str(now if now is not None else int(time.time()))
+    sig = hmac.new(
+        HMAC_SECRET.encode(), f"v1|{stamp}|{ip}".encode(), hashlib.sha256
+    ).hexdigest()
+    return f"v1;{stamp};{ip};{sig}"
 
 
 def test_public_bom_stress_status_requires_no_auth(client: TestClient):
@@ -52,6 +69,7 @@ def test_public_bom_stress_audit_and_lead_fail_closed_when_disabled(client: Test
                 "email": "a@b.com",
                 "accepted_terms": True,
             },
+            headers={"X-Cadivor-Visitor": _signed_visitor()},
         )
     assert audit.status_code == 503
     assert lead.status_code == 503
@@ -87,26 +105,15 @@ def test_public_bom_stress_audit_rejects_row_limit_via_funnel(client: TestClient
         patch("src.public_bom_stress_test.enabled", return_value=True),
         patch(
             "src.public_bom_stress_test.get_secret",
-            side_effect=lambda key, required=False: "a" * 48
+            side_effect=lambda key, required=False: HMAC_SECRET
             if "HMAC" in str(key)
             else "",
         ),
     ):
-        # Valid-looking HMAC so the request fails on row limits, not visitor forgery.
-        import hashlib
-        import hmac
-        import time
-
-        stamp = str(int(time.time()))
-        ip = "203.0.113.10"
-        sig = hmac.new(
-            (b"a" * 48), f"v1|{stamp}|{ip}".encode(), hashlib.sha256
-        ).hexdigest()
-        header = f"v1;{stamp};{ip};{sig}"
         response = client.post(
             "/public/bom-stress/audit",
             files={"file": ("too-many.csv", bom, "text/csv")},
-            headers={"X-Cadivor-Visitor": header},
+            headers={"X-Cadivor-Visitor": _signed_visitor()},
         )
     assert response.status_code == 400
     assert "1–30" in response.json()["detail"] or "30" in response.json()["detail"]
@@ -114,15 +121,12 @@ def test_public_bom_stress_audit_rejects_row_limit_via_funnel(client: TestClient
 
 def test_forged_visitor_header_cannot_bypass_rate_correlation(client: TestClient):
     """X-Cadivor-Visitor is HMAC-checked correlation data, not client-trusted identity."""
-    import time
-
-    stamp = str(int(time.time()))
-    forged = f"v1;{stamp};203.0.113.10;{'0' * 64}"
+    forged = f"v1;{int(time.time())};203.0.113.10;{'0' * 64}"
     with (
         patch("src.public_bom_stress_test.enabled", return_value=True),
         patch(
             "src.public_bom_stress_test.get_secret",
-            side_effect=lambda key, required=False: "a" * 48
+            side_effect=lambda key, required=False: HMAC_SECRET
             if "HMAC" in str(key)
             else "",
         ),
@@ -167,7 +171,6 @@ def test_public_bom_stress_audit_returns_preview_only(client: TestClient):
     assert payload["id"] == "report-1"
     assert payload["preview"][0]["mpn"] == "LM358N"
     assert payload["remaining_count"] == 1
-    # Locked remaining rows must never appear in the anonymous response body.
     assert "results" not in payload
     assert "remaining_preview" not in payload
     assert set(payload) <= {
@@ -214,14 +217,40 @@ def test_public_bom_stress_lead_requires_terms(client: TestClient):
     assert "Terms" in response.json()["detail"]
 
 
-def test_public_bom_stress_lead_sends_verification(client: TestClient):
+def test_public_bom_stress_lead_rejects_invalid_visitor_header(client: TestClient):
     with (
         patch("src.public_bom_stress_test.enabled", return_value=True),
         patch(
-            "src.public_bom_stress_test.capture_lead",
-            return_value="engineer@company.com",
-        ) as capture,
+            "src.public_bom_stress_test.get_secret",
+            side_effect=lambda key, required=False: HMAC_SECRET
+            if "HMAC" in str(key)
+            else "",
+        ),
         patch("src.public_bom_stress_test.send_report_verification") as send,
+    ):
+        response = client.post(
+            "/public/bom-stress/lead",
+            json={
+                "report_id": "report-1",
+                "email": "engineer@company.com",
+                "accepted_terms": True,
+            },
+            headers={
+                "X-Cadivor-Visitor": f"v1;{int(time.time())};203.0.113.10;{'0' * 64}"
+            },
+        )
+    assert response.status_code == 400
+    assert "unavailable" in response.json()["detail"].lower()
+    send.assert_not_called()
+
+
+def test_public_bom_stress_lead_sends_verification_once(client: TestClient):
+    with (
+        patch("src.public_bom_stress_test.enabled", return_value=True),
+        patch(
+            "src.public_bom_stress_test.request_full_report",
+            return_value=("engineer@company.com", True),
+        ) as request_full,
     ):
         response = client.post(
             "/public/bom-stress/lead?utm_source=guide",
@@ -230,12 +259,153 @@ def test_public_bom_stress_lead_sends_verification(client: TestClient):
                 "email": "engineer@company.com",
                 "accepted_terms": True,
             },
+            headers={"X-Cadivor-Visitor": "v1;signed"},
         )
     assert response.status_code == 200
-    assert response.json() == {"ok": True, "email": "engineer@company.com"}
-    capture.assert_called_once()
-    assert capture.call_args.kwargs["source"] == "utm:guide"
-    send.assert_called_once_with("engineer@company.com")
+    assert response.json() == {
+        "ok": True,
+        "email": "engineer@company.com",
+        "verification_sent": True,
+    }
+    request_full.assert_called_once()
+    assert request_full.call_args.args[0] == "report-1"
+    assert request_full.call_args.args[2] == "v1;signed"
+    assert request_full.call_args.kwargs["source"] == "utm:guide"
+
+
+def test_request_full_report_repeat_does_not_resend_email():
+    """Durable cooldown: second call for same lead skips the mailer (mocked)."""
+
+    class FakeStore:
+        def __init__(self):
+            self.report = {
+                "id": "report-1",
+                "row_count": 6,
+                "status": "ready",
+                "work_email": None,
+                "results": [],
+            }
+            self.lead = {
+                "report_id": "report-1",
+                "work_email": "engineer@company.com",
+                "verification_sent_at": None,
+            }
+            self.current = ""
+            self._pending_update = None
+            self._pending_upsert = None
+
+        def table(self, name):
+            self.current = name
+            self._pending_update = None
+            self._pending_upsert = None
+            return self
+
+        def select(self, *_):
+            return self
+
+        def update(self, payload):
+            self._pending_update = payload
+            return self
+
+        def upsert(self, payload, **_):
+            self._pending_upsert = payload
+            return self
+
+        def eq(self, *_):
+            return self
+
+        def single(self):
+            return self
+
+        def execute(self):
+            if self.current == "cadivor_public_bom_stress_tests":
+                if self._pending_update is not None:
+                    self.report = {**self.report, **self._pending_update}
+                    self._pending_update = None
+                    return types.SimpleNamespace(data=[{"id": "report-1"}])
+                return types.SimpleNamespace(data=dict(self.report))
+            if self._pending_upsert is not None:
+                # Preserve durable verification claim across lead upserts.
+                prior_sent = self.lead.get("verification_sent_at")
+                self.lead = {**self.lead, **self._pending_upsert}
+                if "verification_sent_at" not in self._pending_upsert:
+                    self.lead["verification_sent_at"] = prior_sent
+                self._pending_upsert = None
+                return types.SimpleNamespace(data=[{"report_id": "report-1"}])
+            if self._pending_update is not None:
+                self.lead = {**self.lead, **self._pending_update}
+                self._pending_update = None
+                return types.SimpleNamespace(data=[{"report_id": "report-1"}])
+            return types.SimpleNamespace(data=dict(self.lead))
+
+    store = FakeStore()
+    sends: list[str] = []
+    header = _signed_visitor()
+    with (
+        patch.object(funnel, "_service_client", return_value=store),
+        patch.object(funnel, "get_secret", return_value=HMAC_SECRET),
+        patch.object(
+            funnel,
+            "send_report_verification",
+            side_effect=lambda address: sends.append(address),
+        ),
+    ):
+        email, sent_first = funnel.request_full_report(
+            "report-1",
+            "engineer@company.com",
+            header,
+            source="homepage_stress_test",
+        )
+        assert email == "engineer@company.com"
+        assert sent_first is True
+        assert sends == ["engineer@company.com"]
+        assert store.lead["verification_sent_at"]
+
+        email2, sent_second = funnel.request_full_report(
+            "report-1",
+            "engineer@company.com",
+            header,
+            source="homepage_stress_test",
+        )
+        assert email2 == "engineer@company.com"
+        assert sent_second is False
+        assert sends == ["engineer@company.com"]
+
+
+def test_claim_verification_send_respects_cooldown_window():
+    now = datetime(2026, 11, 14, 12, 0, tzinfo=timezone.utc)
+    recent = (now - timedelta(minutes=5)).isoformat()
+
+    class Fake:
+        def __init__(self):
+            self.row = {
+                "report_id": "report-1",
+                "work_email": "a@b.com",
+                "verification_sent_at": recent,
+            }
+
+        def table(self, *_):
+            return self
+
+        def select(self, *_):
+            return self
+
+        def update(self, *_):
+            raise AssertionError("must not update during cooldown")
+
+        def eq(self, *_):
+            return self
+
+        def single(self):
+            return self
+
+        def execute(self):
+            return types.SimpleNamespace(data=dict(self.row))
+
+    with patch.object(funnel, "_service_client", return_value=Fake()):
+        assert (
+            funnel.claim_verification_send("report-1", "a@b.com", now=now) is False
+        )
 
 
 def test_public_audit_failure_logs_do_not_embed_bom_or_tokens(client: TestClient, caplog):

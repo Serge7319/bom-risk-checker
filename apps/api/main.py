@@ -1851,10 +1851,9 @@ async def public_bom_stress_lead(request: Request) -> JSONResponse:
     """Capture email + send verification link for the locked remaining rows."""
     from src.public_bom_stress_test import (
         StressTestError,
-        capture_lead,
         enabled,
         lead_source_from_query,
-        send_report_verification,
+        request_full_report,
     )
 
     if not enabled():
@@ -1881,16 +1880,21 @@ async def public_bom_stress_lead(request: Request) -> JSONResponse:
     if not source:
         source = lead_source_from_query(request.query_params)
     try:
-        address = await run_in_threadpool(
-            capture_lead, report_id, email, source=source
+        address, verification_sent = await run_in_threadpool(
+            request_full_report,
+            report_id,
+            email,
+            _visitor_header(request),
+            source=source,
         )
-        await run_in_threadpool(send_report_verification, address)
     except StressTestError as exc:
         return _json({"detail": str(exc)}, 400)
     except Exception:  # noqa: BLE001
         logging.exception("public_bom_stress_lead_failed")
         return _json({"detail": "Could not send the verification link. Please try again later."}, 503)
-    return _json({"ok": True, "email": address})
+    return _json(
+        {"ok": True, "email": address, "verification_sent": bool(verification_sent)}
+    )
 
 
 

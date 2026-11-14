@@ -28,6 +28,7 @@ PREVIEW_ROWS = 5
 MAX_XLSX_UNCOMPRESSED = 8_000_000
 VISITOR_HEADER = "X-Cadivor-Visitor"
 PUBLIC_BOM_LIMIT_MESSAGE = "This connection has used its two free BOM audits in the last 24 hours."
+VERIFICATION_RESEND_COOLDOWN_SECONDS = 15 * 60
 class StressTestError(ValueError):
     """An actionable validation or availability error for the public funnel."""
 
@@ -299,6 +300,97 @@ def capture_lead(report_id: str, address: str, *, source: str = "homepage_stress
     except Exception:
         raise StressTestError("We could not save your request. Please try again.") from None
     return email
+
+
+def claim_verification_send(
+    report_id: str,
+    address: str,
+    *,
+    now: datetime | None = None,
+    cooldown_seconds: int = VERIFICATION_RESEND_COOLDOWN_SECONDS,
+) -> bool:
+    """Claim a verification-email send slot for this report/email.
+
+    Returns True only when this caller wins the slot (never sent, or cooldown
+    elapsed). Repeat POSTs lose the claim and must not call the mailer.
+    """
+    email = normalize_email_address(address)
+    moment = now or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    cutoff = moment - timedelta(seconds=max(0, int(cooldown_seconds)))
+    stamp = moment.isoformat()
+    try:
+        lead = (
+            _service_client()
+            .table("cadivor_public_bom_leads")
+            .select("report_id,work_email,verification_sent_at")
+            .eq("report_id", report_id)
+            .eq("work_email", email)
+            .single()
+            .execute()
+        ).data
+        if not lead:
+            raise StressTestError("This report is no longer available.")
+        prior = lead.get("verification_sent_at")
+        if prior:
+            try:
+                prior_dt = datetime.fromisoformat(str(prior).replace("Z", "+00:00"))
+                if prior_dt.tzinfo is None:
+                    prior_dt = prior_dt.replace(tzinfo=timezone.utc)
+                if prior_dt > cutoff:
+                    return False
+            except ValueError:
+                return False
+        response = (
+            _service_client()
+            .table("cadivor_public_bom_leads")
+            .update({"verification_sent_at": stamp})
+            .eq("report_id", report_id)
+            .eq("work_email", email)
+            .select("report_id")
+            .execute()
+        )
+        return bool(response.data)
+    except StressTestError:
+        raise
+    except Exception:
+        raise StressTestError("We could not save your request. Please try again.") from None
+
+
+def release_verification_claim(report_id: str, address: str) -> None:
+    """Clear a claimed send slot after a mailer failure so the user can retry."""
+    email = normalize_email_address(address)
+    try:
+        _service_client().table("cadivor_public_bom_leads").update({
+            "verification_sent_at": None,
+        }).eq("report_id", report_id).eq("work_email", email).execute()
+    except Exception:
+        return
+
+
+def request_full_report(
+    report_id: str,
+    address: str,
+    signed_header: str,
+    *,
+    source: str = "homepage_stress_test",
+) -> tuple[str, bool]:
+    """Validate visitor HMAC, capture the lead, and send at most one email per cooldown.
+
+    Returns ``(email, verification_sent)``. Does not send real mail in tests when
+    ``send_report_verification`` is mocked.
+    """
+    visitor_hash(signed_header)
+    email = capture_lead(report_id, address, source=source)
+    if not claim_verification_send(report_id, email):
+        return email, False
+    try:
+        send_report_verification(email)
+    except StressTestError:
+        release_verification_claim(report_id, email)
+        raise
+    return email, True
 
 
 def send_report_verification(address: str) -> None:

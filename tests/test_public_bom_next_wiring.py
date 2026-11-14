@@ -71,6 +71,32 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertNotIn("NEXT_PUBLIC_API_BASE", client)
         self.assertNotIn("CADIVOR_API_BASE", client)
 
+    def test_public_page_fails_closed_until_status_enabled(self):
+        page = (ROOT / "apps/web/src/app/public-bom-audit/page.tsx").read_text()
+        self.assertIn("status?.enabled === true", page)
+        self.assertIn('data-testid="public-bom-status-loading"', page)
+        self.assertIn('data-testid="public-bom-status-error"', page)
+        self.assertIn('data-testid="public-bom-status-unavailable"', page)
+        self.assertIn("STATUS_UNAVAILABLE_MESSAGE", page)
+        self.assertIn("disabled={!file || busy || !auditEnabled}", page)
+        # Upload UI is gated on confirmed enabled=true, not merely "not disabled".
+        self.assertIn("{auditEnabled && !report ? (", page)
+        self.assertNotIn("{!disabled && !report ? (", page)
+
+    def test_public_page_status_request_failure_keeps_upload_hidden(self):
+        """Status fetch rejection must not reveal an enabled upload flow."""
+        page = (ROOT / "apps/web/src/app/public-bom-audit/page.tsx").read_text()
+        self.assertIn("setStatus(null)", page)
+        self.assertIn("setStatusError(", page)
+        self.assertIn("STATUS_UNAVAILABLE_MESSAGE", page)
+        # Failure path clears status so auditEnabled stays false.
+        failure_chunk = page[
+            page.index("fetchPublicBomStatus()") : page.index("async function onAudit")
+        ]
+        self.assertIn(".catch(", failure_chunk)
+        self.assertIn("setStatus(null)", failure_chunk)
+        self.assertIn("setStatusResolved(true)", page)
+
     def test_api_routes_registered_without_auth_context(self):
         main = (ROOT / "apps/api/main.py").read_text()
         for path in (

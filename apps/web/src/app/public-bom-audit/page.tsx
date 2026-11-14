@@ -13,12 +13,19 @@ import {
 
 const PUBLIC_BOM_LIMIT_MESSAGE =
   "This connection has used its two free BOM audits in the last 24 hours.";
+const STATUS_UNAVAILABLE_MESSAGE =
+  "The free BOM stress test is temporarily unavailable. Please refresh and try again.";
+const STATUS_DISABLED_MESSAGE =
+  "The free BOM stress test is being prepared. Please check back soon.";
 
 function leadSourceFromSearch(search: URLSearchParams): string {
   const fields: string[] = [];
   for (const key of ["utm_source", "utm_medium", "utm_campaign"] as const) {
     const raw = (search.get(key) || "").trim();
-    const value = raw.replace(/[^A-Za-z0-9_.-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "").slice(0, 48);
+    const value = raw
+      .replace(/[^A-Za-z0-9_.-]+/g, "-")
+      .replace(/^[-.]+|[-.]+$/g, "")
+      .slice(0, 48);
     if (value) fields.push(value);
   }
   return fields.length ? `utm:${fields.join(":")}` : "homepage_stress_test";
@@ -33,6 +40,7 @@ function PublicBomAuditInner() {
 
   const [status, setStatus] = useState<PublicBomStatus | null>(null);
   const [statusError, setStatusError] = useState("");
+  const [statusResolved, setStatusResolved] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -45,16 +53,23 @@ function PublicBomAuditInner() {
 
   useEffect(() => {
     let cancelled = false;
+    setStatusResolved(false);
+    setStatusError("");
     fetchPublicBomStatus()
       .then((payload) => {
-        if (!cancelled) setStatus(payload);
+        if (cancelled) return;
+        setStatus(payload);
+        setStatusError("");
       })
       .catch((err) => {
-        if (!cancelled) {
-          setStatusError(
-            err instanceof Error ? err.message : "Could not load the free audit.",
-          );
-        }
+        if (cancelled) return;
+        setStatus(null);
+        setStatusError(
+          err instanceof Error ? err.message : "Could not load the free audit.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setStatusResolved(true);
       });
     return () => {
       cancelled = true;
@@ -63,7 +78,7 @@ function PublicBomAuditInner() {
 
   async function onAudit(event: FormEvent) {
     event.preventDefault();
-    if (!file || busy) return;
+    if (!file || busy || status?.enabled !== true) return;
     setBusy(true);
     setError("");
     try {
@@ -80,7 +95,7 @@ function PublicBomAuditInner() {
 
   async function onLead(event: FormEvent) {
     event.preventDefault();
-    if (!report || leadBusy) return;
+    if (!report || leadBusy || status?.enabled !== true) return;
     setLeadBusy(true);
     setLeadError("");
     try {
@@ -110,7 +125,8 @@ function PublicBomAuditInner() {
     setAcceptedTerms(false);
   }
 
-  const disabled = status != null && !status.enabled;
+  const statusLoading = !statusResolved;
+  const auditEnabled = status?.enabled === true;
   const shellClass = embedded
     ? "cv-public-stress cv-public-stress-embed"
     : "cv-public-stress";
@@ -140,14 +156,32 @@ function PublicBomAuditInner() {
       ) : null}
 
       <section className="cv-public-stress-panel">
-        {statusError ? <div className="cv-error">{statusError}</div> : null}
-        {disabled ? (
-          <p className="cv-small-note">
-            The free BOM stress test is being prepared. Please check back soon.
+        {statusLoading ? (
+          <p className="cv-small-note" data-testid="public-bom-status-loading">
+            Checking whether the free BOM audit is available…
           </p>
         ) : null}
 
-        {!disabled && !report ? (
+        {!statusLoading && statusError ? (
+          <div
+            className="cv-error"
+            role="alert"
+            data-testid="public-bom-status-error"
+          >
+            {statusError}
+          </div>
+        ) : null}
+
+        {!statusLoading && !auditEnabled ? (
+          <p
+            className="cv-small-note"
+            data-testid="public-bom-status-unavailable"
+          >
+            {statusError ? STATUS_UNAVAILABLE_MESSAGE : STATUS_DISABLED_MESSAGE}
+          </p>
+        ) : null}
+
+        {auditEnabled && !report ? (
           <>
             <h1>Free BOM stress test</h1>
             <p>
@@ -187,15 +221,18 @@ function PublicBomAuditInner() {
               <button
                 type="submit"
                 className="cv-button primary"
-                disabled={!file || busy}
+                data-testid="public-bom-run-audit"
+                disabled={!file || busy || !auditEnabled}
               >
-                {busy ? "Checking lifecycle and supplier evidence…" : "Run free audit"}
+                {busy
+                  ? "Checking lifecycle and supplier evidence…"
+                  : "Run free audit"}
               </button>
             </form>
           </>
         ) : null}
 
-        {!disabled && report ? (
+        {auditEnabled && report ? (
           <>
             <div className="cv-public-stress-toolbar">
               <h1>Preliminary BOM audit</h1>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { evaluatePublicBomAuditContentLength } from "@/lib/publicBomUploadLimit.js";
 
 /**
  * Server-side API origin for anonymous public-audit proxies.
@@ -31,9 +32,7 @@ function forwardQuery(request: NextRequest): string {
   return qs ? `?${qs}` : "";
 }
 
-async function proxyJson(
-  upstream: Response,
-): Promise<NextResponse> {
+async function proxyJson(upstream: Response): Promise<NextResponse> {
   const text = await upstream.text();
   let body: unknown = {};
   try {
@@ -42,6 +41,20 @@ async function proxyJson(
     body = { detail: text || `Upstream error (${upstream.status})` };
   }
   return NextResponse.json(body, { status: upstream.status });
+}
+
+/** Reject oversized/missing Content-Length before buffering multipart bodies. */
+export function rejectOversizedPublicBomAudit(
+  request: NextRequest,
+): NextResponse | null {
+  const verdict = evaluatePublicBomAuditContentLength(
+    request.headers.get("content-length"),
+  );
+  if (verdict.ok) return null;
+  return NextResponse.json(
+    { detail: verdict.detail },
+    { status: verdict.status },
+  );
 }
 
 /** GET /public/bom-stress/status → FastAPI */
@@ -72,6 +85,8 @@ export async function proxyPublicBomStatus(
 export async function proxyPublicBomAudit(
   request: NextRequest,
 ): Promise<NextResponse> {
+  const rejected = rejectOversizedPublicBomAudit(request);
+  if (rejected) return rejected;
   try {
     const form = await request.formData();
     const res = await fetch(`${apiBase()}/public/bom-stress/audit`, {
