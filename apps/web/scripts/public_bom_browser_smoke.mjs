@@ -35,7 +35,8 @@ async function main() {
     statusErrorPath: false,
     anonymousTurnstileBlocksSubmit: false,
     qaSessionSubmitsWithoutToken: false,
-    normalSessionRejectedWithoutToken: false,
+    normalSignedInStillNeedsTurnstile: false,
+    clientQaFlagDoesNotBypass: false,
   };
 
   const csv =
@@ -73,10 +74,11 @@ async function main() {
       .waitFor({ timeout: 15000 });
     results.leadSubmitOk = true;
 
-    // 2) Turnstile required: anonymous cannot submit without token; session can
-    // attempt submit (API still rejects non-QA). No client QA flag.
+    // 2) Turnstile three cases via server qa_verified (never client QA flag).
     await page.unroute("**/api/public/bom-stress/status").catch(() => undefined);
     await page.route("**/api/public/bom-stress/status", async (route) => {
+      const auth = (route.request().headers()["authorization"] || "").toLowerCase();
+      const qaVerified = auth.includes("qa-allowlisted-smoke-token");
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -84,6 +86,7 @@ async function main() {
           ok: true,
           enabled: true,
           turnstile_required: true,
+          qa_verified: qaVerified,
         }),
       });
     });
@@ -107,7 +110,29 @@ async function main() {
       throw new Error("Anonymous submit stayed enabled without Turnstile token");
     }
 
-    // Seed a session so the UI drops the Turnstile gate (API remains authority).
+    // Client QA flag / query must not unlock Turnstile.
+    await page.goto(
+      `${BASE}/public-bom-audit?embed=true&qa_mode=1&qa_verified=true`,
+      { waitUntil: "domcontentloaded" },
+    );
+    await page.getByTestId("public-bom-run-audit").waitFor({
+      state: "visible",
+      timeout: 15000,
+    });
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "flag-smoke.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(csv, "utf8"),
+    });
+    const flagStillBlocked = await page
+      .getByTestId("public-bom-run-audit")
+      .isDisabled();
+    results.clientQaFlagDoesNotBypass = flagStillBlocked;
+    if (!flagStillBlocked) {
+      throw new Error("Client QA query flag bypassed Turnstile");
+    }
+
+    // Confirmed allowlisted QA: status returns qa_verified → submit without token.
     await page.evaluate(() => {
       window.localStorage.setItem(
         "cadivor_next_session",
@@ -130,20 +155,14 @@ async function main() {
       mimeType: "text/csv",
       buffer: Buffer.from(csv, "utf8"),
     });
-    const sessionEnabled = !(await page
-      .getByTestId("public-bom-run-audit")
-      .isDisabled());
-    if (!sessionEnabled) {
-      throw new Error("Signed-in submit stayed disabled without Turnstile token");
+    const qaEnabled = !(await page.getByTestId("public-bom-run-audit").isDisabled());
+    if (!qaEnabled) {
+      throw new Error("QA-verified submit stayed disabled without Turnstile token");
     }
 
     let sawQaAudit = false;
-    let sawNormalReject = false;
     await page.route("**/api/public/bom-stress/audit", async (route) => {
-      const req = route.request();
-      const auth = (req.headers()["authorization"] || "").toLowerCase();
-      // Multipart bodies are opaque here; UI already proved no Turnstile token
-      // was required to click. API authority is asserted by bearer outcome.
+      const auth = (route.request().headers()["authorization"] || "").toLowerCase();
       if (auth.includes("qa-allowlisted-smoke-token")) {
         sawQaAudit = true;
         await route.fulfill({
@@ -158,17 +177,6 @@ async function main() {
             remaining_count: 0,
             qa_mode: true,
             full_enriched: false,
-          }),
-        });
-        return;
-      }
-      if (auth.includes("normal-user-smoke-token")) {
-        sawNormalReject = true;
-        await route.fulfill({
-          status: 400,
-          contentType: "application/json",
-          body: JSON.stringify({
-            detail: "Complete the security check and try again.",
           }),
         });
         return;
@@ -189,7 +197,7 @@ async function main() {
       throw new Error("QA session did not submit audit without Turnstile token");
     }
 
-    // Normal (non-QA) session: UI may allow click; API rejects without token.
+    // Signed-in non-QA: status qa_verified=false → Turnstile still required.
     await page.evaluate(() => {
       window.localStorage.setItem(
         "cadivor_next_session",
@@ -212,13 +220,12 @@ async function main() {
       mimeType: "text/csv",
       buffer: Buffer.from(csv, "utf8"),
     });
-    await page.getByTestId("public-bom-run-audit").click();
-    await page
-      .getByText(/security check/i)
-      .waitFor({ timeout: 15000 });
-    results.normalSessionRejectedWithoutToken = sawNormalReject;
-    if (!sawNormalReject) {
-      throw new Error("Normal session was not rejected without Turnstile token");
+    const normalStillNeedsToken = await page
+      .getByTestId("public-bom-run-audit")
+      .isDisabled();
+    results.normalSignedInStillNeedsTurnstile = normalStillNeedsToken;
+    if (!normalStillNeedsToken) {
+      throw new Error("Signed-in non-QA could submit without Turnstile token");
     }
 
     // 3) Status error path via route interception (still Next app, signed-out).

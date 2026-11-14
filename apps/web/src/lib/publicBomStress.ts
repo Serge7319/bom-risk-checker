@@ -41,6 +41,8 @@ export type PublicBomStatus = {
   max_rows: number;
   max_bytes: number;
   turnstile_required?: boolean;
+  /** Server-verified confirmed allowlisted QA session only. Never a client flag. */
+  qa_verified?: boolean;
   daily_enriched_row_limit?: number;
 };
 
@@ -80,8 +82,17 @@ async function readError(res: Response): Promise<string> {
 }
 
 /** Same-origin Next route handlers forward the Cloudflare visitor header. */
-export async function fetchPublicBomStatus(): Promise<PublicBomStatus> {
-  const res = await fetch("/api/public/bom-stress/status", { method: "GET" });
+export async function fetchPublicBomStatus(
+  accessToken?: string | null,
+): Promise<PublicBomStatus> {
+  const headers: Record<string, string> = {};
+  const token = String(accessToken || "").trim();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch("/api/public/bom-stress/status", {
+    method: "GET",
+    headers,
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error(await readError(res));
   return res.json() as Promise<PublicBomStatus>;
 }

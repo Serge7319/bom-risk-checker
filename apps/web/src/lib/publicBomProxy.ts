@@ -120,14 +120,20 @@ export async function proxyPublicBomStatus(
   request: NextRequest,
 ): Promise<NextResponse> {
   try {
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      "X-Cadivor-Visitor": visitorHeader(request),
+    };
+    // Forward bearer so the API can set qa_verified; never forward client QA flags.
+    const auth = request.headers.get("authorization") || "";
+    if (auth.toLowerCase().startsWith("bearer ")) {
+      headers.Authorization = auth;
+    }
     const res = await fetch(
       `${apiBase()}/public/bom-stress/status${forwardQuery(request)}`,
       {
         method: "GET",
-        headers: {
-          Accept: "application/json",
-          "X-Cadivor-Visitor": visitorHeader(request),
-        },
+        headers,
         cache: "no-store",
       },
     );

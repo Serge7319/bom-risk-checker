@@ -9,6 +9,7 @@
     "statusErrorPath": true,
     "anonymousTurnstileBlocksSubmit": true,
     "qaSessionSubmitsWithoutToken": true,
-    "normalSessionRejectedWithoutToken": true
+    "normalSignedInStillNeedsTurnstile": true,
+    "clientQaFlagDoesNotBypass": true
   }
 }

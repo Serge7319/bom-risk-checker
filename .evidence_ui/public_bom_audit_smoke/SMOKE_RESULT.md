@@ -11,7 +11,7 @@
 | Stub API | `http://127.0.0.1:18080` (`scripts/public_bom_preview_api.py`) |
 | Runner | `apps/web/scripts/public_bom_browser_smoke.mjs` (Playwright) |
 | Result | **PASS** |
-| Proves | status → upload → preliminary audit → lead email-request UI; anonymous Turnstile gate; allowlisted QA session submits without token; normal session rejected without token |
+| Proves | status → upload → preliminary audit → lead; anonymous + signed-in non-QA need Turnstile; server `qa_verified` QA can skip; client QA flags do not bypass |
 | Does **not** prove | email confirmation, verified-report ownership, remaining-row completion |
 
 ## Report-delivery smoke (authenticated handoff)

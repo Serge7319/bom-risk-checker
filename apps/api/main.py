@@ -1792,17 +1792,24 @@ def _visitor_header(request: Request) -> str:
     return ""
 
 
-async def public_bom_stress_status(_: Request) -> JSONResponse:
-    """Unauthenticated feature flag for the marketing free 5-part audit."""
+async def public_bom_stress_status(request: Request) -> JSONResponse:
+    """Feature flag for the marketing free audit; optional bearer for QA verify.
+
+    ``qa_verified`` is set only after server-side allowlist + confirmed-email
+    checks. Query/body/client QA flags are ignored.
+    """
     from src.public_bom_stress_test import (
         MAX_BYTES,
         MAX_ROWS,
         PREVIEW_ROWS,
         daily_enriched_row_limit,
         enabled,
+        resolve_qa_session,
         turnstile_enabled,
     )
 
+    # Never trust client qa flags — only Authorization → resolve_qa_session.
+    qa = resolve_qa_session(_bearer_token(request) or None)
     return _json(
         {
             "ok": True,
@@ -1811,6 +1818,7 @@ async def public_bom_stress_status(_: Request) -> JSONResponse:
             "max_rows": MAX_ROWS,
             "max_bytes": MAX_BYTES,
             "turnstile_required": bool(turnstile_enabled()),
+            "qa_verified": bool(qa),
             "daily_enriched_row_limit": int(daily_enriched_row_limit()),
         }
     )

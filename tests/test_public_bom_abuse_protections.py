@@ -489,37 +489,65 @@ def test_audit_api_rejects_missing_turnstile_when_enabled(client: TestClient):
     assert "security check" in response.json()["detail"].lower()
 
 
-def test_allowlisted_qa_session_submits_without_turnstile_normal_cannot(
+def test_turnstile_three_cases_anonymous_qa_and_signed_in_non_qa(
     client: TestClient,
 ):
-    """API is authority: confirmed allowlisted QA skips Turnstile; normal cannot.
+    """Anonymous + signed-in non-QA need Turnstile; confirmed QA skips.
 
-    No client QA flag — only Authorization bearer → resolve_qa_session.
+    Client QA flags never grant a bypass. Status qa_verified is server-only.
     """
     csv_bytes = b"MPN,Qty\nPART1,1\n"
 
-    # Normal authenticated (non-QA): Turnstile required → reject without token.
+    def _deny_turnstile(*_a, **_k):
+        raise funnel.StressTestError("Complete the security check and try again.")
+
+    # 1) Anonymous: no bearer → Turnstile required.
     with (
         patch("src.public_bom_stress_test.enabled", return_value=True),
         patch("src.public_bom_stress_test.turnstile_enabled", return_value=True),
         patch("src.public_bom_stress_test.resolve_qa_session", return_value=None),
         patch(
             "src.public_bom_stress_test.validate_turnstile",
-            side_effect=funnel.StressTestError(
-                "Complete the security check and try again."
-            ),
+            side_effect=_deny_turnstile,
         ),
     ):
-        denied = client.post(
+        anon_status = client.get("/public/bom-stress/status")
+        anon_audit = client.post(
             "/public/bom-stress/audit",
             files={"file": ("bom.csv", csv_bytes, "text/csv")},
+            headers={"X-Cadivor-Visitor": _signed_visitor()},
+        )
+    assert anon_status.json()["qa_verified"] is False
+    assert anon_status.json()["turnstile_required"] is True
+    assert anon_audit.status_code == 400
+    assert "security check" in anon_audit.json()["detail"].lower()
+
+    # 2) Signed-in non-QA: still must pass Turnstile (even with client qa flag).
+    with (
+        patch("src.public_bom_stress_test.enabled", return_value=True),
+        patch("src.public_bom_stress_test.turnstile_enabled", return_value=True),
+        patch("src.public_bom_stress_test.resolve_qa_session", return_value=None),
+        patch(
+            "src.public_bom_stress_test.validate_turnstile",
+            side_effect=_deny_turnstile,
+        ),
+    ):
+        normal_status = client.get(
+            "/public/bom-stress/status?qa_verified=true&qa_mode=1",
+            headers={"Authorization": "Bearer normal-user-token"},
+        )
+        normal_audit = client.post(
+            "/public/bom-stress/audit",
+            files={"file": ("bom.csv", csv_bytes, "text/csv")},
+            data={"qa_mode": "true", "qa_verified": "true"},
             headers={
                 "X-Cadivor-Visitor": _signed_visitor(),
                 "Authorization": "Bearer normal-user-token",
             },
         )
-    assert denied.status_code == 400
-    assert "security check" in denied.json()["detail"].lower()
+    assert normal_status.json()["qa_verified"] is False
+    assert normal_audit.status_code == 400
+    assert "security check" in normal_audit.json()["detail"].lower()
 
     class FakeUpdate:
         def table(self, *_):
@@ -536,7 +564,7 @@ def test_allowlisted_qa_session_submits_without_turnstile_normal_cannot(
             return None
 
     fake = FakeUpdate()
-    # Confirmed allowlisted QA: no Turnstile token, still succeeds via bearer.
+    # 3) Confirmed allowlisted QA: no Turnstile token, succeeds via bearer only.
     with (
         patch("src.public_bom_stress_test.enabled", return_value=True),
         patch("src.public_bom_stress_test.turnstile_enabled", return_value=True),
@@ -560,6 +588,10 @@ def test_allowlisted_qa_session_submits_without_turnstile_normal_cannot(
         ),
         patch("src.public_bom_stress_test._service_client", return_value=fake),
     ):
+        qa_status = client.get(
+            "/public/bom-stress/status",
+            headers={"Authorization": "Bearer qa-allowlisted-token"},
+        )
         allowed = client.post(
             "/public/bom-stress/audit",
             files={"file": ("qa.csv", csv_bytes, "text/csv")},
@@ -568,6 +600,7 @@ def test_allowlisted_qa_session_submits_without_turnstile_normal_cannot(
                 "Authorization": "Bearer qa-allowlisted-token",
             },
         )
+    assert qa_status.json()["qa_verified"] is True
     assert allowed.status_code == 200, allowed.text
     body = allowed.json()
     assert body.get("ok") is True

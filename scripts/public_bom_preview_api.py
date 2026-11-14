@@ -106,6 +106,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
         if path.startswith("/public/bom-stress/status"):
+            # Optional bearer → qa_verified (stub mirrors API; ignores client flags).
+            auth = (self.headers.get("Authorization") or "").strip()
+            qa_verified = auth.lower() == "bearer qa-allowlisted-smoke-token"
             self._json(
                 {
                     "ok": True,
@@ -114,6 +117,7 @@ class Handler(BaseHTTPRequestHandler):
                     "max_rows": 30,
                     "max_bytes": 1_000_000,
                     "turnstile_required": False,
+                    "qa_verified": qa_verified,
                     "daily_enriched_row_limit": 500,
                 }
             )

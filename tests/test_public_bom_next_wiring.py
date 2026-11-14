@@ -46,6 +46,11 @@ class PublicBomNextWiringTests(unittest.TestCase):
         ).read_text()
         self.assertIn('request.headers.get("x-cadivor-visitor")', proxy)
         self.assertIn('"X-Cadivor-Visitor": visitorHeader(request)', proxy)
+        # Status proxy forwards bearer for server qa_verified (never a client QA flag).
+        status_fn = proxy[proxy.index("proxyPublicBomStatus") :]
+        status_fn = status_fn[: status_fn.index("proxyPublicBomAudit")]
+        self.assertIn("Authorization", status_fn)
+        self.assertIn("qa_verified", (ROOT / "apps/web/src/lib/publicBomStress.ts").read_text())
         self.assertIn("process.env.CADIVOR_API_BASE", proxy)
         self.assertIn("readPublicBomAuditForm", proxy)
         self.assertIn("readBodyWithByteLimit", proxy)
@@ -84,10 +89,11 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertIn("!file ||", page)
         self.assertIn("!auditEnabled", page)
         self.assertIn("turnstile_required", page)
-        # Signed-in users may omit the widget; API still rejects non-QA sessions.
-        self.assertIn("hasSession", page)
-        self.assertIn("!signedIn", page)
-        self.assertIn("!hasSession", page)
+        # Turnstile skip uses server qa_verified only — not session presence.
+        self.assertIn("qa_verified", page)
+        self.assertIn("qaVerified", page)
+        self.assertNotIn("hasSession", page)
+        self.assertNotIn("!signedIn", page)
         # No client-controlled QA flag on the submit path.
         self.assertNotIn("qaMode", page)
         self.assertNotIn("isQa", page)
@@ -105,7 +111,7 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertIn("STATUS_UNAVAILABLE_MESSAGE", page)
         # Failure path clears status so auditEnabled stays false.
         failure_chunk = page[
-            page.index("fetchPublicBomStatus()") : page.index("async function onAudit")
+            page.index("fetchPublicBomStatus(") : page.index("async function onAudit")
         ]
         self.assertIn(".catch(", failure_chunk)
         self.assertIn("setStatus(null)", failure_chunk)
@@ -119,8 +125,9 @@ class PublicBomNextWiringTests(unittest.TestCase):
         self.assertIn("public-bom-status-error", smoke)
         self.assertIn("public-bom-run-audit", smoke)
         self.assertIn("qaSessionSubmitsWithoutToken", smoke)
-        self.assertIn("normalSessionRejectedWithoutToken", smoke)
+        self.assertIn("normalSignedInStillNeedsTurnstile", smoke)
         self.assertIn("anonymousTurnstileBlocksSubmit", smoke)
+        self.assertIn("qa_verified", smoke)
         self.assertNotIn("cadivor.pages.dev", smoke)
 
     def test_verified_report_handoff_wiring(self):

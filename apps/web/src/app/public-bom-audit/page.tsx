@@ -58,18 +58,14 @@ function PublicBomAuditInner() {
   const [leadBusy, setLeadBusy] = useState(false);
   const [leadError, setLeadError] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
-  // Session presence only — never a client QA flag. API decides Turnstile bypass.
-  const [hasSession, setHasSession] = useState(false);
-
-  useEffect(() => {
-    setHasSession(Boolean(getSession()?.access_token));
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
     setStatusResolved(false);
     setStatusError("");
-    fetchPublicBomStatus()
+    // Pass bearer when present so API can set qa_verified; never send a QA flag.
+    const accessToken = getSession()?.access_token || null;
+    fetchPublicBomStatus(accessToken)
       .then((payload) => {
         if (cancelled) return;
         setStatus(payload);
@@ -90,16 +86,16 @@ function PublicBomAuditInner() {
     };
   }, []);
 
+  // Only server-verified QA may skip Turnstile in the UI. Anonymous and
+  // signed-in non-QA still complete the challenge when turnstile_required.
+  const qaVerified = status?.qa_verified === true;
+  const turnstileRequired =
+    status?.turnstile_required === true && !qaVerified;
+
   async function onAudit(event: FormEvent) {
     event.preventDefault();
     if (!file || busy || status?.enabled !== true) return;
     const session = getSession();
-    const signedIn = Boolean(session?.access_token);
-    setHasSession(signedIn);
-    // Anonymous users must complete Turnstile when enabled. Signed-in users may
-    // submit without a token; the API still rejects non-QA sessions.
-    const turnstileRequired =
-      status.turnstile_required === true && !signedIn;
     if (turnstileRequired && !turnstileToken.trim()) {
       setError("Complete the security check and try again.");
       return;
@@ -250,9 +246,7 @@ function PublicBomAuditInner() {
                   to run another anonymous audit.
                 </p>
               ) : null}
-              {status?.turnstile_required &&
-              TURNSTILE_SITE_KEY &&
-              !hasSession ? (
+              {turnstileRequired && TURNSTILE_SITE_KEY ? (
                 <TurnstileWidget
                   siteKey={TURNSTILE_SITE_KEY}
                   action="public_bom_audit"
@@ -268,9 +262,7 @@ function PublicBomAuditInner() {
                   !file ||
                   busy ||
                   !auditEnabled ||
-                  (Boolean(status?.turnstile_required) &&
-                    !hasSession &&
-                    !turnstileToken.trim())
+                  (turnstileRequired && !turnstileToken.trim())
                 }
               >
                 {busy

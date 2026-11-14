@@ -40,7 +40,10 @@ def _signed_visitor(ip: str = "203.0.113.10", *, now: int | None = None) -> str:
 
 
 def test_public_bom_stress_status_requires_no_auth(client: TestClient):
-    with patch("src.public_bom_stress_test.enabled", return_value=True):
+    with (
+        patch("src.public_bom_stress_test.enabled", return_value=True),
+        patch("src.public_bom_stress_test.resolve_qa_session", return_value=None),
+    ):
         response = client.get("/public/bom-stress/status")
     assert response.status_code == 200
     payload = response.json()
@@ -49,13 +52,55 @@ def test_public_bom_stress_status_requires_no_auth(client: TestClient):
     assert payload["preview_rows"] == 5
     assert payload["max_rows"] == 30
     assert payload["max_bytes"] == MAX_BYTES
+    assert payload.get("qa_verified") is False
 
 
 def test_public_bom_stress_status_reports_disabled_flag(client: TestClient):
-    with patch("src.public_bom_stress_test.enabled", return_value=False):
+    with (
+        patch("src.public_bom_stress_test.enabled", return_value=False),
+        patch("src.public_bom_stress_test.resolve_qa_session", return_value=None),
+    ):
         response = client.get("/public/bom-stress/status")
     assert response.status_code == 200
     assert response.json()["enabled"] is False
+    assert response.json().get("qa_verified") is False
+
+
+def test_public_bom_stress_status_qa_verified_from_bearer_not_client_flag(
+    client: TestClient,
+):
+    """Status sets qa_verified only via resolve_qa_session; query/body flags ignored."""
+    with (
+        patch("src.public_bom_stress_test.enabled", return_value=True),
+        patch("src.public_bom_stress_test.turnstile_enabled", return_value=True),
+        patch(
+            "src.public_bom_stress_test.resolve_qa_session",
+            return_value={"email": "qa@company.com", "qa_mode": True},
+        ) as resolve,
+    ):
+        qa = client.get(
+            "/public/bom-stress/status?qa=1&qa_mode=true",
+            headers={"Authorization": "Bearer qa-token"},
+        )
+    assert qa.status_code == 200
+    assert qa.json()["qa_verified"] is True
+    assert qa.json()["turnstile_required"] is True
+    resolve.assert_called()
+    # resolve_qa_session must receive the bearer, not a client flag.
+    assert resolve.call_args.args[0] == "qa-token"
+
+    with (
+        patch("src.public_bom_stress_test.enabled", return_value=True),
+        patch("src.public_bom_stress_test.turnstile_enabled", return_value=True),
+        patch("src.public_bom_stress_test.resolve_qa_session", return_value=None),
+    ):
+        normal = client.get(
+            "/public/bom-stress/status?qa_verified=true",
+            headers={"Authorization": "Bearer normal-token"},
+        )
+        anon = client.get("/public/bom-stress/status?qa_mode=1")
+    assert normal.json()["qa_verified"] is False
+    assert anon.json()["qa_verified"] is False
 
 
 def test_public_bom_stress_audit_and_lead_fail_closed_when_disabled(client: TestClient):
