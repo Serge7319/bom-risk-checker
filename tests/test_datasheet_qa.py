@@ -63,7 +63,18 @@ def _fixture_document(
         "filename": data["filename"],
         "page_count": len(rows),
         "content_fingerprint": "fixture-lm358dr",
-        "source_url": "https://fixture.invalid/lm358dr.pdf",
+        # Synthetic paraphrased fixture only — not a live manufacturer PDF.
+        "source_url": str(
+            data.get("source_url")
+            or "https://fixture.invalid/synthetic/lm358dr-paraphrased.pdf"
+        ),
+        "source_kind": str(
+            data.get("source_kind") or "synthetic-paraphrased-fixture"
+        ),
+        "synthetic": True,
+        "production_source_verification": str(
+            data.get("production_source_verification") or "not_claimed"
+        ),
     }
     if requested_mpn:
         document["requested_mpn"] = requested_mpn
@@ -845,11 +856,25 @@ class DatasheetQaPaidPromiseSupplyTests(unittest.TestCase):
         self.assertEqual(result["requested_mpn"], "LM358DR")
         self.assertEqual(result["manufacturer"], "Texas Instruments")
         self.assertEqual(result["source_document"]["filename"], "lm358dr-datasheet.pdf")
+        source_url = str(result["source_document"]["source_url"])
         self.assertEqual(
-            result["source_document"]["source_url"], "https://fixture.invalid/lm358dr.pdf"
+            source_url,
+            "https://fixture.invalid/synthetic/lm358dr-paraphrased.pdf",
         )
+        # Fixture answers are synthetic — not proof a live TI PDF was used.
+        self.assertFalse(source_url.startswith("https://www.ti.com/"))
+        self.assertIn("fixture.invalid", source_url)
         self.assertTrue(result["identity"]["mpn_verified"])
         self.assertTrue(result["identity"]["manufacturer_verified"])
+        self.assertTrue(result["citations"])
+        self.assertEqual(result["requested_mpn"], "LM358DR")
+        self.assertEqual(result["manufacturer"], "Texas Instruments")
+        self.assertEqual(result["source_document"]["filename"], "lm358dr-datasheet.pdf")
+        # Production live-PDF verification is a separate gate — not claimed here.
+        fixture_meta = json.loads(LM358_FIXTURE.read_text(encoding="utf-8"))
+        self.assertTrue(fixture_meta.get("synthetic"))
+        self.assertEqual(fixture_meta.get("production_source_verification"), "not_claimed")
+        self.assertEqual(fixture_meta.get("source_kind"), "synthetic-paraphrased-fixture")
 
     def test_wrong_component_citation_is_rejected(self):
         document = _fixture_document(requested_mpn="LM2904DR")

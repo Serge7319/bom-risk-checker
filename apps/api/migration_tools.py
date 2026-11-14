@@ -2127,6 +2127,13 @@ def supply_risk_payload(
             or analyses[0].get("filename")
             or requested_analysis_id
         )
+    inventory_available = bool(scenario.get("inventory_evidence_available"))
+    stock_coverage = str(scenario.get("stock_coverage") or "").strip() or (
+        "complete" if inventory_available else "absent"
+    )
+    coverage_gap = scenario.get("stock_coverage_gap")
+    if not isinstance(coverage_gap, dict):
+        coverage_gap = {}
     if scoped:
         gap = (
             f"Scenario scoped to analysis {analysis_label or requested_analysis_id} "
@@ -2141,6 +2148,15 @@ def supply_risk_payload(
             "fields — not live supplier inventory."
         )
         scope = "portfolio"
+    coverage_message = str(coverage_gap.get("message") or "").strip()
+    if stock_coverage == "absent":
+        gap = coverage_message or (
+            "Inventory evidence unavailable. Stock-based impact is not established "
+            "(missing stock is not zero). Independently evidenced lifecycle and "
+            "supplier-source risks remain in scope."
+        )
+    elif stock_coverage == "partial" and coverage_message:
+        gap = f"{gap} {coverage_message}"
     return _json_safe(
         {
             "ok": True,
@@ -2151,6 +2167,14 @@ def supply_risk_payload(
             "analysis_label": analysis_label or None,
             "source_part_count": source_part_count,
             "analysis_count": len(analyses),
+            "inventory_evidence_available": inventory_available,
+            "inventory_status": scenario.get("inventory_status")
+            or (
+                "available" if inventory_available else "inventory evidence unavailable"
+            ),
+            "stock_coverage": stock_coverage,
+            "stock_coverage_gap": coverage_gap,
+            "stock_impact_available": bool(scenario.get("stock_impact_available")),
             "parameters": {
                 "build_quantity": max(1, int(build_quantity or 100)),
                 "stock_reduction_percent": int(stock_reduction_percent or 0),

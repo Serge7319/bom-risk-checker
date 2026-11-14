@@ -332,3 +332,41 @@ def test_monitoring_refresh_on_demand():
     body = res.json()
     assert body["ok"] is True
     assert body["scheduler_enabled"] is False
+
+
+def test_paid_promise_followup_pytest_suites_in_existing_ci_gate():
+    """Run follow-up pytest suites from the disposable-Postgres CI step.
+
+    Ensures Supply Risk / monitoring / datasheet identity / file-store isolation
+    execute on PR heads even when updating ``.github/workflows/*.yml`` is
+    blocked by a missing OAuth ``workflow`` scope.
+    """
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    targets = [
+        "tests/test_live_portfolio_and_supply_scenarios.py::test_supply_scenario_does_not_treat_missing_stock_or_sources_as_zero",
+        "tests/test_live_portfolio_and_supply_scenarios.py::test_supply_scenario_complete_stock_coverage_produces_affected_components",
+        "tests/test_live_portfolio_and_supply_scenarios.py::test_supply_scenario_partial_stock_coverage_exposes_gap",
+        "tests/test_live_portfolio_and_supply_scenarios.py::test_supply_scenario_absent_stock_preserves_lifecycle_and_supplier_risks",
+        "tests/test_monitoring_read_only_refresh.py",
+        "tests/test_datasheet_qa_identity_api.py",
+        "tests/test_datasheet_qa.py::DatasheetQaPaidPromiseSupplyTests",
+        "tests/test_workspace_isolation.py",
+        "tests/test_supplier_provider_matrix.py",
+        "tests/test_monitoring_notify_idle_label.py",
+        "tests/test_procurement_offer_display.py",
+        "tests/test_post_605_generic_followup.py::SupplyRiskScopeClearTests",
+    ]
+    proc = subprocess.run(
+        [sys.executable, "-m", "pytest", *targets, "-q", "--tb=line"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, (
+        "paid-promise follow-up pytest suites failed\n"
+        f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+    )

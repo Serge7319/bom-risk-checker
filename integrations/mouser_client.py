@@ -27,7 +27,9 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     )
     exact_part = _exact_mouser_part(parts, requested_key)
     if exact_part:
-        return normalize_mouser_part(exact_part)
+        normalized = normalize_mouser_part(exact_part)
+        normalized["retrieved_at"] = _utc_now_iso()
+        return normalized
 
     # SearchByPart is useful when the query is already a Mouser order number,
     # but some MPNs (including DHT11) are indexed only by the keyword endpoint.
@@ -45,7 +47,9 @@ def search_mouser_by_part_number(part_number: str) -> dict:
     )
     exact_part = _exact_mouser_part(keyword_parts, requested_key)
     if exact_part:
-        return normalize_mouser_part(exact_part)
+        normalized = normalize_mouser_part(exact_part)
+        normalized["retrieved_at"] = _utc_now_iso()
+        return normalized
 
     if exact_errors or keyword_errors:
         raise RuntimeError("Mouser did not return a usable search response.")
@@ -331,7 +335,7 @@ def default_part_result() -> dict:
     return {
         "lifecycle_status": "Unknown",
         "stock_total": None,
-        "unit_price": 0.0,
+        "unit_price": None,
         "supplier_count": 0,
         "lead_time_weeks": None,
         "has_alternates": False,
@@ -414,15 +418,18 @@ def extract_stock_number(availability: str) -> int | None:
     return parse_stock_total(availability)
 
 
-def extract_mouser_price(part: dict) -> float:
-    price_breaks = part.get("PriceBreaks", [])
+def extract_mouser_price(part: dict) -> float | None:
+    """First price-break unit price, or ``None`` when Mouser supplied none.
 
-    if not price_breaks:
-        return 0.0
-
+    Missing / unparsable / non-positive values are never coerced to ``0.0``.
+    """
+    price_breaks = part.get("PriceBreaks") if isinstance(part, dict) else None
+    if not isinstance(price_breaks, list) or not price_breaks:
+        return None
     first_break = price_breaks[0]
-
-    return price_number(first_break.get("Price", "")) or 0.0
+    if not isinstance(first_break, dict):
+        return None
+    return price_number(first_break.get("Price", ""))
 
 
 def _mouser_recorded_currency(part: dict) -> str:

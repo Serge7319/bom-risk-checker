@@ -1,0 +1,32 @@
+..........................................................               [100%]
+=============================== warnings summary ===============================
+tests/test_monitoring_read_only_refresh.py:12
+  /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/paid-promise-followup/tests/test_monitoring_read_only_refresh.py:12: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+tests/test_datasheet_qa_identity_api.py::test_api_sends_identity_wrong_part_abstains_supported_cites_part
+tests/test_datasheet_qa_identity_api.py::test_api_sends_identity_wrong_part_abstains_supported_cites_part
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+tests/test_datasheet_qa_identity_api.py::test_api_sends_identity_wrong_part_abstains_supported_cites_part
+tests/test_datasheet_qa_identity_api.py::test_api_sends_identity_wrong_part_abstains_supported_cites_part
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+tests/test_datasheet_qa_identity_api.py::test_api_sends_identity_wrong_part_abstains_supported_cites_part
+  <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+tests/test_datasheet_qa_identity_api.py::test_api_sends_identity_wrong_part_abstains_supported_cites_part
+  /opt/anaconda3/lib/python3.12/site-packages/fitz/__init__.py:17: FutureWarning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+58 passed, 7 warnings in 3.98s
+sys:1: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+.                                                                        [100%]
+=============================== warnings summary ===============================
+tests/test_nextjs_roadmap_gates.py:7
+  /Users/sergekashambala/Documents/Businesses/bom-risk-checker-rc-integration/.worktrees/paid-promise-followup/tests/test_nextjs_roadmap_gates.py:7: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1 passed, 1 warning in 7.50s

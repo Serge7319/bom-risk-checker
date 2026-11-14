@@ -31,6 +31,128 @@ def test_supply_scenario_does_not_treat_missing_stock_or_sources_as_zero():
     assert result["exposed_components"] == 0
     assert result["shortage_components"] == 0
     assert result["single_source_components"] == 0
+    assert result["inventory_evidence_available"] is False
+    assert result["stock_coverage"] == "absent"
+    assert result["inventory_status"] == "inventory evidence unavailable"
+    assert result["stock_impact_available"] is False
+    assert result["projected_stock_gap"] is None
+    assert result["rows"][0]["Original Stock"] is None
+    assert result["rows"][0]["Shortage Units"] is None
+    assert "stock coverage" in result["stock_coverage_gap"]["message"].casefold()
+    assert any("inventory evidence unavailable" in tip.casefold() for tip in result["recommendations"])
+
+
+def test_supply_scenario_complete_stock_coverage_produces_affected_components():
+    """Complete recorded stock must establish stock-based impact."""
+    result = build_supply_scenario(
+        [{"id": "analysis-inv", "project_name": "Inventory BOM"}],
+        [
+            {
+                "analysis_id": "analysis-inv",
+                "mpn": "INV-SHORT",
+                "quantity": 10,
+                "stock_available": 50,
+                "supplier_count": 2,
+                "unit_price": 1.25,
+            },
+            {
+                "analysis_id": "analysis-inv",
+                "mpn": "INV-OK",
+                "quantity": 1,
+                "stock_available": 5000,
+                "supplier_count": 3,
+            },
+        ],
+        build_quantity=10,
+        stock_reduction_percent=50,
+    )
+
+    assert result["inventory_evidence_available"] is True
+    assert result["stock_coverage"] == "complete"
+    assert result["stock_impact_available"] is True
+    assert result["inventory_status"] == "available"
+    assert result["known_stock_components"] == 2
+    assert result["unknown_stock_components"] == 0
+    assert result["exposed_components"] >= 1
+    assert result["shortage_components"] >= 1
+    assert result["projected_stock_gap"] is not None
+    assert result["projected_stock_gap"] > 0
+    impacted_mpns = {row["Part Number"] for row in result["impacted"]}
+    assert "INV-SHORT" in impacted_mpns
+
+
+def test_supply_scenario_partial_stock_coverage_exposes_gap():
+    result = build_supply_scenario(
+        [{"id": "analysis-partial", "project_name": "Partial BOM"}],
+        [
+            {
+                "analysis_id": "analysis-partial",
+                "mpn": "KNOWN-STOCK",
+                "quantity": 10,
+                "stock_available": 20,
+                "supplier_count": 2,
+            },
+            {
+                "analysis_id": "analysis-partial",
+                "mpn": "UNKNOWN-STOCK",
+                "quantity": 5,
+                "supplier_count": 1,
+            },
+        ],
+        build_quantity=10,
+        stock_reduction_percent=50,
+    )
+
+    assert result["stock_coverage"] == "partial"
+    assert result["stock_impact_available"] is True
+    assert result["known_stock_components"] == 1
+    assert result["unknown_stock_components"] == 1
+    gap = result["stock_coverage_gap"]
+    assert gap["coverage"] == "partial"
+    assert "stock coverage gap" in gap["message"].casefold()
+    unknown = next(row for row in result["rows"] if row["Part Number"] == "UNKNOWN-STOCK")
+    assert unknown["Stock Recorded"] is False
+    assert unknown["Original Stock"] is None
+    assert unknown["Shortage Units"] is None
+    # Independently evidenced single-source risk remains visible.
+    assert any(row["Part Number"] == "UNKNOWN-STOCK" for row in result["impacted"])
+
+
+def test_supply_scenario_absent_stock_preserves_lifecycle_and_supplier_risks():
+    result = build_supply_scenario(
+        [{"id": "analysis-abs", "project_name": "No Stock BOM"}],
+        [
+            {
+                "analysis_id": "analysis-abs",
+                "mpn": "LIFE-1",
+                "quantity": 2,
+                "lifecycle_status": "Obsolete",
+                "supplier_count": 3,
+            },
+            {
+                "analysis_id": "analysis-abs",
+                "mpn": "SRC-1",
+                "quantity": 1,
+                "supplier_count": 1,
+            },
+        ],
+        build_quantity=10,
+        stock_reduction_percent=80,
+        supplier_loss=0,
+        include_lifecycle_event=True,
+    )
+
+    assert result["stock_coverage"] == "absent"
+    assert result["stock_impact_available"] is False
+    assert result["projected_stock_gap"] is None
+    assert result["shortage_components"] == 0
+    for row in result["rows"]:
+        assert row["Original Stock"] is None
+        assert row["Shortage Units"] is None
+    impacted_mpns = {row["Part Number"] for row in result["impacted"]}
+    assert "SRC-1" in impacted_mpns or "LIFE-1" in impacted_mpns
+    assert result["lifecycle_components"] >= 1 or result["single_source_components"] >= 1
+    assert "inventory evidence unavailable" in result["inventory_status"]
 
 
 def test_supply_scenario_treats_unknown_text_fields_as_unrecorded_not_zero():

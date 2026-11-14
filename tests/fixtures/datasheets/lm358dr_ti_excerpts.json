@@ -1,10 +1,14 @@
 {
   "fixture": "lm358dr_ti_excerpts",
   "sanitized": true,
-  "note": "Synthetic paraphrased excerpts with page/section markers only; not a copy of the manufacturer datasheet.",
+  "synthetic": true,
+  "note": "Synthetic paraphrased excerpts with page/section markers only; not a copy of the manufacturer datasheet. Not evidence that a live TI PDF was retrieved or supports an answer.",
   "manufacturer": "Texas Instruments",
   "mpn": "LM358DR",
   "filename": "lm358dr-datasheet.pdf",
+  "source_url": "https://fixture.invalid/synthetic/lm358dr-paraphrased.pdf",
+  "source_kind": "synthetic-paraphrased-fixture",
+  "production_source_verification": "not_claimed",
   "pages": [
     {
       "page": 1,

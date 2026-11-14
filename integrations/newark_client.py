@@ -86,14 +86,16 @@ def _utc_now_iso() -> str:
 # ``58K1234`` or ``NEW1234``.  Anything outside this shape is not trusted as an
 # identity hint. SKU alone is never turned into a fabricated product URL.
 _NEWARK_SKU_RE = re.compile(r"^[A-Z0-9]{5,12}$")
-_OFFICIAL_NEWARK_HOSTS = frozenset({"www.newark.com", "newark.com"})
+# Verified listings require the canonical store host only — never the bare
+# ``newark.com`` apex or any other host / look-alike.
+_OFFICIAL_NEWARK_HOSTS = frozenset({"www.newark.com"})
 LISTING_PROVENANCE_PROVIDER_URL = "provider_product_url"
 LISTING_PROVENANCE_SKU_LOOKUP = "provider_sku_lookup"
 LISTING_PROVENANCE_UNAVAILABLE = "provenance_unavailable"
 
 
 def _official_newark_https_url(url: object) -> str:
-    """Return the URL only when it is HTTPS on an official Newark host."""
+    """Return the URL only when it is HTTPS on ``www.newark.com``."""
     text = str(url or "").strip()
     if not text.lower().startswith("https://"):
         return ""
