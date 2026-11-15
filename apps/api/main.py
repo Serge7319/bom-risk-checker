@@ -1679,8 +1679,61 @@ async def connectors_get(request: Request) -> JSONResponse:
     return _json(connectors.connector_status_payload())
 
 
+def _subscription_billing_readiness(
+    *, access_token: str, origin: str = ""
+) -> dict[str, Any]:
+    """Report readiness from the Stripe integration the app actually uses.
+
+    ``billing_prep`` only describes the unused migration checkout prototype.
+    Settings plan changes and the billing portal route through the Supabase
+    ``subscription-checkout`` Edge Function, so readiness must probe that path.
+    """
+    try:
+        result, status_code = subscription_billing_service.request_action(
+            access_token=access_token,
+            action="status",
+            origin=origin,
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return {
+            "status": "unknown",
+            "enabled": False,
+            "gap": "Stripe billing status could not be reached.",
+        }
+
+    if status_code < 200 or status_code >= 300 or result.get("ok") is not True:
+        return {
+            "status": "unknown",
+            "enabled": False,
+            "gap": "Stripe billing status could not be verified.",
+        }
+
+    checkout_enabled = result.get("checkout_enabled") is True
+    can_manage_billing = result.get("can_manage_billing") is True
+    status = (
+        "ready"
+        if checkout_enabled
+        else "partial"
+        if can_manage_billing
+        else "not_connected"
+    )
+    enabled_plans = sum(
+        1
+        for plan in (result.get("plans") or [])
+        if isinstance(plan, dict) and plan.get("enabled") is True
+    )
+    return {
+        "status": status,
+        "enabled": checkout_enabled,
+        "stripe_mode": result.get("stripe_mode"),
+        "enabled_plan_count": enabled_plans,
+        "can_manage_billing": can_manage_billing,
+        "gap": None if checkout_enabled else result.get("gap"),
+    }
+
+
 async def service_readiness_get(request: Request) -> JSONResponse:
-    """Authenticated readiness for Settings: email, scheduler, connectors.
+    """Authenticated readiness for Settings: email, scheduler, connectors, billing.
 
     Status values reflect operational capability, not enable flags alone.
     Does not infer monitoring-email state from billing or plan-usage payloads.
@@ -1692,9 +1745,9 @@ async def service_readiness_get(request: Request) -> JSONResponse:
         connector_payload = connectors.connector_status_payload()
         email = monitoring_store.monitoring_email_readiness()
         scheduler = monitoring_scheduler.scheduler_readiness()
-        billing = billing_prep.checkout_readiness(
-            workspace_id=str(ctx.get("workspace_id") or "readiness-probe"),
-            user_id=str(ctx.get("user_id") or "readiness-probe"),
+        billing = _subscription_billing_readiness(
+            access_token=request.headers.get("authorization", "").removeprefix("Bearer ").strip(),
+            origin=request.headers.get("origin", ""),
         )
         # File workflows must not imply live design-tool/vendor readiness.
         live_ready_count = int(
