@@ -25,13 +25,13 @@
   }
 
   function buildPublicStressUrl() {
-    const params = new URLSearchParams({ public: 'stress', embed: 'true' });
+    const params = new URLSearchParams({ embed: 'true' });
     const campaign = new URLSearchParams(window.location.search);
     ['utm_source', 'utm_medium', 'utm_campaign'].forEach(key => {
       const value = campaign.get(key);
       if (value) params.set(key, value.slice(0, 80));
     });
-    return `${APP_ORIGIN}/?${params.toString()}`;
+    return `${APP_ORIGIN}/public-bom-audit?${params.toString()}`;
   }
 
   const CADIVOR_LINKS = {
