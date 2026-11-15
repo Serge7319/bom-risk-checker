@@ -10,6 +10,7 @@ import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import {
   COMPARE_PARTS_TIMEOUT_MS,
   compareParts,
+  fetchProfile,
   listReports,
   recordDecision,
   type DecisionRecord,
@@ -140,6 +141,8 @@ function ComparePartsInner() {
   const [decisionPartB, setDecisionPartB] = useState("");
   const [decision, setDecision] = useState("hold_for_review");
   const [reviewer, setReviewer] = useState("");
+  const [reviewerName, setReviewerName] = useState("");
+  const reviewerTouched = useRef(false);
   const [rationale, setRationale] = useState("");
   const [validationChecks, setValidationChecks] = useState<string[]>([]);
   const [followUpAction, setFollowUpAction] = useState("");
@@ -193,7 +196,6 @@ function ComparePartsInner() {
     // Standalone Compare Parts must not silently bind the latest/first BOM.
     const queryAnalysis = (search.get("analysis_id") || "").trim();
     setAnalysisId(queryAnalysis);
-    setReviewer(session.email || "");
     listReports(session.access_token)
       .then(({ reports: rows }) => {
         if (active) {
@@ -207,6 +209,35 @@ function ComparePartsInner() {
       active = false;
     };
   }, [session, search]);
+
+  useEffect(() => {
+    if (!session) {
+      setReviewerName("");
+      return;
+    }
+    let active = true;
+    setReviewerName("");
+    fetchProfile(session.access_token)
+      .then((payload) => {
+        const nested = payload.profile;
+        const profile = nested && typeof nested === "object"
+          ? nested as Record<string, unknown>
+          : payload;
+        if (active) setReviewerName(String(profile.full_name || "").trim());
+      })
+      .catch(() => {
+        if (active) setReviewerName("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [session]);
+
+  useEffect(() => {
+    if (decisionOpen && reviewerName && !reviewerTouched.current && !reviewer.trim()) {
+      setReviewer(reviewerName);
+    }
+  }, [decisionOpen, reviewer, reviewerName]);
 
   useEffect(() => {
     if (!decisionOpen) return;
@@ -422,7 +453,8 @@ function ComparePartsInner() {
         : String(result?.part_b || partB || ""),
     );
     setDecision("hold_for_review");
-    setReviewer(session?.email || "");
+    reviewerTouched.current = false;
+    setReviewer(reviewerName);
     setRationale("");
     setValidationChecks([]);
     setFollowUpAction("");
@@ -1367,7 +1399,7 @@ function ComparePartsInner() {
                 <h2 id="decision-dialog-title">Record an engineering decision</h2>
                 <p>Save your reviewer choice and the comparison snapshot to this workspace.</p>
               </div>
-              <span className="cv-badge blue">Human review</span>
+              <span className="cv-badge blue">User review</span>
             </div>
 
             <form onSubmit={onRecordDecision}>
@@ -1451,7 +1483,16 @@ function ComparePartsInner() {
                 </label>
                 <label className="cv-field">
                   <span>Reviewer</span>
-                  <input value={reviewer} onChange={(event) => setReviewer(event.target.value)} maxLength={120} required />
+                  <input
+                    value={reviewer}
+                    onChange={(event) => {
+                      reviewerTouched.current = true;
+                      setReviewer(event.target.value);
+                    }}
+                    placeholder="Enter your name"
+                    maxLength={120}
+                    required
+                  />
                 </label>
               </div>
 
@@ -1523,10 +1564,10 @@ function ComparePartsInner() {
 
               <div className="cv-decision-evidence-note">
                 {result?.mode === "legacy-supplier-engine"
-                  ? "The comparison uses Cadivor’s supplier and datasheet review engine. The record captures your human decision; it does not automatically approve fit or change the BOM."
+                  ? "The comparison uses Cadivor’s supplier and datasheet review engine. The record captures your decision; it does not automatically approve fit or change the BOM."
                   : result?.mode === "uploaded-datasheet-review"
-                    ? "The comparison includes the PDFs uploaded for this review. The record captures your human decision; it does not automatically approve fit or change the BOM."
-                    : "The comparison uses synthetic or offline evidence. The record captures your human decision; it does not qualify a drop-in replacement or change the BOM."}
+                    ? "The comparison includes the PDFs uploaded for this review. The record captures your decision; it does not automatically approve fit or change the BOM."
+                    : "The comparison uses synthetic or offline evidence. The record captures your decision; it does not qualify a drop-in replacement or change the BOM."}
               </div>
               {decisionError ? <div className="cv-error" role="alert">{decisionError}</div> : null}
 
