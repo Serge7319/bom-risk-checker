@@ -39,7 +39,7 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertIn("a.href = '#/analyze'", script)
         self.assertNotIn("stressFullPage", script)
         self.assertIn("if (page === 'analyze')", script)
-        self.assertIn("new URLSearchParams({ public: 'stress', embed: 'true' })", script)
+        self.assertIn("new URLSearchParams({ embed: 'true' })", script)
         self.assertIn("params.set(key, value.slice(0, 80))", script)
         self.assertLess(entrypoint.index('st.query_params.get("public"'),
                         entrypoint.index("ensure_authenticated_or_stop()"))
