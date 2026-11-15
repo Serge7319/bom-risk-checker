@@ -254,6 +254,8 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertEqual(guide.count('id="check-'), 7)
         self.assertIn("buildPublicStressUrl()", script)
         self.assertIn("utm_campaign", script)
+        self.assertIn("${APP_ORIGIN}/public-bom-audit?", script)
+        self.assertNotIn("public: 'stress'", script)
 
     def test_engineering_decision_reviewer_uses_profile_name(self):
         root = Path(__file__).resolve().parents[1]
@@ -264,8 +266,6 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertNotIn('setReviewer(session?.email || "")', compare)
         self.assertIn("User review", compare)
         self.assertNotIn("Human review", compare)
-        self.assertIn("${APP_ORIGIN}/public-bom-audit?", script)
-        self.assertNotIn("public: 'stress'", script)
 
     def test_rate_slot_is_reserved_before_any_provider_call_and_locked_rows_never_return(self):
         class FakeUpdate:
