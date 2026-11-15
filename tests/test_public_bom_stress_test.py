@@ -255,6 +255,18 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertIn("buildPublicStressUrl()", script)
         self.assertIn("utm_campaign", script)
 
+    def test_engineering_decision_reviewer_uses_profile_name(self):
+        root = Path(__file__).resolve().parents[1]
+        compare = (root / "apps/web/src/app/compare-parts/page.tsx").read_text()
+        self.assertIn("fetchProfile", compare)
+        self.assertIn("profile.full_name", compare)
+        self.assertNotIn('setReviewer(session.email || "")', compare)
+        self.assertNotIn('setReviewer(session?.email || "")', compare)
+        self.assertIn("User review", compare)
+        self.assertNotIn("Human review", compare)
+        self.assertIn("${APP_ORIGIN}/public-bom-audit?", script)
+        self.assertNotIn("public: 'stress'", script)
+
     def test_rate_slot_is_reserved_before_any_provider_call_and_locked_rows_never_return(self):
         class FakeUpdate:
             def __init__(self):
