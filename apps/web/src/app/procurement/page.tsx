@@ -762,13 +762,18 @@ function ProcurementPageInner() {
                             const breaks = (line.price_breaks || []).map((row) =>
                               String(row.quantity) + "+ units: " + String(line.currency || "Currency unknown") + " " + Number(row.unit_price).toLocaleString(),
                             );
+                            const identityLabel = line.identity_status === "exact_part"
+                              ? "exact identity"
+                              : line.identity_status === "manufacturer_unconfirmed"
+                                ? "manufacturer unconfirmed"
+                                : "engineering review required";
                             return (
                               <li key={line.quote_id || line.id}>
                                 <strong>{line.requested_mpn}</strong>
                                 {line.requested_manufacturer ? " · " + line.requested_manufacturer : " · manufacturer not recorded"}
                                 {" — "}quoted as {line.offered_mpn}
                                 {line.offered_manufacturer ? " · " + line.offered_manufacturer : ""}
-                                {" · "}{line.identity_status === "exact_part" ? "exact identity" : "engineering review required"}
+                                {" · "}{identityLabel}
                                 {" · "}{breaks.length ? breaks.join("; ") : "price not reported"}
                                 {" · MOQ "}{line.minimum_order_quantity ?? "unknown"}
                                 {" · pack "}{line.pack_quantity ?? "unknown"}
