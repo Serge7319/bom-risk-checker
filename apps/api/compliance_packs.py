@@ -1,7 +1,7 @@
 """Compliance evidence packs (RoHS, REACH, conflict minerals, audit export).
 
-Synthetic examples only. Missing evidence is labeled explicitly. Never claims
-compliance without a sourced evidence link.
+Missing evidence is labeled explicitly. Never claims compliance without a
+sourced evidence link. The source analysis mode is preserved in each response.
 """
 from __future__ import annotations
 
@@ -49,12 +49,13 @@ def build_pack(report: dict[str, Any] | None, pack_type: str) -> dict[str, Any]:
     if kind not in PACK_TYPES:
         return {"ok": False, "detail": f"Unknown pack type: {pack_type}", "allowed": list(PACK_TYPES)}
     records = [build_compliance_record(part, kind) for part in _part_rows(report)]
+    source_mode = str((report or {}).get("mode") or "unknown")
     linked = sum(1 for r in records if r["status"] == "evidence_linked")
     missing = sum(1 for r in records if r["status"] == "missing_evidence")
     return {
         "ok": True,
         "pack_type": kind,
-        "mode": "synthetic-preview",
+        "mode": source_mode,
         "generated_at": _utc_now(),
         "analysis_id": (report or {}).get("id"),
         "records": records,
@@ -73,9 +74,10 @@ def build_pack(report: dict[str, Any] | None, pack_type: str) -> dict[str, Any]:
 
 def export_audit_bundle(report: dict[str, Any] | None) -> dict[str, Any]:
     packs = {kind: build_pack(report, kind) for kind in PACK_TYPES}
+    source_mode = str((report or {}).get("mode") or "unknown")
     return {
         "ok": True,
-        "mode": "synthetic-preview",
+        "mode": source_mode,
         "generated_at": _utc_now(),
         "analysis_id": (report or {}).get("id"),
         "packs": packs,

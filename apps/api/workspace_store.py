@@ -21,6 +21,7 @@ from src.saved_bom_project import (
     DEFAULT_WORKSPACE_PROJECT,
     analysis_title_for_upload,
 )
+from apps.api.report_visibility import customer_visible_analyses, customer_visible_projects
 
 _LOCK = threading.RLock()
 _DEFAULT_PATH = Path(
@@ -419,15 +420,21 @@ class WorkspaceStore:
             "top_rolled_risk": analysis.get("top_rolled_risk"),
         }
 
-    def home_dashboard(self, *, workspace_id: str) -> dict[str, Any]:
+    def home_dashboard(
+        self, *, workspace_id: str, production: bool = False
+    ) -> dict[str, Any]:
         wid = self._require_workspace(workspace_id)
         with _LOCK:
-            projects = self.list_projects(workspace_id=wid)
-            analyses = self.list_reports(workspace_id=wid)
+            analyses = customer_visible_analyses(
+                self.list_reports(workspace_id=wid), production=production
+            )
+            projects = customer_visible_projects(
+                self.list_projects(workspace_id=wid), analyses, production=production
+            )
             bom_count = sum(
                 1
-                for bom in self._data["boms"].values()
-                if bom.get("workspace_id") == wid
+                for project in projects
+                for bom in project.get("boms") or []
             )
             priority: list[dict[str, Any]] = []
             for analysis in analyses[:8]:
@@ -494,7 +501,7 @@ class WorkspaceStore:
             ]
             return {
                 "ok": True,
-                "mode": "synthetic-preview",
+                "mode": "synthetic-preview" if not production else "workspace-home",
                 "workspace_id": wid,
                 "persistence": "migration-workspace-store",
                 "gap": (

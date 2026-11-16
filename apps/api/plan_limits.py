@@ -15,6 +15,8 @@ from src.plans import (
     normalize_plan_name,
     validate_bom_against_plan,
 )
+from apps.api.report_visibility import customer_visible_analyses
+from apps.api.sandbox_auth import is_production_runtime
 from apps.api.workspace_store import get_store
 
 
@@ -44,9 +46,17 @@ def usage_snapshot(workspace_id: str, ctx: dict[str, Any] | None = None) -> dict
     plan_name = effective_plan_name(ctx)
     plan = get_plan(plan_name)
     store = get_store()
-    reports = store.list_reports(workspace_id=workspace_id)
+    reports = customer_visible_analyses(
+        store.list_reports(workspace_id=workspace_id),
+        production=is_production_runtime(),
+    )
     month = _month_key()
     month_count = sum(1 for r in reports if str(r.get("created_at") or "").startswith(month))
+    saved_bom_keys = {
+        str(r.get("bom_id") or r.get("id") or "").strip()
+        for r in reports
+        if r.get("bom_id") or r.get("id")
+    }
     return {
         "plan": plan_name,
         "limits": {
@@ -57,7 +67,7 @@ def usage_snapshot(workspace_id: str, ctx: dict[str, Any] | None = None) -> dict
             "can_create_analyses": plan.get("can_create_analyses", True),
         },
         "usage": {
-            "saved_boms": len(reports),
+            "saved_boms": len(saved_bom_keys),
             "analyses_this_month": month_count,
             "month": month,
         },

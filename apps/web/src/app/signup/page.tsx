@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { fetchAuthConfig, signup } from "@/lib/api";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
+import { BrandLink } from "@/components/BrandLink";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
 
 export default function SignupPage() {
@@ -55,10 +56,7 @@ export default function SignupPage() {
   return (
     <div className="cv-login">
       <form className="cv-card cv-login-card" onSubmit={onSubmit}>
-        <div className="cv-brand" style={{ marginBottom: 18, paddingBottom: 0 }}>
-          <span className="cv-mark" aria-hidden>C</span>
-          <div><strong>Cadivor</strong><small>Engineering Intelligence</small></div>
-        </div>
+        <BrandLink href="https://www.cadivor.com/" ariaLabel="Cadivor homepage" compact />
         <div className="cv-eyebrow">14-day evaluation</div>
         <h1 style={{ margin: "0 0 6px", fontSize: 26, letterSpacing: "-0.03em" }}>
           Create your workspace

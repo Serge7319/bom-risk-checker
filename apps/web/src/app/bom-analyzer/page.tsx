@@ -16,6 +16,7 @@ import {
   fileIdentityKey,
   getActiveAnalyzeJob,
   identityKey,
+  isInternalTestDraft,
   loadDraftFile,
   materializeBomFile,
   parseAnalyzeSummary,
@@ -64,6 +65,8 @@ export default function BomAnalyzerPage() {
   const [summary, setSummary] = useState<AnalyzeSummary | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);
+  const [ignoredTestDraft, setIgnoredTestDraft] = useState(false);
+  const ignoredTestDraftRef = useRef(false);
   const [backgroundNote, setBackgroundNote] = useState("");
   const [draftPersistNotice, setDraftPersistNotice] = useState("");
   const [validatedFileKey, setValidatedFileKey] = useState("");
@@ -135,6 +138,12 @@ export default function BomAnalyzerPage() {
     let cancelled = false;
     (async () => {
       const meta = readDraftMeta(session);
+      if (isInternalTestDraft(meta)) {
+        ignoredTestDraftRef.current = true;
+        setIgnoredTestDraft(true);
+        setDraftReady(true);
+        return;
+      }
       setProjectName(meta.projectName || "");
       setBomName(meta.bomName || "");
       setRevision(meta.revision || "A");
@@ -204,6 +213,7 @@ export default function BomAnalyzerPage() {
   useEffect(() => {
     if (!session) return;
     return subscribeAnalyzeJob((job) => {
+      if (ignoredTestDraftRef.current) return;
       if (!job) return;
       if (job.ownerKey && job.ownerKey !== identityKey(session)) {
         return;
@@ -260,7 +270,7 @@ export default function BomAnalyzerPage() {
   }, [session]);
 
   useEffect(() => {
-    if (!session || !draftReady) return;
+    if (!session || !draftReady || ignoredTestDraftRef.current) return;
     persistMeta({});
   }, [
     session,
@@ -311,6 +321,10 @@ export default function BomAnalyzerPage() {
 
   async function onFileChosen(next: File | null) {
     if (!session) return;
+    if (next) {
+      ignoredTestDraftRef.current = false;
+      setIgnoredTestDraft(false);
+    }
     // Synchronously clear previous validation before any await.
     const requestId = ++validationRequestIdRef.current;
     selectedFileKeyRef.current = "";
@@ -494,9 +508,11 @@ export default function BomAnalyzerPage() {
               {draftPersistNotice}
             </p>
           ) : null}
-          <p className="cv-bom-guidance-note" role="note" data-testid="synthetic-sample-label">
-            Evidence and local demos may use clearly labeled synthetic sample BOM data. Production risk scoring is unchanged.
-          </p>
+          {ignoredTestDraft ? (
+            <p className="cv-bom-guidance-note" role="status">
+              A test-only draft was not loaded. Choose a BOM file to start a new analysis.
+            </p>
+          ) : null}
 
           <div className="cv-bom-fields cv-bom-fields-grid">
             <label className="cv-field">

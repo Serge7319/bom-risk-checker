@@ -16,6 +16,7 @@ import {
 } from "@/lib/api";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
+import { BrandLink } from "@/components/BrandLink";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
 import {
   parseSignupConfirmParams,
@@ -336,15 +337,7 @@ function LoginInner() {
     return (
       <div className="cv-login">
         <div className="cv-card cv-login-card" data-testid="signup-confirm-ready">
-          <div className="cv-brand" style={{ marginBottom: 18, paddingBottom: 0 }}>
-            <span className="cv-mark" aria-hidden>
-              C
-            </span>
-            <div>
-              <strong>Cadivor</strong>
-              <small>Engineering Intelligence</small>
-            </div>
-          </div>
+          <BrandLink href="https://www.cadivor.com/" ariaLabel="Cadivor homepage" compact />
           <div className="cv-eyebrow">Cadivor · Email confirmation</div>
           <p className="cv-small-note" role="status" style={{ marginTop: 0 }}>
             Email link ready
@@ -378,15 +371,7 @@ function LoginInner() {
           className="cv-card cv-login-card"
           data-testid="signup-confirm-success"
         >
-          <div className="cv-brand" style={{ marginBottom: 18, paddingBottom: 0 }}>
-            <span className="cv-mark" aria-hidden>
-              C
-            </span>
-            <div>
-              <strong>Cadivor</strong>
-              <small>Engineering Intelligence</small>
-            </div>
-          </div>
+          <BrandLink href="https://www.cadivor.com/" ariaLabel="Cadivor homepage" compact />
           <div className="cv-eyebrow">Email confirmed</div>
           <p className="cv-small-note" role="status" style={{ marginTop: 0 }}>
             Confirmation complete
@@ -419,15 +404,7 @@ function LoginInner() {
           className="cv-card cv-login-card"
           data-testid="signup-confirm-invalid"
         >
-          <div className="cv-brand" style={{ marginBottom: 18, paddingBottom: 0 }}>
-            <span className="cv-mark" aria-hidden>
-              C
-            </span>
-            <div>
-              <strong>Cadivor</strong>
-              <small>Engineering Intelligence</small>
-            </div>
-          </div>
+          <BrandLink href="https://www.cadivor.com/" ariaLabel="Cadivor homepage" compact />
           <div className="cv-eyebrow">Email confirmation</div>
           <p className="cv-small-note" role="status" style={{ marginTop: 0 }}>
             Confirmation link unavailable
@@ -463,15 +440,7 @@ function LoginInner() {
         className="cv-card cv-login-card"
         onSubmit={mode === "create" ? onCreateFromInvite : onSignIn}
       >
-        <div className="cv-brand" style={{ marginBottom: 18, paddingBottom: 0 }}>
-          <span className="cv-mark" aria-hidden>
-            C
-          </span>
-          <div>
-            <strong>Cadivor</strong>
-            <small>Engineering Intelligence</small>
-          </div>
-        </div>
+        <BrandLink href="https://www.cadivor.com/" ariaLabel="Cadivor homepage" compact />
         <div className="cv-eyebrow">Cadivor Auth</div>
         <h1 style={{ margin: "0 0 6px", fontSize: 26, letterSpacing: "-0.03em" }}>
           {mode === "create" ? "Create your account" : "Sign in"}

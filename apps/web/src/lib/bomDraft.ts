@@ -79,6 +79,25 @@ export type BomDraftMeta = {
   oneTimeReportRequired: boolean;
 };
 
+const INTERNAL_TEST_DRAFT_MARKER =
+  /(?<![a-z0-9])(?:synthetic|preview|fixture|e2e|qa)(?![a-z0-9])/i;
+const INTERNAL_TEST_BOM_MARKER =
+  /(?<![a-z0-9])test[\s_-]*bom(?:[\s_-]*\d+)?(?![a-z0-9])/i;
+const INTERNAL_SMOKE_MARKER =
+  /(?<![a-z0-9])(?:smoke[\s_-]+(?:test|nested|flat)|(?:nested|flat)[\s_-]+smoke)(?![a-z0-9])/i;
+
+export function isInternalTestDraft(meta: Partial<BomDraftMeta>): boolean {
+  const label = [meta.projectName, meta.bomName, meta.fileName, meta.revision]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return Boolean(
+    INTERNAL_TEST_DRAFT_MARKER.test(label) ||
+      INTERNAL_TEST_BOM_MARKER.test(label) ||
+      INTERNAL_SMOKE_MARKER.test(label),
+  );
+}
+
 export type BomReviewProgress = {
   analysisId: string;
   risksOpenedAt?: string;

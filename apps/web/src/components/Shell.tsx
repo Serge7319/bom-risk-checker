@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, NAV_ICONS } from "@/components/Icons";
+import { BrandLink } from "@/components/BrandLink";
 import { clearSession, logout, type Session } from "@/lib/api";
 import { workspaceDisplayName } from "@/lib/display";
 import { NAV_GROUPS } from "@/lib/routes";
@@ -66,15 +67,7 @@ export function Shell({
   return (
     <div className="cv-shell">
       <aside className={`cv-rail${navOpen ? " is-open" : ""}`} aria-label="Workspace navigation">
-        <div className="cv-brand">
-          <span className="cv-mark" aria-hidden>
-            C
-          </span>
-          <div>
-            <strong>Cadivor</strong>
-            <small>Engineering Intelligence</small>
-          </div>
-        </div>
+        <BrandLink href="/" ariaLabel="Cadivor workspace home" />
 
         <div className="cv-workspace-card">
           <span>Workspace</span>
