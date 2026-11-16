@@ -1270,9 +1270,9 @@ export default function Page() {
                   Operational availability for monitoring email, scheduler, and billing checkout.
                   CSV file workflows are listed separately from live design-tool or vendor integrations.
                 </p>
-                <ul className="cv-action-list" style={{ marginTop: 12 }}>
+                <ul className="cv-action-list cv-service-readiness-list">
                   <li>
-                    <div>
+                    <div className="cv-service-readiness-copy">
                       <strong>Monitoring email</strong>
                       <small className="cv-small-note">Alert delivery transport configuration</small>
                     </div>
@@ -1281,7 +1281,7 @@ export default function Page() {
                     </span>
                   </li>
                   <li>
-                    <div>
+                    <div className="cv-service-readiness-copy">
                       <strong>Monitoring scheduler</strong>
                       <small className="cv-small-note">Scheduled refresh and cron hook</small>
                     </div>
@@ -1290,7 +1290,7 @@ export default function Page() {
                     </span>
                   </li>
                   <li>
-                    <div>
+                    <div className="cv-service-readiness-copy">
                       <strong>Billing checkout</strong>
                       <small className="cv-small-note">Stripe plan upgrades and portal</small>
                     </div>
@@ -1305,7 +1305,7 @@ export default function Page() {
                     </span>
                   </li>
                   <li>
-                    <div>
+                    <div className="cv-service-readiness-copy">
                       <strong>Live design-tool / vendor connectors</strong>
                       <small className="cv-small-note">
                         Live integrations only — CSV file workflows do not count as ready
