@@ -721,10 +721,10 @@ function ProcurementPageInner() {
                             <td>
                               {row.sourceUrl.startsWith("https://") || row.sourceUrl.startsWith("http://") ? (
                                 <a href={row.sourceUrl} target="_blank" rel="noreferrer">Open source</a>
-                              ) : <span>{row.kind === "User-entered quote" ? "No source link recorded" : "Supplier page not recorded"}</span>}
+                              ) : <span>{row.kind.startsWith("User-entered") ? "No source link recorded" : "Supplier page not recorded"}</span>}
                               <small className="cv-procurement-timestamp">
                                 {row.sourceTime
-                                  ? `${row.kind === "User-entered quote" ? "Recorded" : "Retrieved"}: ${row.sourceTime}`
+                                  ? `${row.kind.startsWith("User-entered") ? "Recorded" : "Retrieved"}: ${row.sourceTime}`
                                   : "Time not recorded"}
                               </small>
                               {row.notes ? <small className="cv-procurement-description">{row.notes}</small> : null}
