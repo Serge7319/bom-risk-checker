@@ -58,7 +58,7 @@ function lineFor(part: BomPart): QuoteLineInput {
     requested_mpn: mpn,
     requested_manufacturer: manufacturer,
     offered_mpn: mpn,
-    offered_manufacturer: manufacturer,
+    offered_manufacturer: "",
     price_breaks: [{ quantity: "", unit_price: "" }],
     minimum_order_quantity: "",
     pack_quantity: "",
@@ -231,7 +231,7 @@ export function QuoteGroupEntry({
         <div className="cv-quote-group-heading">
           <div>
             <h4>Components on this quote</h4>
-            <p>Each line is matched to one exact part in the selected BOM revision.</p>
+            <p>Each line is linked to one part in the selected BOM revision.</p>
           </div>
           <button className="cv-quote-add-break" type="button" onClick={addLine}>Add BOM component</button>
         </div>
