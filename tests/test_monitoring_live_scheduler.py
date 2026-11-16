@@ -92,7 +92,7 @@ class MonitoringLiveSchedulerTests(unittest.TestCase):
         self.assertFalse(readiness["enabled"])
         self.assertIn("CADIVOR_MONITORING_EMAIL_ENABLED", readiness["missing_requirements"][0])
         self.assertIn("RESEND_API_KEY", readiness["missing_requirements"][1])
-        self.assertIn("TRANSACTIONAL_FROM_EMAIL", readiness["missing_requirements"][1])
+        self.assertIn("no-reply@cadivor.com", readiness["missing_requirements"][1])
 
     def test_member_preferences_bind_email_to_verified_auth_context(self):
         result = self.client.put(
