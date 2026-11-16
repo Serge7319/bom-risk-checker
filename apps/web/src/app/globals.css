@@ -1896,6 +1896,13 @@ button {
 .cv-action-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
 .cv-action-list li{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid #E2E8F0}
 .cv-action-list li:last-child{border-bottom:0;padding-bottom:0}
+.cv-service-readiness-list{margin-top:12px}
+.cv-service-readiness-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px}
+.cv-service-readiness-copy{display:flex;min-width:0;flex-direction:column;gap:4px}
+.cv-service-readiness-copy strong{display:block;line-height:1.35;overflow-wrap:anywhere}
+.cv-service-readiness-copy .cv-small-note{display:block;line-height:1.45;overflow-wrap:anywhere}
+.cv-service-readiness-list .cv-badge{justify-self:end;flex:none;white-space:nowrap}
+@media(max-width:640px){.cv-service-readiness-list li{grid-template-columns:minmax(0,1fr);align-items:start;gap:7px}.cv-service-readiness-list .cv-badge{justify-self:start}}
 
 /* Product-wide visual system aligned with the approved Cadivor workspace. */
 .cv-home-hero:not(.has-latest) {
