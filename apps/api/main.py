@@ -3600,6 +3600,7 @@ app = Starlette(
         Route("/tools/procurement", procurement_get, methods=["GET"]),
         Route("/tools/procurement/quotes", procurement_quotes_get, methods=["GET"]),
         Route("/tools/procurement/quotes", procurement_quotes_post, methods=["POST"]),
+        Route("/tools/procurement/quote-groups", procurement_quote_groups_post, methods=["POST"]),
         Route("/tools/design-impact", design_impact_get, methods=["GET"]),
         Route("/tools/cost-optimization", cost_optimization_get, methods=["GET"]),
         Route("/tools/supply-risk", supply_risk_post, methods=["POST"]),
