@@ -744,7 +744,7 @@ function ProcurementPageInner() {
                 {savedQuoteGroups.length ? (
                   <section className="cv-quote-groups" aria-label="Saved supplier quote groups">
                     <h3>Supplier quotes for this BOM</h3>
-                    <p>Each saved quote keeps its shared supplier reference and its separate component line terms.</p>
+                    <p>Each document stays grouped, with price and terms compared per component. Cadivor does not infer a combined purchase total.</p>
                     {savedQuoteGroups.map((group) => (
                       <details className="cv-quote-group-card" key={group.id}>
                         <summary>
