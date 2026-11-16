@@ -35,7 +35,7 @@ def utc_now() -> str:
 
 
 def email_delivery_enabled() -> bool:
-    return (os.environ.get("CADIVOR_MONITORING_EMAIL_ENABLED") or "").strip() == "1"
+    return (os.environ.get("CADIVOR_MONITORING_EMAIL_ENABLED") or "").strip().casefold() in {"1", "true", "yes", "on"}
 
 
 def _configured_email_transport() -> bool:
