@@ -3538,11 +3538,7 @@ button {
   min-height: 36px;
 }
 .cv-quote-add-break,
-.cv-quote-group-heading {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .cv-quote-remove-break {
+.cv-quote-remove-break {
   width: fit-content;
   min-height: 34px;
   padding: 0 10px;
@@ -3564,6 +3560,10 @@ button {
   }
   .cv-quote-break-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .cv-quote-group-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
   .cv-quote-remove-break {
     grid-column: 1 / -1;
