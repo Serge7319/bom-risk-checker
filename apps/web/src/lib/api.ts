@@ -774,6 +774,9 @@ export type ProcurementQuote = {
   notes?: string;
   created_at: string;
   evidence_kind: string;
+  quote_group_id?: string;
+  quote_group_line_index?: number;
+  quote_group_line_count?: number;
 };
 
 export async function listProcurementQuotes(
@@ -812,6 +815,42 @@ export async function createProcurementQuote(
     "/tools/procurement/quotes",
     { method: "POST", token, body: JSON.stringify(payload) },
   );
+}
+
+export async function createProcurementQuoteGroup(
+  token: string,
+  payload: {
+    analysis_id: string;
+    supplier: string;
+    quote_reference?: string;
+    currency?: string;
+    valid_until?: string;
+    source_url?: string;
+    notes?: string;
+    lines: Array<{
+      requested_mpn: string;
+      requested_manufacturer?: string;
+      offered_mpn: string;
+      offered_manufacturer?: string;
+      price_breaks?: Array<{ quantity: number; unit_price: number }>;
+      minimum_order_quantity?: number | null;
+      pack_quantity?: number | null;
+      stock?: number | null;
+      lead_time_weeks?: number | null;
+    }>;
+  },
+) {
+  return apiJson<{
+    ok: boolean;
+    analysis_id: string;
+    quote_group_id: string;
+    line_count: number;
+    quotes: ProcurementQuote[];
+  }>("/tools/procurement/quote-groups", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function fetchDesignImpact(
@@ -938,11 +977,14 @@ export async function fetchConnectors(token: string) {
 
 export type ServiceReadiness = {
   ok?: boolean;
-  monitoring_email?: { status?: string; enabled?: boolean };
+  monitoring_email?: { status?: string; enabled?: boolean; transport_ready?: boolean; missing_requirements?: string[] };
   scheduler?: {
     status?: string;
     enabled?: boolean;
     cron_token_configured?: boolean;
+    schedule_attached?: boolean;
+    live_supplier_refresh_enabled?: boolean;
+    missing_requirements?: string[];
   };
   connectors?: {
     status?: string;

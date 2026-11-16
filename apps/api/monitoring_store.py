@@ -35,7 +35,7 @@ def utc_now() -> str:
 
 
 def email_delivery_enabled() -> bool:
-    return (os.environ.get("CADIVOR_MONITORING_EMAIL_ENABLED") or "").strip() == "1"
+    return (os.environ.get("CADIVOR_MONITORING_EMAIL_ENABLED") or "").strip().casefold() in {"1", "true", "yes", "on"}
 
 
 def _configured_email_transport() -> bool:
@@ -60,27 +60,21 @@ def email_transport_ready() -> bool:
 
 def monitoring_email_readiness() -> dict[str, Any]:
     enabled = email_delivery_enabled()
-    transport = email_transport_ready()
+    test_sink = getattr(deliver_alert_email, "_default_sink", None) is not None
+    transport_configured = test_sink or _configured_email_transport()
+    transport_ready = enabled and transport_configured
+    missing = []
     if not enabled:
-        return {
-            "status": "not_connected",
-            "enabled": False,
-            "transport_ready": False,
-            "missing_requirements": ["monitoring email delivery flag"],
-        }
-    if transport:
-        return {
-            "status": "ready",
-            "enabled": True,
-            "transport_ready": True,
-            "missing_requirements": [],
-        }
-    # Flag on but deliver_alert_email would return no_sink_configured.
+        missing.append("Enable alert delivery (CADIVOR_MONITORING_EMAIL_ENABLED)")
+    if not transport_configured:
+        missing.append(
+            "Add RESEND_API_KEY and verify no-reply@cadivor.com as the Resend sender"
+        )
     return {
-        "status": "not_connected",
-        "enabled": True,
-        "transport_ready": False,
-        "missing_requirements": ["Resend API key and verified sender address"],
+        "status": "ready" if transport_ready else "not_connected",
+        "enabled": enabled,
+        "transport_ready": transport_ready,
+        "missing_requirements": missing,
     }
 
 

@@ -3410,6 +3410,75 @@ button {
   font-size: 10px;
   font-weight: 750;
 }
+.cv-quote-groups {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+}
+.cv-quote-groups > h3 {
+  margin: 0;
+  color: #1d3555;
+  font-size: 14px;
+}
+.cv-quote-groups > p {
+  margin: -4px 0 2px;
+  color: #687b94;
+  font-size: 11px;
+}
+.cv-quote-group-card {
+  padding: 11px 13px;
+  border: 1px solid #dce5f0;
+  border-radius: 11px;
+  background: #f8fafc;
+  color: #344a66;
+  font-size: 11px;
+}
+.cv-quote-group-card summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  cursor: pointer;
+  color: #243d5f;
+}
+.cv-quote-group-card > p {
+  margin: 7px 0 0;
+}
+.cv-quote-group-card ul {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+.cv-quote-group-lines {
+  display: grid;
+  gap: 10px;
+}
+.cv-quote-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cv-quote-group-heading h4 {
+  margin: 0;
+  color: #243d5f;
+  font-size: 12px;
+}
+.cv-quote-group-line {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #dce5f0;
+  border-radius: 10px;
+  background: #fff;
+}
+.cv-quote-group-line legend {
+  padding: 0 5px;
+  color: #243d5f;
+  font-size: 11px;
+  font-weight: 750;
+}
 .cv-quote-entry {
   display: grid;
   gap: 14px;
@@ -3491,6 +3560,10 @@ button {
   }
   .cv-quote-break-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .cv-quote-group-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
   .cv-quote-remove-break {
     grid-column: 1 / -1;

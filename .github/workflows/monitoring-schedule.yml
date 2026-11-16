@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   refresh:
-    if: ${{ vars.CADIVOR_MONITORING_SCHEDULER_ENABLED == 'true' && vars.CADIVOR_MONITORING_SCHEDULE_ATTACHED == 'true' }}
+    if: ${{ (vars.CADIVOR_MONITORING_SCHEDULER_ENABLED == 'true' || vars.CADIVOR_MONITORING_SCHEDULER_ENABLED == '1') && (vars.CADIVOR_MONITORING_SCHEDULE_ATTACHED == 'true' || vars.CADIVOR_MONITORING_SCHEDULE_ATTACHED == '1') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

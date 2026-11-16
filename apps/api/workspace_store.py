@@ -329,6 +329,42 @@ class WorkspaceStore:
                 rows, key=lambda row: str(row.get("created_at") or ""), reverse=True
             )
 
+    def create_procurement_quote_group(
+        self, quotes: list[dict[str, Any]], *, workspace_id: str
+    ) -> list[dict[str, Any]]:
+        """Save all lines from one quote group and flush once."""
+        wid = self._require_workspace(workspace_id)
+        if not quotes:
+            raise ValueError("At least one quote line is required.")
+        records = [dict(row) for row in quotes]
+        analysis_ids = {str(row.get("analysis_id") or "").strip() for row in records}
+        if len(analysis_ids) != 1 or not next(iter(analysis_ids)):
+            raise ValueError("All quote lines must belong to one saved BOM analysis.")
+        analysis_id = next(iter(analysis_ids))
+        if not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id} was not found")
+        group_ids = {str(row.get("quote_group_id") or "").strip() for row in records}
+        if len(group_ids) > 1:
+            raise ValueError("All quote lines must share one quote group.")
+        group_id = next(iter(group_ids), "") or str(uuid.uuid4())
+        created_at = _now()
+        saved_rows = []
+        with _LOCK:
+            quotes_store = self._data.setdefault("procurement_quotes", {})
+            for record in records:
+                quote_id = str(uuid.uuid4())
+                record.update({
+                    "id": quote_id,
+                    "quote_id": quote_id,
+                    "quote_group_id": group_id,
+                    "workspace_id": wid,
+                    "created_at": created_at,
+                })
+                quotes_store[quote_id] = record
+                saved_rows.append(dict(record))
+            self.save()
+        return saved_rows
+
     def create_procurement_quote(
         self, quote: dict[str, Any], *, workspace_id: str
     ) -> dict[str, Any]:

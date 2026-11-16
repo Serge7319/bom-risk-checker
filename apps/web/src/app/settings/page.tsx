@@ -103,6 +103,14 @@ function usageValue(value: unknown, key: string): string {
   return "Not reported";
 }
 
+function readinessDetail(value: unknown, fallback: string): string {
+  const gaps = asRecord(value).missing_requirements;
+  const details = Array.isArray(gaps)
+    ? gaps.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+  return details.length ? "Setup needed: " + details.join("; ") : fallback;
+}
+
 function settingsErrorMessage(err: unknown, fallback: string): string {
   const raw = err instanceof Error ? err.message : "";
   if (!raw || /failed to fetch/i.test(raw) || raw === "NetworkError when attempting to fetch resource.") {
@@ -1284,7 +1292,7 @@ export default function Page() {
                   <li>
                     <div className="cv-service-readiness-copy">
                       <strong>Monitoring email</strong>
-                      <small className="cv-small-note">Alert delivery transport configuration</small>
+                      <small className="cv-small-note">{readinessDetail(readiness?.monitoring_email, "Alert delivery transport configuration")}</small>
                     </div>
                     <span className="cv-badge gray">
                       {readinessLabel(readiness?.monitoring_email?.status)}
@@ -1293,7 +1301,7 @@ export default function Page() {
                   <li>
                     <div className="cv-service-readiness-copy">
                       <strong>Monitoring scheduler</strong>
-                      <small className="cv-small-note">Scheduled refresh and cron hook</small>
+                      <small className="cv-small-note">{readinessDetail(readiness?.scheduler, "Scheduled refresh and cron hook")}</small>
                     </div>
                     <span className="cv-badge gray">
                       {readinessLabel(readiness?.scheduler?.status)}

@@ -17,8 +17,12 @@ from apps.api.workspace_store import get_store
 from src.normalizer import normalize_part_number
 
 
+def _flag_enabled(name: str) -> bool:
+    return (os.environ.get(name) or "").strip().casefold() in {"1", "true", "yes", "on"}
+
+
 def scheduler_enabled() -> bool:
-    return (os.environ.get("CADIVOR_MONITORING_SCHEDULER_ENABLED") or "").strip() == "1"
+    return _flag_enabled("CADIVOR_MONITORING_SCHEDULER_ENABLED")
 
 
 def cron_token_configured() -> bool:
@@ -27,11 +31,11 @@ def cron_token_configured() -> bool:
 
 def schedule_attached() -> bool:
     """Operator confirmation that the six-hour workflow and secret are attached."""
-    return (os.environ.get("CADIVOR_MONITORING_SCHEDULE_ATTACHED") or "").strip() == "1"
+    return _flag_enabled("CADIVOR_MONITORING_SCHEDULE_ATTACHED")
 
 
 def live_supplier_refresh_enabled() -> bool:
-    return (os.environ.get("CADIVOR_MONITORING_LIVE_SUPPLIER_REFRESH_ENABLED") or "").strip() == "1"
+    return _flag_enabled("CADIVOR_MONITORING_LIVE_SUPPLIER_REFRESH_ENABLED")
 
 
 def configured_supplier_count() -> int:

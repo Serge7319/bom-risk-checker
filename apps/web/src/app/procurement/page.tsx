@@ -1,16 +1,16 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
+import { QuoteGroupEntry } from "@/components/procurement/QuoteGroupEntry";
 import { EmptyState } from "@/components/EmptyState";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { Icon } from "@/components/Icons";
 import { PartThumbnail } from "@/components/PartThumbnail";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import {
-  createProcurementQuote,
   fetchProcurement,
   listProcurementQuotes,
   listReports,
@@ -51,22 +51,6 @@ function engineeringComparisonHref(
   if (offeredManufacturer) query.set("manufacturer_b", offeredManufacturer);
   return `/compare-parts?${query.toString()}`;
 }
-
-type QuoteFormState = {
-  supplier: string;
-  quote_reference: string;
-  offered_mpn: string;
-  offered_manufacturer: string;
-  currency: string;
-  price_breaks: Array<{ quantity: string; unit_price: string }>;
-  minimum_order_quantity: string;
-  pack_quantity: string;
-  lead_time_weeks: string;
-  stock: string;
-  valid_until: string;
-  source_url: string;
-  notes: string;
-};
 
 type ComparisonRow = {
   id: string;
@@ -121,24 +105,6 @@ function describeCatalogIdentity(
   return "Exact MPN and manufacturer";
 }
 
-function emptyQuoteForm(mpn = ""): QuoteFormState {
-  return {
-    supplier: "",
-    quote_reference: "",
-    offered_mpn: mpn,
-    offered_manufacturer: "",
-    currency: "USD",
-    price_breaks: [{ quantity: "", unit_price: "" }],
-    minimum_order_quantity: "",
-    pack_quantity: "",
-    lead_time_weeks: "",
-    stock: "",
-    valid_until: "",
-    source_url: "",
-    notes: "",
-  };
-}
-
 function ProcurementPageInner() {
   const session = useRequireSession();
   const router = useRouter();
@@ -153,10 +119,7 @@ function ProcurementPageInner() {
   const [comparisonQuantity, setComparisonQuantity] = useState("");
   const [savedQuotes, setSavedQuotes] = useState<ProcurementQuote[]>([]);
   const [quotesBusy, setQuotesBusy] = useState(false);
-  const [quoteForm, setQuoteForm] = useState<QuoteFormState>(() => emptyQuoteForm());
-  const [quoteSaving, setQuoteSaving] = useState(false);
-  const [quoteError, setQuoteError] = useState("");
-  const [quoteSaved, setQuoteSaved] = useState("");
+  const [quoteLoadError, setQuoteLoadError] = useState("");
 
   const requestedAnalysisId = useMemo(
     () => (searchParams.get("analysis_id") || "").trim(),
@@ -226,7 +189,6 @@ function ProcurementPageInner() {
     }
     if (!allParts.some((part) => partKey(part) === selectedPartKey)) {
       setSelectedPartKey(partKey(allParts[0]));
-      setQuoteForm(emptyQuoteForm(String(allParts[0].mpn || "")));
       setComparisonQuantity("");
     }
   }, [allParts, selectedPartKey]);
@@ -239,14 +201,13 @@ function ProcurementPageInner() {
     let active = true;
     setQuotesBusy(true);
     setSavedQuotes([]);
-    setQuoteError("");
-    setQuoteSaved("");
+    setQuoteLoadError("");
     listProcurementQuotes(session.access_token, selectedAnalysisId)
       .then(({ quotes }) => {
         if (active) setSavedQuotes(quotes || []);
       })
       .catch((err) => {
-        if (active) setQuoteError(err instanceof Error ? err.message : "Unable to load saved quotes.");
+        if (active) setQuoteLoadError(err instanceof Error ? err.message : "Unable to load saved quotes.");
       })
       .finally(() => {
         if (active) setQuotesBusy(false);
@@ -354,7 +315,7 @@ function ProcurementPageInner() {
       )
       .map((quote) => ({
         id: quote.quote_id || quote.id,
-        kind: "User-entered quote",
+        kind: quote.quote_group_id ? "User-entered quote group" : "User-entered quote",
         supplier: quote.supplier,
         quoteReference: quote.quote_reference || "",
         offeredMpn: quote.offered_mpn,
@@ -405,50 +366,28 @@ function ProcurementPageInner() {
     });
   }, [comparisonQuantity, comparisonRows]);
 
-  async function saveQuote(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!session || !selectedPart || !activeAnalysisId) return;
-    const hasPartialPriceBreak = quoteForm.price_breaks.some(
-      (row) => Boolean(row.quantity.trim()) !== Boolean(row.unit_price.trim()),
-    );
-    if (hasPartialPriceBreak) {
-      setQuoteError("Enter both a quantity and unit price for each price break, or leave both blank.");
-      return;
+  const savedQuoteGroups = useMemo(() => {
+    const grouped = new Map<string, ProcurementQuote[]>();
+    for (const quote of savedQuotes) {
+      const groupId = String(quote.quote_group_id || "").trim();
+      if (!groupId) continue;
+      grouped.set(groupId, [...(grouped.get(groupId) || []), quote]);
     }
-    setQuoteSaving(true);
-    setQuoteError("");
-    setQuoteSaved("");
-    try {
-      const priceBreaks = quoteForm.price_breaks
-        .filter((row) => row.quantity.trim() || row.unit_price.trim())
-        .map((row) => ({ quantity: Number(row.quantity), unit_price: Number(row.unit_price) }));
-      const result = await createProcurementQuote(session.access_token, {
-        analysis_id: activeAnalysisId,
-        requested_mpn: String(selectedPart.mpn || ""),
-        requested_manufacturer: String(selectedPart.manufacturer || ""),
-        supplier: quoteForm.supplier.trim(),
-        quote_reference: quoteForm.quote_reference.trim(),
-        offered_mpn: quoteForm.offered_mpn.trim(),
-        offered_manufacturer: quoteForm.offered_manufacturer.trim(),
-        currency: quoteForm.currency.trim(),
-        price_breaks: priceBreaks,
-        minimum_order_quantity: quoteForm.minimum_order_quantity.trim() ? Number(quoteForm.minimum_order_quantity) : null,
-        pack_quantity: quoteForm.pack_quantity.trim() ? Number(quoteForm.pack_quantity) : null,
-        lead_time_weeks: quoteForm.lead_time_weeks.trim() ? Number(quoteForm.lead_time_weeks) : null,
-        stock: quoteForm.stock.trim() ? Number(quoteForm.stock) : null,
-        valid_until: quoteForm.valid_until,
-        source_url: quoteForm.source_url.trim(),
-        notes: quoteForm.notes.trim(),
-      });
-      setSavedQuotes((current) => [result.quote, ...current]);
-      setQuoteSaved("Quote saved to this BOM revision. User-entered terms are not supplier-verified by Cadivor.");
-      setQuoteForm(emptyQuoteForm(String(selectedPart.mpn || "")));
-    } catch (err) {
-      setQuoteError(err instanceof Error ? err.message : "Unable to save this quote.");
-    } finally {
-      setQuoteSaving(false);
-    }
-  }
+    return Array.from(grouped.entries()).map(([id, lines]) => ({
+      id,
+      supplier: lines[0]?.supplier || "Supplier not recorded",
+      quoteReference: lines[0]?.quote_reference || "",
+      validUntil: lines[0]?.valid_until || "",
+      sourceUrl: lines[0]?.source_url || "",
+      lineCount: Math.max(
+        lines.length,
+        ...lines.map((line) => Number(line.quote_group_line_count) || 0),
+      ),
+      lines: [...lines].sort(
+        (a, b) => (a.quote_group_line_index || 0) - (b.quote_group_line_index || 0),
+      ),
+    })).sort((a, b) => String(b.lines[0]?.created_at || "").localeCompare(String(a.lines[0]?.created_at || "")));
+  }, [savedQuotes]);
 
   if (!session) return null;
 
@@ -674,12 +613,8 @@ function ProcurementPageInner() {
                       aria-label="BOM part for quote comparison"
                       value={selectedPart ? partKey(selectedPart) : ""}
                       onChange={(event) => {
-                        const nextPart = allParts.find((part) => partKey(part) === event.target.value);
                         setSelectedPartKey(event.target.value);
                         setComparisonQuantity("");
-                        setQuoteError("");
-                        setQuoteSaved("");
-                        setQuoteForm(emptyQuoteForm(String(nextPart?.mpn || "")));
                       }}
                     >
                       {allParts.map((part, index) => (
@@ -785,10 +720,10 @@ function ProcurementPageInner() {
                             <td>
                               {row.sourceUrl.startsWith("https://") || row.sourceUrl.startsWith("http://") ? (
                                 <a href={row.sourceUrl} target="_blank" rel="noreferrer">Open source</a>
-                              ) : <span>{row.kind === "User-entered quote" ? "No source link recorded" : "Supplier page not recorded"}</span>}
+                              ) : <span>{row.kind.startsWith("User-entered") ? "No source link recorded" : "Supplier page not recorded"}</span>}
                               <small className="cv-procurement-timestamp">
                                 {row.sourceTime
-                                  ? `${row.kind === "User-entered quote" ? "Recorded" : "Retrieved"}: ${row.sourceTime}`
+                                  ? `${row.kind.startsWith("User-entered") ? "Recorded" : "Retrieved"}: ${row.sourceTime}`
                                   : "Time not recorded"}
                               </small>
                               {row.notes ? <small className="cv-procurement-description">{row.notes}</small> : null}
@@ -804,43 +739,61 @@ function ProcurementPageInner() {
                 </div>
                 {quotesBusy ? <p className="cv-small-note" aria-live="polite">Loading saved quotes…</p> : null}
 
-                <form className="cv-quote-entry" onSubmit={saveQuote}>
-                  <div>
-                    <h3>Record a supplier quote</h3>
-                    <p>Save the terms against {String(selectedPart?.mpn || "the selected part")} in this saved BOM revision. Cadivor records your entry but does not independently verify the quote details.</p>
-                  </div>
-                  <div className="cv-quote-form-grid">
-                    <label><span>Supplier *</span><input required maxLength={120} value={quoteForm.supplier} onChange={(event) => setQuoteForm({ ...quoteForm, supplier: event.target.value })} /></label>
-                    <label><span>Quote reference</span><input maxLength={160} value={quoteForm.quote_reference} onChange={(event) => setQuoteForm({ ...quoteForm, quote_reference: event.target.value })} /></label>
-                    <label><span>Quoted MPN *</span><input required maxLength={160} value={quoteForm.offered_mpn} onChange={(event) => setQuoteForm({ ...quoteForm, offered_mpn: event.target.value })} /></label>
-                    <label><span>Quoted manufacturer</span><input maxLength={160} value={quoteForm.offered_manufacturer} onChange={(event) => setQuoteForm({ ...quoteForm, offered_manufacturer: event.target.value })} /></label>
-                    <label><span>Currency</span><input maxLength={3} value={quoteForm.currency} onChange={(event) => setQuoteForm({ ...quoteForm, currency: event.target.value.toUpperCase() })} /></label>
-                    <label><span>Valid until</span><input type="date" value={quoteForm.valid_until} onChange={(event) => setQuoteForm({ ...quoteForm, valid_until: event.target.value })} /></label>
-                    <div className="cv-quote-breaks">
-                      <strong>Price breaks</strong>
-                      <span>Enter the minimum order quantity for each unit price.</span>
-                      {quoteForm.price_breaks.map((priceBreak, index) => (
-                        <div className="cv-quote-break-row" key={`break-${index}`}>
-                          <label><span>Quantity</span><input aria-label={`Price break ${index + 1} quantity`} type="number" min="1" step="1" value={priceBreak.quantity} onChange={(event) => setQuoteForm({ ...quoteForm, price_breaks: quoteForm.price_breaks.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: event.target.value } : row) })} /></label>
-                          <label><span>Unit price</span><input aria-label={`Price break ${index + 1} unit price`} type="number" min="0.000001" step="any" value={priceBreak.unit_price} onChange={(event) => setQuoteForm({ ...quoteForm, price_breaks: quoteForm.price_breaks.map((row, rowIndex) => rowIndex === index ? { ...row, unit_price: event.target.value } : row) })} /></label>
-                          {quoteForm.price_breaks.length > 1 ? <button className="cv-quote-remove-break" type="button" onClick={() => setQuoteForm({ ...quoteForm, price_breaks: quoteForm.price_breaks.filter((_, rowIndex) => rowIndex !== index) })}>Remove</button> : null}
-                        </div>
-                      ))}
-                      {quoteForm.price_breaks.length < 20 ? <button className="cv-quote-add-break" type="button" onClick={() => setQuoteForm({ ...quoteForm, price_breaks: [...quoteForm.price_breaks, { quantity: "", unit_price: "" }] })}>Add price break</button> : null}
-                    </div>
-                    <label><span>Minimum order quantity</span><input type="number" min="1" step="1" value={quoteForm.minimum_order_quantity} onChange={(event) => setQuoteForm({ ...quoteForm, minimum_order_quantity: event.target.value })} /></label>
-                    <label><span>Pack quantity / order multiple</span><input type="number" min="1" step="1" value={quoteForm.pack_quantity} onChange={(event) => setQuoteForm({ ...quoteForm, pack_quantity: event.target.value })} /></label>
-                    <label><span>Lead time (weeks)</span><input type="number" min="0" step="any" value={quoteForm.lead_time_weeks} onChange={(event) => setQuoteForm({ ...quoteForm, lead_time_weeks: event.target.value })} /></label>
-                    <label><span>Available stock</span><input type="number" min="0" step="1" value={quoteForm.stock} onChange={(event) => setQuoteForm({ ...quoteForm, stock: event.target.value })} /></label>
-                    <label className="cv-quote-wide"><span>Supplier quote / listing URL</span><input type="url" maxLength={2048} placeholder="https://…" value={quoteForm.source_url} onChange={(event) => setQuoteForm({ ...quoteForm, source_url: event.target.value })} /></label>
-                    <label className="cv-quote-wide"><span>Notes / assumptions</span><textarea maxLength={3000} rows={3} value={quoteForm.notes} onChange={(event) => setQuoteForm({ ...quoteForm, notes: event.target.value })} /></label>
-                  </div>
-                  {quoteError ? <div className="cv-error" role="alert">{quoteError}</div> : null}
-                  {quoteSaved ? <div className="cv-success" role="status">{quoteSaved}</div> : null}
-                  <button className="cv-button primary" type="submit" disabled={quoteSaving}>
-                    {quoteSaving ? "Saving quote…" : "Save quote to this BOM revision"}
-                  </button>
-                </form>
+                {quoteLoadError ? <div className="cv-error" role="alert">{quoteLoadError}</div> : null}
+
+                {savedQuoteGroups.length ? (
+                  <section className="cv-quote-groups" aria-label="Saved supplier quote groups">
+                    <h3>Supplier quotes for this BOM</h3>
+                    <p>Each document stays grouped, with price and terms compared per component. Cadivor does not infer a combined purchase total.</p>
+                    {savedQuoteGroups.map((group) => (
+                      <details className="cv-quote-group-card" key={group.id}>
+                        <summary>
+                          <strong>{group.supplier}</strong>
+                          {group.quoteReference ? <span> · {group.quoteReference}</span> : null}
+                          <span> · {group.lines.length} of {group.lineCount} quoted BOM component{group.lineCount === 1 ? "" : "s"}</span>
+                        </summary>
+                        {group.validUntil ? <p>Valid through {group.validUntil}</p> : <p>Quote validity not stated</p>}
+                        {group.sourceUrl.startsWith("https://") || group.sourceUrl.startsWith("http://") ? (
+                          <p><a href={group.sourceUrl} target="_blank" rel="noreferrer">Open supplier quote source</a></p>
+                        ) : null}
+                        <ul>
+                          {group.lines.map((line) => {
+                            const breaks = (line.price_breaks || []).map((row) =>
+                              String(row.quantity) + "+ units: " + String(line.currency || "Currency unknown") + " " + Number(row.unit_price).toLocaleString(),
+                            );
+                            const identityLabel = line.identity_status === "exact_part"
+                              ? "exact identity"
+                              : line.identity_status === "manufacturer_unconfirmed"
+                                ? "manufacturer unconfirmed"
+                                : "engineering review required";
+                            return (
+                              <li key={line.quote_id || line.id}>
+                                <strong>{line.requested_mpn}</strong>
+                                {line.requested_manufacturer ? " · " + line.requested_manufacturer : " · manufacturer not recorded"}
+                                {" — "}quoted as {line.offered_mpn}
+                                {line.offered_manufacturer ? " · " + line.offered_manufacturer : ""}
+                                {" · "}{identityLabel}
+                                {" · "}{breaks.length ? breaks.join("; ") : "price not reported"}
+                                {" · MOQ "}{line.minimum_order_quantity ?? "unknown"}
+                                {" · pack "}{line.pack_quantity ?? "unknown"}
+                                {" · lead time "}{line.lead_time_weeks == null ? "unknown" : line.lead_time_weeks + " weeks"}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </details>
+                    ))}
+                  </section>
+                ) : null}
+
+                <QuoteGroupEntry
+                  key={activeAnalysisId}
+                  accessToken={session.access_token}
+                  analysisId={activeAnalysisId}
+                  parts={allParts}
+                  selectedPartKey={selectedPart ? partKey(selectedPart) : ""}
+                  onSaved={(quotes) => setSavedQuotes((current) => [...quotes, ...current])}
+                />
               </>
             ) : (
               <EmptyState
