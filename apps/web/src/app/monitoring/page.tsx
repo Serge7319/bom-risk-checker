@@ -46,9 +46,11 @@ function MonitoringPageInner() {
       .then((payload) => {
         if (!active) return;
         setData(payload);
-        if (analysisId) {
+        const visibleAnalysisId = String(payload.analysis_id || "").trim();
+        setActiveAnalysisId(visibleAnalysisId);
+        if (visibleAnalysisId) {
           markReviewProgress(
-            analysisId,
+            visibleAnalysisId,
             { monitorOpenedAt: new Date().toISOString() },
             session,
           );

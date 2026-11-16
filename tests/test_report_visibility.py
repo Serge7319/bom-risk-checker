@@ -189,6 +189,20 @@ def test_production_direct_report_route_hides_internal_fixture(monkeypatch):
     assert response.status_code == 404
 
 
+def test_missing_or_hidden_monitoring_analysis_returns_empty_workspace_state(monkeypatch):
+    from apps.api import migration_tools
+
+    monkeypatch.setattr(migration_tools, "_require_analysis", lambda *_args, **_kwargs: None)
+
+    payload = migration_tools.monitoring_payload(
+        workspace_id="w", analysis_id="hidden-qa-analysis"
+    )
+
+    assert payload["analysis_id"] is None
+    assert payload["mode"] == "workspace-monitoring"
+    assert payload["alerts"] == []
+
+
 def test_procurement_page_does_not_show_empty_synthetic_preview_counter():
     source = (
         Path(__file__).resolve().parents[1]
@@ -225,3 +239,14 @@ def test_cadivor_brand_is_a_real_home_link_on_workspace_and_auth_screens():
     assert 'href="https://www.cadivor.com/"' in signup
     assert 'href="https://www.cadivor.com/"' in reset
     assert 'aria-label={ariaLabel}' in brand
+
+
+def test_monitoring_page_clears_stale_hidden_analysis_selection():
+    page = (
+        Path(__file__).resolve().parents[1]
+        / "apps/web/src/app/monitoring/page.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert 'const visibleAnalysisId = String(payload.analysis_id || "").trim();' in page
+    assert "setActiveAnalysisId(visibleAnalysisId);" in page
+    assert "if (visibleAnalysisId)" in page

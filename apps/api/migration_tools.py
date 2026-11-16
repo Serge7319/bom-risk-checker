@@ -395,7 +395,8 @@ def _monitoring_freshness(
 def _empty_monitoring_payload() -> dict[str, Any]:
     return {
         "ok": True,
-        "mode": "synthetic-preview",
+        "mode": "workspace-monitoring",
+        "analysis_id": None,
         "gap": "No analyzed BOM yet. Run BOM Analyzer first. This view needs saved analysis data.",
         "metrics": {
             "monitored_parts": 0,
