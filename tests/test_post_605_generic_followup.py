@@ -41,9 +41,15 @@ COMPARE_PAGE = ROOT / "apps/web/src/app/compare-parts/page.tsx"
 COMPARE_PROGRESS = ROOT / "apps/web/src/lib/compareProgress.ts"
 COMPARE_API = ROOT / "apps/web/src/lib/api.ts"
 SUPPLY_PAGE = ROOT / "apps/web/src/app/supply-risk/page.tsx"
+ENGINEERING_DECISIONS_PAGE = ROOT / "apps/web/src/app/engineering-decisions/page.tsx"
 
 
 class CompareProgressLabelTests(unittest.TestCase):
+    def test_engineering_decisions_uses_user_review_wording(self):
+        page = ENGINEERING_DECISIONS_PAGE.read_text(encoding="utf-8")
+        self.assertIn("User review records", page)
+        self.assertNotIn("Human review", page)
+
     def test_progress_shows_baseline_and_candidate_not_current_alone(self):
         page = COMPARE_PAGE.read_text(encoding="utf-8")
         helper = COMPARE_PROGRESS.read_text(encoding="utf-8")
