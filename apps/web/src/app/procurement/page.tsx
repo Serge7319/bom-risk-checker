@@ -212,7 +212,7 @@ function ProcurementPageInner() {
     return () => {
       active = false;
     };
-  }, [session, requestedAnalysisId]);
+  }, [session, requestedAnalysisId, router]);
 
   const allParts = useMemo(
     () => (((data?.parts || []) as Array<Record<string, unknown>>) || []),
