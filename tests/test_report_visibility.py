@@ -250,3 +250,15 @@ def test_monitoring_page_clears_stale_hidden_analysis_selection():
     assert 'const visibleAnalysisId = String(payload.analysis_id || "").trim();' in page
     assert "setActiveAnalysisId(visibleAnalysisId);" in page
     assert "if (visibleAnalysisId)" in page
+
+
+def test_settings_compliance_summary_renders_fields_instead_of_object_string():
+    page = (
+        Path(__file__).resolve().parents[1]
+        / "apps/web/src/app/settings/page.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert "const complianceSummary = asRecord(compliance?.summary);" in page
+    assert '["Evidence linked", complianceSummary.evidence_linked]' in page
+    assert "String(value).slice(0, 120)" in page
+    assert "Object.entries(compliance || {})" not in page

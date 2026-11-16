@@ -183,6 +183,16 @@ export default function Page() {
     () => asRecord(preferences.notification_preferences),
     [preferences],
   );
+  const complianceSummary = asRecord(compliance?.summary);
+  const complianceFacts: Array<[string, unknown]> = [
+    ["Pack type", compliance?.pack_type],
+    ["Evidence source mode", compliance?.mode],
+    ["Evidence rows", complianceSummary.total],
+    ["Evidence linked", complianceSummary.evidence_linked],
+    ["Missing evidence", complianceSummary.missing_evidence],
+    ["Compliance claimed", complianceSummary.compliance_claimed],
+    ["Generated at", compliance?.generated_at],
+  ];
 
   async function reload(active = session) {
     if (!active) return;
@@ -1374,19 +1384,22 @@ export default function Page() {
                   RoHS pack readiness for this workspace. Packs stay evidence-linked.
                 </p>
                 <dl className="cv-fact-grid">
-                  {Object.entries(compliance || {})
-                    .filter(([key]) => !/(^id$|_id$|token|secret|password|raw)/i.test(key))
-                    .slice(0, 8)
-                    .map(([key, value]) => (
-                      <div className="cv-fact" key={key}>
-                        <dt>{key.replace(/[_-]+/g, " ")}</dt>
-                        <dd>
-                          {value == null || value === ""
-                            ? "Not reported"
+                  {complianceFacts.map(([label, value]) => (
+                    <div className="cv-fact" key={label}>
+                      <dt>{label}</dt>
+                      <dd>
+                        {value == null || value === ""
+                          ? label === "Evidence source mode" && !compliance?.analysis_id
+                            ? "No saved analysis selected"
+                            : "Not reported"
+                          : typeof value === "boolean"
+                            ? value
+                              ? "Yes"
+                              : "No"
                             : String(value).slice(0, 120)}
-                        </dd>
-                      </div>
-                    ))}
+                      </dd>
+                    </div>
+                  ))}
                 </dl>
               </section>
             </>
