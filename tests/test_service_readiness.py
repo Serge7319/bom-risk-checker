@@ -252,7 +252,7 @@ def test_service_readiness_labels_and_descriptions_stack_without_overlap():
     assert 'className="cv-service-readiness-copy"' in settings
     assert ".cv-service-readiness-copy{display:flex" in compact_css
     assert "overflow-wrap:anywhere" in css
-    assert "@media(max-width:640px){.cv-service-readiness-list li" in compact_css
+    assert "@media(max-width:640px){.cv-service-readiness-listli{grid-template-columns:minmax(0,1fr)" in compact_css
 
 
 def test_csv_file_workflows_do_not_make_live_connectors_ready(client):
