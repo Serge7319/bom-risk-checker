@@ -66,6 +66,15 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _iso_timestamp(value: Any) -> Any:
+    """Make database timestamps safe for the JSON API response."""
+    if not isinstance(value, datetime):
+        return value
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat()
+
+
 def _parse_dt(value: Any) -> datetime | None:
     if not value:
         return None
@@ -804,7 +813,7 @@ def list_members(ctx: dict[str, Any]) -> dict[str, Any]:
             "display_name": _display_name(str(m["user_id"]), str(m.get("email") or ""), profiles),
             "role": m.get("role"),
             "status": "active",
-            "joined_at": m.get("joined_at") or m.get("created_at"),
+            "joined_at": _iso_timestamp(m.get("joined_at") or m.get("created_at")),
             "is_you": str(m["user_id"]) == ctx["user_id"],
         }
         for m in members
