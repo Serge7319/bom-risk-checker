@@ -19,6 +19,7 @@ from src.saved_bom_project import (
 )
 
 from apps.api.workspace_store import WorkspaceAccessError
+from apps.api.report_visibility import customer_visible_analyses, customer_visible_projects
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schema" / "sandbox_workspace.sql"
 _LOCK = threading.RLock()
@@ -561,15 +562,25 @@ class PostgresWorkspaceStore:
             "top_rolled_risk": (analysis or {}).get("top_rolled_risk"),
         }
 
-    def home_dashboard(self, *, workspace_id: str) -> dict[str, Any]:
+    def home_dashboard(
+        self, *, workspace_id: str, production: bool = False
+    ) -> dict[str, Any]:
         wid = self._require_workspace(workspace_id)
-        projects = self.list_projects(workspace_id=wid)
-        analyses = self.list_reports(workspace_id=wid)
+        analyses = customer_visible_analyses(
+            self.list_reports(workspace_id=wid), production=production
+        )
+        projects = customer_visible_projects(
+            self.list_projects(workspace_id=wid), analyses, production=production
+        )
         with self._connect() as conn:
-            bom_count = conn.execute(
-                "SELECT COUNT(*) AS c FROM migration_boms WHERE workspace_id = %s",
-                (wid,),
-            ).fetchone()["c"]
+            bom_count = (
+                sum(int(project.get("bom_count") or 0) for project in projects)
+                if production
+                else conn.execute(
+                    "SELECT COUNT(*) AS c FROM migration_boms WHERE workspace_id = %s",
+                    (wid,),
+                ).fetchone()["c"]
+            )
         priority: list[dict[str, Any]] = []
         for analysis in analyses[:8]:
             report = self.get_report(analysis["id"], workspace_id=wid) or {}
@@ -633,7 +644,7 @@ class PostgresWorkspaceStore:
         ]
         return {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": "workspace-home",
             "workspace_id": wid,
             "persistence": "migration-postgres-store",
             "metrics": {

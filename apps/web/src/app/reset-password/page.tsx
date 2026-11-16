@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { completePasswordReset, requestPasswordReset } from "@/lib/api";
+import { BrandLink } from "@/components/BrandLink";
 
 function readRecoveryAccessToken(search: URLSearchParams): string {
   const fromQuery =
@@ -93,15 +94,7 @@ function ResetPasswordInner() {
         className="cv-card cv-login-card"
         onSubmit={completing ? onComplete : onRequest}
       >
-        <div className="cv-brand" style={{ marginBottom: 18, paddingBottom: 0 }}>
-          <span className="cv-mark" aria-hidden>
-            C
-          </span>
-          <div>
-            <strong>Cadivor</strong>
-            <small>Engineering Intelligence</small>
-          </div>
-        </div>
+        <BrandLink href="https://www.cadivor.com/" ariaLabel="Cadivor homepage" compact />
         <div className="cv-eyebrow">Secure account recovery</div>
         <h1 style={{ margin: "0 0 6px", fontSize: 26, letterSpacing: "-0.03em" }}>
           {completing ? "Choose a new password" : "Reset your password"}

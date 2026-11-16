@@ -12,9 +12,9 @@ from typing import Any
 import pandas as pd
 
 from apps.api.synthetic_analyze import (
-    analyses_and_parts,
-    get_report,
-    list_reports,
+    analyses_and_parts as _stored_analyses_and_parts,
+    get_report as _stored_get_report,
+    list_reports as _stored_list_reports,
     synthetic_compare_part,
 )
 from apps.api.report_visibility import (
@@ -76,6 +76,41 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, float) and (value != value):  # NaN
         return None
     return value
+
+
+def get_report(analysis_id: str, *, workspace_id: str) -> dict[str, Any] | None:
+    """Return a report only when it belongs in a production customer view."""
+    report = _stored_get_report(analysis_id, workspace_id=workspace_id)
+    if report and is_production_runtime() and is_internal_test_fixture_analysis(report):
+        return None
+    return report
+
+
+def list_reports(*, workspace_id: str) -> list[dict[str, Any]]:
+    return customer_visible_analyses(
+        _stored_list_reports(workspace_id=workspace_id),
+        production=is_production_runtime(),
+    )
+
+
+def analyses_and_parts(
+    *, workspace_id: str, analysis_id: str | None = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if analysis_id and not get_report(analysis_id, workspace_id=workspace_id):
+        return [], []
+    analyses, parts = _stored_analyses_and_parts(
+        workspace_id=workspace_id, analysis_id=analysis_id
+    )
+    if not is_production_runtime():
+        return analyses, parts
+    visible_ids = {
+        str(row.get("id") or row.get("analysis_id") or "")
+        for row in list_reports(workspace_id=workspace_id)
+    }
+    return (
+        [row for row in analyses if str(row.get("id") or "") in visible_ids],
+        [row for row in parts if str(row.get("analysis_id") or "") in visible_ids],
+    )
 
 def _require_analysis(
     analysis_id: str | None, *, workspace_id: str

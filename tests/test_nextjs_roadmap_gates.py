@@ -319,6 +319,13 @@ def test_compliance_unit_never_claims_without_source():
     assert pack["records"][0]["status"] == "missing_evidence"
 
 
+def test_compliance_pack_preserves_source_analysis_mode():
+    report = {"id": "a1", "mode": "legacy-supplier-engine", "parts": []}
+
+    assert compliance_packs.build_pack(report, "rohs")["mode"] == "legacy-supplier-engine"
+    assert compliance_packs.export_audit_bundle(report)["mode"] == "legacy-supplier-engine"
+
+
 def test_monitoring_refresh_on_demand():
     client = TestClient(app)
     headers = _auth_headers(client)

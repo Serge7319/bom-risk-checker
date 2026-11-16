@@ -34,6 +34,7 @@ if str(ROOT) not in sys.path:
 from apps.api import migration_tools  # noqa: E402
 from apps.api.report_visibility import (
     customer_visible_analyses,
+    customer_visible_projects,
     is_internal_test_fixture_analysis,
 )  # noqa: E402
 from apps.api.synthetic_analyze import (  # noqa: E402
@@ -88,6 +89,13 @@ from apps.api.report_exports import (  # noqa: E402
     safe_download_stem,
 )
 from src.datasheet_comparison import MAX_DATASHEET_BYTES  # noqa: E402
+
+
+def _get_visible_report(analysis_id: str, *, workspace_id: str) -> dict[str, Any] | None:
+    report = get_report(analysis_id, workspace_id=workspace_id)
+    if report and is_production_runtime() and is_internal_test_fixture_analysis(report):
+        return None
+    return report
 
 # Demo passwords are not shipped in the API. Tests import
 # tests.fixtures.sandbox_auth_accounts; operators seed via
@@ -748,12 +756,19 @@ async def projects_list(request: Request) -> JSONResponse:
     try:
         store = get_store()
         projects = store.list_projects(workspace_id=ctx["workspace_id"])
+        reports = customer_visible_analyses(
+            list_reports(workspace_id=ctx["workspace_id"]),
+            production=is_production_runtime(),
+        )
+        projects = customer_visible_projects(
+            projects, reports, production=is_production_runtime()
+        )
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
     return _json(
         {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": "workspace-projects",
             "workspace_id": ctx["workspace_id"],
             "persistence": persistence["backend"],
             "projects": projects,
@@ -808,7 +823,12 @@ async def workspace_home(request: Request) -> JSONResponse:
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
-        return _json(get_store().home_dashboard(workspace_id=ctx["workspace_id"]))
+        return _json(
+            get_store().home_dashboard(
+                workspace_id=ctx["workspace_id"],
+                production=is_production_runtime(),
+            )
+        )
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
 
@@ -819,7 +839,7 @@ async def reports_csv_get(request: Request) -> Response:
         return denied or _json({"detail": "Unauthorized"}, 401)
     analysis_id = request.path_params["analysis_id"]
     try:
-        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
     except PersistenceNotConfiguredError as exc:
@@ -843,7 +863,7 @@ async def reports_get(request: Request) -> JSONResponse:
         return denied or _json({"detail": "Unauthorized"}, 401)
     analysis_id = request.path_params["analysis_id"]
     try:
-        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
     except PersistenceNotConfiguredError as exc:
@@ -861,7 +881,7 @@ async def reports_export(request: Request) -> Response:
     analysis_id = request.path_params["analysis_id"]
     file_format = str(request.path_params["file_format"] or "").lower()
     try:
-        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
     except PersistenceNotConfiguredError as exc:
@@ -996,12 +1016,25 @@ async def decision_records_get(request: Request) -> JSONResponse:
         return denied or _json({"detail": "Unauthorized"}, 401)
     analysis_id = (request.query_params.get("analysis_id") or "").strip()
     try:
-        if analysis_id and not get_report(analysis_id, workspace_id=ctx["workspace_id"]):
+        if analysis_id and not _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"]):
             return _json({"detail": "Report not found"}, 404)
         records = get_store().list_decision_records(
             workspace_id=ctx["workspace_id"],
             analysis_id=analysis_id or None,
         )
+        if not analysis_id and is_production_runtime():
+            visible_ids = {
+                str(row.get("id") or row.get("analysis_id") or "")
+                for row in customer_visible_analyses(
+                    list_reports(workspace_id=ctx["workspace_id"]), production=True
+                )
+            }
+            records = [
+                record
+                for record in records
+                if not record.get("analysis_id")
+                or str(record.get("analysis_id")) in visible_ids
+            ]
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
     except PersistenceNotConfiguredError as exc:
@@ -1131,7 +1164,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
         )
 
     try:
-        if requested_analysis_id and not get_report(
+        if requested_analysis_id and not _get_visible_report(
             requested_analysis_id, workspace_id=ctx["workspace_id"]
         ):
             return _json({"detail": "Report not found"}, 404)
@@ -1211,7 +1244,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
             return _json({"detail": comparison.get("detail") or "Comparison unavailable."}, 400)
         analysis_id = str(comparison.get("analysis_id") or "").strip() or None
         report = (
-            get_report(analysis_id, workspace_id=ctx["workspace_id"])
+            _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
             if analysis_id
             else None
         )
@@ -1434,14 +1467,9 @@ async def procurement_quotes_get(request: Request) -> JSONResponse:
     if not analysis_id:
         return _json({"detail": "Select a saved BOM analysis before loading quotes."}, 400)
     try:
-        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
         if not report:
             return _json({"detail": "Report not found"}, 404)
-        if is_production_runtime() and is_internal_test_fixture_analysis(report):
-            return _json(
-                {"detail": "This saved analysis is not available in Procurement Advisor."},
-                404,
-            )
         if requested_mpn:
             try:
                 part = _quote_report_part(report, requested_mpn, requested_manufacturer)
@@ -1515,14 +1543,9 @@ async def procurement_quotes_post(request: Request) -> JSONResponse:
         return _json({"detail": str(exc)}, 400)
 
     try:
-        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
         if not report:
             return _json({"detail": "Report not found"}, 404)
-        if is_production_runtime() and is_internal_test_fixture_analysis(report):
-            return _json(
-                {"detail": "This saved analysis is not available in Procurement Advisor."},
-                404,
-            )
         try:
             requested_part = _quote_report_part(report, requested_mpn, requested_manufacturer)
         except ValueError as exc:
