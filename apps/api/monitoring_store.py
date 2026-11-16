@@ -60,27 +60,22 @@ def email_transport_ready() -> bool:
 
 def monitoring_email_readiness() -> dict[str, Any]:
     enabled = email_delivery_enabled()
-    transport = email_transport_ready()
+    test_sink = getattr(deliver_alert_email, "_default_sink", None) is not None
+    transport_configured = test_sink or _configured_email_transport()
+    transport_ready = enabled and transport_configured
+    missing = []
     if not enabled:
-        return {
-            "status": "not_connected",
-            "enabled": False,
-            "transport_ready": False,
-            "missing_requirements": ["monitoring email delivery flag"],
-        }
-    if transport:
-        return {
-            "status": "ready",
-            "enabled": True,
-            "transport_ready": True,
-            "missing_requirements": [],
-        }
-    # Flag on but deliver_alert_email would return no_sink_configured.
+        missing.append("monitoring email delivery flag (CADIVOR_MONITORING_EMAIL_ENABLED)")
+    if not transport_configured:
+        missing.append(
+            "Resend API key (RESEND_API_KEY) and a sender verified in Resend "
+            "(default: no-reply@cadivor.com; override: TRANSACTIONAL_FROM_EMAIL)"
+        )
     return {
-        "status": "not_connected",
-        "enabled": True,
-        "transport_ready": False,
-        "missing_requirements": ["Resend API key and verified sender address"],
+        "status": "ready" if transport_ready else "not_connected",
+        "enabled": enabled,
+        "transport_ready": transport_ready,
+        "missing_requirements": missing,
     }
 
 
