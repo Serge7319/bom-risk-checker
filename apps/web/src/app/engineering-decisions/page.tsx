@@ -192,7 +192,7 @@ function EngineeringDecisionsPageInner() {
             <div>
               <div className="cv-eyebrow">Workspace history</div>
               <h2 className="cv-card-title">Recorded engineering decisions</h2>
-              <p className="cv-card-subtitle">Human review records include the comparison snapshot available when they were saved. Cadivor does not qualify alternates or change a BOM.</p>
+              <p className="cv-card-subtitle">User review records include the comparison snapshot available when they were saved. Cadivor does not qualify alternates or change a BOM.</p>
             </div>
             <PrimaryLink href="/compare-parts">Compare parts</PrimaryLink>
           </div>
