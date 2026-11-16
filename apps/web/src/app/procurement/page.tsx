@@ -167,24 +167,40 @@ function ProcurementPageInner() {
     if (!session) return;
     let active = true;
     const last = readLastAnalysis(session);
-    const analysisId = requestedAnalysisId || last?.analysis_id || "";
-    setSelectedAnalysisId(analysisId);
+    const preferredId = requestedAnalysisId || last?.analysis_id || "";
+    setSelectedAnalysisId("");
     setBusy(true);
     setError("");
     setData(null);
-    Promise.all([
-      listReports(session.access_token).catch(() => ({ reports: [] as Array<Record<string, unknown>> })),
-      fetchProcurement(session.access_token, analysisId || undefined),
-    ])
-      .then(([reportPayload, procurement]) => {
+    listReports(session.access_token)
+      .catch(() => ({ reports: [] as Array<Record<string, unknown>> }))
+      .then((reportPayload) => {
         if (!active) return;
-        setReports((reportPayload.reports || []) as Array<Record<string, unknown>>);
-        setData(procurement);
-        const resolved = String(procurement.analysis_id || analysisId || "").trim();
-        if (resolved) setSelectedAnalysisId(resolved);
-        if (procurement.ok === false) {
-          setError(String(procurement.gap || "Procurement could not load that analysis."));
+        const visibleReports = (reportPayload.reports || []) as Array<Record<string, unknown>>;
+        setReports(visibleReports);
+        const availableIds = new Set(
+          visibleReports.map((row) => String(row.id || "").trim()).filter(Boolean),
+        );
+        const safeAnalysisId = availableIds.has(preferredId)
+          ? preferredId
+          : String(visibleReports[0]?.id || "").trim();
+        setSelectedAnalysisId(safeAnalysisId);
+        if (safeAnalysisId !== requestedAnalysisId) {
+          router.replace(
+            safeAnalysisId
+              ? `/procurement?analysis_id=${encodeURIComponent(safeAnalysisId)}`
+              : "/procurement",
+          );
         }
+        return fetchProcurement(session.access_token, safeAnalysisId || undefined).then(
+          (procurement) => {
+            if (!active) return;
+            setData(procurement);
+            if (procurement.ok === false) {
+              setError(String(procurement.gap || "Procurement could not load that analysis."));
+            }
+          },
+        );
       })
       .catch((err) => {
         if (!active) return;
@@ -255,7 +271,14 @@ function ProcurementPageInner() {
   const sampleParts = Number(evidenceSummary.sample_parts || 0);
   const missingParts = Number(evidenceSummary.parts_without_verified_supplier_evidence || 0);
   const partsTotal = Number(evidenceSummary.parts_total || ((data?.parts as unknown[]) || []).length || 0);
-  const sourcingBadge = `Live: ${liveParts}; synthetic/preview: ${sampleParts}; no supplier match: ${missingParts} (of ${partsTotal})`;
+  const sourcingBadgeParts = [
+    liveParts ? `Live: ${liveParts}` : "",
+    sampleParts ? `Synthetic estimates: ${sampleParts}` : "",
+    missingParts ? `No supplier match: ${missingParts}` : "",
+  ].filter(Boolean);
+  const sourcingBadge = partsTotal
+    ? `${sourcingBadgeParts.join("; ") || `${partsTotal} parts`} (of ${partsTotal})`
+    : "";
   const activeAnalysisId = String(data?.analysis_id || selectedAnalysisId || "").trim();
   const selectedPart =
     allParts.find((part) => partKey(part) === selectedPartKey) || allParts[0] || null;
@@ -463,9 +486,11 @@ function ProcurementPageInner() {
                       : "No analysis selected — choose a saved BOM below."}
                 </p>
               </div>
-              <span className="cv-badge gray">
-                {sourcingBadge}
-              </span>
+              {sourcingBadge ? (
+                <span className="cv-badge gray" data-testid="procurement-evidence-summary">
+                  {sourcingBadge}
+                </span>
+              ) : null}
             </div>
 
             <div className="cv-sourcing-controls">
