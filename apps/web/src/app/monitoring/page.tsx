@@ -312,7 +312,7 @@ function MonitoringPageInner() {
                             type="button"
                             className="cv-button small"
                             disabled={!a.id || Boolean(notifying)}
-                            title="Explicit email action for this alert"
+                            title="Explicit email action — not run by Refresh"
                             onClick={() => void runNotify(String(a.id || ""))}
                           >
                             {a.id && notifying === String(a.id)

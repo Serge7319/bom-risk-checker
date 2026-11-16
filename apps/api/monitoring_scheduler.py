@@ -529,5 +529,8 @@ def run_workspace_refresh(
         "live_supplier_refresh": False,
         "notifications": [],
         "email_sent": False,
-        "gap": "Saved-analysis alert refresh only. Use supplier refresh for live vendor checks.",
+        "gap": (
+            "Saved-analysis alert refresh only; never sends email. Use supplier refresh "
+            "for live vendor checks and Notify for explicit email actions."
+        ),
     }
