@@ -599,6 +599,27 @@ export async function fetchMonitoring(token: string, analysisId?: string) {
   return apiJson<Record<string, unknown>>(`/tools/monitoring${q}`, { token });
 }
 
+export async function updateMonitoringPreferences(
+  token: string,
+  preferences: Record<string, boolean>,
+) {
+  return apiJson<{ ok: boolean; preferences: Record<string, unknown> }>(
+    "/tools/monitoring/preferences",
+    { method: "PUT", token, body: JSON.stringify(preferences) },
+  );
+}
+
+export async function refreshLiveMonitoring(
+  token: string,
+  payload: { analysis_id: string; part_number?: string },
+) {
+  return apiJson<Record<string, unknown>>("/tools/monitoring/live-refresh", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
+
 /**
  * Explicit monitoring refresh — the only client path that persists alerts.
  * Scope is always explicit: a selected analysis (optionally one part) or
@@ -861,6 +882,7 @@ export type ServiceReadiness = {
     live_ready_count?: number;
     file_workflow_count?: number;
     blocked_count?: number;
+    configured_unverified_count?: number;
     connectors?: Array<Record<string, unknown>>;
     gap?: string | null;
   };

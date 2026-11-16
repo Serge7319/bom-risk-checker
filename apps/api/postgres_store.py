@@ -350,6 +350,19 @@ class PostgresWorkspaceStore:
                 out.append(item)
             return out
 
+    def list_monitoring_analyses(self) -> list[dict[str, str]]:
+        """Return saved analysis scopes for the scheduler, without report contents."""
+        self.ensure_schema()
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT workspace_id, id AS analysis_id FROM migration_analyses "
+                "WHERE total_parts > 0 ORDER BY workspace_id, created_at"
+            ).fetchall()
+        return [
+            {"workspace_id": str(row["workspace_id"]), "analysis_id": str(row["analysis_id"])}
+            for row in rows
+        ]
+
     def create_decision_record(
         self, record: dict[str, Any], *, workspace_id: str
     ) -> dict[str, Any]:
