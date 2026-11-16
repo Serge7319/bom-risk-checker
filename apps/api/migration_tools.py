@@ -17,6 +17,11 @@ from apps.api.synthetic_analyze import (
     list_reports,
     synthetic_compare_part,
 )
+from apps.api.report_visibility import (
+    customer_visible_analyses,
+    is_internal_test_fixture_analysis,
+)
+from apps.api.sandbox_auth import is_production_runtime
 from src.cost_optimization import build_cost_optimization
 from src.datasheet_qa import (
     answer_datasheet_question,
@@ -77,7 +82,10 @@ def _require_analysis(
 ) -> dict[str, Any] | None:
     if analysis_id:
         return get_report(analysis_id, workspace_id=workspace_id)
-    reports = list_reports(workspace_id=workspace_id)
+    reports = customer_visible_analyses(
+        list_reports(workspace_id=workspace_id),
+        production=is_production_runtime(),
+    )
     if not reports:
         return None
     return get_report(reports[0]["id"], workspace_id=workspace_id)
@@ -1616,7 +1624,9 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
     requested_id = str(analysis_id or "").strip()
     if requested_id:
         report = get_report(requested_id, workspace_id=workspace_id)
-        if not report:
+        if not report or (
+            is_production_runtime() and is_internal_test_fixture_analysis(report)
+        ):
             return {
                 "ok": False,
                 "mode": "analysis-not-found",

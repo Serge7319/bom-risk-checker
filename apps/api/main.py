@@ -32,6 +32,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from apps.api import migration_tools  # noqa: E402
+from apps.api.report_visibility import (
+    customer_visible_analyses,
+    is_internal_test_fixture_analysis,
+)  # noqa: E402
 from apps.api.synthetic_analyze import (  # noqa: E402
     analyze_upload,
     delete_project as delete_project_record,
@@ -703,12 +707,15 @@ async def reports_list(request: Request) -> JSONResponse:
         reports = list_reports(workspace_id=ctx["workspace_id"])
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
+    reports = customer_visible_analyses(
+        reports, production=is_production_runtime()
+    )
     # Do not surface deployment service gaps (billing/email/connectors) as a
     # Reports warning card — those belong in Settings / health diagnostics.
     return _json(
         {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": "workspace-reports",
             "workspace_id": ctx["workspace_id"],
             "persistence": persistence["backend"],
             "gap": None,
@@ -1430,6 +1437,11 @@ async def procurement_quotes_get(request: Request) -> JSONResponse:
         report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
         if not report:
             return _json({"detail": "Report not found"}, 404)
+        if is_production_runtime() and is_internal_test_fixture_analysis(report):
+            return _json(
+                {"detail": "This saved analysis is not available in Procurement Advisor."},
+                404,
+            )
         if requested_mpn:
             try:
                 part = _quote_report_part(report, requested_mpn, requested_manufacturer)
@@ -1506,6 +1518,11 @@ async def procurement_quotes_post(request: Request) -> JSONResponse:
         report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
         if not report:
             return _json({"detail": "Report not found"}, 404)
+        if is_production_runtime() and is_internal_test_fixture_analysis(report):
+            return _json(
+                {"detail": "This saved analysis is not available in Procurement Advisor."},
+                404,
+            )
         try:
             requested_part = _quote_report_part(report, requested_mpn, requested_manufacturer)
         except ValueError as exc:
