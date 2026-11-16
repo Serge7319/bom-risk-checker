@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 
@@ -28,6 +28,7 @@ class ConnectorCapability:
     requires_customer_decision: bool = True
     decision_needed: str = ""
     notes: str = ""
+    last_verified_at: str | None = None
 
 
 @dataclass
@@ -140,24 +141,59 @@ def _supplier_connector_records() -> list[dict[str, Any]]:
     rows = []
     for priority, (connector_id, (name, requirements)) in enumerate(names.items(), start=1):
         has_credentials = configured[connector_id]
+        provider_key = connector_id.rsplit(".", 1)[-1].replace("_octopart", "")
+        verified_at = _recent_provider_verification(provider_key)
+        status = (
+            "ready" if has_credentials and verified_at else
+            "configured_unverified" if has_credentials else
+            "blocked"
+        )
+        if status == "ready":
+            decision_needed = ""
+            notes = (
+                f"A live catalog request succeeded on {verified_at}. "
+                "Verification remains current for 30 days."
+            )
+        elif has_credentials:
+            decision_needed = ""
+            notes = (
+                "Credential variables are present, but no successful live catalog request "
+                "is recorded within the last 30 days."
+            )
+        else:
+            decision_needed = f"Configure {requirements} in the API environment."
+            notes = f"Distributor adapter is implemented; credentials are missing ({requirements})."
         rows.append(asdict(ConnectorCapability(
             id=connector_id,
             category="supplier",
             display_name=name,
             priority=priority,
-            status="configured_unverified" if has_credentials else "blocked",
+            status=status,
             kind="vendor",
             requires_customer_decision=False,
-            decision_needed="" if has_credentials else f"Configure {requirements} in the API environment.",
-            notes=(
-                "Distributor adapter is implemented. Credential variables are present, but API acceptance "
-                "has not been verified by a live request."
-                if has_credentials
-                else f"Distributor adapter is implemented; credentials are missing ({requirements})."
-            ),
+            decision_needed=decision_needed,
+            notes=notes,
+            last_verified_at=verified_at,
         )))
     return rows
 
+
+def _recent_provider_verification(provider_key: str) -> str | None:
+    """Return an operator-recorded live-check time while it is still fresh."""
+    raw = (os.environ.get(f"CADIVOR_SUPPLIER_{provider_key.upper()}_VERIFIED_AT") or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    parsed = parsed.astimezone(timezone.utc)
+    age = datetime.now(timezone.utc) - parsed
+    if age < timedelta(0) or age > timedelta(days=30):
+        return None
+    return parsed.isoformat()
 
 def get_connector(connector_id: str) -> ConnectorCapability | None:
     for item in REGISTRY:
