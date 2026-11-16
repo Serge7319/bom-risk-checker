@@ -53,6 +53,57 @@ function siteOrigin(request: Request): string {
   return allowed.has(supplied) ? supplied : "https://app.cadivor.com";
 }
 
+type StripeErrorSummary = {
+  type?: string;
+  code?: string;
+  statusCode?: number;
+  requestId?: string;
+  param?: string;
+  message?: string;
+};
+
+function stripeErrorSummary(error: unknown): StripeErrorSummary {
+  if (!error || typeof error !== "object") return {};
+  const value = error as Record<string, unknown>;
+  return {
+    type: typeof value.type === "string" ? value.type : undefined,
+    code: typeof value.code === "string" ? value.code : undefined,
+    statusCode: typeof value.statusCode === "number" ? value.statusCode : undefined,
+    requestId: typeof value.requestId === "string" ? value.requestId : undefined,
+    param: typeof value.param === "string" ? value.param : undefined,
+    // Stripe messages are useful for support, but never sent to the browser.
+    message: typeof value.message === "string" ? value.message.slice(0, 240) : undefined,
+  };
+}
+
+function isMissingStripeCustomer(error: unknown): boolean {
+  const summary = stripeErrorSummary(error);
+  return summary.code === "resource_missing" && (
+    summary.param === "customer" || /no such customer/i.test(summary.message || "")
+  );
+}
+
+function checkoutSessionParams(
+  origin: string,
+  userId: string,
+  email: string,
+  token: string,
+  priceId: string,
+  customerId?: string,
+) {
+  const metadata = { user_id: userId, cadivor_plan: token };
+  return {
+    mode: "subscription" as const,
+    ...(customerId ? { customer: customerId } : { customer_email: email }),
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: `${origin}/settings?billing=success`,
+    cancel_url: `${origin}/settings?billing=cancel`,
+    client_reference_id: userId,
+    metadata,
+    subscription_data: { metadata },
+  };
+}
+
 async function verifiedUser(request: Request) {
   const token = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return { user: null, status: 401 } as const;
@@ -186,6 +237,8 @@ serve(async (request) => {
     return response({ ok: false, detail: "Invalid request." }, 400, origin);
   }
   const action = String(body.action || "").trim().toLowerCase();
+  let planToken = "unknown";
+  const supportReference = crypto.randomUUID();
   try {
     const profile = await profileFor(auth.user.id);
 
@@ -221,6 +274,7 @@ serve(async (request) => {
 
     if (action !== "checkout") return response({ ok: false, detail: "Unknown billing action." }, 400, origin);
     const token = String(body.plan || "").trim().toLowerCase();
+    planToken = token || "unknown";
     const plan = planPrices.find((item) => item.token === token);
     if (!plan) return response({ ok: false, detail: "Choose Starter, Professional, or Business." }, 400, origin);
 
@@ -240,21 +294,44 @@ serve(async (request) => {
       return response({ ok: false, detail: "This plan's billing details need review. Contact Cadivor support." }, 503, origin);
     }
 
-    const metadata = { user_id: auth.user.id, cadivor_plan: token };
     const customerId = String(profile.stripe_customer_id || "").trim();
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      ...(customerId ? { customer: customerId } : { customer_email: auth.user.email! }),
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/settings?billing=success`,
-      cancel_url: `${origin}/settings?billing=cancel`,
-      client_reference_id: auth.user.id,
-      metadata,
-      subscription_data: { metadata },
-    });
+    const idempotencyKey = `cadivor_subscription_${auth.user.id}_${token}_${supportReference}`;
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await stripe.checkout.sessions.create(
+        checkoutSessionParams(origin, auth.user.id, auth.user.email!, token, priceId, customerId || undefined),
+        { idempotencyKey },
+      );
+    } catch (error) {
+      // A deleted or mode-mismatched Stripe customer must not strand a canceled
+      // user. Retry only that precise failure by asking Checkout to create a
+      // new subscription customer from the verified account email.
+      if (!customerId || !isMissingStripeCustomer(error)) throw error;
+      session = await stripe.checkout.sessions.create(
+        checkoutSessionParams(origin, auth.user.id, auth.user.email!, token, priceId),
+        { idempotencyKey: `${idempotencyKey}_fresh_customer` },
+      );
+    }
     if (!session.url) throw new Error("Stripe did not return a checkout link.");
     return response({ ok: true, checkout: { state: "open", url: session.url } }, 200, origin);
-  } catch {
-    return response({ ok: false, detail: "Billing could not be started. Please try again or contact support." }, 503, origin);
+  } catch (error) {
+    const summary = stripeErrorSummary(error);
+    // Do not log customer email, access tokens, request bodies, or secrets.
+    console.error("subscription_checkout_failed", {
+      reference: supportReference,
+      action,
+      plan: planToken,
+      error_type: summary.type,
+      error_code: summary.code,
+      error_status: summary.statusCode,
+      error_param: summary.param,
+      stripe_request_id: summary.requestId,
+    });
+    return response({
+      ok: false,
+      code: "checkout_unavailable",
+      detail: "Billing could not be started. Please try again or contact support.",
+      support_reference: supportReference,
+    }, 503, origin);
   }
 });

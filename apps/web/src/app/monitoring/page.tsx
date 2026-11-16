@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
-import { fetchMonitoring, notifyMonitoringAlert, refreshMonitoring } from "@/lib/api";
+import { fetchMonitoring, notifyMonitoringAlert, refreshLiveMonitoring, refreshMonitoring, updateMonitoringPreferences } from "@/lib/api";
 import { markReviewProgress, readReviewProgress } from "@/lib/bomDraft";
 import { evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
@@ -23,6 +23,7 @@ function MonitoringPageInner() {
   const [activeAnalysisId, setActiveAnalysisId] = useState<string>("");
   const [refreshing, setRefreshing] = useState<string>("");
   const [notifying, setNotifying] = useState<string>("");
+  const [savingPreferences, setSavingPreferences] = useState<string>("");
   const [refreshNote, setRefreshNote] = useState("");
   const [reloadTick, setReloadTick] = useState(0);
 
@@ -77,6 +78,15 @@ function MonitoringPageInner() {
   const alerts = (data?.alerts || []) as Array<Record<string, unknown>>;
   const freshness = (data?.freshness || {}) as Record<string, unknown>;
   const partStatus = (data?.part_status || []) as Array<Record<string, unknown>>;
+  const preferences = (data?.preferences || {}) as Record<string, unknown>;
+  const liveRefresh = (data?.live_refresh || {}) as Record<string, unknown>;
+  const scheduler = (data?.scheduler || {}) as Record<string, unknown>;
+  const schedulerReady = scheduler.status === "ready";
+  const schedulerGaps = Array.isArray(scheduler.missing_requirements)
+    ? (scheduler.missing_requirements as unknown[]).map(String)
+    : [];
+  const emailReady = preferences.email_delivery_enabled === true
+    && preferences.email_transport_ready === true;
   const failedParts = partStatus.filter((row) => row.provider_failure === true);
   const lastRefreshAt = typeof freshness.last_refresh_at === "string" ? freshness.last_refresh_at : "";
   const staleReasons: Record<string, string> = {
@@ -103,6 +113,43 @@ function MonitoringPageInner() {
       setError(err instanceof Error ? err.message : "Refresh failed");
     } finally {
       setRefreshing("");
+    }
+  }
+
+  async function runLiveRefresh(partNumber?: string) {
+    if (!session || !activeAnalysisId || refreshing) return;
+    setRefreshing(partNumber || "__live_analysis__");
+    setRefreshNote("");
+    setError("");
+    try {
+      const result = await refreshLiveMonitoring(session.access_token, {
+        analysis_id: activeAnalysisId,
+        part_number: partNumber,
+      });
+      setRefreshNote(
+        `Supplier refresh checked ${String(result.supplier_calls ?? 0)} exact part number(s), updated ${String(result.updated_parts ?? 0)}, and found ${String(result.alert_count ?? 0)} change alert(s). Email is controlled by your separate opt-in.`,
+      );
+      setReloadTick((n) => n + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Live supplier refresh failed");
+    } finally {
+      setRefreshing("");
+    }
+  }
+
+  async function savePreference(name: string, value: boolean) {
+    if (!session || savingPreferences) return;
+    setSavingPreferences(name);
+    setError("");
+    setRefreshNote("");
+    try {
+      const result = await updateMonitoringPreferences(session.access_token, { [name]: value });
+      setData((current) => current ? { ...current, preferences: result.preferences } : current);
+      setRefreshNote("Monitoring preference saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save monitoring preference");
+    } finally {
+      setSavingPreferences("");
     }
   }
 
@@ -153,7 +200,7 @@ function MonitoringPageInner() {
               {lastRefreshAt
                 ? `Last refresh: ${new Date(lastRefreshAt).toLocaleString()}.`
                 : "Never refreshed."}{" "}
-              Opening this page does not refresh or save anything. Refresh re-derives alerts from the saved analysis and never sends email. Email requires the separate Notify action when delivery is enabled.
+              Opening this page does not refresh or save anything. Recalculate alerts uses saved analysis data; Refresh supplier data contacts configured distributors for exact MPNs and stores the returned evidence. Supplier refresh never sends email automatically from this button.
             </p>
             {freshness.stale === true ? (
               <div className="cv-error" role="status">
@@ -169,23 +216,65 @@ function MonitoringPageInner() {
                 . A provider failure is not the same as &ldquo;no supplier data found&rdquo;.
               </div>
             ) : null}
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
                 className="cv-button primary"
                 disabled={!activeAnalysisId || Boolean(refreshing)}
+                onClick={() => void runLiveRefresh()}
+              >
+                {refreshing === "__live_analysis__" ? "Checking suppliers…" : "Refresh supplier data"}
+              </button>
+              <button
+                type="button"
+                className="cv-button"
+                disabled={!activeAnalysisId || Boolean(refreshing)}
                 onClick={() => void runRefresh()}
               >
-                {refreshing === "__analysis__" ? "Refreshing…" : "Refresh this analysis"}
+                {refreshing === "__analysis__" ? "Recalculating…" : "Recalculate saved alerts"}
               </button>
               {!activeAnalysisId ? <span className="cv-card-subtitle"> Select an analysis to refresh it.</span> : null}
+            </div>
+            {liveRefresh.status !== "ready" ? (
+              <p className="cv-small-note" style={{ marginTop: 8 }}>
+                Live supplier refresh is {String(liveRefresh.status || "not connected").replaceAll("_", " ")}. {String(liveRefresh.detail || "Provider credentials and the live refresh gate are required.")}
+              </p>
+            ) : null}
+          </section>
+          <section className="cv-card pad" aria-label="Monitoring preferences">
+            <h3 className="cv-card-title">Scheduled monitoring and email</h3>
+            <p className="cv-card-subtitle">
+              {schedulerReady
+                ? "Automatic supplier checks run every six hours for saved analyses in this workspace after you opt in."
+                : `Your supplier-check preference can be saved now; automatic checks are not active yet${schedulerGaps.length ? ` until ${schedulerGaps.join(", ")}` : ""}.`}{" "}
+              Email alerts go only to your verified Cadivor account address: <strong>{String(preferences.email || session.email)}</strong>.
+            </p>
+            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+              <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(preferences.supplier_checks)}
+                  disabled={Boolean(savingPreferences)}
+                  onChange={(event) => void savePreference("supplier_checks", event.target.checked)}
+                />
+                <span><strong>Automatically check supplier data</strong><br /><small className="cv-small-note">Only exact, identity-matched results update the monitoring snapshot. Distributor API limits apply.</small></span>
+              </label>
+              <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(preferences.email_alerts)}
+                  disabled={Boolean(savingPreferences)}
+                  onChange={(event) => void savePreference("email_alerts", event.target.checked)}
+                />
+                <span><strong>Email me when a new monitoring alert is found</strong><br /><small className="cv-small-note">{emailReady ? "Email delivery is configured. You can turn this off at any time." : "Your opt-in is saved, but delivery is not active until Cadivor configures and enables its verified email service."}</small></span>
+              </label>
             </div>
           </section>
           <section className="cv-card pad">
             <h3 className="cv-card-title">Alerts and changes</h3>
             <p className="cv-card-subtitle">
               Active signals for this selection only. Inactive/reconciled alerts are hidden.
-              Refresh updates data and never emails. Notify is the explicit email action (still gated off unless delivery is enabled).
+              Supplier checks use live provider data only when configured. Email alerts require your opt-in and the delivery service to be enabled.
             </p>
             {alerts.length ? (
               <div className="cv-table-wrap" style={{ marginTop: 12 }}>
@@ -215,15 +304,15 @@ function MonitoringPageInner() {
                             type="button"
                             className="cv-button small"
                             disabled={!activeAnalysisId || Boolean(refreshing)}
-                            onClick={() => void runRefresh(String(a.part_number || ""))}
+                            onClick={() => void runLiveRefresh(String(a.part_number || ""))}
                           >
-                            {refreshing === String(a.part_number || "") ? "Refreshing…" : "Refresh part"}
+                            {refreshing === String(a.part_number || "") ? "Checking…" : "Refresh supplier"}
                           </button>{" "}
                           <button
                             type="button"
                             className="cv-button small"
                             disabled={!a.id || Boolean(notifying)}
-                            title="Explicit email action — not run by Refresh"
+                            title="Explicit email action for this alert"
                             onClick={() => void runNotify(String(a.id || ""))}
                           >
                             {a.id && notifying === String(a.id)

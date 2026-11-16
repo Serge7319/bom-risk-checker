@@ -883,11 +883,15 @@ async def monitoring_get(request: Request) -> JSONResponse:
         return denied or _json({"detail": "Unauthorized"}, 401)
     analysis_id = request.query_params.get("analysis_id") or None
     try:
-        return _json(
-            migration_tools.monitoring_payload(
-                workspace_id=ctx["workspace_id"], analysis_id=analysis_id
-            )
+        payload = migration_tools.monitoring_payload(
+            workspace_id=ctx["workspace_id"], analysis_id=analysis_id
         )
+        payload["preferences"] = monitoring_store.get_user_preferences(
+            ctx["workspace_id"], ctx["user_id"], ctx["email"]
+        )
+        payload["live_refresh"] = monitoring_scheduler.supplier_refresh_readiness()
+        payload["scheduler"] = monitoring_scheduler.scheduler_readiness()
+        return _json(payload)
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
 
@@ -1474,7 +1478,12 @@ async def monitoring_preferences_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
-    return _json({"ok": True, "preferences": monitoring_store.get_preferences(ctx["workspace_id"])})
+    return _json({
+        "ok": True,
+        "preferences": monitoring_store.get_user_preferences(
+            ctx["workspace_id"], ctx["user_id"], ctx["email"]
+        ),
+    })
 
 
 async def monitoring_preferences_put(request: Request) -> JSONResponse:
@@ -1485,7 +1494,15 @@ async def monitoring_preferences_put(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
-    prefs = monitoring_store.update_preferences(ctx["workspace_id"], body if isinstance(body, dict) else {})
+    try:
+        prefs = monitoring_store.update_user_preferences(
+            ctx["workspace_id"],
+            ctx["user_id"],
+            ctx["email"],
+            body if isinstance(body, dict) else {},
+        )
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
     return _json({"ok": True, "preferences": prefs})
 
 
@@ -1502,7 +1519,9 @@ async def monitoring_alerts_get(request: Request) -> JSONResponse:
                 ctx["workspace_id"], analysis_id=analysis_id
             ),
             "refresh_history": monitoring_store.list_refresh_history(ctx["workspace_id"]),
-            "preferences": monitoring_store.get_preferences(ctx["workspace_id"]),
+            "preferences": monitoring_store.get_user_preferences(
+                ctx["workspace_id"], ctx["user_id"], ctx["email"]
+            ),
         }
     )
 
@@ -1551,7 +1570,12 @@ async def monitoring_notify_post(request: Request) -> JSONResponse:
         return _json({"detail": "Alert not found"}, 404)
     if alert.get("active") is False or str(alert.get("status") or "").lower() == "inactive":
         return _json({"detail": "Alert is inactive and cannot be notified"}, 409)
-    result = monitoring_store.deliver_alert_email(ctx["workspace_id"], alert)
+    result = monitoring_store.deliver_alert_email(
+        ctx["workspace_id"],
+        alert,
+        user_id=ctx["user_id"],
+        recipient_email=ctx["email"],
+    )
     return _json({**result, "explicit_notify": True, "alert_id": alert_id})
 
 
@@ -1776,6 +1800,9 @@ async def service_readiness_get(request: Request) -> JSONResponse:
                     "live_ready_count": live_ready_count,
                     "file_workflow_count": file_workflow_count,
                     "blocked_count": blocked_count,
+                    "configured_unverified_count": int(
+                        connector_payload.get("configured_unverified_count") or 0
+                    ),
                     "connectors": connector_payload.get("connectors") or [],
                     "gap": connector_payload.get("gap"),
                 },
@@ -2184,6 +2211,43 @@ async def monitoring_refresh_post(request: Request) -> JSONResponse:
         return _json({"detail": "Report not found"}, 404)
     except ValueError as exc:
         return _json({"detail": str(exc)}, 400)
+
+
+async def monitoring_live_refresh_post(request: Request) -> JSONResponse:
+    """Explicit live supplier poll for one saved analysis or exact MPN."""
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid request"}, 400)
+    analysis_id = str(body.get("analysis_id") or "").strip()
+    part_number = str(body.get("part_number") or "").strip() or None
+    if not analysis_id:
+        return _json({"detail": "analysis_id is required for live supplier refresh"}, 400)
+    result = monitoring_scheduler.run_live_analysis_refresh(
+        ctx["workspace_id"], analysis_id, part_number=part_number
+    )
+    status = 200 if result.get("ok") else (404 if result.get("status") == "not_found" else 409)
+    return _json(result, status)
+
+
+async def monitoring_scheduled_post(request: Request) -> JSONResponse:
+    """Cron-only six-hour cycle; all vendor and email effects remain separately gated."""
+    if not monitoring_scheduler.authorize_cron(
+        request.headers.get("x-cadivor-cron-token")
+    ):
+        return _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    dry_run = isinstance(body, dict) and body.get("dry_run") is True
+    result = monitoring_scheduler.run_scheduled_cycle(dry_run=dry_run)
+    return _json(result, 200 if result.get("ok") else 409)
 
 
 def _team_error(exc: TeamError) -> JSONResponse:
@@ -3120,6 +3184,8 @@ app = Starlette(
         Route("/tools/monitoring/acknowledge", monitoring_acknowledge_post, methods=["POST"]),
         Route("/tools/monitoring/notify", monitoring_notify_post, methods=["POST"]),
         Route("/tools/monitoring/refresh", monitoring_refresh_post, methods=["POST"]),
+        Route("/tools/monitoring/live-refresh", monitoring_live_refresh_post, methods=["POST"]),
+        Route("/tools/monitoring/scheduled-run", monitoring_scheduled_post, methods=["POST"]),
         Route("/billing/status", billing_status_get, methods=["GET"]),
         Route("/billing/checkout", billing_checkout_post, methods=["POST"]),
         Route("/billing/portal", billing_portal_post, methods=["POST"]),

@@ -277,6 +277,16 @@ class WorkspaceStore:
                 rows, key=lambda row: str(row.get("created_at") or ""), reverse=True
             )
 
+    def list_monitoring_analyses(self) -> list[dict[str, str]]:
+        """Return saved analysis scopes for the scheduler, without report contents."""
+        with _LOCK:
+            return [
+                {"workspace_id": str(row.get("workspace_id") or ""),
+                 "analysis_id": str(row.get("id") or "")}
+                for row in self._data.get("analyses", {}).values()
+                if row.get("workspace_id") and row.get("id")
+            ]
+
     def create_decision_record(
         self, record: dict[str, Any], *, workspace_id: str
     ) -> dict[str, Any]:

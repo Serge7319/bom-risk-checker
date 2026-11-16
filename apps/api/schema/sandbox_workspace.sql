@@ -203,6 +203,54 @@ CREATE TABLE IF NOT EXISTS migration_notification_preferences (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Member-level opt-in: emails always go to the verified account address
+-- established by the authenticated API, never a browser-supplied recipient.
+CREATE TABLE IF NOT EXISTS migration_monitoring_member_preferences (
+  workspace_id TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES migration_users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  email_alerts BOOLEAN NOT NULL DEFAULT FALSE,
+  supplier_checks BOOLEAN NOT NULL DEFAULT FALSE,
+  lifecycle BOOLEAN NOT NULL DEFAULT TRUE,
+  availability BOOLEAN NOT NULL DEFAULT TRUE,
+  risk BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (workspace_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS migration_monitoring_member_preferences_schedule_idx
+  ON migration_monitoring_member_preferences (workspace_id, supplier_checks, email_alerts);
+
+-- Most recent identity-matched live supplier evidence for each monitored part.
+CREATE TABLE IF NOT EXISTS migration_monitoring_snapshots (
+  workspace_id TEXT NOT NULL,
+  analysis_id TEXT NOT NULL,
+  part_number TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  retrieved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (workspace_id, analysis_id, part_number)
+);
+
+CREATE INDEX IF NOT EXISTS migration_monitoring_snapshots_ws_retrieved_idx
+  ON migration_monitoring_snapshots (workspace_id, retrieved_at DESC);
+
+-- Claims and receipts prevent overlapping scheduled cycles from emailing the
+-- same active alert repeatedly. Resolved alerts clear receipts and may notify
+-- again if the same condition becomes active later.
+CREATE TABLE IF NOT EXISTS migration_monitoring_email_deliveries (
+  workspace_id TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES migration_users(id) ON DELETE CASCADE,
+  alert_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('sending', 'sent')),
+  lease_until TIMESTAMPTZ,
+  sent_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (workspace_id, user_id, alert_id)
+);
+
+CREATE INDEX IF NOT EXISTS migration_monitoring_email_deliveries_lease_idx
+  ON migration_monitoring_email_deliveries (status, lease_until);
+
 CREATE TABLE IF NOT EXISTS migration_monitoring_refresh_history (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,

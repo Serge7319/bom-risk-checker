@@ -1,0 +1,45 @@
+name: Cadivor scheduled monitoring
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Count opted-in analysis scopes without contacting suppliers, writing data, or sending email"
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    if: ${{ vars.CADIVOR_MONITORING_SCHEDULER_ENABLED == 'true' && vars.CADIVOR_MONITORING_SCHEDULE_ATTACHED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Call the protected monitoring schedule endpoint
+        env:
+          API_BASE: ${{ vars.CADIVOR_API_BASE }}
+          CRON_TOKEN: ${{ secrets.CADIVOR_MONITORING_CRON_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+          if [ -z "$API_BASE" ] || [ -z "$CRON_TOKEN" ]; then
+            echo "Monitoring API base or cron credential is missing."
+            exit 1
+          fi
+          DRY_RUN=false
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$MANUAL_DRY_RUN" = "true" ]; then
+            DRY_RUN=true
+          fi
+          curl --silent --show-error --fail-with-body \
+            --connect-timeout 10 --max-time 900 \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cadivor-cron-token: $CRON_TOKEN" \
+            --data "{\"dry_run\":$DRY_RUN}" \
+            "${API_BASE%/}/tools/monitoring/scheduled-run"
