@@ -8,13 +8,16 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
+import re
 import sys
 import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -221,6 +224,7 @@ async def health(_: Request) -> JSONResponse:
                 "decision-records",
                 "datasheet-qa",
                 "procurement",
+                "procurement-quotes",
                 "design-impact",
                 "cost-optimization",
                 "supply-risk",
@@ -1326,6 +1330,239 @@ async def procurement_get(request: Request) -> JSONResponse:
         )
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
+
+
+def _quote_report_part(report: dict[str, Any], mpn: str, manufacturer: str) -> dict[str, Any] | None:
+    """Resolve a requested BOM part without allowing client identity substitution."""
+    candidates = []
+    for raw in report.get("parts") or []:
+        if not isinstance(raw, dict):
+            continue
+        row_mpn = str(
+            raw.get("MPN") or raw.get("mpn") or raw.get("Part Number") or raw.get("part_number") or ""
+        ).strip()
+        if row_mpn.casefold() == mpn.casefold():
+            candidates.append(raw)
+    if not candidates:
+        return None
+    makers = {
+        str(row.get("Manufacturer") or row.get("manufacturer") or "").strip().casefold()
+        for row in candidates
+    }
+    makers.discard("")
+    if manufacturer:
+        return next(
+            (
+                row
+                for row in candidates
+                if str(row.get("Manufacturer") or row.get("manufacturer") or "").strip().casefold()
+                == manufacturer.casefold()
+            ),
+            None,
+        )
+    if len(makers) > 1:
+        raise ValueError("This MPN belongs to multiple manufacturers in the saved BOM; select the manufacturer.")
+    return candidates[0]
+
+
+def _quote_number(value: Any, label: str, *, positive: bool = True, integer: bool = False) -> float | int | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a number.") from exc
+    if not math.isfinite(number) or (number <= 0 if positive else number < 0):
+        raise ValueError(f"{label} must be greater than zero." if positive else f"{label} must be zero or greater.")
+    if integer and not number.is_integer():
+        raise ValueError(f"{label} must be a whole number.")
+    return int(number) if integer else number
+
+
+def _normalized_price_breaks(body: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_breaks = body.get("price_breaks")
+    if raw_breaks is None:
+        unit_price = body.get("unit_price")
+        break_quantity = body.get("price_break_quantity")
+        if unit_price in (None, "") and break_quantity in (None, ""):
+            return []
+        raw_breaks = [{"quantity": break_quantity or 1, "unit_price": unit_price}]
+    if not isinstance(raw_breaks, list) or len(raw_breaks) > 20:
+        raise ValueError("Enter no more than 20 price breaks.")
+    result: list[dict[str, Any]] = []
+    seen_quantities: set[int] = set()
+    for index, raw in enumerate(raw_breaks, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"Price break {index} is invalid.")
+        quantity = _quote_number(raw.get("quantity"), f"Price break {index} quantity", integer=True)
+        price = _quote_number(raw.get("unit_price"), f"Price break {index} unit price")
+        if quantity is None or price is None:
+            raise ValueError(f"Enter both quantity and unit price for price break {index}.")
+        if quantity in seen_quantities:
+            raise ValueError("Price break quantities must be unique.")
+        seen_quantities.add(quantity)
+        result.append({"quantity": quantity, "unit_price": price})
+    return sorted(result, key=lambda row: row["quantity"])
+
+
+def _valid_quote_url(value: Any) -> str:
+    url = str(value or "").strip()
+    if not url:
+        return ""
+    if len(url) > 2048:
+        raise ValueError("Source URL must be 2,048 characters or fewer.")
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Source URL must start with http:// or https://.")
+    return url
+
+
+async def procurement_quotes_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = (request.query_params.get("analysis_id") or "").strip()
+    requested_mpn = (request.query_params.get("mpn") or "").strip()
+    requested_manufacturer = (request.query_params.get("manufacturer") or "").strip()
+    if not analysis_id:
+        return _json({"detail": "Select a saved BOM analysis before loading quotes."}, 400)
+    try:
+        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+        if not report:
+            return _json({"detail": "Report not found"}, 404)
+        if requested_mpn:
+            try:
+                part = _quote_report_part(report, requested_mpn, requested_manufacturer)
+            except ValueError as exc:
+                return _json({"detail": str(exc)}, 409)
+            if not part:
+                return _json({"detail": "Part not found in the selected saved BOM revision."}, 404)
+        quotes = get_store().list_procurement_quotes(
+            workspace_id=ctx["workspace_id"],
+            analysis_id=analysis_id,
+            requested_mpn=requested_mpn or None,
+            requested_manufacturer=requested_manufacturer or None,
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "analysis_id": analysis_id, "quotes": quotes})
+
+
+async def procurement_quotes_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Quote payload must be an object."}, 400)
+
+    analysis_id = str(body.get("analysis_id") or "").strip()
+    requested_mpn = str(body.get("requested_mpn") or "").strip()
+    requested_manufacturer = str(body.get("requested_manufacturer") or "").strip()
+    supplier = str(body.get("supplier") or "").strip()
+    offered_mpn = str(body.get("offered_mpn") or "").strip()
+    offered_manufacturer = str(body.get("offered_manufacturer") or "").strip()
+    currency = str(body.get("currency") or "").strip().upper()
+    quote_reference = str(body.get("quote_reference") or "").strip()
+    notes = str(body.get("notes") or "").strip()
+    if not analysis_id or not requested_mpn:
+        return _json({"detail": "Select a saved BOM analysis and part."}, 400)
+    if len(requested_mpn) > 160 or len(requested_manufacturer) > 160:
+        return _json({"detail": "Requested part identity is too long."}, 400)
+    if not supplier or len(supplier) > 120:
+        return _json({"detail": "Enter a supplier name (up to 120 characters)."}, 400)
+    if not offered_mpn or len(offered_mpn) > 160 or len(offered_manufacturer) > 160:
+        return _json({"detail": "Enter the quoted MPN and a manufacturer of 160 characters or fewer."}, 400)
+    if len(quote_reference) > 160 or len(notes) > 3000:
+        return _json({"detail": "Quote reference or notes exceed the allowed length."}, 400)
+    if currency and not re.fullmatch(r"[A-Z]{3}", currency):
+        return _json({"detail": "Currency must be a three-letter code such as USD."}, 400)
+
+    try:
+        price_breaks = _normalized_price_breaks(body)
+        if price_breaks and not currency:
+            raise ValueError("Choose a currency for the quoted prices.")
+        minimum_order_quantity = _quote_number(
+            body.get("minimum_order_quantity"), "Minimum order quantity", integer=True
+        )
+        pack_quantity = _quote_number(body.get("pack_quantity"), "Pack quantity", integer=True)
+        stock = _quote_number(body.get("stock"), "Available stock", positive=False, integer=True)
+        lead_time_weeks = _quote_number(body.get("lead_time_weeks"), "Lead time", positive=False)
+        valid_until = str(body.get("valid_until") or "").strip()
+        if valid_until:
+            from datetime import date
+
+            date.fromisoformat(valid_until)
+        source_url = _valid_quote_url(body.get("source_url"))
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
+
+    try:
+        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+        if not report:
+            return _json({"detail": "Report not found"}, 404)
+        try:
+            requested_part = _quote_report_part(report, requested_mpn, requested_manufacturer)
+        except ValueError as exc:
+            return _json({"detail": str(exc)}, 409)
+        if not requested_part:
+            return _json({"detail": "Requested part does not match a part in this saved BOM revision."}, 400)
+        canonical_mpn = str(
+            requested_part.get("MPN") or requested_part.get("mpn") or requested_part.get("Part Number") or requested_mpn
+        ).strip()
+        canonical_manufacturer = str(
+            requested_part.get("Manufacturer") or requested_part.get("manufacturer") or ""
+        ).strip()
+        exact_mpn = offered_mpn.casefold() == canonical_mpn.casefold()
+        exact_manufacturer = bool(canonical_manufacturer) and (
+            offered_manufacturer.casefold() == canonical_manufacturer.casefold()
+        )
+        if exact_mpn and exact_manufacturer:
+            identity_status = "exact_part"
+        elif exact_mpn and (not canonical_manufacturer or not offered_manufacturer):
+            identity_status = "manufacturer_unconfirmed"
+        else:
+            identity_status = "alternate_candidate"
+        record = {
+            "analysis_id": analysis_id,
+            "project_name": report.get("project_name"),
+            "bom_name": report.get("bom_name") or report.get("filename"),
+            "revision": report.get("revision"),
+            "requested_mpn": canonical_mpn,
+            "requested_manufacturer": canonical_manufacturer,
+            "supplier": supplier,
+            "quote_reference": quote_reference,
+            "offered_mpn": offered_mpn,
+            "offered_manufacturer": offered_manufacturer,
+            "identity_status": identity_status,
+            "requires_engineering_review": identity_status != "exact_part",
+            "currency": currency,
+            "unit_price": price_breaks[0]["unit_price"] if price_breaks else None,
+            "price_break_quantity": price_breaks[0]["quantity"] if price_breaks else None,
+            "price_breaks": price_breaks,
+            "minimum_order_quantity": minimum_order_quantity,
+            "pack_quantity": pack_quantity,
+            "stock": stock,
+            "lead_time_weeks": lead_time_weeks,
+            "valid_until": valid_until,
+            "source_url": source_url,
+            "notes": notes,
+            "recorded_by": str(ctx.get("user_id") or ""),
+            "evidence_kind": "user_entered_supplier_quote",
+        }
+        saved = get_store().create_procurement_quote(
+            record, workspace_id=ctx["workspace_id"]
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "quote": saved}, 201)
 
 
 async def design_impact_get(request: Request) -> JSONResponse:
@@ -3170,6 +3407,8 @@ app = Starlette(
         Route("/decision-records", decision_records_post, methods=["POST"]),
         Route("/tools/datasheet-qa", datasheet_qa_post, methods=["POST"]),
         Route("/tools/procurement", procurement_get, methods=["GET"]),
+        Route("/tools/procurement/quotes", procurement_quotes_get, methods=["GET"]),
+        Route("/tools/procurement/quotes", procurement_quotes_post, methods=["POST"]),
         Route("/tools/design-impact", design_impact_get, methods=["GET"]),
         Route("/tools/cost-optimization", cost_optimization_get, methods=["GET"]),
         Route("/tools/supply-risk", supply_risk_post, methods=["POST"]),

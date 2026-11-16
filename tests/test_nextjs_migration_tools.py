@@ -295,3 +295,137 @@ def test_compare_can_record_workspace_decision_without_linking_latest_bom():
     record = saved.json()["record"]
     assert record["analysis_id"] is None
     assert record["comparison_snapshot"]["mode"] == "synthetic-preview"
+
+
+def test_procurement_quote_comparison_saves_revision_scoped_supplier_terms():
+    client = TestClient(app)
+    headers_a = _auth_headers(client)
+    headers_b = _account_headers(client, SANDBOX_SEED_USERS[1])
+    analyzed = client.post(
+        "/boms/analyze",
+        headers=headers_a,
+        files={"file": ("synthetic_bom_25parts.csv", FIXTURE.read_bytes(), "text/csv")},
+    )
+    assert analyzed.status_code == 200
+    analysis_id = analyzed.json()["analysis_id"]
+    report = client.get(f"/reports/{analysis_id}", headers=headers_a).json()
+    part = next(row for row in report["parts"] if row.get("MPN") and row.get("Manufacturer"))
+    mpn = part["MPN"]
+    manufacturer = part["Manufacturer"]
+
+    exact_payload = {
+        "analysis_id": analysis_id,
+        "requested_mpn": mpn,
+        "requested_manufacturer": manufacturer,
+        "supplier": "Example Components",
+        "quote_reference": "Q-1042",
+        "offered_mpn": mpn,
+        "offered_manufacturer": manufacturer,
+        "currency": "USD",
+        "price_breaks": [
+            {"quantity": 100, "unit_price": 0.72},
+            {"quantity": 10, "unit_price": 0.91},
+        ],
+        "minimum_order_quantity": 10,
+        "pack_quantity": 5,
+        "lead_time_weeks": 6,
+        "stock": 0,
+        "valid_until": "2099-12-31",
+        "source_url": "https://supplier.example/quote/Q-1042",
+        "notes": "Pricing excludes freight.",
+    }
+    exact = client.post(
+        "/tools/procurement/quotes", headers=headers_a, json=exact_payload
+    )
+    assert exact.status_code == 201, exact.text
+    saved = exact.json()["quote"]
+    assert saved["identity_status"] == "exact_part"
+    assert saved["requires_engineering_review"] is False
+    assert saved["price_breaks"] == [
+        {"quantity": 10, "unit_price": 0.91},
+        {"quantity": 100, "unit_price": 0.72},
+    ]
+    assert saved["minimum_order_quantity"] == 10
+    assert saved["pack_quantity"] == 5
+    assert saved["stock"] == 0
+    assert saved["revision"] == report["revision"]
+
+    alternate = client.post(
+        "/tools/procurement/quotes",
+        headers=headers_a,
+        json={**exact_payload, "supplier": "Alternate Source", "offered_mpn": "OTHER-PART-123"},
+    )
+    assert alternate.status_code == 201, alternate.text
+    assert alternate.json()["quote"]["identity_status"] == "alternate_candidate"
+    assert alternate.json()["quote"]["requires_engineering_review"] is True
+
+    listed = client.get(
+        f"/tools/procurement/quotes?analysis_id={analysis_id}&mpn={mpn}",
+        headers=headers_a,
+    )
+    assert listed.status_code == 200
+    assert {row["supplier"] for row in listed.json()["quotes"]} == {
+        "Example Components", "Alternate Source"
+    }
+    assert client.get(
+        f"/tools/procurement/quotes?analysis_id={analysis_id}", headers=headers_b
+    ).status_code == 404
+    assert client.post(
+        "/tools/procurement/quotes", headers=headers_b, json=exact_payload
+    ).status_code == 404
+
+    bad_terms = client.post(
+        "/tools/procurement/quotes",
+        headers=headers_a,
+        json={**exact_payload, "price_breaks": [{"quantity": 1, "unit_price": 0}]},
+    )
+    assert bad_terms.status_code == 400
+
+    wrong_part = client.post(
+        "/tools/procurement/quotes",
+        headers=headers_a,
+        json={**exact_payload, "requested_mpn": "NOT-IN-THIS-BOM"},
+    )
+    assert wrong_part.status_code == 400
+
+
+def test_procurement_catalog_offer_normalizes_quote_terms_and_identity():
+    from src.procurement_advisor import normalize_supplier_offer_records
+
+    offers = normalize_supplier_offer_records(
+        {
+            "MPN": "ABC123",
+            "Manufacturer": "Acme",
+            "supplier_offers": [
+                {
+                    "supplier": "DigiKey",
+                    "mpn": "ABC123",
+                    "manufacturer": "Acme",
+                    "currency": "USD",
+                    "price_breaks": [
+                        {"quantity": 100, "unit_price": 0.75},
+                        {"quantity": 10, "unit_price": 0.90},
+                    ],
+                    "moq": 10,
+                    "pack_quantity": 5,
+                    "lead_time_weeks": 3,
+                    "valid_until": "2026-12-31",
+                    "product_url": "https://supplier.example/ABC123",
+                    "retrieved_at": "2026-11-16T00:00:00Z",
+                }
+            ],
+        }
+    )
+
+    assert len(offers) == 1
+    offer = offers[0]
+    assert offer["offered_mpn"] == "ABC123"
+    assert offer["offered_manufacturer"] == "Acme"
+    assert offer["price_breaks"] == [
+        {"quantity": 10, "unit_price": 0.90, "currency": "USD"},
+        {"quantity": 100, "unit_price": 0.75, "currency": "USD"},
+    ]
+    assert offer["minimum_order_quantity"] == 10
+    assert offer["pack_quantity"] == 5
+    assert offer["valid_until"] == "2026-12-31"
+    assert offer["retrieved_at"] == "2026-11-16T00:00:00Z"

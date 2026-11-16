@@ -746,6 +746,74 @@ export async function fetchProcurement(token: string, analysisId?: string) {
   return apiJson<Record<string, unknown>>(`/tools/procurement${q}`, { token });
 }
 
+export type ProcurementQuote = {
+  id: string;
+  quote_id: string;
+  analysis_id: string;
+  project_name?: string | null;
+  bom_name?: string | null;
+  revision?: string | null;
+  requested_mpn: string;
+  requested_manufacturer?: string;
+  supplier: string;
+  quote_reference?: string;
+  offered_mpn: string;
+  offered_manufacturer?: string;
+  identity_status: "exact_part" | "manufacturer_unconfirmed" | "alternate_candidate";
+  requires_engineering_review: boolean;
+  currency?: string;
+  unit_price?: number | null;
+  price_break_quantity?: number | null;
+  price_breaks: Array<{ quantity: number; unit_price: number }>;
+  minimum_order_quantity?: number | null;
+  pack_quantity?: number | null;
+  stock?: number | null;
+  lead_time_weeks?: number | null;
+  valid_until?: string;
+  source_url?: string;
+  notes?: string;
+  created_at: string;
+  evidence_kind: string;
+};
+
+export async function listProcurementQuotes(
+  token: string,
+  analysisId: string,
+) {
+  const query = new URLSearchParams({ analysis_id: analysisId });
+  return apiJson<{ ok: boolean; analysis_id: string; quotes: ProcurementQuote[] }>(
+    `/tools/procurement/quotes?${query}`,
+    { token },
+  );
+}
+
+export async function createProcurementQuote(
+  token: string,
+  payload: {
+    analysis_id: string;
+    requested_mpn: string;
+    requested_manufacturer?: string;
+    supplier: string;
+    quote_reference?: string;
+    offered_mpn: string;
+    offered_manufacturer?: string;
+    currency?: string;
+    price_breaks?: Array<{ quantity: number; unit_price: number }>;
+    minimum_order_quantity?: number | null;
+    pack_quantity?: number | null;
+    stock?: number | null;
+    lead_time_weeks?: number | null;
+    valid_until?: string;
+    source_url?: string;
+    notes?: string;
+  },
+) {
+  return apiJson<{ ok: boolean; quote: ProcurementQuote }>(
+    "/tools/procurement/quotes",
+    { method: "POST", token, body: JSON.stringify(payload) },
+  );
+}
+
 export async function fetchDesignImpact(
   token: string,
   opts?: { analysisId?: string; mpn?: string },

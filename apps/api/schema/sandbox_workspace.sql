@@ -172,6 +172,22 @@ CREATE INDEX IF NOT EXISTS migration_decision_records_ws_created_idx
 CREATE INDEX IF NOT EXISTS migration_decision_records_ws_analysis_idx
   ON migration_decision_records (workspace_id, analysis_id, created_at DESC);
 
+-- Immutable supplier quote snapshots tied to the exact saved BOM analysis.
+CREATE TABLE IF NOT EXISTS migration_procurement_quotes (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  analysis_id TEXT NOT NULL,
+  requested_mpn TEXT NOT NULL,
+  requested_manufacturer TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  payload JSONB NOT NULL,
+  FOREIGN KEY (analysis_id) REFERENCES migration_reports(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS migration_procurement_quotes_ws_analysis_part_idx
+  ON migration_procurement_quotes
+    (workspace_id, analysis_id, LOWER(requested_mpn), LOWER(requested_manufacturer), created_at DESC);
+
 
 -- Monitoring durability (tenant-scoped). Alert email delivery remains gated.
 CREATE TABLE IF NOT EXISTS migration_monitoring_alerts (

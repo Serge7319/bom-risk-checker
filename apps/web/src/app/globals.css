@@ -3318,6 +3318,177 @@ button {
   font-weight: 700;
 }
 
+.cv-quote-comparison {
+  margin-top: 18px;
+}
+.cv-quote-controls {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.3fr) minmax(220px, 0.7fr);
+  gap: 12px;
+  margin: 18px 0 12px;
+}
+.cv-quote-controls label,
+.cv-quote-form-grid label,
+.cv-quote-break-row label {
+  display: grid;
+  gap: 6px;
+  color: #526780;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 0;
+}
+.cv-quote-controls input,
+.cv-quote-controls select,
+.cv-quote-form-grid input,
+.cv-quote-form-grid textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: #fff;
+  color: #253650;
+  padding: 9px 11px;
+  font: inherit;
+  font-weight: 550;
+}
+.cv-quote-form-grid textarea {
+  resize: vertical;
+}
+.cv-quote-price-summary {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid #bfd9cc;
+  border-radius: 11px;
+  background: #f3faf6;
+  color: #28523e;
+  font-size: 12px;
+}
+.cv-quote-price-summary ul {
+  margin: 7px 0;
+  padding-left: 18px;
+}
+.cv-quote-price-summary p {
+  margin: 7px 0;
+}
+.cv-quote-price-summary small {
+  display: block;
+  color: #587262;
+  line-height: 1.45;
+}
+.cv-quote-table-wrap {
+  margin-top: 12px;
+}
+.cv-quote-table {
+  min-width: 1430px;
+}
+.cv-quote-table td {
+  white-space: normal;
+  vertical-align: top;
+}
+.cv-quote-table td:first-child {
+  min-width: 180px;
+}
+.cv-quote-table td:nth-child(2) {
+  min-width: 235px;
+}
+.cv-quote-table td:nth-child(3) {
+  min-width: 245px;
+}
+.cv-quote-review-link {
+  display: block;
+  margin-top: 5px;
+  color: #2455a6;
+  font-size: 10px;
+  font-weight: 750;
+}
+.cv-quote-entry {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #dce5f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.cv-quote-entry h3 {
+  margin: 0;
+  color: #1d3555;
+  font-size: 14px;
+}
+.cv-quote-entry p {
+  margin: 5px 0 0;
+  color: #687b94;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.cv-quote-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.cv-quote-form-grid label span,
+.cv-quote-break-row label span {
+  color: #526780;
+}
+.cv-quote-wide,
+.cv-quote-breaks {
+  grid-column: 1 / -1;
+}
+.cv-quote-breaks {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #e0e7ef;
+  border-radius: 10px;
+  background: #fff;
+}
+.cv-quote-breaks > strong {
+  color: #243d5f;
+  font-size: 11px;
+}
+.cv-quote-breaks > span {
+  color: #74869c;
+  font-size: 10px;
+}
+.cv-quote-break-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) auto;
+  align-items: end;
+  gap: 9px;
+}
+.cv-quote-break-row input {
+  min-height: 36px;
+}
+.cv-quote-add-break,
+.cv-quote-remove-break {
+  width: fit-content;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #cbd8e7;
+  border-radius: 8px;
+  background: #fff;
+  color: #315886;
+  font-size: 10px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.cv-quote-entry > .cv-button {
+  justify-self: start;
+}
+@media (max-width: 760px) {
+  .cv-quote-controls,
+  .cv-quote-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cv-quote-break-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .cv-quote-remove-break {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Compare Parts: evidence-first comparison and decision capture */
 .cv-compare-state {
   display: inline-flex;

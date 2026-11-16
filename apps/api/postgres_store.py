@@ -78,7 +78,7 @@ class PostgresWorkspaceStore:
         with _LOCK:
             with self._connect() as conn:
                 conn.execute(
-                    "TRUNCATE migration_decision_records, migration_reports, migration_analyses, "
+                    "TRUNCATE migration_procurement_quotes, migration_decision_records, migration_reports, migration_analyses, "
                     "migration_revisions, migration_boms, migration_projects "
                     "CASCADE"
                 )
@@ -424,6 +424,79 @@ class PostgresWorkspaceStore:
             if isinstance(payload, dict):
                 records.append(dict(payload))
         return records
+
+    def create_procurement_quote(
+        self, quote: dict[str, Any], *, workspace_id: str
+    ) -> dict[str, Any]:
+        """Save a quote snapshot inside a workspace and saved-analysis scope."""
+        wid = self._require_workspace(workspace_id)
+        analysis_id = str(quote.get("analysis_id") or "").strip()
+        if not analysis_id or not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id} was not found")
+        with _LOCK:
+            saved = dict(quote)
+            quote_id = str(saved.get("quote_id") or uuid.uuid4())
+            created_at = str(saved.get("created_at") or _now())
+            saved.update(
+                {
+                    "id": quote_id,
+                    "quote_id": quote_id,
+                    "workspace_id": wid,
+                    "created_at": created_at,
+                }
+            )
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO migration_procurement_quotes
+                      (id, workspace_id, analysis_id, requested_mpn,
+                       requested_manufacturer, created_at, payload)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+                    """,
+                    (
+                        quote_id,
+                        wid,
+                        analysis_id,
+                        str(saved.get("requested_mpn") or ""),
+                        str(saved.get("requested_manufacturer") or ""),
+                        created_at,
+                        json.dumps(saved),
+                    ),
+                )
+                conn.commit()
+            return saved
+
+    def list_procurement_quotes(
+        self,
+        *,
+        workspace_id: str,
+        analysis_id: str,
+        requested_mpn: str | None = None,
+        requested_manufacturer: str | None = None,
+    ) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        aid = str(analysis_id or "").strip()
+        mpn = str(requested_mpn or "").strip()
+        maker = str(requested_manufacturer or "").strip()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT payload FROM migration_procurement_quotes
+                WHERE workspace_id = %s AND analysis_id = %s
+                  AND (%s = '' OR LOWER(requested_mpn) = LOWER(%s))
+                  AND (%s = '' OR LOWER(requested_manufacturer) = LOWER(%s))
+                ORDER BY created_at DESC
+                """,
+                (wid, aid, mpn, mpn, maker, maker),
+            ).fetchall()
+        result = []
+        for row in rows:
+            payload = row["payload"]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            if isinstance(payload, dict):
+                result.append(dict(payload))
+        return result
 
     def list_projects(self, *, workspace_id: str) -> list[dict[str, Any]]:
         wid = self._require_workspace(workspace_id)
