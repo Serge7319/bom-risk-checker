@@ -119,6 +119,7 @@ function ProcurementPageInner() {
   const [comparisonQuantity, setComparisonQuantity] = useState("");
   const [savedQuotes, setSavedQuotes] = useState<ProcurementQuote[]>([]);
   const [quotesBusy, setQuotesBusy] = useState(false);
+  const [quoteLoadError, setQuoteLoadError] = useState("");
 
   const requestedAnalysisId = useMemo(
     () => (searchParams.get("analysis_id") || "").trim(),
@@ -200,14 +201,13 @@ function ProcurementPageInner() {
     let active = true;
     setQuotesBusy(true);
     setSavedQuotes([]);
-    setQuoteError("");
-    setQuoteSaved("");
+    setQuoteLoadError("");
     listProcurementQuotes(session.access_token, selectedAnalysisId)
       .then(({ quotes }) => {
         if (active) setSavedQuotes(quotes || []);
       })
       .catch((err) => {
-        if (active) setQuoteError(err instanceof Error ? err.message : "Unable to load saved quotes.");
+        if (active) setQuoteLoadError(err instanceof Error ? err.message : "Unable to load saved quotes.");
       })
       .finally(() => {
         if (active) setQuotesBusy(false);
@@ -739,6 +739,8 @@ function ProcurementPageInner() {
                   </table>
                 </div>
                 {quotesBusy ? <p className="cv-small-note" aria-live="polite">Loading saved quotes…</p> : null}
+
+                {quoteLoadError ? <div className="cv-error" role="alert">{quoteLoadError}</div> : null}
 
                 {savedQuoteGroups.length ? (
                   <section className="cv-quote-groups" aria-label="Saved supplier quote groups">
