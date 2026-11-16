@@ -613,7 +613,6 @@ function ProcurementPageInner() {
                       aria-label="BOM part for quote comparison"
                       value={selectedPart ? partKey(selectedPart) : ""}
                       onChange={(event) => {
-                        const nextPart = allParts.find((part) => partKey(part) === event.target.value);
                         setSelectedPartKey(event.target.value);
                         setComparisonQuantity("");
                       }}
