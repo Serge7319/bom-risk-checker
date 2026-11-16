@@ -57,6 +57,7 @@ def _empty() -> dict[str, Any]:
         "analyses": {},
         "reports": {},
         "decision_records": {},
+        "procurement_quotes": {},
     }
 
 
@@ -327,6 +328,55 @@ class WorkspaceStore:
                 rows, key=lambda row: str(row.get("created_at") or ""), reverse=True
             )
 
+    def create_procurement_quote(
+        self, quote: dict[str, Any], *, workspace_id: str
+    ) -> dict[str, Any]:
+        """Save a quote snapshot inside a workspace and saved-analysis scope."""
+        wid = self._require_workspace(workspace_id)
+        analysis_id = str(quote.get("analysis_id") or "").strip()
+        if not analysis_id or not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id} was not found")
+        with _LOCK:
+            saved = dict(quote)
+            quote_id = str(saved.get("quote_id") or uuid.uuid4())
+            saved.update(
+                {
+                    "id": quote_id,
+                    "quote_id": quote_id,
+                    "workspace_id": wid,
+                    "created_at": str(saved.get("created_at") or _now()),
+                }
+            )
+            self._data.setdefault("procurement_quotes", {})[quote_id] = saved
+            self.save()
+            return dict(saved)
+
+    def list_procurement_quotes(
+        self,
+        *,
+        workspace_id: str,
+        analysis_id: str,
+        requested_mpn: str | None = None,
+        requested_manufacturer: str | None = None,
+    ) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        aid = str(analysis_id or "").strip()
+        mpn = str(requested_mpn or "").strip().casefold()
+        maker = str(requested_manufacturer or "").strip().casefold()
+        with _LOCK:
+            rows = []
+            for quote in self._data.setdefault("procurement_quotes", {}).values():
+                if quote.get("workspace_id") != wid or str(quote.get("analysis_id") or "") != aid:
+                    continue
+                if mpn and str(quote.get("requested_mpn") or "").strip().casefold() != mpn:
+                    continue
+                if maker and str(quote.get("requested_manufacturer") or "").strip().casefold() != maker:
+                    continue
+                rows.append(dict(quote))
+            return sorted(
+                rows, key=lambda row: str(row.get("created_at") or ""), reverse=True
+            )
+
     def list_projects(self, *, workspace_id: str) -> list[dict[str, Any]]:
         wid = self._require_workspace(workspace_id)
         with _LOCK:
@@ -546,6 +596,9 @@ class WorkspaceStore:
                 )
             self._data["reports"].pop(analysis_id, None)
             self._data["analyses"].pop(analysis_id, None)
+            for quote_id, quote in list(self._data.setdefault("procurement_quotes", {}).items()):
+                if quote.get("analysis_id") == analysis_id and quote.get("workspace_id") == wid:
+                    self._data["procurement_quotes"].pop(quote_id, None)
             for bom in self._data["boms"].values():
                 if bom.get("latest_analysis_id") == analysis_id and bom.get(
                     "workspace_id"
@@ -587,6 +640,9 @@ class WorkspaceStore:
             for aid in analysis_ids:
                 self._data["analyses"].pop(aid, None)
                 self._data["reports"].pop(aid, None)
+            for quote_id, quote in list(self._data.setdefault("procurement_quotes", {}).items()):
+                if quote.get("analysis_id") in analysis_ids and quote.get("workspace_id") == wid:
+                    self._data["procurement_quotes"].pop(quote_id, None)
             for rid in rev_ids:
                 self._data["revisions"].pop(rid, None)
             for bid in bom_ids:
