@@ -243,6 +243,17 @@ def test_settings_copy_is_customer_facing():
     assert "Live design-tool / vendor connectors" in settings
     assert "Design-tool connectors" not in settings or "Live design-tool / vendor connectors" in settings
 
+def test_service_readiness_labels_and_descriptions_stack_without_overlap():
+    settings = Path("apps/web/src/app/settings/page.tsx").read_text(encoding="utf-8")
+    css = Path("apps/web/src/app/globals.css").read_text(encoding="utf-8")
+    compact_css = "".join(css.split())
+
+    assert 'className="cv-action-list cv-service-readiness-list"' in settings
+    assert 'className="cv-service-readiness-copy"' in settings
+    assert ".cv-service-readiness-copy{display:flex" in compact_css
+    assert "overflow-wrap:anywhere" in css
+    assert "@media(max-width:640px){.cv-service-readiness-listli{grid-template-columns:minmax(0,1fr)" in compact_css
+
 
 def test_csv_file_workflows_do_not_make_live_connectors_ready(client):
     body = _readiness(client)
