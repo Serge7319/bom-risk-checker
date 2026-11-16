@@ -1360,9 +1360,16 @@ export default function Page() {
                                 ? "File workflow"
                                 : String(row.status || row.kind || "") === "configured_unverified"
                                   ? "Configured · not verified"
+                                  : String(row.status || "") === "ready"
+                                    ? "Live verified"
                                   : String(row.status || row.kind || "") === "blocked"
                                     ? "Needs setup"
                                     : String(row.status || row.kind || "")}
+                              {row.status === "ready" && row.last_verified_at ? (
+                                <small className="cv-small-note">
+                                  Checked {String(row.last_verified_at)}
+                                </small>
+                              ) : null}
                             </td>
                           </tr>
                         ))}
