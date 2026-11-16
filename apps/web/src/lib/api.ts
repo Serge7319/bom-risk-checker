@@ -977,11 +977,14 @@ export async function fetchConnectors(token: string) {
 
 export type ServiceReadiness = {
   ok?: boolean;
-  monitoring_email?: { status?: string; enabled?: boolean };
+  monitoring_email?: { status?: string; enabled?: boolean; transport_ready?: boolean; missing_requirements?: string[] };
   scheduler?: {
     status?: string;
     enabled?: boolean;
     cron_token_configured?: boolean;
+    schedule_attached?: boolean;
+    live_supplier_refresh_enabled?: boolean;
+    missing_requirements?: string[];
   };
   connectors?: {
     status?: string;
