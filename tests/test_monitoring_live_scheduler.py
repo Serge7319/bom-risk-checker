@@ -84,6 +84,16 @@ class MonitoringLiveSchedulerTests(unittest.TestCase):
             self.assertTrue(monitoring_scheduler.schedule_attached())
             self.assertTrue(monitoring_scheduler.live_supplier_refresh_enabled())
 
+    def test_email_readiness_lists_flag_and_transport_blockers_together(self):
+        with patch.dict(os.environ, {"CADIVOR_MONITORING_EMAIL_ENABLED": "0"}):
+            with patch.object(monitoring_store, "_configured_email_transport", return_value=False):
+                readiness = monitoring_store.monitoring_email_readiness()
+        self.assertEqual(readiness["status"], "not_connected")
+        self.assertFalse(readiness["enabled"])
+        self.assertIn("CADIVOR_MONITORING_EMAIL_ENABLED", readiness["missing_requirements"][0])
+        self.assertIn("RESEND_API_KEY", readiness["missing_requirements"][1])
+        self.assertIn("TRANSACTIONAL_FROM_EMAIL", readiness["missing_requirements"][1])
+
     def test_member_preferences_bind_email_to_verified_auth_context(self):
         result = self.client.put(
             "/tools/monitoring/preferences",
