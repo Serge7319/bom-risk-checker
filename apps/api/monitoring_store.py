@@ -65,11 +65,10 @@ def monitoring_email_readiness() -> dict[str, Any]:
     transport_ready = enabled and transport_configured
     missing = []
     if not enabled:
-        missing.append("monitoring email delivery flag (CADIVOR_MONITORING_EMAIL_ENABLED)")
+        missing.append("Enable alert delivery (CADIVOR_MONITORING_EMAIL_ENABLED)")
     if not transport_configured:
         missing.append(
-            "Resend API key (RESEND_API_KEY) and a sender verified in Resend "
-            "(default: no-reply@cadivor.com; override: TRANSACTIONAL_FROM_EMAIL)"
+            "Add RESEND_API_KEY and verify no-reply@cadivor.com as the Resend sender"
         )
     return {
         "status": "ready" if transport_ready else "not_connected",
