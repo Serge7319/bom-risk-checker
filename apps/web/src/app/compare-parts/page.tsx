@@ -1367,7 +1367,7 @@ function ComparePartsInner() {
                 <h2 id="decision-dialog-title">Record an engineering decision</h2>
                 <p>Save your reviewer choice and the comparison snapshot to this workspace.</p>
               </div>
-              <span className="cv-badge blue">Human review</span>
+              <span className="cv-badge blue">User review</span>
             </div>
 
             <form onSubmit={onRecordDecision}>
@@ -1523,10 +1523,10 @@ function ComparePartsInner() {
 
               <div className="cv-decision-evidence-note">
                 {result?.mode === "legacy-supplier-engine"
-                  ? "The comparison uses Cadivor’s supplier and datasheet review engine. The record captures your human decision; it does not automatically approve fit or change the BOM."
+                  ? "The comparison uses Cadivor’s supplier and datasheet review engine. The record captures your decision; it does not automatically approve fit or change the BOM."
                   : result?.mode === "uploaded-datasheet-review"
-                    ? "The comparison includes the PDFs uploaded for this review. The record captures your human decision; it does not automatically approve fit or change the BOM."
-                    : "The comparison uses synthetic or offline evidence. The record captures your human decision; it does not qualify a drop-in replacement or change the BOM."}
+                    ? "The comparison includes the PDFs uploaded for this review. The record captures your decision; it does not automatically approve fit or change the BOM."
+                    : "The comparison uses synthetic or offline evidence. The record captures your decision; it does not qualify a drop-in replacement or change the BOM."}
               </div>
               {decisionError ? <div className="cv-error" role="alert">{decisionError}</div> : null}
 

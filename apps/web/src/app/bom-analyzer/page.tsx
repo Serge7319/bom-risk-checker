@@ -110,25 +110,26 @@ export default function BomAnalyzerPage() {
     ],
   );
 
-  useEffect(() => {
+  const refreshRecentReports = useCallback(() => {
     if (!session) return;
-    let active = true;
+    setReportsBusy(true);
+    setReportsError("");
     listReports(session.access_token)
       .then((payload) => {
-        if (active) setRecentReports(payload.reports || []);
+        setRecentReports(payload.reports || []);
       })
       .catch((err) => {
-        if (active) {
-          setReportsError(err instanceof Error ? err.message : "Reports could not load.");
-        }
+        setReportsError(err instanceof Error ? err.message : "Reports could not load.");
       })
       .finally(() => {
-        if (active) setReportsBusy(false);
+        setReportsBusy(false);
       });
-    return () => {
-      active = false;
-    };
   }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+    refreshRecentReports();
+  }, [session, refreshRecentReports]);
 
   useEffect(() => {
     if (!session) return;
@@ -173,6 +174,14 @@ export default function BomAnalyzerPage() {
           setAnalyzeError("Analyze returned an incomplete summary.");
           setAnalyzing(false);
           clearFinishedAnalyzeJob(session);
+        } else if (summaryResult.persisted === false) {
+          setAnalyzeError(
+            "Analysis completed but was not saved to your workspace. Retry the analysis.",
+          );
+          setSummary(null);
+          setAnalysisId(null);
+          setAnalyzing(false);
+          clearFinishedAnalyzeJob(session);
         } else {
           setSummary(summaryResult);
           setAnalysisId(summaryResult.analysis_id);
@@ -185,6 +194,7 @@ export default function BomAnalyzerPage() {
             oneTimeReportRequired: false,
           });
           clearFinishedAnalyzeJob(session);
+          refreshRecentReports();
         }
       } else if (job?.status === "failed") {
         setAnalyzeError(job.error || "Analyze failed");
@@ -224,6 +234,15 @@ export default function BomAnalyzerPage() {
           clearFinishedAnalyzeJob(session);
           return;
         }
+        if (summaryResult.persisted === false) {
+          setAnalyzeError(
+            "Analysis completed but was not saved to your workspace. Retry the analysis.",
+          );
+          setSummary(null);
+          setAnalysisId(null);
+          clearFinishedAnalyzeJob(session);
+          return;
+        }
         setSummary(summaryResult);
         setAnalysisId(summaryResult.analysis_id);
         setAnalyzeError("");
@@ -240,6 +259,7 @@ export default function BomAnalyzerPage() {
           session,
         );
         clearFinishedAnalyzeJob(session);
+        refreshRecentReports();
         return;
       }
       if (job.status === "failed") {
@@ -257,7 +277,7 @@ export default function BomAnalyzerPage() {
         clearFinishedAnalyzeJob(session);
       }
     }, session);
-  }, [session]);
+  }, [session, refreshRecentReports]);
 
   useEffect(() => {
     if (!session || !draftReady) return;
@@ -662,7 +682,12 @@ export default function BomAnalyzerPage() {
                 {summary.has_hierarchy
                   ? ` · assembly roll-up ${summary.top_rolled_risk || "n/a"}`
                   : ""}{" "}
-                · {summary.total_parts} parts · health {summary.health_score ?? "—"}
+                · {summary.total_parts} parts · health{" "}
+                {summary.health_score != null
+                  ? summary.health_score
+                  : summary.health_status === "Needs verification"
+                    ? "Needs verification"
+                    : "—"}
               </p>
               <p className="cv-small-note">
                 Your analysis is saved. Continue to the risk review whenever you are ready; other workspace pages remain available.

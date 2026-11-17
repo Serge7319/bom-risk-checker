@@ -106,6 +106,8 @@ def assert_single_hold_for_review_under_bom(
     assert record["bom_name"] == "Hold BOM B"
     assert record["verified_primary_evidence"] is False
     assert record["qualification_status"] == "not-qualified-by-cadivor"
+    assert "your decision" in record["qualification_note"]
+    assert "human decision" not in record["qualification_note"].lower()
 
     # Exactly one new record workspace-wide, scoped to BOM B and not BOM A.
     after = client.get("/decision-records", headers=headers).json()["records"]

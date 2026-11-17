@@ -18,6 +18,7 @@ from src.saved_bom_project import (
     analysis_title_for_upload,
 )
 
+from apps.api.json_safe import json_safe
 from apps.api.workspace_store import WorkspaceAccessError
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schema" / "sandbox_workspace.sql"
@@ -190,7 +191,11 @@ class PostgresWorkspaceStore:
                     """,
                     analysis,
                 )
-                conn.execute(
+                safe_report = json_safe(report)
+                assert isinstance(safe_report, dict)
+                report = safe_report
+                report_payload = json.dumps(report, allow_nan=False)
+                report_write = conn.execute(
                     """
                     INSERT INTO migration_reports (id, workspace_id, payload, created_at, updated_at)
                     VALUES (%s, %s, %s::jsonb, %s, %s)
@@ -202,11 +207,17 @@ class PostgresWorkspaceStore:
                     (
                         analysis_id,
                         wid,
-                        json.dumps(report),
+                        report_payload,
                         analysis["created_at"],
                         now,
                     ),
                 )
+                # ON CONFLICT with a mismatched workspace updates 0 rows and
+                # would otherwise return persisted=True without storing payload.
+                if getattr(report_write, "rowcount", None) == 0:
+                    raise WorkspaceAccessError(
+                        f"analysis {analysis_id} could not be saved for workspace {wid}"
+                    )
                 conn.execute(
                     """
                     UPDATE migration_revisions

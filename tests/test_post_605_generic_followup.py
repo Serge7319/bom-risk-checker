@@ -41,6 +41,27 @@ COMPARE_PAGE = ROOT / "apps/web/src/app/compare-parts/page.tsx"
 COMPARE_PROGRESS = ROOT / "apps/web/src/lib/compareProgress.ts"
 COMPARE_API = ROOT / "apps/web/src/lib/api.ts"
 SUPPLY_PAGE = ROOT / "apps/web/src/app/supply-risk/page.tsx"
+DECISIONS_PAGE = ROOT / "apps/web/src/app/engineering-decisions/page.tsx"
+API_MAIN = ROOT / "apps/api/main.py"
+
+
+class UserReviewWordingTests(unittest.TestCase):
+    def test_compare_and_decisions_use_user_review_not_human_review(self):
+        compare = COMPARE_PAGE.read_text(encoding="utf-8")
+        decisions = DECISIONS_PAGE.read_text(encoding="utf-8")
+        api_main = API_MAIN.read_text(encoding="utf-8")
+        self.assertIn(">User review</span>", compare)
+        self.assertNotIn(">Human review</span>", compare)
+        self.assertIn("captures your decision", compare)
+        self.assertNotIn("your human decision", compare)
+        self.assertIn("User review records include", decisions)
+        self.assertNotIn("Human review records include", decisions)
+        self.assertIn("captures your decision", api_main)
+        self.assertNotIn("captures a human decision", api_main)
+        # Internal API field names stay stable for compatibility.
+        self.assertIn("qualification_status", api_main)
+        if "human_status" in api_main:
+            self.assertIn("human_status", api_main)
 
 
 class CompareProgressLabelTests(unittest.TestCase):

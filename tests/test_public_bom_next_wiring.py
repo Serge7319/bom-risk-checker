@@ -12,6 +12,29 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PublicBomNextWiringTests(unittest.TestCase):
+    def test_marketing_cta_embeds_dedicated_public_bom_audit_route(self):
+        script = (ROOT / "marketing-web/app.js").read_text()
+        homepage = (ROOT / "marketing-web/index.html").read_text()
+        # Direct route — never authenticated home `/?public=stress`.
+        self.assertIn("${APP_ORIGIN}/public-bom-audit?", script)
+        self.assertIn("embed: 'true'", script)
+        self.assertIn("utm_source", script)
+        self.assertIn("utm_medium", script)
+        self.assertIn("utm_campaign", script)
+        self.assertNotIn("public: 'stress'", script)
+        stress_fn = script[
+            script.index("function buildPublicStressUrl()") : script.index(
+                "const CADIVOR_LINKS"
+            )
+        ]
+        self.assertIn("/public-bom-audit?", stress_fn)
+        self.assertNotIn("/?${params", stress_fn)
+        # Feature flag still gates the funnel section + CTA rewrite.
+        self.assertIn("CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED", script)
+        self.assertIn('data-stress-cta="true"', homepage)
+        self.assertIn('id="bomStressTestFrame"', homepage)
+        self.assertIn("CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED = true", homepage)
+
     def test_middleware_redirect_preserves_non_public_query_params(self):
         middleware = (ROOT / "apps/web/src/middleware.ts").read_text()
         self.assertIn('pathname = "/public-bom-audit"', middleware)

@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from apps.api.json_safe import json_safe
 from src.saved_bom_project import (
     DEFAULT_WORKSPACE_PROJECT,
     analysis_title_for_upload,
@@ -146,7 +147,7 @@ class WorkspaceStore:
             revision_id = self._ensure_revision(bom_id, rev, wid)
 
             analysis_id = str(report.get("id") or uuid.uuid4())
-            report = dict(report)
+            report = dict(json_safe(report))
             report["id"] = analysis_id
             report["analysis_id"] = analysis_id
             report["project_id"] = project_id
@@ -256,6 +257,8 @@ class WorkspaceStore:
     ) -> dict[str, Any] | None:
         wid = self._require_workspace(workspace_id)
         with _LOCK:
+            # Reload so another process/replica write on a shared file is visible.
+            self.load()
             report = self._data["reports"].get(analysis_id)
             if not report:
                 return None
@@ -268,6 +271,7 @@ class WorkspaceStore:
     def list_reports(self, *, workspace_id: str) -> list[dict[str, Any]]:
         wid = self._require_workspace(workspace_id)
         with _LOCK:
+            self.load()
             rows = [
                 dict(row)
                 for row in self._data["analyses"].values()

@@ -299,6 +299,8 @@ def test_replacement_candidate_compare_decision_persists_after_reload(_sandbox):
     assert record["part_b"] == candidate["manufacturer_part_number"]
     assert record["comparison_snapshot"]["finding"] == FINDING_COMPATIBLE
     assert record["qualification_status"] == "not-qualified-by-cadivor"
+    assert "your decision" in record["qualification_note"]
+    assert "human decision" not in record["qualification_note"].lower()
 
     listed = client.get("/decision-records", headers=headers)
     assert listed.status_code == 200
