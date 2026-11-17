@@ -117,6 +117,17 @@ def test_boms_validate_route_no_analysis_side_effects():
     assert body["unique_part_count"] == 2
     assert body["parsed_row_count"] == 2
     assert set(sa._REPORTS.keys()) == before_ids
+    nested = (ROOT / "tests" / "fixtures" / "nested_bom_product.csv").read_bytes()
+    nested_resp = client.post(
+        "/boms/validate",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("nested_bom_product.csv", nested, "text/csv")},
+    )
+    assert nested_resp.status_code == 200, nested_resp.text
+    nested_body = nested_resp.json()
+    assert nested_body["row_count"] == 8
+    assert nested_body["has_hierarchy_columns"] is True
+    assert set(sa._REPORTS.keys()) == before_ids
 
 
 def test_edit_bom_creates_new_revision_and_validates_applied_decisions():
@@ -236,18 +247,6 @@ def test_hold_for_review_candidate_can_update_report_without_claiming_approval()
     assert [part["MPN"] for part in report.json()["parts"]] == ["SEN0142"]
     assert report.json()["used_decision_ids"] == [held["id"]]
     assert "applied_decision_ids" not in report.json()
-
-    nested = (ROOT / "tests" / "fixtures" / "nested_bom_product.csv").read_bytes()
-    nested_resp = client.post(
-        "/boms/validate",
-        headers={"Authorization": f"Bearer {token}"},
-        files={"file": ("nested_bom_product.csv", nested, "text/csv")},
-    )
-    assert nested_resp.status_code == 200, nested_resp.text
-    nested_body = nested_resp.json()
-    assert nested_body["row_count"] == 8
-    assert nested_body["has_hierarchy_columns"] is True
-    assert set(sa._REPORTS.keys()) == before_ids
 
 
 def test_boms_validate_rejects_oversize_with_413():
