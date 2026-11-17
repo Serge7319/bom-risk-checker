@@ -180,6 +180,124 @@ def test_two_user_postgres_matrix_workspaces_boms_reports_decisions_monitoring(c
     assert_owner_still_has_everything(client, headers_a, seeded_a)
 
 
+def test_saved_bom_management_moves_preserves_and_deletes_scoped_history(cutover_env):
+    from apps.api.main import app
+    from apps.api import monitoring_store, workspace_store
+    import psycopg
+
+    client = TestClient(app)
+    a, b = SANDBOX_SEED_USERS[0], SANDBOX_SEED_USERS[1]
+    headers_a = _login(client, a["email"], a["password"])
+    headers_b = _login(client, b["email"], b["password"])
+
+    def analyze(project_name: str, bom_name: str, revision: str, mpn: str) -> dict:
+        payload = f"MPN,Quantity\n{mpn},1\n".encode()
+        response = client.post(
+            "/boms/analyze",
+            headers=headers_a,
+            files={"file": (f"{bom_name}-{revision}.csv", payload, "text/csv")},
+            data={"project_name": project_name, "bom_name": bom_name, "revision": revision},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    source_a = analyze("Drone", "Controller", "A", "MPU-6050")
+    source_b = analyze("Drone", "Controller", "B", "MPU-6050")
+    destination = analyze("Power Supply", "Power BOM", "A", "TPS5430")
+    source_id = source_a["analysis_id"]
+    bom_id = source_a["bom_id"]
+    workspace_id = a["workspace_id"]
+    store = workspace_store.get_store()
+    decision = store.create_decision_record(
+        {
+            "analysis_id": source_id,
+            "part_a": "MPU-6050",
+            "part_b": "SEN0142",
+            "decision": "approve_alternate",
+        },
+        workspace_id=workspace_id,
+    )
+    store.create_procurement_quote(
+        {
+            "analysis_id": source_id,
+            "requested_mpn": "MPU-6050",
+            "requested_manufacturer": "",
+            "supplier": "Test Distributor",
+        },
+        workspace_id=workspace_id,
+    )
+    alert_rows = monitoring_store.persist_alerts(
+        workspace_id,
+        [{
+            "analysis_id": source_id,
+            "part_number": "MPU-6050",
+            "alert_type": "lifecycle-change",
+            "severity": "high",
+            "message": "Lifecycle changed",
+        }],
+    )
+    assert alert_rows
+    alert = alert_rows[0]
+    user_id = client.get("/auth/me", headers=headers_a).json()["user_id"]
+    assert monitoring_store.claim_scheduled_alert_email(workspace_id, user_id, alert)
+    monitoring_store.save_live_snapshot({
+        "workspace_id": workspace_id,
+        "analysis_id": source_id,
+        "part_number": "MPU-6050",
+        "stock": 0,
+    })
+    monitoring_store.record_refresh(
+        workspace_id,
+        analysis_id=source_id,
+        alert_count=1,
+        mode="test",
+    )
+
+    cross_workspace = client.patch(
+        f"/boms/{bom_id}", headers=headers_b, json={"project_id": destination["project_id"]}
+    )
+    assert cross_workspace.status_code == 404
+    moved = client.patch(
+        f"/boms/{bom_id}", headers=headers_a, json={"project_id": destination["project_id"]}
+    )
+    assert moved.status_code == 200, moved.text
+    renamed = client.patch(
+        f"/boms/{bom_id}", headers=headers_a, json={"name": "Flight Controller"}
+    )
+    assert renamed.status_code == 200, renamed.text
+
+    for analysis_id in (source_id, source_b["analysis_id"]):
+        current = client.get(f"/reports/{analysis_id}", headers=headers_a)
+        assert current.status_code == 200, current.text
+        assert current.json()["project_id"] == destination["project_id"]
+        assert current.json()["project_name"] == "Power Supply — Flight Controller"
+        assert current.json()["bom_name"] == "Flight Controller"
+    assert decision["id"] in {
+        item["id"]
+        for item in store.list_decision_records(
+            workspace_id=workspace_id, analysis_id=source_id
+        )
+    }
+    assert store.list_procurement_quotes(workspace_id=workspace_id, analysis_id=source_id)
+
+    deleted = client.delete(f"/boms/{bom_id}", headers=headers_a)
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["deleted_analysis_count"] == 2
+    for analysis_id in (source_id, source_b["analysis_id"]):
+        assert client.get(f"/reports/{analysis_id}", headers=headers_a).status_code == 404
+    assert store.list_decision_records(workspace_id=workspace_id, analysis_id=source_id) == []
+    assert store.list_procurement_quotes(workspace_id=workspace_id, analysis_id=source_id) == []
+    assert monitoring_store.list_alerts(workspace_id, analysis_id=source_id) == []
+    assert monitoring_store.get_live_snapshot(workspace_id, source_id, "MPU-6050") is None
+    assert all(row.get("analysis_id") != source_id for row in monitoring_store.list_refresh_history(workspace_id))
+    with psycopg.connect(cutover_env["uri"]) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) AS n FROM migration_monitoring_email_deliveries WHERE workspace_id = %s AND alert_id = %s",
+            (workspace_id, alert["id"]),
+        ).fetchone()[0] == 0
+    assert client.get(f"/reports/{destination['analysis_id']}", headers=headers_a).status_code == 200
+
+
 def test_backup_restore_and_recovery(cutover_env, tmp_path):
     from apps.api.main import app
     from apps.api import workspace_store

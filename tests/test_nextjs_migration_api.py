@@ -117,7 +117,6 @@ def test_boms_validate_route_no_analysis_side_effects():
     assert body["unique_part_count"] == 2
     assert body["parsed_row_count"] == 2
     assert set(sa._REPORTS.keys()) == before_ids
-
     nested = (ROOT / "tests" / "fixtures" / "nested_bom_product.csv").read_bytes()
     nested_resp = client.post(
         "/boms/validate",
@@ -129,6 +128,125 @@ def test_boms_validate_route_no_analysis_side_effects():
     assert nested_body["row_count"] == 8
     assert nested_body["has_hierarchy_columns"] is True
     assert set(sa._REPORTS.keys()) == before_ids
+
+
+def test_edit_bom_creates_new_revision_and_validates_applied_decisions():
+    from apps.api.workspace_store import get_store
+
+    client = TestClient(app)
+    login = client.post(
+        "/auth/login",
+        json={"email": SMOKE_EMAIL, "password": SMOKE_PASSWORD},
+    )
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    original = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("drone.csv", b"MPN,Manufacturer,Quantity\nMPU-6050,TDK InvenSense,1\n", "text/csv")},
+        data={"project_name": "Drone", "bom_name": "Controller", "revision": "A"},
+    )
+    assert original.status_code == 200, original.text
+    source_id = original.json()["analysis_id"]
+    decision = get_store().create_decision_record(
+        {
+            "analysis_id": source_id,
+            "part_a": "MPU-6050",
+            "part_b": "SEN0142",
+            "decision": "approve_alternate",
+            "reviewer": "Test User",
+            "rationale": "Approved in test.",
+        },
+        workspace_id="ws-sandbox-a",
+    )
+    revised = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("controller-rev-B.csv", b"MPN,Manufacturer,Quantity\nSEN0142,DFRobot,1\n", "text/csv")},
+        data={
+            "project_name": "Drone",
+            "bom_name": "Controller",
+            "revision": "B",
+            "source_analysis_id": source_id,
+            "applied_decision_ids": f'["{decision["id"]}"]',
+            "used_decision_ids": f'["{decision["id"]}"]',
+        },
+    )
+    assert revised.status_code == 200, revised.text
+    new_id = revised.json()["analysis_id"]
+    assert new_id != source_id
+    report = client.get(f"/reports/{new_id}", headers=headers)
+    assert report.status_code == 200, report.text
+    result = report.json()
+    assert result["revision"] == "B"
+    assert [part["MPN"] for part in result["parts"]] == ["SEN0142"]
+    assert result["derived_from_analysis_id"] == source_id
+    assert result["applied_decision_ids"] == [decision["id"]]
+    assert result["used_decision_ids"] == [decision["id"]]
+
+    rejected = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("controller-rev-C.csv", b"MPN,Quantity\nSEN0142,1\n", "text/csv")},
+        data={
+            "project_name": "Drone",
+            "bom_name": "Controller",
+            "revision": "C",
+            "source_analysis_id": source_id,
+            "applied_decision_ids": '["not-an-approved-decision"]',
+        },
+    )
+    assert rejected.status_code == 400
+    assert "Only approved alternate decisions" in rejected.json()["detail"]
+
+
+def test_hold_for_review_candidate_can_update_report_without_claiming_approval():
+    from apps.api.workspace_store import get_store
+
+    client = TestClient(app)
+    login = client.post(
+        "/auth/login",
+        json={"email": SMOKE_EMAIL, "password": SMOKE_PASSWORD},
+    )
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    original = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("legacy.csv", b"MPN,Quantity\nMPU-6050,1\n", "text/csv")},
+        data={"project_name": "Drone", "bom_name": "Sensors", "revision": "A"},
+    )
+    assert original.status_code == 200, original.text
+    source_id = original.json()["analysis_id"]
+    held = get_store().create_decision_record(
+        {
+            "analysis_id": source_id,
+            "part_a": "MPU-6050",
+            "part_b": "SEN0142",
+            "decision": "hold_for_review",
+            "reviewer": "Test User",
+            "rationale": "Candidate selected for further validation.",
+        },
+        workspace_id="ws-sandbox-a",
+    )
+    revised = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("sensors-rev-B.csv", b"MPN,Quantity\nSEN0142,1\n", "text/csv")},
+        data={
+            "project_name": "Drone",
+            "bom_name": "Sensors",
+            "revision": "B",
+            "source_analysis_id": source_id,
+            "used_decision_ids": f'["{held["id"]}"]',
+        },
+    )
+    assert revised.status_code == 200, revised.text
+    report = client.get(f"/reports/{revised.json()['analysis_id']}", headers=headers)
+    assert report.status_code == 200, report.text
+    assert [part["MPN"] for part in report.json()["parts"]] == ["SEN0142"]
+    assert report.json()["used_decision_ids"] == [held["id"]]
+    assert "applied_decision_ids" not in report.json()
 
 
 def test_boms_validate_rejects_oversize_with_413():

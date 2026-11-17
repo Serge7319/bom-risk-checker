@@ -108,6 +108,69 @@ def test_cross_workspace_cannot_see_or_open_analysis(isolated_client: TestClient
     assert any(p["name"] == "Alpha Only" for p in home_a["projects"])
 
 
+def test_users_can_rename_project_and_bom_then_delete_bom(isolated_client: TestClient):
+    client = isolated_client
+    headers_a = _login(client, "sandbox-a@cadivor.test")
+    headers_b = _login(client, "sandbox-b@cadivor.test")
+    created = client.post(
+        "/boms/analyze",
+        headers=headers_a,
+        files={"file": ("source.csv", b"MPN,Quantity,Manufacturer\nMPU-6050,1,TDK InvenSense\n", "text/csv")},
+        data={"project_name": "Drone", "bom_name": "Controller", "revision": "A"},
+    )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    analysis_id = body["analysis_id"]
+    project_id = body["project_id"]
+    bom_id = body["bom_id"]
+
+    project_update = client.patch(
+        f"/projects/{project_id}", headers=headers_a, json={"name": "Drone Control"}
+    )
+    assert project_update.status_code == 200, project_update.text
+    bom_update = client.patch(
+        f"/boms/{bom_id}", headers=headers_a, json={"name": "Flight Controller"}
+    )
+    assert bom_update.status_code == 200, bom_update.text
+    report = client.get(f"/reports/{analysis_id}", headers=headers_a).json()
+    assert report["project_name"] == "Drone Control — Flight Controller"
+    assert report["bom_name"] == "Flight Controller"
+
+    target_project = client.post(
+        "/boms/analyze",
+        headers=headers_a,
+        files={"file": ("power.csv", b"MPN,Quantity\nTPS5430,1\n", "text/csv")},
+        data={"project_name": "Power Supply", "bom_name": "Power BOM", "revision": "A"},
+    )
+    assert target_project.status_code == 200, target_project.text
+    target_project_id = target_project.json()["project_id"]
+    moved = client.patch(
+        f"/boms/{bom_id}",
+        headers=headers_a,
+        json={"project_id": target_project_id},
+    )
+    assert moved.status_code == 200, moved.text
+    report = client.get(f"/reports/{analysis_id}", headers=headers_a).json()
+    assert report["project_id"] == target_project_id
+    assert report["project_name"] == "Power Supply — Flight Controller"
+
+    assert client.patch(
+        f"/boms/{bom_id}", headers=headers_b, json={"name": "Stolen"}
+    ).status_code == 404
+    assert client.delete(f"/boms/{bom_id}", headers=headers_b).status_code == 404
+
+    deleted = client.delete(f"/boms/{bom_id}", headers=headers_a)
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["deleted_analysis_count"] == 1
+    assert client.get(f"/reports/{analysis_id}", headers=headers_a).status_code == 404
+    visible_projects = client.get("/projects", headers=headers_a).json()["projects"]
+    assert all(
+        bom["id"] != bom_id
+        for project in visible_projects
+        for bom in project.get("boms", [])
+    )
+
+
 def test_each_workspace_only_lists_own_analyses(isolated_client: TestClient):
     client = isolated_client
     headers_a = _login(client, "sandbox-a@cadivor.test")

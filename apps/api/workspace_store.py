@@ -590,10 +590,132 @@ class WorkspaceStore:
                 raise WorkspaceAccessError(
                     f"project {project_id} is not in workspace {wid}"
                 )
+            if any(
+                other_id != project_id
+                and other.get("workspace_id") == wid
+                and str(other.get("name") or "").casefold() == new_name.casefold()
+                for other_id, other in self._data["projects"].items()
+            ):
+                raise ValueError("A project with this name already exists.")
             project["name"] = new_name
             project["updated_at"] = _now()
+            for analysis_id, analysis in self._data["analyses"].items():
+                if analysis.get("project_id") != project_id or analysis.get("workspace_id") != wid:
+                    continue
+                bom_name = str(analysis.get("bom_name") or "Saved BOM")
+                title = analysis_title_for_upload(new_name, bom_name)
+                analysis["project_name"] = title
+                analysis["updated_at"] = _now()
+                report = self._data["reports"].get(analysis_id)
+                if report and report.get("workspace_id") == wid:
+                    report["project_name"] = title
             self.save()
             return dict(project)
+
+    def update_bom(
+        self,
+        bom_id: str,
+        *,
+        workspace_id: str,
+        name: str | None = None,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        wid = self._require_workspace(workspace_id)
+        with _LOCK:
+            bom = self._data["boms"].get(bom_id)
+            if not bom:
+                raise LookupError(f"BOM {bom_id} not found")
+            if bom.get("workspace_id") != wid:
+                raise WorkspaceAccessError(f"BOM {bom_id} is not in workspace {wid}")
+            new_name = str(name if name is not None else bom.get("name") or "").strip()
+            if not new_name:
+                raise ValueError("name is required")
+            current_project_id = str(bom.get("project_id") or "")
+            target_project_id = str(project_id or current_project_id).strip()
+            target_project = self._data["projects"].get(target_project_id)
+            if not target_project or target_project.get("workspace_id") != wid:
+                raise LookupError(f"project {target_project_id} not found")
+            if any(
+                other_id != bom_id
+                and other.get("workspace_id") == wid
+                and other.get("project_id") == target_project_id
+                and str(other.get("name") or "").casefold() == new_name.casefold()
+                for other_id, other in self._data["boms"].items()
+            ):
+                raise ValueError("A BOM with this name already exists in this project.")
+            project_name = str(target_project.get("name") or DEFAULT_WORKSPACE_PROJECT)
+            bom["name"] = new_name
+            bom["project_id"] = target_project_id
+            bom["updated_at"] = _now()
+            for analysis_id, analysis in self._data["analyses"].items():
+                if analysis.get("bom_id") != bom_id or analysis.get("workspace_id") != wid:
+                    continue
+                title = analysis_title_for_upload(project_name, new_name)
+                analysis["project_id"] = target_project_id
+                analysis["bom_name"] = new_name
+                analysis["project_name"] = title
+                analysis["updated_at"] = _now()
+                report = self._data["reports"].get(analysis_id)
+                if report and report.get("workspace_id") == wid:
+                    report["project_id"] = target_project_id
+                    report["bom_name"] = new_name
+                    report["project_name"] = title
+            for affected_project_id in {current_project_id, target_project_id}:
+                project = self._data["projects"].get(affected_project_id)
+                if project and project.get("workspace_id") == wid:
+                    project["updated_at"] = _now()
+            self.save()
+            return dict(bom)
+
+    def delete_bom(self, bom_id: str, *, workspace_id: str) -> list[str] | None:
+        """Delete one BOM and all of its saved revisions, reports, and records.
+
+        Return the deleted analysis IDs so the API can clear monitoring history.
+        None means the BOM does not exist; workspace mismatches raise.
+        """
+        wid = self._require_workspace(workspace_id)
+        with _LOCK:
+            bom = self._data["boms"].get(bom_id)
+            if not bom:
+                return None
+            if bom.get("workspace_id") != wid:
+                raise WorkspaceAccessError(f"BOM {bom_id} is not in workspace {wid}")
+            analysis_ids = [
+                aid
+                for aid, row in self._data["analyses"].items()
+                if row.get("bom_id") == bom_id and row.get("workspace_id") == wid
+            ]
+            analysis_id_set = set(analysis_ids)
+            for aid in analysis_ids:
+                self._data["analyses"].pop(aid, None)
+                self._data["reports"].pop(aid, None)
+            self._data["decision_records"] = {
+                decision_id: row
+                for decision_id, row in self._data.get("decision_records", {}).items()
+                if not (
+                    row.get("workspace_id") == wid
+                    and str(row.get("analysis_id") or "") in analysis_id_set
+                )
+            }
+            self._data["procurement_quotes"] = {
+                quote_id: row
+                for quote_id, row in self._data.get("procurement_quotes", {}).items()
+                if not (
+                    row.get("workspace_id") == wid
+                    and str(row.get("analysis_id") or "") in analysis_id_set
+                )
+            }
+            self._data["revisions"] = {
+                revision_id: row
+                for revision_id, row in self._data["revisions"].items()
+                if row.get("bom_id") != bom_id or row.get("workspace_id") != wid
+            }
+            self._data["boms"].pop(bom_id, None)
+            project = self._data["projects"].get(str(bom.get("project_id") or ""))
+            if project and project.get("workspace_id") == wid:
+                project["updated_at"] = _now()
+            self.save()
+            return analysis_ids
 
     def delete_analysis(self, analysis_id: str, *, workspace_id: str) -> bool:
         wid = self._require_workspace(workspace_id)
@@ -609,6 +731,14 @@ class WorkspaceStore:
                 )
             self._data["reports"].pop(analysis_id, None)
             self._data["analyses"].pop(analysis_id, None)
+            self._data["decision_records"] = {
+                decision_id: row
+                for decision_id, row in self._data.get("decision_records", {}).items()
+                if not (
+                    row.get("workspace_id") == wid
+                    and str(row.get("analysis_id") or "") == analysis_id
+                )
+            }
             for quote_id, quote in list(self._data.setdefault("procurement_quotes", {}).items()):
                 if quote.get("analysis_id") == analysis_id and quote.get("workspace_id") == wid:
                     self._data["procurement_quotes"].pop(quote_id, None)

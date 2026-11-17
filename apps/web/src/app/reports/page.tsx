@@ -7,7 +7,14 @@ import { EmptyState } from "@/components/EmptyState";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { Shell } from "@/components/Shell";
-import { listReports } from "@/lib/api";
+import {
+  deleteBom,
+  listProjects,
+  listReports,
+  moveBom,
+  renameBom,
+  renameProject,
+} from "@/lib/api";
 import {
   cacheVerifiedPublicBomReport,
   completePublicBomAudit,
@@ -21,6 +28,21 @@ import {
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
+function projectNameDraftsFor(projects: Array<Record<string, unknown>>): Record<string, string> {
+  const drafts: Record<string, string> = {};
+  for (const project of projects) drafts[String(project.id || "")] = String(project.name || "");
+  return drafts;
+}
+
+function bomNameDraftsFor(projects: Array<Record<string, unknown>>): Record<string, string> {
+  const drafts: Record<string, string> = {};
+  for (const project of projects) {
+    const boms = (project.boms || []) as Array<Record<string, unknown>>;
+    for (const bom of boms) drafts[String(bom.id || "")] = String(bom.name || "");
+  }
+  return drafts;
+}
+
 function ReportsInner() {
   const session = useRequireSession();
   const search = useSearchParams();
@@ -29,6 +51,13 @@ function ReportsInner() {
   const reportIdFromQuery = normalizeStressReportId(search.get("report_id"));
 
   const [reports, setReports] = useState<Array<Record<string, unknown>>>([]);
+  const [projects, setProjects] = useState<Array<Record<string, unknown>>>([]);
+  const [projectDrafts, setProjectDrafts] = useState<Record<string, string>>({});
+  const [bomDrafts, setBomDrafts] = useState<Record<string, string>>({});
+  const [bomProjectDrafts, setBomProjectDrafts] = useState<Record<string, string>>({});
+  const [managementBusy, setManagementBusy] = useState("");
+  const [managementError, setManagementError] = useState("");
+  const [managementNotice, setManagementNotice] = useState("");
   const [gap, setGap] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
@@ -41,14 +70,138 @@ function ReportsInner() {
   useEffect(() => {
     if (!session) return;
     setBusy(true);
-    listReports(session.access_token)
-      .then((payload) => {
-        setReports(payload.reports || []);
-        setGap(payload.gap || "");
+    Promise.all([
+      listReports(session.access_token),
+      listProjects(session.access_token),
+    ])
+      .then(([reportPayload, projectPayload]) => {
+        setReports(reportPayload.reports || []);
+        setGap(reportPayload.gap || "");
+        const nextProjects = projectPayload.projects || [];
+        setProjects(nextProjects);
+        setProjectDrafts(projectNameDraftsFor(nextProjects));
+        setBomDrafts(bomNameDraftsFor(nextProjects));
+        setBomProjectDrafts(Object.fromEntries(
+          nextProjects.flatMap((project) =>
+            ((project.boms || []) as Array<Record<string, unknown>>).map((bom) => [
+              String(bom.id || ""),
+              String(project.id || ""),
+            ] as const),
+          ),
+        ));
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed"))
+      .catch((err) => setError(err instanceof Error ? err.message : "Saved BOMs could not load."))
       .finally(() => setBusy(false));
   }, [session]);
+
+  async function reloadSavedBoms() {
+    if (!session) return;
+    const [reportPayload, projectPayload] = await Promise.all([
+      listReports(session.access_token),
+      listProjects(session.access_token),
+    ]);
+    setReports(reportPayload.reports || []);
+    setGap(reportPayload.gap || "");
+    const nextProjects = projectPayload.projects || [];
+    setProjects(nextProjects);
+    setProjectDrafts(projectNameDraftsFor(nextProjects));
+    setBomDrafts(bomNameDraftsFor(nextProjects));
+    setBomProjectDrafts(Object.fromEntries(
+      nextProjects.flatMap((project) =>
+        ((project.boms || []) as Array<Record<string, unknown>>).map((bom) => [
+          String(bom.id || ""),
+          String(project.id || ""),
+        ] as const),
+      ),
+    ));
+  }
+
+  async function onRenameProject(projectId: string) {
+    if (!session) return;
+    const name = String(projectDrafts[projectId] || "").trim();
+    if (!name) {
+      setManagementError("Enter a project name before saving.");
+      return;
+    }
+    setManagementBusy(projectId);
+    setManagementError("");
+    setManagementNotice("");
+    try {
+      await renameProject(session.access_token, projectId, name);
+      await reloadSavedBoms();
+      setManagementNotice("Project name updated.");
+    } catch (err) {
+      setManagementError(err instanceof Error ? err.message : "Project name could not be updated.");
+    } finally {
+      setManagementBusy("");
+    }
+  }
+
+  async function onRenameBom(bomId: string) {
+    if (!session) return;
+    const name = String(bomDrafts[bomId] || "").trim();
+    if (!name) {
+      setManagementError("Enter a BOM name before saving.");
+      return;
+    }
+    setManagementBusy(bomId);
+    setManagementError("");
+    setManagementNotice("");
+    try {
+      await renameBom(session.access_token, bomId, name);
+      await reloadSavedBoms();
+      setManagementNotice("BOM name updated for all saved revisions.");
+    } catch (err) {
+      setManagementError(err instanceof Error ? err.message : "BOM name could not be updated.");
+    } finally {
+      setManagementBusy("");
+    }
+  }
+
+  async function onMoveBom(bomId: string, currentProjectId: string) {
+    if (!session) return;
+    const projectId = String(bomProjectDrafts[bomId] || "");
+    if (!projectId || projectId === currentProjectId) return;
+    setManagementBusy(bomId);
+    setManagementError("");
+    setManagementNotice("");
+    try {
+      await moveBom(session.access_token, bomId, projectId);
+      await reloadSavedBoms();
+      const target = projects.find((project) => String(project.id || "") === projectId);
+      setManagementNotice(`BOM moved to ${String(target?.name || "the selected project")}; its report history is preserved.`);
+    } catch (err) {
+      setManagementError(err instanceof Error ? err.message : "BOM could not be moved to that project.");
+    } finally {
+      setManagementBusy("");
+    }
+  }
+
+  async function onDeleteBom(bom: Record<string, unknown>) {
+    if (!session) return;
+    const bomId = String(bom.id || "");
+    const bomName = String(bom.name || "this BOM");
+    const revisions = Number(bom.revision_count || 0);
+    const reportCount = Number(bom.analysis_count || (bom.latest_analysis_id ? 1 : 0));
+    const confirmed = window.confirm(
+      `Delete “${bomName}” and all ${reportCount} saved report${reportCount === 1 ? "" : "s"}, revisions, engineering decisions, quotes, and monitoring history? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    setManagementBusy(bomId);
+    setManagementError("");
+    setManagementNotice("");
+    try {
+      const deleted = await deleteBom(session.access_token, bomId);
+      await reloadSavedBoms();
+      setManagementNotice(
+        `Deleted ${bomName} and ${deleted.deleted_analysis_count} saved report${deleted.deleted_analysis_count === 1 ? "" : "s"}${revisions ? ` across ${revisions} revision${revisions === 1 ? "" : "s"}` : ""}.`,
+      );
+    } catch (err) {
+      setManagementError(err instanceof Error ? err.message : "BOM could not be deleted.");
+    } finally {
+      setManagementBusy("");
+    }
+  }
 
   useEffect(() => {
     if (!session) return;
@@ -117,6 +270,142 @@ function ReportsInner() {
         actions={<PrimaryLink href="/bom-analyzer">New BOM analysis</PrimaryLink>}
       />
       {<EvidenceNotice gap={gap} />}
+
+      {!busy && projects.length ? (
+        <section className="cv-card pad" style={{ marginBottom: 18 }} data-testid="saved-bom-management">
+          <div className="cv-section-heading cv-section-heading--card">
+            <div>
+              <h2>Manage saved BOMs</h2>
+              <p>Rename projects and BOMs, edit a BOM as a new revision, or delete a BOM and its saved history.</p>
+            </div>
+          </div>
+          {managementError ? <div className="cv-error" role="alert">{managementError}</div> : null}
+          {managementNotice ? <p className="cv-small-note" role="status">{managementNotice}</p> : null}
+          {projects.map((project) => {
+            const projectId = String(project.id || "");
+            const projectName = String(project.name || "Project");
+            const boms = (project.boms || []) as Array<Record<string, unknown>>;
+            if (!boms.length) return null;
+            return (
+              <div key={projectId} style={{ marginTop: 18 }} data-testid={`saved-project-${projectId}`}>
+                <div className="cv-form-grid" style={{ gridTemplateColumns: "minmax(220px, 1fr) auto", alignItems: "end" }}>
+                  <label className="cv-field">
+                    <span>Project name</span>
+                    <input
+                      value={projectDrafts[projectId] ?? projectName}
+                      onChange={(event) => setProjectDrafts((current) => ({ ...current, [projectId]: event.target.value }))}
+                      maxLength={120}
+                      aria-label={`Project name for ${projectName}`}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="cv-button small"
+                    disabled={managementBusy !== "" || !String(projectDrafts[projectId] ?? projectName).trim()}
+                    onClick={() => void onRenameProject(projectId)}
+                  >
+                    {managementBusy === projectId ? "Saving…" : "Save project name"}
+                  </button>
+                </div>
+                <div className="cv-table-wrap" style={{ marginTop: 10 }}>
+                  <table className="cv-table">
+                    <thead>
+                      <tr>
+                        <th>BOM name</th>
+                        <th>Saved revisions</th>
+                        <th>Latest analysis</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {boms.map((bom) => {
+                        const bomId = String(bom.id || "");
+                        const bomName = String(bom.name || "Saved BOM");
+                        const bomReports = reports.filter((report) => String(report.bom_id || "") === bomId);
+                        const revisions = [...new Set(bomReports.map((report) => String(report.revision || "").trim()).filter(Boolean))];
+                        const latest = (bom.latest_analysis || {}) as Record<string, unknown>;
+                        const latestId = String(bom.latest_analysis_id || latest.id || "");
+                        return (
+                          <tr key={bomId}>
+                            <td>
+                              <input
+                                value={bomDrafts[bomId] ?? bomName}
+                                onChange={(event) => setBomDrafts((current) => ({ ...current, [bomId]: event.target.value }))}
+                                maxLength={160}
+                                aria-label={`BOM name for ${bomName}`}
+                              />
+                            </td>
+                            <td>{revisions.length ? revisions.join(", ") : "—"}</td>
+                            <td>
+                              {latestId ? (
+                                <Link href={`/reports/${encodeURIComponent(latestId)}`}>
+                                  Open {String(latest.revision || "latest")}
+                                </Link>
+                              ) : "No saved analysis"}
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  className="cv-button small"
+                                  disabled={managementBusy !== "" || !String(bomDrafts[bomId] ?? bomName).trim()}
+                                  onClick={() => void onRenameBom(bomId)}
+                                >
+                                  {managementBusy === bomId ? "Saving…" : "Save name"}
+                                </button>
+                                {latestId ? (
+                                  <Link className="cv-button small secondary" href={`/reports/${encodeURIComponent(latestId)}`}>
+                                    Edit BOM
+                                  </Link>
+                                ) : null}
+                                <label className="cv-field" style={{ minWidth: 160, margin: 0 }}>
+                                  <span>Move to project</span>
+                                  <select
+                                    aria-label={`Move ${bomName} to project`}
+                                    value={bomProjectDrafts[bomId] ?? projectId}
+                                    onChange={(event) => setBomProjectDrafts((current) => ({ ...current, [bomId]: event.target.value }))}
+                                  >
+                                    {projects.map((option) => (
+                                      <option key={String(option.id)} value={String(option.id)}>
+                                        {String(option.name || "Project")}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <button
+                                  type="button"
+                                  className="cv-button small secondary"
+                                  disabled={managementBusy !== "" || (bomProjectDrafts[bomId] ?? projectId) === projectId}
+                                  onClick={() => void onMoveBom(bomId, projectId)}
+                                >
+                                  {managementBusy === bomId ? "Saving…" : "Move"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="cv-button small"
+                                  style={{ color: "#b42318", borderColor: "#f3b6b3" }}
+                                  disabled={managementBusy !== ""}
+                                  onClick={() => void onDeleteBom({
+                                    ...bom,
+                                    analysis_count: bomReports.length,
+                                    revision_count: revisions.length,
+                                  })}
+                                >
+                                  Delete BOM
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      ) : null}
 
       {stressHandoff || stressReport || stressBusy || stressError ? (
         <section

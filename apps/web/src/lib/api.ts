@@ -52,6 +52,9 @@ export type AnalyzeSummary = {
   persisted?: boolean;
   has_hierarchy?: boolean;
   top_rolled_risk?: string;
+  derived_from_analysis_id?: string;
+  applied_decision_ids?: string[];
+  used_decision_ids?: string[];
 };
 
 export type Report = AnalyzeSummary & {
@@ -436,13 +439,27 @@ export async function validateBom(
 export async function analyzeBom(
   file: File,
   token: string,
-  meta?: { projectName?: string; bomName?: string; revision?: string },
+  meta?: {
+    projectName?: string;
+    bomName?: string;
+    revision?: string;
+    sourceAnalysisId?: string;
+    appliedDecisionIds?: string[];
+    usedDecisionIds?: string[];
+  },
 ): Promise<AnalyzeSummary> {
   const body = new FormData();
   body.append("file", file);
   if (meta?.projectName) body.append("project_name", meta.projectName);
   if (meta?.bomName) body.append("bom_name", meta.bomName);
   if (meta?.revision) body.append("revision", meta.revision);
+  if (meta?.sourceAnalysisId) body.append("source_analysis_id", meta.sourceAnalysisId);
+  if (meta?.appliedDecisionIds?.length) {
+    body.append("applied_decision_ids", JSON.stringify(meta.appliedDecisionIds));
+  }
+  if (meta?.usedDecisionIds?.length) {
+    body.append("used_decision_ids", JSON.stringify(meta.usedDecisionIds));
+  }
   return apiJson("/boms/analyze", { method: "POST", token, body });
 }
 
@@ -463,6 +480,44 @@ export async function listProjects(token: string) {
     ok: boolean;
     projects: Array<Record<string, unknown>>;
   }>("/projects", { token });
+}
+
+export async function renameProject(token: string, projectId: string, name: string) {
+  return apiJson<{ ok: boolean; project: Record<string, unknown> }>(
+    `/projects/${encodeURIComponent(projectId)}`,
+    { method: "PATCH", token, body: JSON.stringify({ name }) },
+  );
+}
+
+export async function renameBom(
+  token: string,
+  bomId: string,
+  name: string,
+  projectId?: string,
+) {
+  return apiJson<{ ok: boolean; bom: Record<string, unknown> }>(
+    `/boms/${encodeURIComponent(bomId)}`,
+    {
+      method: "PATCH",
+      token,
+      body: JSON.stringify({ name, ...(projectId ? { project_id: projectId } : {}) }),
+    },
+  );
+}
+
+export async function moveBom(token: string, bomId: string, projectId: string) {
+  return apiJson<{ ok: boolean; bom: Record<string, unknown> }>(
+    `/boms/${encodeURIComponent(bomId)}`,
+    { method: "PATCH", token, body: JSON.stringify({ project_id: projectId }) },
+  );
+}
+
+export async function deleteBom(token: string, bomId: string) {
+  return apiJson<{
+    ok: boolean;
+    deleted: string;
+    deleted_analysis_count: number;
+  }>(`/boms/${encodeURIComponent(bomId)}`, { method: "DELETE", token });
 }
 
 export async function fetchReport(analysisId: string, token: string): Promise<Report> {

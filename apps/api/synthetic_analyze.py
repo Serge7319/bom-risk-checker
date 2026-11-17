@@ -203,11 +203,20 @@ def analyze_upload(
     persist: bool = True,
     analysis_mode: str | None = None,
     analysis_id: str | None = None,
+    derived_from_analysis_id: str | None = None,
+    applied_decision_ids: list[str] | None = None,
+    used_decision_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     df = parse_bom_bytes(filename, payload)
     report = analyze_dataframe(df, analysis_mode=analysis_mode, analysis_id=analysis_id)
     report["filename"] = filename or "bom.csv"
     report["workspace_id"] = workspace_id
+    if derived_from_analysis_id:
+        report["derived_from_analysis_id"] = str(derived_from_analysis_id)
+    if applied_decision_ids:
+        report["applied_decision_ids"] = [str(item) for item in applied_decision_ids]
+    if used_decision_ids:
+        report["used_decision_ids"] = [str(item) for item in used_decision_ids]
     # Durable stores require JSON-safe payloads (no NaN / numpy scalars).
     report = json_safe(report)
     assert isinstance(report, dict)

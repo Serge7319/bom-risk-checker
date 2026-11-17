@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AskCadivorPanel } from "@/components/AskCadivorPanel";
 import { AnalysisStageNavigation } from "@/components/AnalysisStageNavigation";
@@ -11,9 +11,13 @@ import { Icon } from "@/components/Icons";
 import { PartThumbnail } from "@/components/PartThumbnail";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import {
+  analyzeBom,
   downloadReportExport,
   fetchReport,
+  listProjects,
+  listReports,
   listDecisionRecords,
+  validateBom,
   type DecisionRecord,
   type Report,
   type ReportExportFormat,
@@ -26,6 +30,54 @@ import {
 import { analysisModeLabel, evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
+
+type EditableBomRow = {
+  mpn: string;
+  manufacturer: string;
+  description: string;
+  parentMpn: string;
+  lineType: string;
+  quantity: string;
+};
+
+function editableRows(parts: Array<Record<string, unknown>>): EditableBomRow[] {
+  return parts.map((part) => ({
+    mpn: String(part.MPN || part.mpn || ""),
+    manufacturer: String(part.Manufacturer || part.manufacturer || ""),
+    description: String(part.Description || part.description || ""),
+    parentMpn: String(part["Parent MPN"] || part.parent_mpn || ""),
+    lineType: String(part["Line Type"] || part.line_type || ""),
+    quantity: String(
+      part.quantity_per_parent ?? part["Quantity per Parent"] ?? part.Quantity ?? part.quantity ?? "1",
+    ),
+  }));
+}
+
+function csvCell(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function revisionCandidate(current: string, used: Set<string>): string {
+  const base = current.trim() || "A";
+  if (/^[A-Z]$/i.test(base)) {
+    for (let code = base.toUpperCase().charCodeAt(0) + 1; code <= "Z".charCodeAt(0); code += 1) {
+      const candidate = String.fromCharCode(code);
+      if (!used.has(candidate.toLowerCase())) return candidate;
+    }
+  }
+  if (/^\d+$/.test(base)) {
+    let number = Number(base) + 1;
+    while (used.has(String(number).toLowerCase())) number += 1;
+    return String(number);
+  }
+  let suffix = 2;
+  let candidate = `${base}-next`;
+  while (used.has(candidate.toLowerCase())) {
+    candidate = `${base}-next-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
 
 function riskBadge(level: string) {
   const normalized = level.toLowerCase();
@@ -46,6 +98,15 @@ export default function ReportPage() {
   const [exportError, setExportError] = useState("");
   const [exporting, setExporting] = useState<ReportExportFormat | null>(null);
   const [review, setReview] = useState<BomReviewProgress | null>(null);
+  const [bomEditorOpen, setBomEditorOpen] = useState(false);
+  const [bomEditorRows, setBomEditorRows] = useState<EditableBomRow[]>([]);
+  const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [bomNameDraft, setBomNameDraft] = useState("");
+  const [revisionDraft, setRevisionDraft] = useState("");
+  const [appliedDecisionIds, setAppliedDecisionIds] = useState<string[]>([]);
+  const [usedDecisionIds, setUsedDecisionIds] = useState<string[]>([]);
+  const [revisionBusy, setRevisionBusy] = useState(false);
+  const [revisionError, setRevisionError] = useState("");
 
   useEffect(() => {
     if (!session) return;
@@ -95,6 +156,124 @@ export default function ReportPage() {
     }
   }
 
+  async function openBomEditor() {
+    if (!session || !report) return;
+    setRevisionError("");
+    try {
+      const [{ reports }, { projects }] = await Promise.all([
+        listReports(session.access_token),
+        listProjects(session.access_token),
+      ]);
+      const bomId = String(report.bom_id || "");
+      const used = new Set(
+        (reports || [])
+          .filter((row) => String(row.bom_id || "") === bomId)
+          .map((row) => String(row.revision || "").trim().toLowerCase())
+          .filter(Boolean),
+      );
+      const projectName = projects.find(
+        (project) => String(project.id || "") === String(report.project_id || ""),
+      )?.name;
+      setProjectNameDraft(
+        String(projectName || String(report.project_name || "").split(" — ")[0] || "General"),
+      );
+      setBomNameDraft(String(report.bom_name || report.filename || "Saved BOM"));
+      setRevisionDraft(revisionCandidate(String(report.revision || "A"), used));
+      setBomEditorRows(editableRows(report.parts || []));
+      setAppliedDecisionIds([]);
+      setUsedDecisionIds([]);
+      setBomEditorOpen(true);
+    } catch (err) {
+      setRevisionError(err instanceof Error ? err.message : "Saved BOM details could not be loaded.");
+    }
+  }
+
+  function applyDecisionCandidate(decision: DecisionRecord) {
+    const currentMpn = decision.part_a.trim().toLowerCase();
+    const candidateMpn = decision.part_b.trim();
+    if (!candidateMpn || candidateMpn.toLowerCase() === currentMpn) {
+      setRevisionError("This decision does not contain a distinct replacement part number.");
+      return;
+    }
+    if (!bomEditorRows.some((row) => row.mpn.trim().toLowerCase() === currentMpn)) {
+      setRevisionError(`The current part ${decision.part_a} is not present in this saved BOM revision.`);
+      return;
+    }
+    setBomEditorRows((current) => current.map((row) => row.mpn.trim().toLowerCase() !== currentMpn
+      ? row
+      : {
+          ...row,
+          mpn: candidateMpn,
+          manufacturer: String(decision.manufacturer_b || row.manufacturer),
+        }));
+    setRevisionError("");
+    const decisionsForPart = new Set(
+      decisions
+        .filter((item) => item.part_a.trim().toLowerCase() === currentMpn)
+        .map((item) => item.id),
+    );
+    setAppliedDecisionIds((current) => {
+      const next = current.filter((id) => !decisionsForPart.has(id));
+      return decision.decision === "approve_alternate"
+        ? [...next, decision.id]
+        : next;
+    });
+    setUsedDecisionIds((current) => [
+      ...current.filter((id) => !decisionsForPart.has(id)),
+      decision.id,
+    ]);
+  }
+
+  async function saveBomRevision(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || !report) return;
+    const cleanRows = bomEditorRows.filter((row) => row.mpn.trim());
+    if (!cleanRows.length) {
+      setRevisionError("Keep at least one part with a manufacturer part number.");
+      return;
+    }
+    if (!projectNameDraft.trim() || !bomNameDraft.trim() || !revisionDraft.trim()) {
+      setRevisionError("Enter a new revision label before saving.");
+      return;
+    }
+    setRevisionBusy(true);
+    setRevisionError("");
+    try {
+      const header = ["MPN", "Manufacturer", "Description", "Parent MPN", "Line Type", "Quantity"];
+      const lines = [
+        header.map(csvCell).join(","),
+        ...cleanRows.map((row) => [
+          row.mpn,
+          row.manufacturer,
+          row.description,
+          row.parentMpn,
+          row.lineType,
+          row.quantity,
+        ].map(csvCell).join(",")),
+      ];
+      const filename = `${bomNameDraft.trim().replace(/[^a-z0-9-_]+/gi, "-")}-rev-${revisionDraft.trim()}.csv`;
+      const file = new File([lines.join("\r\n")], filename, { type: "text/csv" });
+      const preview = await validateBom(file, session.access_token);
+      if (!preview.can_analyze) {
+        throw new Error(preview.errors?.[0] || "The edited BOM did not pass validation.");
+      }
+      const created = await analyzeBom(file, session.access_token, {
+        projectName: projectNameDraft.trim(),
+        bomName: bomNameDraft.trim(),
+        revision: revisionDraft.trim(),
+        sourceAnalysisId: String(report.analysis_id || report.id),
+        appliedDecisionIds,
+        usedDecisionIds,
+      });
+      setBomEditorOpen(false);
+      router.push(`/reports/${encodeURIComponent(created.analysis_id)}`);
+    } catch (err) {
+      setRevisionError(err instanceof Error ? err.message : "The new BOM revision could not be analyzed.");
+    } finally {
+      setRevisionBusy(false);
+    }
+  }
+
   if (!session) return null;
 
   const meta = {
@@ -122,6 +301,14 @@ export default function ReportPage() {
         actions={
           <>
             <SecondaryLink href="/bom-analyzer">New analysis</SecondaryLink>
+            <button
+              type="button"
+              className="cv-button secondary"
+              onClick={() => void openBomEditor()}
+              disabled={!report}
+            >
+              Edit BOM / new revision
+            </button>
             <SecondaryLink href="/engineering-decisions">
               Decision queue
             </SecondaryLink>
@@ -142,6 +329,106 @@ export default function ReportPage() {
         analysisId={String(report?.analysis_id || report?.id || params.id)}
         current="risks"
       />
+
+      {bomEditorOpen ? (
+        <div
+          className="cv-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !revisionBusy) setBomEditorOpen(false);
+          }}
+        >
+          <section className="cv-modal-card" role="dialog" aria-modal="true" aria-labelledby="bom-editor-title" style={{ width: "min(1100px, 100%)" }}>
+            <div className="cv-modal-heading">
+              <div>
+                <div className="cv-eyebrow">BOM revision editor</div>
+                <h2 id="bom-editor-title">Edit BOM and create a new revision</h2>
+                <p>The current saved report stays unchanged. Cadivor validates and re-analyzes the edited part list as a new revision on this saved BOM.</p>
+              </div>
+              <span className="cv-badge blue">New revision</span>
+            </div>
+            <form onSubmit={saveBomRevision}>
+              <div className="cv-form-grid cv-form-grid-two">
+                <div className="cv-field">
+                  <span>Project</span>
+                  <input value={projectNameDraft} readOnly aria-label="Project for this revision" />
+                </div>
+                <div className="cv-field">
+                  <span>BOM</span>
+                  <input value={bomNameDraft} readOnly aria-label="BOM for this revision" />
+                </div>
+                <label className="cv-field">
+                  <span>New revision</span>
+                  <input value={revisionDraft} onChange={(event) => setRevisionDraft(event.target.value)} maxLength={80} required />
+                </label>
+              </div>
+              <p className="cv-small-note" style={{ margin: "8px 0 12px" }}>
+                Rename or move this BOM from Manage saved BOMs. New revisions stay attached to the same project and BOM history.
+              </p>
+
+              {decisions.some((decision) => decision.decision !== "reject_alternate") ? (
+                <section className="cv-card pad" style={{ margin: "14px 0", background: "#f8fbff" }}>
+                  <h3 className="cv-card-title">Replacement candidates from this BOM</h3>
+                  <p className="cv-card-subtitle">Use a candidate in the draft to update the new report. This does not modify the source report or qualify the part; only an approved decision is linked as approval evidence.</p>
+                  <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                    {decisions
+                      .filter((decision) => decision.decision !== "reject_alternate")
+                      .map((decision) => {
+                        const sourcePartPresent = bomEditorRows.some(
+                          (row) => row.mpn.trim().toLowerCase() === decision.part_a.trim().toLowerCase(),
+                        );
+                        const candidateInDraft = bomEditorRows.some(
+                          (row) => row.mpn.trim().toLowerCase() === decision.part_b.trim().toLowerCase(),
+                        );
+                        const candidateUsed = usedDecisionIds.includes(decision.id);
+                        return (
+                          <div key={decision.id} style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                            <span><strong>{decision.part_a}</strong> → <strong>{decision.part_b}</strong> · {decision.reviewer} · {decision.decision === "approve_alternate" ? "Approved" : "Not approved"}</span>
+                            <button type="button" className="cv-button small secondary" onClick={() => applyDecisionCandidate(decision)} disabled={candidateUsed || !sourcePartPresent}>
+                              {candidateUsed && decision.decision === "approve_alternate" ? "Applied with approval" : candidateUsed ? "In draft · not approved" : !sourcePartPresent && candidateInDraft ? "In draft" : !sourcePartPresent ? "Source part missing" : "Use candidate in draft"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </section>
+              ) : null}
+
+              <div className="cv-small-note" style={{ margin: "10px 0" }}>
+                Creating a revision runs a new analysis and counts toward your workspace plan. If a one-time report is required, Cadivor will show that requirement before saving the analysis.
+              </div>
+              <div className="cv-table-wrap" style={{ maxHeight: "48vh", overflow: "auto" }}>
+                <table className="cv-table">
+                  <thead><tr><th>MPN</th><th>Manufacturer</th><th>Description</th><th>Parent MPN</th><th>Line type</th><th>Quantity</th><th>Action</th></tr></thead>
+                  <tbody>
+                    {bomEditorRows.map((row, index) => (
+                      <tr key={`bom-edit-${index}`}>
+                        <td><input aria-label={`Part number row ${index + 1}`} value={row.mpn} onChange={(event) => setBomEditorRows((current) => current.map((item, i) => i === index ? { ...item, mpn: event.target.value } : item))} /></td>
+                        <td><input aria-label={`Manufacturer row ${index + 1}`} value={row.manufacturer} onChange={(event) => setBomEditorRows((current) => current.map((item, i) => i === index ? { ...item, manufacturer: event.target.value } : item))} /></td>
+                        <td><input aria-label={`Description row ${index + 1}`} value={row.description} onChange={(event) => setBomEditorRows((current) => current.map((item, i) => i === index ? { ...item, description: event.target.value } : item))} /></td>
+                        <td><input aria-label={`Parent MPN row ${index + 1}`} value={row.parentMpn} onChange={(event) => setBomEditorRows((current) => current.map((item, i) => i === index ? { ...item, parentMpn: event.target.value } : item))} /></td>
+                        <td><input aria-label={`Line type row ${index + 1}`} value={row.lineType} onChange={(event) => setBomEditorRows((current) => current.map((item, i) => i === index ? { ...item, lineType: event.target.value } : item))} /></td>
+                        <td><input aria-label={`Quantity row ${index + 1}`} type="number" min="0" step="1" value={row.quantity} onChange={(event) => setBomEditorRows((current) => current.map((item, i) => i === index ? { ...item, quantity: event.target.value } : item))} /></td>
+                        <td><button type="button" className="cv-button small" onClick={() => setBomEditorRows((current) => current.filter((_, i) => i !== index))}>Remove</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                <button type="button" className="cv-button secondary" onClick={() => setBomEditorRows((current) => [...current, { mpn: "", manufacturer: "", description: "", parentMpn: "", lineType: "", quantity: "1" }])}>Add a part</button>
+                <span className="cv-small-note">{bomEditorRows.filter((row) => row.mpn.trim()).length} parts · editing creates a separate saved analysis</span>
+              </div>
+              {revisionError ? <div className="cv-error" role="alert" style={{ marginTop: 12 }}>{revisionError}</div> : null}
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+                <button type="button" className="cv-button secondary" disabled={revisionBusy} onClick={() => setBomEditorOpen(false)}>Cancel</button>
+                <button type="submit" className="cv-button primary" disabled={revisionBusy || !bomEditorRows.some((row) => row.mpn.trim())}>
+                  {revisionBusy ? "Validating and analyzing…" : "Create new revision and report"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
 
       {report ? (
         <>
@@ -169,6 +456,18 @@ export default function ReportPage() {
               <dd>{analysisModeLabel(report.mode)}</dd>
             </div>
           </dl>
+
+          {report.derived_from_analysis_id ? (
+            <section className="cv-card pad" style={{ marginBottom: 14 }} data-testid="revision-provenance">
+              <strong>Revision created from an earlier saved BOM</strong>
+              <p className="cv-small-note" style={{ margin: "6px 0 0" }}>
+                Source report: <Link href={`/reports/${encodeURIComponent(report.derived_from_analysis_id)}`}>open original analysis</Link>
+                {report.used_decision_ids?.length
+                  ? ` · ${report.used_decision_ids.length} replacement decision candidate${report.used_decision_ids.length === 1 ? "" : "s"} used${report.applied_decision_ids?.length ? ` (${report.applied_decision_ids.length} approved)` : " (none approved)"}`
+                  : " · BOM contents edited by the user"}
+              </p>
+            </section>
+          ) : null}
 
           <section className="cv-card pad cv-report-export" aria-labelledby="report-export-title">
             <div>

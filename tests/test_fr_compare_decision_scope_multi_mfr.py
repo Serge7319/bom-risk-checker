@@ -72,8 +72,9 @@ class MultiCompareHelperTests(unittest.TestCase):
     def test_typescript_snapshot_preserves_three_brands(self):
         source = MULTI_COMPARE.read_text(encoding="utf-8")
         self.assertIn("multi_candidate_manufacturers", source)
-        self.assertIn("result.manufacturer_b = brand", source)
-        self.assertIn("cardB.manufacturer = brand", source)
+        self.assertIn("return { ...(column.result || {}) }", source)
+        self.assertNotIn("result.manufacturer_b = brand", source)
+        self.assertNotIn("cardB.manufacturer = brand", source)
         # Headings and evidence surfaces include manufacturer.
         self.assertIn("Candidate · ${mpn} · ${brand}", source)
         self.assertIn("formatCandidateHeading(column.mpn, brand)", source)
