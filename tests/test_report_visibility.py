@@ -9,21 +9,34 @@ from apps.api.report_visibility import (
 )
 
 
-def test_explicitly_named_qa_and_demo_analyses_are_internal_fixtures():
+def test_only_explicit_fixture_metadata_marks_an_analysis_internal():
     fixtures = [
-        {"project_name": "PR620 Synthetic Intake Smoke", "bom_name": "Demo Controller BOM"},
-        {"project_name": "PR603 Production Nested Smoke 2026-11-11", "revision": "QA-603-NESTED"},
-        {"project_name": "Cadivor Synthetic E2E QA Test"},
-        {"project_name": "Demo Product Line", "bom_name": "Test_BOM2"},
+        {"id": "explicit", "internal_test_fixture": True},
+        {"id": "legacy-explicit", "is_test_fixture": True},
     ]
 
     assert all(is_internal_test_fixture_analysis(row) for row in fixtures)
+
+
+def test_customer_names_and_filenames_do_not_hide_a_saved_analysis():
+    row = {
+        "id": "customer-test-bom",
+        "project_name": "Drone_02",
+        "bom_name": "cadivor_test_bom_10_parts",
+        "filename": "cadivor_test_bom_10_parts.csv",
+        "revision": "A",
+    }
+
+    assert not is_internal_test_fixture_analysis(row)
+    assert customer_visible_analyses([row], production=True) == [row]
 
 
 def test_real_work_analysis_and_smoke_detector_names_are_not_hidden():
     real_reports = [
         {"id": "real", "project_name": "Radar X-Band", "bom_name": "Power Supply"},
         {"id": "detector", "project_name": "Smoke Detector Controller", "bom_name": "rev A"},
+        {"id": "qa-project", "project_name": "QA Controller Validation"},
+        {"id": "synthetic-project", "project_name": "Synthetic Preview Assembly"},
         {"id": "supplier-estimate", "project_name": "Pump Controller", "mode": "synthetic-preview"},
     ]
 
@@ -32,7 +45,7 @@ def test_real_work_analysis_and_smoke_detector_names_are_not_hidden():
 
 def test_fixture_filter_applies_only_to_production_customer_lists():
     rows = [
-        {"id": "fixture", "project_name": "Synthetic Smoke Test"},
+        {"id": "fixture", "project_name": "Synthetic Smoke Test", "internal_test_fixture": True},
         {"id": "customer", "project_name": "Motor Controller"},
     ]
 
@@ -49,6 +62,7 @@ def test_project_summaries_hide_fixtures_and_restore_last_visible_revision():
             "project_name": "Motor Controller",
             "bom_name": "Power Board",
             "filename": "Synthetic_Smoke_Run.csv",
+            "internal_test_fixture": True,
         },
         {
             "id": "customer-old",
@@ -65,6 +79,7 @@ def test_project_summaries_hide_fixtures_and_restore_last_visible_revision():
             "project_id": "project-test",
             "project_name": "Synthetic Smoke Test",
             "bom_name": "QA BOM",
+            "internal_test_fixture": True,
         },
     ]
     projects = [
@@ -82,8 +97,14 @@ def test_project_summaries_hide_fixtures_and_restore_last_visible_revision():
         {
             "id": "project-test",
             "name": "Synthetic Smoke Test",
+            "internal_test_fixture": True,
             "boms": [
-                {"id": "bom-test", "name": "QA BOM", "latest_analysis_id": "fixture-only"}
+                {
+                    "id": "bom-test",
+                    "name": "QA BOM",
+                    "latest_analysis_id": "fixture-only",
+                    "internal_test_fixture": True,
+                }
             ],
         },
     ]
@@ -117,6 +138,7 @@ def test_plan_usage_counts_unique_customer_boms_and_excludes_production_fixtures
                     "bom_id": "bom-qa",
                     "project_name": "Synthetic Smoke Test",
                     "created_at": "2026-11-07T12:00:00Z",
+                    "internal_test_fixture": True,
                 },
             ]
 
@@ -134,8 +156,19 @@ def test_production_reports_endpoint_hides_internal_fixture_rows(monkeypatch):
     from apps.api import main
 
     rows = [
-        {"id": "fixture", "project_name": "Cadivor Synthetic E2E QA Test"},
+        {
+            "id": "fixture",
+            "project_name": "Cadivor Synthetic E2E QA Test",
+            "internal_test_fixture": True,
+        },
         {"id": "customer", "project_name": "Motor Controller"},
+        {
+            "id": "customer-test-bom",
+            "project_name": "Drone_02",
+            "bom_name": "cadivor_test_bom_10_parts",
+            "filename": "cadivor_test_bom_10_parts.csv",
+            "revision": "A",
+        },
     ]
     monkeypatch.setattr(main, "_auth_context", lambda _request: ({"workspace_id": "w"}, None))
     monkeypatch.setattr(main, "describe_persistence", lambda: {"backend": "postgres"})
@@ -146,7 +179,7 @@ def test_production_reports_endpoint_hides_internal_fixture_rows(monkeypatch):
     payload = json.loads(response.body)
 
     assert response.status_code == 200
-    assert [row["id"] for row in payload["reports"]] == ["customer"]
+    assert [row["id"] for row in payload["reports"]] == ["customer", "customer-test-bom"]
     assert payload["mode"] == "workspace-reports"
 
 
@@ -178,7 +211,11 @@ def test_production_direct_report_route_hides_internal_fixture(monkeypatch):
     monkeypatch.setattr(
         main,
         "get_report",
-        lambda *_args, **_kwargs: {"id": "qa", "project_name": "Synthetic Smoke Test"},
+        lambda *_args, **_kwargs: {
+            "id": "qa",
+            "project_name": "Synthetic Smoke Test",
+            "internal_test_fixture": True,
+        },
     )
     monkeypatch.setattr(main, "is_production_runtime", lambda: True)
 
@@ -187,6 +224,22 @@ def test_production_direct_report_route_hides_internal_fixture(monkeypatch):
     )
 
     assert response.status_code == 404
+
+
+def test_production_direct_report_route_keeps_user_test_bom_visible(monkeypatch):
+    from apps.api import main
+
+    report = {
+        "id": "customer-test-bom",
+        "project_name": "Drone_02",
+        "bom_name": "cadivor_test_bom_10_parts",
+        "filename": "cadivor_test_bom_10_parts.csv",
+        "revision": "A",
+    }
+    monkeypatch.setattr(main, "get_report", lambda *_args, **_kwargs: report)
+    monkeypatch.setattr(main, "is_production_runtime", lambda: True)
+
+    assert main._get_visible_report("customer-test-bom", workspace_id="w") is report
 
 
 def test_missing_or_hidden_monitoring_analysis_returns_empty_workspace_state(monkeypatch):
