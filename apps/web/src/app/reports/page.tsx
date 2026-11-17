@@ -359,7 +359,7 @@ function ReportsInner() {
                                   </Link>
                                 ) : null}
                                 <label className="cv-field" style={{ minWidth: 160, margin: 0 }}>
-                                  <span className="cv-visually-hidden">Move {bomName} to project</span>
+                                  <span>Move to project</span>
                                   <select
                                     aria-label={`Move ${bomName} to project`}
                                     value={bomProjectDrafts[bomId] ?? projectId}

@@ -233,7 +233,7 @@ export default function ReportPage() {
       return;
     }
     if (!projectNameDraft.trim() || !bomNameDraft.trim() || !revisionDraft.trim()) {
-      setRevisionError("Enter a project name, BOM name, and new revision label.");
+      setRevisionError("Enter a new revision label before saving.");
       return;
     }
     setRevisionBusy(true);
@@ -342,25 +342,28 @@ export default function ReportPage() {
               <div>
                 <div className="cv-eyebrow">BOM revision editor</div>
                 <h2 id="bom-editor-title">Edit BOM and create a new revision</h2>
-                <p>The current saved report stays unchanged. Cadivor validates and re-analyzes the edited part list as a new revision.</p>
+                <p>The current saved report stays unchanged. Cadivor validates and re-analyzes the edited part list as a new revision on this saved BOM.</p>
               </div>
               <span className="cv-badge blue">New revision</span>
             </div>
             <form onSubmit={saveBomRevision}>
               <div className="cv-form-grid cv-form-grid-two">
-                <label className="cv-field">
-                  <span>Project name</span>
-                  <input value={projectNameDraft} onChange={(event) => setProjectNameDraft(event.target.value)} maxLength={120} required />
-                </label>
-                <label className="cv-field">
-                  <span>BOM name</span>
-                  <input value={bomNameDraft} onChange={(event) => setBomNameDraft(event.target.value)} maxLength={160} required />
-                </label>
+                <div className="cv-field">
+                  <span>Project</span>
+                  <input value={projectNameDraft} readOnly aria-label="Project for this revision" />
+                </div>
+                <div className="cv-field">
+                  <span>BOM</span>
+                  <input value={bomNameDraft} readOnly aria-label="BOM for this revision" />
+                </div>
                 <label className="cv-field">
                   <span>New revision</span>
                   <input value={revisionDraft} onChange={(event) => setRevisionDraft(event.target.value)} maxLength={80} required />
                 </label>
               </div>
+              <p className="cv-small-note" style={{ margin: "8px 0 12px" }}>
+                Rename or move this BOM from Manage saved BOMs. New revisions stay attached to the same project and BOM history.
+              </p>
 
               {decisions.some((decision) => decision.decision !== "reject_alternate") ? (
                 <section className="cv-card pad" style={{ margin: "14px 0", background: "#f8fbff" }}>
