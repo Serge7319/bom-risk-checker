@@ -10,6 +10,7 @@ import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import {
   COMPARE_PARTS_TIMEOUT_MS,
   compareParts,
+  fetchProfile,
   listReports,
   recordDecision,
   type DecisionRecord,
@@ -140,6 +141,8 @@ function ComparePartsInner() {
   const [decisionPartB, setDecisionPartB] = useState("");
   const [decision, setDecision] = useState("hold_for_review");
   const [reviewer, setReviewer] = useState("");
+  const [reviewerName, setReviewerName] = useState("");
+  const reviewerTouched = useRef(false);
   const [rationale, setRationale] = useState("");
   const [validationChecks, setValidationChecks] = useState<string[]>([]);
   const [followUpAction, setFollowUpAction] = useState("");
@@ -193,7 +196,6 @@ function ComparePartsInner() {
     // Standalone Compare Parts must not silently bind the latest/first BOM.
     const queryAnalysis = (search.get("analysis_id") || "").trim();
     setAnalysisId(queryAnalysis);
-    setReviewer(session.email || "");
     listReports(session.access_token)
       .then(({ reports: rows }) => {
         if (active) {
@@ -207,6 +209,35 @@ function ComparePartsInner() {
       active = false;
     };
   }, [session, search]);
+
+  useEffect(() => {
+    if (!session) {
+      setReviewerName("");
+      return;
+    }
+    let active = true;
+    setReviewerName("");
+    fetchProfile(session.access_token)
+      .then((payload) => {
+        const nested = payload.profile;
+        const profile = nested && typeof nested === "object"
+          ? nested as Record<string, unknown>
+          : payload;
+        if (active) setReviewerName(String(profile.full_name || "").trim());
+      })
+      .catch(() => {
+        if (active) setReviewerName("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [session]);
+
+  useEffect(() => {
+    if (decisionOpen && reviewerName && !reviewerTouched.current && !reviewer.trim()) {
+      setReviewer(reviewerName);
+    }
+  }, [decisionOpen, reviewer, reviewerName]);
 
   useEffect(() => {
     if (!decisionOpen) return;
@@ -422,7 +453,8 @@ function ComparePartsInner() {
         : String(result?.part_b || partB || ""),
     );
     setDecision("hold_for_review");
-    setReviewer(session?.email || "");
+    reviewerTouched.current = false;
+    setReviewer(reviewerName);
     setRationale("");
     setValidationChecks([]);
     setFollowUpAction("");
@@ -1451,7 +1483,16 @@ function ComparePartsInner() {
                 </label>
                 <label className="cv-field">
                   <span>Reviewer</span>
-                  <input value={reviewer} onChange={(event) => setReviewer(event.target.value)} maxLength={120} required />
+                  <input
+                    value={reviewer}
+                    onChange={(event) => {
+                      reviewerTouched.current = true;
+                      setReviewer(event.target.value);
+                    }}
+                    placeholder="Enter your name"
+                    maxLength={120}
+                    required
+                  />
                 </label>
               </div>
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 from starlette.testclient import TestClient
@@ -34,6 +35,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("CADIVOR_MONITORING_CRON_TOKEN", raising=False)
     monkeypatch.delenv("CADIVOR_MIGRATION_STRIPE_CHECKOUT_ENABLED", raising=False)
     monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    monkeypatch.delenv("SUPABASE_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
     monkeypatch.delenv("RESEND_API_KEY", raising=False)
     reset_store_for_tests(tmp_path / "store.json")
     reset_auth_store_for_tests(tmp_path / "auth.json", accounts=SANDBOX_SEED_USERS)
@@ -62,12 +66,14 @@ def _readiness(client: TestClient) -> dict:
     return body
 
 
-def test_service_readiness_not_connected_when_flags_off(client: TestClient):
+def test_service_readiness_unknown_when_supabase_billing_status_unavailable(
+    client: TestClient,
+):
     body = _readiness(client)
     assert body["monitoring_email"]["status"] == "not_connected"
     assert body["scheduler"]["status"] == "not_connected"
-    assert body["billing_checkout"]["status"] == "not_connected"
-
+    assert body["billing_checkout"]["status"] == "unknown"
+    assert body["billing_checkout"]["enabled"] is False
 
 def test_monitoring_email_enabled_without_transport_is_not_ready(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
@@ -125,7 +131,7 @@ def test_scheduler_with_token_stays_partial_without_verified_schedule(
     assert body["scheduler"]["status"] == "partial"
 
 
-def test_billing_checkout_enabled_but_not_implemented_is_not_ready(
+def test_service_readiness_uses_the_supabase_checkout_used_by_settings(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv("CADIVOR_MIGRATION_STRIPE_CHECKOUT_ENABLED", "1")
@@ -138,11 +144,72 @@ def test_billing_checkout_enabled_but_not_implemented_is_not_ready(
     )
     assert probe.get("code") == "not_implemented"
 
+    request_action = Mock(
+        return_value=(
+            {
+                "ok": True,
+                "checkout_enabled": True,
+                "stripe_mode": "test",
+                "can_manage_billing": True,
+                "plans": [
+                    {"name": "Starter", "enabled": True},
+                    {"name": "Professional", "enabled": True},
+                    {"name": "Business", "enabled": True},
+                ],
+            },
+            200,
+        )
+    )
+    monkeypatch.setattr(
+        api_main.subscription_billing_service, "request_action", request_action
+    )
     body = _readiness(client)
-    assert body["billing_checkout"]["enabled"] is True
-    assert body["billing_checkout"]["status"] == "not_connected"
-    assert body["billing_checkout"].get("code") == "not_implemented"
+    billing = body["billing_checkout"]
+    assert billing["enabled"] is True
+    assert billing["status"] == "ready"
+    assert billing["stripe_mode"] == "test"
+    assert billing["enabled_plan_count"] == 3
+    assert billing["can_manage_billing"] is True
+    request_action.assert_called_once()
+    assert request_action.call_args.kwargs["action"] == "status"
 
+
+def test_service_readiness_is_partial_when_only_existing_portal_is_available(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        api_main.subscription_billing_service,
+        "request_action",
+        Mock(
+            return_value=(
+                {
+                    "ok": True,
+                    "checkout_enabled": False,
+                    "stripe_mode": "live",
+                    "can_manage_billing": True,
+                    "plans": [],
+                },
+                200,
+            )
+        ),
+    )
+    billing = _readiness(client)["billing_checkout"]
+    assert billing["status"] == "partial"
+    assert billing["enabled"] is False
+    assert billing["can_manage_billing"] is True
+
+
+def test_service_readiness_marks_unexpected_billing_response_unknown(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        api_main.subscription_billing_service,
+        "request_action",
+        Mock(return_value=({"ok": False}, 503)),
+    )
+    billing = _readiness(client)["billing_checkout"]
+    assert billing["status"] == "unknown"
+    assert billing["enabled"] is False
 
 def test_service_readiness_error_omits_exception_string(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
@@ -175,6 +242,17 @@ def test_settings_copy_is_customer_facing():
     assert "CSV file workflows are listed separately from live design-tool or vendor integrations" in settings
     assert "Live design-tool / vendor connectors" in settings
     assert "Design-tool connectors" not in settings or "Live design-tool / vendor connectors" in settings
+
+def test_service_readiness_labels_and_descriptions_stack_without_overlap():
+    settings = Path("apps/web/src/app/settings/page.tsx").read_text(encoding="utf-8")
+    css = Path("apps/web/src/app/globals.css").read_text(encoding="utf-8")
+    compact_css = "".join(css.split())
+
+    assert 'className="cv-action-list cv-service-readiness-list"' in settings
+    assert 'className="cv-service-readiness-copy"' in settings
+    assert ".cv-service-readiness-copy{display:flex" in compact_css
+    assert "overflow-wrap:anywhere" in css
+    assert "@media(max-width:640px){.cv-service-readiness-listli{grid-template-columns:minmax(0,1fr)" in compact_css
 
 
 def test_csv_file_workflows_do_not_make_live_connectors_ready(client):

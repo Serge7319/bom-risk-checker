@@ -20,6 +20,7 @@ from src.saved_bom_project import (
 
 from apps.api.json_safe import json_safe
 from apps.api.workspace_store import WorkspaceAccessError
+from apps.api.report_visibility import customer_visible_analyses, customer_visible_projects
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schema" / "sandbox_workspace.sql"
 _LOCK = threading.RLock()
@@ -79,7 +80,7 @@ class PostgresWorkspaceStore:
         with _LOCK:
             with self._connect() as conn:
                 conn.execute(
-                    "TRUNCATE migration_decision_records, migration_reports, migration_analyses, "
+                    "TRUNCATE migration_procurement_quotes, migration_decision_records, migration_reports, migration_analyses, "
                     "migration_revisions, migration_boms, migration_projects "
                     "CASCADE"
                 )
@@ -361,6 +362,19 @@ class PostgresWorkspaceStore:
                 out.append(item)
             return out
 
+    def list_monitoring_analyses(self) -> list[dict[str, str]]:
+        """Return saved analysis scopes for the scheduler, without report contents."""
+        self.ensure_schema()
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT workspace_id, id AS analysis_id FROM migration_analyses "
+                "WHERE total_parts > 0 ORDER BY workspace_id, created_at"
+            ).fetchall()
+        return [
+            {"workspace_id": str(row["workspace_id"]), "analysis_id": str(row["analysis_id"])}
+            for row in rows
+        ]
+
     def create_decision_record(
         self, record: dict[str, Any], *, workspace_id: str
     ) -> dict[str, Any]:
@@ -422,6 +436,79 @@ class PostgresWorkspaceStore:
             if isinstance(payload, dict):
                 records.append(dict(payload))
         return records
+
+    def create_procurement_quote(
+        self, quote: dict[str, Any], *, workspace_id: str
+    ) -> dict[str, Any]:
+        """Save a quote snapshot inside a workspace and saved-analysis scope."""
+        wid = self._require_workspace(workspace_id)
+        analysis_id = str(quote.get("analysis_id") or "").strip()
+        if not analysis_id or not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id} was not found")
+        with _LOCK:
+            saved = dict(quote)
+            quote_id = str(saved.get("quote_id") or uuid.uuid4())
+            created_at = str(saved.get("created_at") or _now())
+            saved.update(
+                {
+                    "id": quote_id,
+                    "quote_id": quote_id,
+                    "workspace_id": wid,
+                    "created_at": created_at,
+                }
+            )
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO migration_procurement_quotes
+                      (id, workspace_id, analysis_id, requested_mpn,
+                       requested_manufacturer, created_at, payload)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+                    """,
+                    (
+                        quote_id,
+                        wid,
+                        analysis_id,
+                        str(saved.get("requested_mpn") or ""),
+                        str(saved.get("requested_manufacturer") or ""),
+                        created_at,
+                        json.dumps(saved),
+                    ),
+                )
+                conn.commit()
+            return saved
+
+    def list_procurement_quotes(
+        self,
+        *,
+        workspace_id: str,
+        analysis_id: str,
+        requested_mpn: str | None = None,
+        requested_manufacturer: str | None = None,
+    ) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        aid = str(analysis_id or "").strip()
+        mpn = str(requested_mpn or "").strip()
+        maker = str(requested_manufacturer or "").strip()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT payload FROM migration_procurement_quotes
+                WHERE workspace_id = %s AND analysis_id = %s
+                  AND (%s = '' OR LOWER(requested_mpn) = LOWER(%s))
+                  AND (%s = '' OR LOWER(requested_manufacturer) = LOWER(%s))
+                ORDER BY created_at DESC
+                """,
+                (wid, aid, mpn, mpn, maker, maker),
+            ).fetchall()
+        result = []
+        for row in rows:
+            payload = row["payload"]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            if isinstance(payload, dict):
+                result.append(dict(payload))
+        return result
 
     def list_projects(self, *, workspace_id: str) -> list[dict[str, Any]]:
         wid = self._require_workspace(workspace_id)
@@ -486,15 +573,25 @@ class PostgresWorkspaceStore:
             "top_rolled_risk": (analysis or {}).get("top_rolled_risk"),
         }
 
-    def home_dashboard(self, *, workspace_id: str) -> dict[str, Any]:
+    def home_dashboard(
+        self, *, workspace_id: str, production: bool = False
+    ) -> dict[str, Any]:
         wid = self._require_workspace(workspace_id)
-        projects = self.list_projects(workspace_id=wid)
-        analyses = self.list_reports(workspace_id=wid)
+        analyses = customer_visible_analyses(
+            self.list_reports(workspace_id=wid), production=production
+        )
+        projects = customer_visible_projects(
+            self.list_projects(workspace_id=wid), analyses, production=production
+        )
         with self._connect() as conn:
-            bom_count = conn.execute(
-                "SELECT COUNT(*) AS c FROM migration_boms WHERE workspace_id = %s",
-                (wid,),
-            ).fetchone()["c"]
+            bom_count = (
+                sum(int(project.get("bom_count") or 0) for project in projects)
+                if production
+                else conn.execute(
+                    "SELECT COUNT(*) AS c FROM migration_boms WHERE workspace_id = %s",
+                    (wid,),
+                ).fetchone()["c"]
+            )
         priority: list[dict[str, Any]] = []
         for analysis in analyses[:8]:
             report = self.get_report(analysis["id"], workspace_id=wid) or {}
@@ -558,7 +655,7 @@ class PostgresWorkspaceStore:
         ]
         return {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": "workspace-home",
             "workspace_id": wid,
             "persistence": "migration-postgres-store",
             "metrics": {

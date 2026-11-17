@@ -8,13 +8,16 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
+import re
 import sys
 import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
@@ -29,6 +32,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from apps.api import migration_tools  # noqa: E402
+from apps.api.report_visibility import (
+    customer_visible_analyses,
+    customer_visible_projects,
+    is_internal_test_fixture_analysis,
+)  # noqa: E402
 from apps.api.synthetic_analyze import (  # noqa: E402
     PersistenceVerifyError,
     analyze_upload,
@@ -82,6 +90,13 @@ from apps.api.report_exports import (  # noqa: E402
     safe_download_stem,
 )
 from src.datasheet_comparison import MAX_DATASHEET_BYTES  # noqa: E402
+
+
+def _get_visible_report(analysis_id: str, *, workspace_id: str) -> dict[str, Any] | None:
+    report = get_report(analysis_id, workspace_id=workspace_id)
+    if report and is_production_runtime() and is_internal_test_fixture_analysis(report):
+        return None
+    return report
 
 # Demo passwords are not shipped in the API. Tests import
 # tests.fixtures.sandbox_auth_accounts; operators seed via
@@ -222,6 +237,7 @@ async def health(_: Request) -> JSONResponse:
                 "decision-records",
                 "datasheet-qa",
                 "procurement",
+                "procurement-quotes",
                 "design-impact",
                 "cost-optimization",
                 "supply-risk",
@@ -737,12 +753,15 @@ async def reports_list(request: Request) -> JSONResponse:
         reports = list_reports(workspace_id=ctx["workspace_id"])
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
+    reports = customer_visible_analyses(
+        reports, production=is_production_runtime()
+    )
     # Do not surface deployment service gaps (billing/email/connectors) as a
     # Reports warning card — those belong in Settings / health diagnostics.
     return _json(
         {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": "workspace-reports",
             "workspace_id": ctx["workspace_id"],
             "persistence": persistence["backend"],
             "gap": None,
@@ -775,12 +794,19 @@ async def projects_list(request: Request) -> JSONResponse:
     try:
         store = get_store()
         projects = store.list_projects(workspace_id=ctx["workspace_id"])
+        reports = customer_visible_analyses(
+            list_reports(workspace_id=ctx["workspace_id"]),
+            production=is_production_runtime(),
+        )
+        projects = customer_visible_projects(
+            projects, reports, production=is_production_runtime()
+        )
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
     return _json(
         {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": "workspace-projects",
             "workspace_id": ctx["workspace_id"],
             "persistence": persistence["backend"],
             "projects": projects,
@@ -835,7 +861,12 @@ async def workspace_home(request: Request) -> JSONResponse:
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
-        return _json(get_store().home_dashboard(workspace_id=ctx["workspace_id"]))
+        return _json(
+            get_store().home_dashboard(
+                workspace_id=ctx["workspace_id"],
+                production=is_production_runtime(),
+            )
+        )
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
 
@@ -846,7 +877,7 @@ async def reports_csv_get(request: Request) -> Response:
         return denied or _json({"detail": "Unauthorized"}, 401)
     analysis_id = request.path_params["analysis_id"]
     try:
-        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
     except PersistenceNotConfiguredError as exc:
@@ -870,7 +901,7 @@ async def reports_get(request: Request) -> JSONResponse:
         return denied or _json({"detail": "Unauthorized"}, 401)
     analysis_id = request.path_params["analysis_id"]
     try:
-        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
     except PersistenceNotConfiguredError as exc:
@@ -888,7 +919,7 @@ async def reports_export(request: Request) -> Response:
     analysis_id = request.path_params["analysis_id"]
     file_format = str(request.path_params["file_format"] or "").lower()
     try:
-        report = get_report(analysis_id, workspace_id=ctx["workspace_id"])
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
     except PersistenceNotConfiguredError as exc:
@@ -921,11 +952,15 @@ async def monitoring_get(request: Request) -> JSONResponse:
         return denied or _json({"detail": "Unauthorized"}, 401)
     analysis_id = request.query_params.get("analysis_id") or None
     try:
-        return _json(
-            migration_tools.monitoring_payload(
-                workspace_id=ctx["workspace_id"], analysis_id=analysis_id
-            )
+        payload = migration_tools.monitoring_payload(
+            workspace_id=ctx["workspace_id"], analysis_id=analysis_id
         )
+        payload["preferences"] = monitoring_store.get_user_preferences(
+            ctx["workspace_id"], ctx["user_id"], ctx["email"]
+        )
+        payload["live_refresh"] = monitoring_scheduler.supplier_refresh_readiness()
+        payload["scheduler"] = monitoring_scheduler.scheduler_readiness()
+        return _json(payload)
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
 
@@ -1019,12 +1054,25 @@ async def decision_records_get(request: Request) -> JSONResponse:
         return denied or _json({"detail": "Unauthorized"}, 401)
     analysis_id = (request.query_params.get("analysis_id") or "").strip()
     try:
-        if analysis_id and not get_report(analysis_id, workspace_id=ctx["workspace_id"]):
+        if analysis_id and not _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"]):
             return _json({"detail": "Report not found"}, 404)
         records = get_store().list_decision_records(
             workspace_id=ctx["workspace_id"],
             analysis_id=analysis_id or None,
         )
+        if not analysis_id and is_production_runtime():
+            visible_ids = {
+                str(row.get("id") or row.get("analysis_id") or "")
+                for row in customer_visible_analyses(
+                    list_reports(workspace_id=ctx["workspace_id"]), production=True
+                )
+            }
+            records = [
+                record
+                for record in records
+                if not record.get("analysis_id")
+                or str(record.get("analysis_id")) in visible_ids
+            ]
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
     except PersistenceNotConfiguredError as exc:
@@ -1154,7 +1202,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
         )
 
     try:
-        if requested_analysis_id and not get_report(
+        if requested_analysis_id and not _get_visible_report(
             requested_analysis_id, workspace_id=ctx["workspace_id"]
         ):
             return _json({"detail": "Report not found"}, 404)
@@ -1234,7 +1282,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
             return _json({"detail": comparison.get("detail") or "Comparison unavailable."}, 400)
         analysis_id = str(comparison.get("analysis_id") or "").strip() or None
         report = (
-            get_report(analysis_id, workspace_id=ctx["workspace_id"])
+            _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
             if analysis_id
             else None
         )
@@ -1360,6 +1408,239 @@ async def procurement_get(request: Request) -> JSONResponse:
         )
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
+
+
+def _quote_report_part(report: dict[str, Any], mpn: str, manufacturer: str) -> dict[str, Any] | None:
+    """Resolve a requested BOM part without allowing client identity substitution."""
+    candidates = []
+    for raw in report.get("parts") or []:
+        if not isinstance(raw, dict):
+            continue
+        row_mpn = str(
+            raw.get("MPN") or raw.get("mpn") or raw.get("Part Number") or raw.get("part_number") or ""
+        ).strip()
+        if row_mpn.casefold() == mpn.casefold():
+            candidates.append(raw)
+    if not candidates:
+        return None
+    makers = {
+        str(row.get("Manufacturer") or row.get("manufacturer") or "").strip().casefold()
+        for row in candidates
+    }
+    makers.discard("")
+    if manufacturer:
+        return next(
+            (
+                row
+                for row in candidates
+                if str(row.get("Manufacturer") or row.get("manufacturer") or "").strip().casefold()
+                == manufacturer.casefold()
+            ),
+            None,
+        )
+    if len(makers) > 1:
+        raise ValueError("This MPN belongs to multiple manufacturers in the saved BOM; select the manufacturer.")
+    return candidates[0]
+
+
+def _quote_number(value: Any, label: str, *, positive: bool = True, integer: bool = False) -> float | int | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a number.") from exc
+    if not math.isfinite(number) or (number <= 0 if positive else number < 0):
+        raise ValueError(f"{label} must be greater than zero." if positive else f"{label} must be zero or greater.")
+    if integer and not number.is_integer():
+        raise ValueError(f"{label} must be a whole number.")
+    return int(number) if integer else number
+
+
+def _normalized_price_breaks(body: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_breaks = body.get("price_breaks")
+    if raw_breaks is None:
+        unit_price = body.get("unit_price")
+        break_quantity = body.get("price_break_quantity")
+        if unit_price in (None, "") and break_quantity in (None, ""):
+            return []
+        raw_breaks = [{"quantity": break_quantity or 1, "unit_price": unit_price}]
+    if not isinstance(raw_breaks, list) or len(raw_breaks) > 20:
+        raise ValueError("Enter no more than 20 price breaks.")
+    result: list[dict[str, Any]] = []
+    seen_quantities: set[int] = set()
+    for index, raw in enumerate(raw_breaks, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"Price break {index} is invalid.")
+        quantity = _quote_number(raw.get("quantity"), f"Price break {index} quantity", integer=True)
+        price = _quote_number(raw.get("unit_price"), f"Price break {index} unit price")
+        if quantity is None or price is None:
+            raise ValueError(f"Enter both quantity and unit price for price break {index}.")
+        if quantity in seen_quantities:
+            raise ValueError("Price break quantities must be unique.")
+        seen_quantities.add(quantity)
+        result.append({"quantity": quantity, "unit_price": price})
+    return sorted(result, key=lambda row: row["quantity"])
+
+
+def _valid_quote_url(value: Any) -> str:
+    url = str(value or "").strip()
+    if not url:
+        return ""
+    if len(url) > 2048:
+        raise ValueError("Source URL must be 2,048 characters or fewer.")
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Source URL must start with http:// or https://.")
+    return url
+
+
+async def procurement_quotes_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = (request.query_params.get("analysis_id") or "").strip()
+    requested_mpn = (request.query_params.get("mpn") or "").strip()
+    requested_manufacturer = (request.query_params.get("manufacturer") or "").strip()
+    if not analysis_id:
+        return _json({"detail": "Select a saved BOM analysis before loading quotes."}, 400)
+    try:
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
+        if not report:
+            return _json({"detail": "Report not found"}, 404)
+        if requested_mpn:
+            try:
+                part = _quote_report_part(report, requested_mpn, requested_manufacturer)
+            except ValueError as exc:
+                return _json({"detail": str(exc)}, 409)
+            if not part:
+                return _json({"detail": "Part not found in the selected saved BOM revision."}, 404)
+        quotes = get_store().list_procurement_quotes(
+            workspace_id=ctx["workspace_id"],
+            analysis_id=analysis_id,
+            requested_mpn=requested_mpn or None,
+            requested_manufacturer=requested_manufacturer or None,
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "analysis_id": analysis_id, "quotes": quotes})
+
+
+async def procurement_quotes_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Quote payload must be an object."}, 400)
+
+    analysis_id = str(body.get("analysis_id") or "").strip()
+    requested_mpn = str(body.get("requested_mpn") or "").strip()
+    requested_manufacturer = str(body.get("requested_manufacturer") or "").strip()
+    supplier = str(body.get("supplier") or "").strip()
+    offered_mpn = str(body.get("offered_mpn") or "").strip()
+    offered_manufacturer = str(body.get("offered_manufacturer") or "").strip()
+    currency = str(body.get("currency") or "").strip().upper()
+    quote_reference = str(body.get("quote_reference") or "").strip()
+    notes = str(body.get("notes") or "").strip()
+    if not analysis_id or not requested_mpn:
+        return _json({"detail": "Select a saved BOM analysis and part."}, 400)
+    if len(requested_mpn) > 160 or len(requested_manufacturer) > 160:
+        return _json({"detail": "Requested part identity is too long."}, 400)
+    if not supplier or len(supplier) > 120:
+        return _json({"detail": "Enter a supplier name (up to 120 characters)."}, 400)
+    if not offered_mpn or len(offered_mpn) > 160 or len(offered_manufacturer) > 160:
+        return _json({"detail": "Enter the quoted MPN and a manufacturer of 160 characters or fewer."}, 400)
+    if len(quote_reference) > 160 or len(notes) > 3000:
+        return _json({"detail": "Quote reference or notes exceed the allowed length."}, 400)
+    if currency and not re.fullmatch(r"[A-Z]{3}", currency):
+        return _json({"detail": "Currency must be a three-letter code such as USD."}, 400)
+
+    try:
+        price_breaks = _normalized_price_breaks(body)
+        if price_breaks and not currency:
+            raise ValueError("Choose a currency for the quoted prices.")
+        minimum_order_quantity = _quote_number(
+            body.get("minimum_order_quantity"), "Minimum order quantity", integer=True
+        )
+        pack_quantity = _quote_number(body.get("pack_quantity"), "Pack quantity", integer=True)
+        stock = _quote_number(body.get("stock"), "Available stock", positive=False, integer=True)
+        lead_time_weeks = _quote_number(body.get("lead_time_weeks"), "Lead time", positive=False)
+        valid_until = str(body.get("valid_until") or "").strip()
+        if valid_until:
+            from datetime import date
+
+            date.fromisoformat(valid_until)
+        source_url = _valid_quote_url(body.get("source_url"))
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
+
+    try:
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
+        if not report:
+            return _json({"detail": "Report not found"}, 404)
+        try:
+            requested_part = _quote_report_part(report, requested_mpn, requested_manufacturer)
+        except ValueError as exc:
+            return _json({"detail": str(exc)}, 409)
+        if not requested_part:
+            return _json({"detail": "Requested part does not match a part in this saved BOM revision."}, 400)
+        canonical_mpn = str(
+            requested_part.get("MPN") or requested_part.get("mpn") or requested_part.get("Part Number") or requested_mpn
+        ).strip()
+        canonical_manufacturer = str(
+            requested_part.get("Manufacturer") or requested_part.get("manufacturer") or ""
+        ).strip()
+        exact_mpn = offered_mpn.casefold() == canonical_mpn.casefold()
+        exact_manufacturer = bool(canonical_manufacturer) and (
+            offered_manufacturer.casefold() == canonical_manufacturer.casefold()
+        )
+        if exact_mpn and exact_manufacturer:
+            identity_status = "exact_part"
+        elif exact_mpn and (not canonical_manufacturer or not offered_manufacturer):
+            identity_status = "manufacturer_unconfirmed"
+        else:
+            identity_status = "alternate_candidate"
+        record = {
+            "analysis_id": analysis_id,
+            "project_name": report.get("project_name"),
+            "bom_name": report.get("bom_name") or report.get("filename"),
+            "revision": report.get("revision"),
+            "requested_mpn": canonical_mpn,
+            "requested_manufacturer": canonical_manufacturer,
+            "supplier": supplier,
+            "quote_reference": quote_reference,
+            "offered_mpn": offered_mpn,
+            "offered_manufacturer": offered_manufacturer,
+            "identity_status": identity_status,
+            "requires_engineering_review": identity_status != "exact_part",
+            "currency": currency,
+            "unit_price": price_breaks[0]["unit_price"] if price_breaks else None,
+            "price_break_quantity": price_breaks[0]["quantity"] if price_breaks else None,
+            "price_breaks": price_breaks,
+            "minimum_order_quantity": minimum_order_quantity,
+            "pack_quantity": pack_quantity,
+            "stock": stock,
+            "lead_time_weeks": lead_time_weeks,
+            "valid_until": valid_until,
+            "source_url": source_url,
+            "notes": notes,
+            "recorded_by": str(ctx.get("user_id") or ""),
+            "evidence_kind": "user_entered_supplier_quote",
+        }
+        saved = get_store().create_procurement_quote(
+            record, workspace_id=ctx["workspace_id"]
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "quote": saved}, 201)
 
 
 async def design_impact_get(request: Request) -> JSONResponse:
@@ -1512,7 +1793,12 @@ async def monitoring_preferences_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
-    return _json({"ok": True, "preferences": monitoring_store.get_preferences(ctx["workspace_id"])})
+    return _json({
+        "ok": True,
+        "preferences": monitoring_store.get_user_preferences(
+            ctx["workspace_id"], ctx["user_id"], ctx["email"]
+        ),
+    })
 
 
 async def monitoring_preferences_put(request: Request) -> JSONResponse:
@@ -1523,7 +1809,15 @@ async def monitoring_preferences_put(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
-    prefs = monitoring_store.update_preferences(ctx["workspace_id"], body if isinstance(body, dict) else {})
+    try:
+        prefs = monitoring_store.update_user_preferences(
+            ctx["workspace_id"],
+            ctx["user_id"],
+            ctx["email"],
+            body if isinstance(body, dict) else {},
+        )
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
     return _json({"ok": True, "preferences": prefs})
 
 
@@ -1540,7 +1834,9 @@ async def monitoring_alerts_get(request: Request) -> JSONResponse:
                 ctx["workspace_id"], analysis_id=analysis_id
             ),
             "refresh_history": monitoring_store.list_refresh_history(ctx["workspace_id"]),
-            "preferences": monitoring_store.get_preferences(ctx["workspace_id"]),
+            "preferences": monitoring_store.get_user_preferences(
+                ctx["workspace_id"], ctx["user_id"], ctx["email"]
+            ),
         }
     )
 
@@ -1589,7 +1885,12 @@ async def monitoring_notify_post(request: Request) -> JSONResponse:
         return _json({"detail": "Alert not found"}, 404)
     if alert.get("active") is False or str(alert.get("status") or "").lower() == "inactive":
         return _json({"detail": "Alert is inactive and cannot be notified"}, 409)
-    result = monitoring_store.deliver_alert_email(ctx["workspace_id"], alert)
+    result = monitoring_store.deliver_alert_email(
+        ctx["workspace_id"],
+        alert,
+        user_id=ctx["user_id"],
+        recipient_email=ctx["email"],
+    )
     return _json({**result, "explicit_notify": True, "alert_id": alert_id})
 
 
@@ -1717,8 +2018,61 @@ async def connectors_get(request: Request) -> JSONResponse:
     return _json(connectors.connector_status_payload())
 
 
+def _subscription_billing_readiness(
+    *, access_token: str, origin: str = ""
+) -> dict[str, Any]:
+    """Report readiness from the Stripe integration the app actually uses.
+
+    ``billing_prep`` only describes the unused migration checkout prototype.
+    Settings plan changes and the billing portal route through the Supabase
+    ``subscription-checkout`` Edge Function, so readiness must probe that path.
+    """
+    try:
+        result, status_code = subscription_billing_service.request_action(
+            access_token=access_token,
+            action="status",
+            origin=origin,
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return {
+            "status": "unknown",
+            "enabled": False,
+            "gap": "Stripe billing status could not be reached.",
+        }
+
+    if status_code < 200 or status_code >= 300 or result.get("ok") is not True:
+        return {
+            "status": "unknown",
+            "enabled": False,
+            "gap": "Stripe billing status could not be verified.",
+        }
+
+    checkout_enabled = result.get("checkout_enabled") is True
+    can_manage_billing = result.get("can_manage_billing") is True
+    status = (
+        "ready"
+        if checkout_enabled
+        else "partial"
+        if can_manage_billing
+        else "not_connected"
+    )
+    enabled_plans = sum(
+        1
+        for plan in (result.get("plans") or [])
+        if isinstance(plan, dict) and plan.get("enabled") is True
+    )
+    return {
+        "status": status,
+        "enabled": checkout_enabled,
+        "stripe_mode": result.get("stripe_mode"),
+        "enabled_plan_count": enabled_plans,
+        "can_manage_billing": can_manage_billing,
+        "gap": None if checkout_enabled else result.get("gap"),
+    }
+
+
 async def service_readiness_get(request: Request) -> JSONResponse:
-    """Authenticated readiness for Settings: email, scheduler, connectors.
+    """Authenticated readiness for Settings: email, scheduler, connectors, billing.
 
     Status values reflect operational capability, not enable flags alone.
     Does not infer monitoring-email state from billing or plan-usage payloads.
@@ -1730,9 +2084,9 @@ async def service_readiness_get(request: Request) -> JSONResponse:
         connector_payload = connectors.connector_status_payload()
         email = monitoring_store.monitoring_email_readiness()
         scheduler = monitoring_scheduler.scheduler_readiness()
-        billing = billing_prep.checkout_readiness(
-            workspace_id=str(ctx.get("workspace_id") or "readiness-probe"),
-            user_id=str(ctx.get("user_id") or "readiness-probe"),
+        billing = _subscription_billing_readiness(
+            access_token=request.headers.get("authorization", "").removeprefix("Bearer ").strip(),
+            origin=request.headers.get("origin", ""),
         )
         # File workflows must not imply live design-tool/vendor readiness.
         live_ready_count = int(
@@ -1761,6 +2115,9 @@ async def service_readiness_get(request: Request) -> JSONResponse:
                     "live_ready_count": live_ready_count,
                     "file_workflow_count": file_workflow_count,
                     "blocked_count": blocked_count,
+                    "configured_unverified_count": int(
+                        connector_payload.get("configured_unverified_count") or 0
+                    ),
                     "connectors": connector_payload.get("connectors") or [],
                     "gap": connector_payload.get("gap"),
                 },
@@ -2169,6 +2526,43 @@ async def monitoring_refresh_post(request: Request) -> JSONResponse:
         return _json({"detail": "Report not found"}, 404)
     except ValueError as exc:
         return _json({"detail": str(exc)}, 400)
+
+
+async def monitoring_live_refresh_post(request: Request) -> JSONResponse:
+    """Explicit live supplier poll for one saved analysis or exact MPN."""
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid request"}, 400)
+    analysis_id = str(body.get("analysis_id") or "").strip()
+    part_number = str(body.get("part_number") or "").strip() or None
+    if not analysis_id:
+        return _json({"detail": "analysis_id is required for live supplier refresh"}, 400)
+    result = monitoring_scheduler.run_live_analysis_refresh(
+        ctx["workspace_id"], analysis_id, part_number=part_number
+    )
+    status = 200 if result.get("ok") else (404 if result.get("status") == "not_found" else 409)
+    return _json(result, status)
+
+
+async def monitoring_scheduled_post(request: Request) -> JSONResponse:
+    """Cron-only six-hour cycle; all vendor and email effects remain separately gated."""
+    if not monitoring_scheduler.authorize_cron(
+        request.headers.get("x-cadivor-cron-token")
+    ):
+        return _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    dry_run = isinstance(body, dict) and body.get("dry_run") is True
+    result = monitoring_scheduler.run_scheduled_cycle(dry_run=dry_run)
+    return _json(result, 200 if result.get("ok") else 409)
 
 
 def _team_error(exc: TeamError) -> JSONResponse:
@@ -3091,6 +3485,8 @@ app = Starlette(
         Route("/decision-records", decision_records_post, methods=["POST"]),
         Route("/tools/datasheet-qa", datasheet_qa_post, methods=["POST"]),
         Route("/tools/procurement", procurement_get, methods=["GET"]),
+        Route("/tools/procurement/quotes", procurement_quotes_get, methods=["GET"]),
+        Route("/tools/procurement/quotes", procurement_quotes_post, methods=["POST"]),
         Route("/tools/design-impact", design_impact_get, methods=["GET"]),
         Route("/tools/cost-optimization", cost_optimization_get, methods=["GET"]),
         Route("/tools/supply-risk", supply_risk_post, methods=["POST"]),
@@ -3105,6 +3501,8 @@ app = Starlette(
         Route("/tools/monitoring/acknowledge", monitoring_acknowledge_post, methods=["POST"]),
         Route("/tools/monitoring/notify", monitoring_notify_post, methods=["POST"]),
         Route("/tools/monitoring/refresh", monitoring_refresh_post, methods=["POST"]),
+        Route("/tools/monitoring/live-refresh", monitoring_live_refresh_post, methods=["POST"]),
+        Route("/tools/monitoring/scheduled-run", monitoring_scheduled_post, methods=["POST"]),
         Route("/billing/status", billing_status_get, methods=["GET"]),
         Route("/billing/checkout", billing_checkout_post, methods=["POST"]),
         Route("/billing/portal", billing_portal_post, methods=["POST"]),

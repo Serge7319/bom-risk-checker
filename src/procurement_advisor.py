@@ -669,17 +669,68 @@ def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, 
         stock = _maybe_n(_first(raw, "stock", "stock_total", "available_stock"))
         lead = _maybe_n(_first(raw, "lead_time_weeks", "lead_time"))
         break_quantity = _maybe_n(_first(raw, "price_break_quantity", "quantity"))
+        raw_breaks = _first(raw, "price_breaks", "Price Breaks", default=[]) or []
+        price_breaks: list[dict[str, Any]] = []
+        if isinstance(raw_breaks, Mapping):
+            raw_breaks = [raw_breaks]
+        if isinstance(raw_breaks, (list, tuple)):
+            for price_break in raw_breaks:
+                if not isinstance(price_break, Mapping):
+                    continue
+                quantity = _maybe_n(
+                    _first(price_break, "quantity", "qty", "break_quantity", default=None)
+                )
+                tier_price = _maybe_n(
+                    _first(price_break, "unit_price", "price", default=None)
+                )
+                if quantity is None or tier_price is None:
+                    continue
+                price_breaks.append(
+                    {
+                        "quantity": int(quantity) if quantity.is_integer() else quantity,
+                        "unit_price": tier_price,
+                        "currency": _t(
+                            _first(price_break, "currency", "unit_price_currency", default=currency)
+                        ).upper(),
+                    }
+                )
+        price_breaks.sort(key=lambda item: float(item["quantity"]))
+        if not price_breaks and price is not None and break_quantity is not None:
+            price_breaks.append(
+                {
+                    "quantity": int(break_quantity) if break_quantity.is_integer() else break_quantity,
+                    "unit_price": price,
+                    "currency": currency,
+                }
+            )
         key = (supplier.casefold(), price, currency, break_quantity)
         if key in seen:
             continue
         seen.add(key)
         rows.append({
             "supplier": supplier,
+            "offered_mpn": _t(
+                _first(raw, "offered_mpn", "mpn", "part_number", "manufacturer_part_number", default="")
+            ),
+            "offered_manufacturer": _t(
+                _first(raw, "offered_manufacturer", "manufacturer", "brand", default="")
+            ),
             "unit_price": price,
             "currency": currency,
+            "price_breaks": price_breaks,
             "stock": int(stock) if stock is not None and stock.is_integer() else stock,
             "lead_time_weeks": lead,
             "price_break_quantity": break_quantity,
+            "minimum_order_quantity": _maybe_n(
+                _first(raw, "minimum_order_quantity", "moq", "minimum_order_qty", default=None)
+            ),
+            "pack_quantity": _maybe_n(
+                _first(raw, "pack_quantity", "order_multiple", "package_quantity", default=None)
+            ),
+            "valid_until": _t(
+                _first(raw, "valid_until", "quote_valid_until", "valid_to", "expires_at", default="")
+            ),
+            "quote_reference": _t(_first(raw, "quote_reference", "quote_number", default="")),
             "region": _t(_first(raw, "region", "ship_from", "country", default="")),
             "supply_risk": _t(_first(raw, "supply_risk", "risk_level", default="")),
             "product_url": _t(_first(raw, "product_url", "product_detail_url", "source_url", default="")),
@@ -701,9 +752,16 @@ def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, 
                 "supplier": current_supplier,
                 "unit_price": current_price,
                 "currency": current_currency,
+                "price_breaks": [],
                 "stock": int(current_stock) if current_stock is not None and current_stock.is_integer() else current_stock,
                 "lead_time_weeks": current_lead,
                 "price_break_quantity": None,
+                "minimum_order_quantity": None,
+                "pack_quantity": None,
+                "valid_until": "",
+                "quote_reference": "",
+                "offered_mpn": "",
+                "offered_manufacturer": "",
                 "region": "",
                 "supply_risk": "",
                 "product_url": _t(_first(part, "product_url", "source_url", default="")),

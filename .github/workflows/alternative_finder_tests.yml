@@ -86,6 +86,15 @@ jobs:
       - name: Run On-demand Monitoring Supplier Refresh Tests
         run: python -m unittest tests.test_monitoring_refresh
 
+      - name: Run scheduled monitoring and billing checkout regressions
+        run: python -m unittest tests.test_monitoring_live_scheduler tests.test_subscription_checkout_contract -v
+
+      - name: Run connector readiness regressions
+        run: python -m unittest tests.test_connector_readiness -v
+
+      - name: Compile changed monitoring modules
+        run: python -m py_compile apps/api/main.py apps/api/migration_tools.py apps/api/monitoring_scheduler.py apps/api/monitoring_store.py apps/api/postgres_store.py apps/api/workspace_store.py
+
       - name: Run Browser Route Recovery Tests
         run: python -m unittest tests.test_browser_route_state
 

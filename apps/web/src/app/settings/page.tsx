@@ -7,6 +7,7 @@ import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import {
+  ApiError,
   beginBillingPortal,
   beginSubscriptionCheckout,
   cancelWorkspaceInvitation,
@@ -65,6 +66,41 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asRows(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
+}
+
+function usageFacts(value: unknown): Array<[string, unknown]> {
+  const source = asRecord(value);
+  const facts: Array<[string, unknown]> = [];
+  for (const [section, entry] of Object.entries(source)) {
+    if (["ok", "id", "token", "secret", "password", "raw"].some((part) => section.toLowerCase().includes(part))) {
+      continue;
+    }
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      for (const [key, metric] of Object.entries(entry as Record<string, unknown>)) {
+        if (/(^id$|_id$|token|secret|password|raw)/i.test(key)) continue;
+        facts.push([`${section}.${key}`, metric]);
+      }
+    } else {
+      facts.push([section, entry]);
+    }
+  }
+  return facts;
+}
+
+function usageLabel(key: string): string {
+  return key
+    .split(".")
+    .map((part) => part.replace(/[_-]+/g, " "))
+    .join(" · ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function usageValue(value: unknown, key: string): string {
+  if (typeof value === "boolean") return value ? "Enabled" : "Disabled";
+  if (value == null || value === "") return key.startsWith("limits.") ? "Unlimited" : "Not reported";
+  if (typeof value === "number") return value.toLocaleString();
+  if (typeof value === "string") return value.slice(0, 120);
+  return "Not reported";
 }
 
 function settingsErrorMessage(err: unknown, fallback: string): string {
@@ -147,6 +183,16 @@ export default function Page() {
     () => asRecord(preferences.notification_preferences),
     [preferences],
   );
+  const complianceSummary = asRecord(compliance?.summary);
+  const complianceFacts: Array<[string, unknown]> = [
+    ["Pack type", compliance?.pack_type],
+    ["Evidence source mode", compliance?.mode],
+    ["Evidence rows", complianceSummary.total],
+    ["Evidence linked", complianceSummary.evidence_linked],
+    ["Missing evidence", complianceSummary.missing_evidence],
+    ["Compliance claimed", complianceSummary.compliance_claimed],
+    ["Generated at", compliance?.generated_at],
+  ];
 
   async function reload(active = session) {
     if (!active) return;
@@ -394,7 +440,11 @@ export default function Page() {
       }
       window.location.assign(url);
     } catch (err) {
-      setBillingError(err instanceof Error ? err.message : "Secure billing could not be opened.");
+      const message = err instanceof Error ? err.message : "Secure billing could not be opened.";
+      const reference = err instanceof ApiError && typeof err.payload.support_reference === "string"
+        ? err.payload.support_reference
+        : "";
+      setBillingError(reference ? `${message} (Support reference: ${reference})` : message);
       setBillingAction("");
     }
   }
@@ -1213,21 +1263,12 @@ export default function Page() {
                 <h3 className="cv-card-title">Plan usage</h3>
                 <p className="cv-card-subtitle">Limits and usage for the signed-in workspace.</p>
                 <dl className="cv-fact-grid">
-                  {Object.entries(usage || {})
-                    .filter(([key]) => !/(^id$|_id$|token|secret|password|raw)/i.test(key))
+                  {usageFacts(usage)
                     .slice(0, 10)
                     .map(([key, value]) => (
                       <div className="cv-fact" key={key}>
-                        <dt>{key.replace(/[_-]+/g, " ")}</dt>
-                        <dd>
-                          {typeof value === "boolean"
-                            ? value
-                              ? "Enabled"
-                              : "Disabled"
-                            : value == null || value === ""
-                              ? "Not reported"
-                              : String(value).slice(0, 120)}
-                        </dd>
+                        <dt>{usageLabel(key)}</dt>
+                        <dd>{usageValue(value, key)}</dd>
                       </div>
                     ))}
                 </dl>
@@ -1239,9 +1280,9 @@ export default function Page() {
                   Operational availability for monitoring email, scheduler, and billing checkout.
                   CSV file workflows are listed separately from live design-tool or vendor integrations.
                 </p>
-                <ul className="cv-action-list" style={{ marginTop: 12 }}>
+                <ul className="cv-action-list cv-service-readiness-list">
                   <li>
-                    <div>
+                    <div className="cv-service-readiness-copy">
                       <strong>Monitoring email</strong>
                       <small className="cv-small-note">Alert delivery transport configuration</small>
                     </div>
@@ -1250,7 +1291,7 @@ export default function Page() {
                     </span>
                   </li>
                   <li>
-                    <div>
+                    <div className="cv-service-readiness-copy">
                       <strong>Monitoring scheduler</strong>
                       <small className="cv-small-note">Scheduled refresh and cron hook</small>
                     </div>
@@ -1259,7 +1300,7 @@ export default function Page() {
                     </span>
                   </li>
                   <li>
-                    <div>
+                    <div className="cv-service-readiness-copy">
                       <strong>Billing checkout</strong>
                       <small className="cv-small-note">Stripe plan upgrades and portal</small>
                     </div>
@@ -1274,13 +1315,13 @@ export default function Page() {
                     </span>
                   </li>
                   <li>
-                    <div>
+                    <div className="cv-service-readiness-copy">
                       <strong>Live design-tool / vendor connectors</strong>
                       <small className="cv-small-note">
                         Live integrations only — CSV file workflows do not count as ready
                         {typeof readiness?.connectors?.live_ready_count === "number" ||
                         typeof readiness?.connectors?.ready_count === "number"
-                          ? ` · ${readiness?.connectors?.live_ready_count ?? readiness?.connectors?.ready_count ?? 0} live ready, ${readiness?.connectors?.blocked_count ?? 0} blocked, ${readiness?.connectors?.file_workflow_count ?? 0} file workflows`
+                          ? ` · ${readiness?.connectors?.live_ready_count ?? readiness?.connectors?.ready_count ?? 0} live ready, ${readiness?.connectors?.configured_unverified_count ?? 0} configured but unverified, ${readiness?.connectors?.blocked_count ?? 0} blocked, ${readiness?.connectors?.file_workflow_count ?? 0} file workflows`
                           : ""}
                       </small>
                     </div>
@@ -1294,7 +1335,7 @@ export default function Page() {
               <section className="cv-card pad" style={{ marginBottom: 14 }}>
                 <h3 className="cv-card-title">Connectors and file workflows</h3>
                 <p className="cv-card-subtitle">
-                  Generic CSV import/export paths are file workflows. Blocked rows are candidate live vendor integrations that still need discovery and credentials.
+                  Generic CSV paths are file workflows. Supplier rows show credential presence only; direct PLM, ERP, and CAD integrations still need a provider choice and sandbox access.
                 </p>
                 {connectorRows.length ? (
                   <div className="cv-table-wrap" style={{ marginTop: 12 }}>
@@ -1317,7 +1358,18 @@ export default function Page() {
                               {String(row.kind || row.status || "") === "file_workflow" ||
                               String(row.status || "") === "file_workflow"
                                 ? "File workflow"
-                                : String(row.status || row.kind || "")}
+                                : String(row.status || row.kind || "") === "configured_unverified"
+                                  ? "Configured · not verified"
+                                  : String(row.status || "") === "ready"
+                                    ? "Live verified"
+                                  : String(row.status || row.kind || "") === "blocked"
+                                    ? "Needs setup"
+                                    : String(row.status || row.kind || "")}
+                              {row.status === "ready" && row.last_verified_at ? (
+                                <small className="cv-small-note">
+                                  Checked {String(row.last_verified_at)}
+                                </small>
+                              ) : null}
                             </td>
                           </tr>
                         ))}
@@ -1339,19 +1391,22 @@ export default function Page() {
                   RoHS pack readiness for this workspace. Packs stay evidence-linked.
                 </p>
                 <dl className="cv-fact-grid">
-                  {Object.entries(compliance || {})
-                    .filter(([key]) => !/(^id$|_id$|token|secret|password|raw)/i.test(key))
-                    .slice(0, 8)
-                    .map(([key, value]) => (
-                      <div className="cv-fact" key={key}>
-                        <dt>{key.replace(/[_-]+/g, " ")}</dt>
-                        <dd>
-                          {value == null || value === ""
-                            ? "Not reported"
+                  {complianceFacts.map(([label, value]) => (
+                    <div className="cv-fact" key={label}>
+                      <dt>{label}</dt>
+                      <dd>
+                        {value == null || value === ""
+                          ? label === "Evidence source mode" && !compliance?.analysis_id
+                            ? "No saved analysis selected"
+                            : "Not reported"
+                          : typeof value === "boolean"
+                            ? value
+                              ? "Yes"
+                              : "No"
                             : String(value).slice(0, 120)}
-                        </dd>
-                      </div>
-                    ))}
+                      </dd>
+                    </div>
+                  ))}
                 </dl>
               </section>
             </>

@@ -8,11 +8,12 @@ records payloads in-memory for tests.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -65,18 +66,21 @@ def monitoring_email_readiness() -> dict[str, Any]:
             "status": "not_connected",
             "enabled": False,
             "transport_ready": False,
+            "missing_requirements": ["monitoring email delivery flag"],
         }
     if transport:
         return {
             "status": "ready",
             "enabled": True,
             "transport_ready": True,
+            "missing_requirements": [],
         }
     # Flag on but deliver_alert_email would return no_sink_configured.
     return {
         "status": "not_connected",
         "enabled": True,
         "transport_ready": False,
+        "missing_requirements": ["Resend API key and verified sender address"],
     }
 
 
@@ -144,6 +148,9 @@ def reset_monitoring_store_for_tests() -> None:
             with _pg_connect() as conn:
                 conn.execute("DELETE FROM migration_monitoring_alerts")
                 conn.execute("DELETE FROM migration_notification_preferences")
+                conn.execute("DELETE FROM migration_monitoring_member_preferences")
+                conn.execute("DELETE FROM migration_monitoring_snapshots")
+                conn.execute("DELETE FROM migration_monitoring_email_deliveries")
                 conn.execute("DELETE FROM migration_monitoring_refresh_history")
                 conn.commit()
 
@@ -152,7 +159,14 @@ def _ws(state: dict[str, Any], workspace_id: str) -> dict[str, Any]:
     workspaces = state.setdefault("workspaces", {})
     return workspaces.setdefault(
         workspace_id,
-        {"alerts": [], "preferences": dict(_DEFAULT_PREFS), "refresh_history": []},
+        {
+            "alerts": [],
+            "preferences": dict(_DEFAULT_PREFS),
+            "user_preferences": {},
+            "snapshots": {},
+            "email_deliveries": {},
+            "refresh_history": [],
+        },
     )
 
 
@@ -219,6 +233,406 @@ def update_preferences(workspace_id: str, updates: dict[str, Any]) -> dict[str, 
     return get_preferences(workspace_id)
 
 
+def get_user_preferences(
+    workspace_id: str,
+    user_id: str,
+    verified_email: str,
+) -> dict[str, Any]:
+    """Return one member's monitoring choices and server-verified address.
+
+    ``verified_email`` is always supplied by the authenticated token context;
+    the browser cannot choose or overwrite the notification recipient.
+    """
+    wid = str(workspace_id or "").strip()
+    uid = str(user_id or "").strip()
+    email = str(verified_email or "").strip().lower()
+    if not wid or not uid or not email:
+        raise ValueError("workspace, authenticated user, and verified email are required")
+    defaults = {
+        **_DEFAULT_PREFS,
+        "supplier_checks": False,
+        "email": email,
+    }
+    if _use_postgres():
+        with _pg_connect() as conn:
+            row = conn.execute(
+                """
+                SELECT email_alerts, supplier_checks, lifecycle, availability, risk
+                FROM migration_monitoring_member_preferences
+                WHERE workspace_id = %s AND user_id = %s
+                """,
+                (wid, uid),
+            ).fetchone()
+        if row:
+            defaults.update({
+                "email_alerts": bool(row["email_alerts"]),
+                "supplier_checks": bool(row["supplier_checks"]),
+                "lifecycle": bool(row["lifecycle"]),
+                "availability": bool(row["availability"]),
+                "risk": bool(row["risk"]),
+            })
+    else:
+        with _lock:
+            state = _load_state()
+            stored = _ws(state, wid).setdefault("user_preferences", {}).get(uid) or {}
+            defaults.update({key: bool(stored.get(key, defaults[key])) for key in (
+                "email_alerts", "supplier_checks", "lifecycle", "availability", "risk"
+            )})
+    defaults["email"] = email
+    defaults["email_delivery_enabled"] = email_delivery_enabled()
+    defaults["email_transport_ready"] = email_transport_ready()
+    return defaults
+
+
+def update_user_preferences(
+    workspace_id: str,
+    user_id: str,
+    verified_email: str,
+    updates: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist opt-ins scoped to the authenticated workspace member."""
+    wid = str(workspace_id or "").strip()
+    uid = str(user_id or "").strip()
+    email = str(verified_email or "").strip().lower()
+    if not wid or not uid or not email:
+        raise ValueError("workspace, authenticated user, and verified email are required")
+    allowed = {"email_alerts", "supplier_checks", "lifecycle", "availability", "risk"}
+    current = get_user_preferences(wid, uid, email)
+    for key, value in (updates or {}).items():
+        if key in allowed:
+            current[key] = bool(value)
+    if _use_postgres():
+        with _pg_connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO migration_monitoring_member_preferences
+                  (workspace_id, user_id, email, email_alerts, supplier_checks,
+                   lifecycle, availability, risk, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+                  email = EXCLUDED.email,
+                  email_alerts = EXCLUDED.email_alerts,
+                  supplier_checks = EXCLUDED.supplier_checks,
+                  lifecycle = EXCLUDED.lifecycle,
+                  availability = EXCLUDED.availability,
+                  risk = EXCLUDED.risk,
+                  updated_at = NOW()
+                """,
+                (
+                    wid, uid, email, current["email_alerts"], current["supplier_checks"],
+                    current["lifecycle"], current["availability"], current["risk"],
+                ),
+            )
+            conn.commit()
+    else:
+        with _lock:
+            state = _load_state()
+            bucket = _ws(state, wid).setdefault("user_preferences", {})
+            bucket[uid] = {
+                "email": email,
+                **{key: bool(current[key]) for key in allowed},
+            }
+            _save_state(state)
+    return get_user_preferences(wid, uid, email)
+
+
+def list_user_preferences(
+    workspace_id: str | None = None,
+    *,
+    supplier_checks: bool | None = None,
+    email_alerts: bool | None = None,
+) -> list[dict[str, Any]]:
+    """List only opted-in member preferences for a scheduler cycle."""
+    filters = []
+    params: list[Any] = []
+    if workspace_id:
+        filters.append("workspace_id = %s")
+        params.append(str(workspace_id))
+    if supplier_checks is not None:
+        filters.append("supplier_checks = %s")
+        params.append(bool(supplier_checks))
+    if email_alerts is not None:
+        filters.append("email_alerts = %s")
+        params.append(bool(email_alerts))
+    if _use_postgres():
+        query = (
+            "SELECT workspace_id, user_id, email, email_alerts, supplier_checks, "
+            "lifecycle, availability, risk FROM migration_monitoring_member_preferences"
+        )
+        if filters:
+            query += " WHERE " + " AND ".join(filters)
+        with _pg_connect() as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
+        return [dict(row) for row in rows]
+    with _lock:
+        state = _load_state()
+        rows = []
+        for wid, bucket in (state.get("workspaces") or {}).items():
+            if workspace_id and wid != workspace_id:
+                continue
+            for uid, prefs in (bucket.get("user_preferences") or {}).items():
+                row = {"workspace_id": wid, "user_id": uid, **dict(prefs)}
+                if supplier_checks is not None and bool(row.get("supplier_checks")) != supplier_checks:
+                    continue
+                if email_alerts is not None and bool(row.get("email_alerts")) != email_alerts:
+                    continue
+                rows.append(row)
+        return rows
+
+
+def get_live_snapshot(
+    workspace_id: str, analysis_id: str, part_number: str
+) -> dict[str, Any] | None:
+    if _use_postgres():
+        with _pg_connect() as conn:
+            row = conn.execute(
+                "SELECT payload FROM migration_monitoring_snapshots "
+                "WHERE workspace_id = %s AND analysis_id = %s AND part_number = %s",
+                (workspace_id, analysis_id, part_number),
+            ).fetchone()
+        if not row:
+            return None
+        payload = row["payload"]
+        return json.loads(payload) if isinstance(payload, str) else dict(payload)
+    with _lock:
+        state = _load_state()
+        row = (
+            _ws(state, workspace_id).setdefault("snapshots", {})
+            .get(analysis_id, {})
+            .get(part_number)
+        )
+        return dict(row) if row else None
+
+
+def save_live_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Upsert a matched live supplier observation for one analysis part."""
+    wid = str(snapshot.get("workspace_id") or "").strip()
+    aid = str(snapshot.get("analysis_id") or "").strip()
+    part = str(snapshot.get("part_number") or "").strip()
+    if not wid or not aid or not part:
+        raise ValueError("workspace, analysis, and part are required for monitoring snapshots")
+    saved = {**snapshot, "workspace_id": wid, "analysis_id": aid, "part_number": part}
+    if _use_postgres():
+        with _pg_connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO migration_monitoring_snapshots
+                  (workspace_id, analysis_id, part_number, payload, retrieved_at)
+                VALUES (%s, %s, %s, %s::jsonb, %s::timestamptz)
+                ON CONFLICT (workspace_id, analysis_id, part_number) DO UPDATE SET
+                  payload = EXCLUDED.payload,
+                  retrieved_at = EXCLUDED.retrieved_at
+                """,
+                (wid, aid, part, json.dumps(saved), saved.get("retrieved_at") or utc_now()),
+            )
+            conn.commit()
+        return saved
+    with _lock:
+        state = _load_state()
+        snapshots = _ws(state, wid).setdefault("snapshots", {})
+        snapshots.setdefault(aid, {})[part] = saved
+        _save_state(state)
+    return saved
+
+
+def _email_delivery_key(workspace_id: str, user_id: str, alert_id: str) -> str:
+    value = "\0".join((workspace_id, user_id, alert_id)).encode("utf-8")
+    return hashlib.sha256(value).hexdigest()
+
+
+def claim_scheduled_alert_email(
+    workspace_id: str, user_id: str, alert: dict[str, Any]
+) -> bool:
+    """Acquire a short lease so overlapping scheduler jobs cannot double-send."""
+    wid = str(workspace_id or "").strip()
+    uid = str(user_id or "").strip()
+    alert_id = str(alert.get("id") or "").strip()
+    if not wid or not uid or not alert_id:
+        return False
+    if _use_postgres():
+        with _pg_connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO migration_monitoring_email_deliveries
+                  (workspace_id, user_id, alert_id, status, lease_until, updated_at)
+                VALUES (%s, %s, %s, 'sending', NOW() + INTERVAL '5 minutes', NOW())
+                ON CONFLICT (workspace_id, user_id, alert_id) DO UPDATE SET
+                  status = 'sending',
+                  lease_until = NOW() + INTERVAL '5 minutes',
+                  updated_at = NOW()
+                WHERE migration_monitoring_email_deliveries.status <> 'sent'
+                  AND (
+                    migration_monitoring_email_deliveries.status <> 'sending'
+                    OR migration_monitoring_email_deliveries.lease_until IS NULL
+                    OR migration_monitoring_email_deliveries.lease_until < NOW()
+                  )
+                RETURNING 1 AS claimed
+                """,
+                (wid, uid, alert_id),
+            ).fetchone()
+            conn.commit()
+        return bool(row)
+
+    now = datetime.now(timezone.utc)
+    key = _email_delivery_key(wid, uid, alert_id)
+    with _lock:
+        state = _load_state()
+        deliveries = _ws(state, wid).setdefault("email_deliveries", {})
+        prior = deliveries.get(key) or {}
+        if prior.get("status") == "sent":
+            return False
+        if prior.get("status") == "sending":
+            try:
+                lease = datetime.fromisoformat(
+                    str(prior.get("lease_until") or "").replace("Z", "+00:00")
+                )
+            except ValueError:
+                lease = now
+            if lease > now:
+                return False
+        deliveries[key] = {
+            "workspace_id": wid,
+            "user_id": uid,
+            "alert_id": alert_id,
+            "status": "sending",
+            "lease_until": (now + timedelta(minutes=5)).isoformat(),
+        }
+        _save_state(state)
+    return True
+
+
+def finish_scheduled_alert_email(
+    workspace_id: str,
+    user_id: str,
+    alert: dict[str, Any],
+    *,
+    delivered: bool,
+    retry: bool = True,
+) -> None:
+    """Record success, retry transient failures, or discard opted-out notices."""
+    wid = str(workspace_id or "").strip()
+    uid = str(user_id or "").strip()
+    alert_id = str(alert.get("id") or "").strip()
+    if not wid or not uid or not alert_id:
+        return
+    sent_at = utc_now()
+    if _use_postgres():
+        with _pg_connect() as conn:
+            if delivered:
+                conn.execute(
+                    """
+                    UPDATE migration_monitoring_email_deliveries
+                    SET status = 'sent', sent_at = %s::timestamptz,
+                        lease_until = NULL, updated_at = NOW()
+                    WHERE workspace_id = %s AND user_id = %s AND alert_id = %s
+                    """,
+                    (sent_at, wid, uid, alert_id),
+                )
+            elif retry:
+                conn.execute(
+                    """
+                    UPDATE migration_monitoring_email_deliveries
+                    SET lease_until = NOW() - INTERVAL '1 second', updated_at = NOW()
+                    WHERE workspace_id = %s AND user_id = %s AND alert_id = %s
+                      AND status = 'sending'
+                    """,
+                    (wid, uid, alert_id),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM migration_monitoring_email_deliveries "
+                    "WHERE workspace_id = %s AND user_id = %s AND alert_id = %s "
+                    "AND status = 'sending'",
+                    (wid, uid, alert_id),
+                )
+            conn.commit()
+        return
+
+    key = _email_delivery_key(wid, uid, alert_id)
+    with _lock:
+        state = _load_state()
+        deliveries = _ws(state, wid).setdefault("email_deliveries", {})
+        if delivered:
+            deliveries[key] = {
+                "workspace_id": wid,
+                "user_id": uid,
+                "alert_id": alert_id,
+                "status": "sent",
+                "sent_at": sent_at,
+            }
+        elif retry:
+            prior = deliveries.get(key) or {}
+            if prior.get("status") == "sending":
+                prior["lease_until"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+                deliveries[key] = prior
+        else:
+            deliveries.pop(key, None)
+        _save_state(state)
+
+
+def list_retryable_scheduled_alert_ids(workspace_id: str, user_id: str) -> list[str]:
+    """Return failed delivery claims whose lease expired and may be retried."""
+    wid = str(workspace_id or "").strip()
+    uid = str(user_id or "").strip()
+    if not wid or not uid:
+        return []
+    if _use_postgres():
+        with _pg_connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT alert_id FROM migration_monitoring_email_deliveries
+                WHERE workspace_id = %s AND user_id = %s AND status = 'sending'
+                  AND (lease_until IS NULL OR lease_until < NOW())
+                ORDER BY updated_at ASC
+                """,
+                (wid, uid),
+            ).fetchall()
+        return [str(row["alert_id"]) for row in rows]
+    now = datetime.now(timezone.utc)
+    with _lock:
+        state = _load_state()
+        deliveries = _ws(state, wid).setdefault("email_deliveries", {})
+        retryable = []
+        for row in deliveries.values():
+            if row.get("user_id") != uid or row.get("status") != "sending":
+                continue
+            try:
+                lease = datetime.fromisoformat(
+                    str(row.get("lease_until") or "").replace("Z", "+00:00")
+                )
+            except ValueError:
+                lease = now
+            if lease <= now:
+                retryable.append(str(row.get("alert_id") or ""))
+        return [alert_id for alert_id in retryable if alert_id]
+
+
+def clear_scheduled_alert_email_deliveries(
+    workspace_id: str, alert_id: str
+) -> None:
+    """Allow a resolved alert to notify again if it becomes active later."""
+    wid = str(workspace_id or "").strip()
+    aid = str(alert_id or "").strip()
+    if not wid or not aid:
+        return
+    if _use_postgres():
+        with _pg_connect() as conn:
+            conn.execute(
+                "DELETE FROM migration_monitoring_email_deliveries "
+                "WHERE workspace_id = %s AND alert_id = %s AND status = 'sent'",
+                (wid, aid),
+            )
+            conn.commit()
+        return
+    with _lock:
+        state = _load_state()
+        deliveries = _ws(state, wid).setdefault("email_deliveries", {})
+        for key, row in list(deliveries.items()):
+            if str(row.get("alert_id") or "") == aid and row.get("status") == "sent":
+                deliveries.pop(key, None)
+        _save_state(state)
+
+
 def _alert_identity_key(alert: dict[str, Any]) -> tuple[str, str, str]:
     return (
         str(alert.get("analysis_id") or "").strip(),
@@ -269,6 +683,10 @@ def reconcile_alerts(
         inactivated.append(stale)
     if inactivated:
         persist_alerts(workspace_id, inactivated)
+        for row in inactivated:
+            clear_scheduled_alert_email_deliveries(
+                workspace_id, str(row.get("id") or "")
+            )
     return [
         row
         for row in list_alerts(workspace_id, analysis_id=report_id)
@@ -336,8 +754,13 @@ def persist_alerts(workspace_id: str, alerts: list[dict[str, Any]]) -> list[dict
         }
         for alert in alerts:
             key = (alert.get("analysis_id"), alert.get("part_number"), alert.get("alert_type"))
-            row = dict(existing.get(key) or {})
+            previous = dict(existing.get(key) or {})
+            row = dict(previous)
             row.update(alert)
+            if previous.get("id"):
+                row["id"] = previous["id"]
+            if previous.get("created_at"):
+                row["created_at"] = previous["created_at"]
             row.setdefault("id", f"alert-{uuid.uuid4().hex[:12]}")
             row.setdefault("workspace_id", workspace_id)
             row.setdefault("created_at", utc_now())
@@ -442,6 +865,7 @@ def record_refresh(
     mode: str = "synthetic-preview",
     scope: str = "analysis",
     part_number: str | None = None,
+    scheduled: bool = False,
 ) -> dict[str, Any]:
     """Record an explicit refresh. Never called from read-only GET paths."""
     entry = {
@@ -453,8 +877,8 @@ def record_refresh(
         "scope": scope,
         "part_number": part_number,
         "ran_at": utc_now(),
-        "scheduled": False,
-        "gap": "On-demand refresh only. Cron/scheduler not attached to migration API yet.",
+        "scheduled": bool(scheduled),
+        "gap": "" if scheduled else "On-demand refresh. Scheduled runs are separately gated.",
     }
     if _use_postgres():
         with _pg_connect() as conn:
@@ -507,10 +931,16 @@ def deliver_alert_email(
     workspace_id: str,
     alert: dict[str, Any],
     *,
+    user_id: str | None = None,
+    recipient_email: str | None = None,
     sink: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
-    """Send or mock-record an alert notification. Never sends unless enabled."""
-    prefs = get_preferences(workspace_id)
+    """Send or mock-record an alert only to the authenticated member's address."""
+    prefs = (
+        get_user_preferences(workspace_id, user_id, recipient_email or "")
+        if user_id
+        else get_preferences(workspace_id)
+    )
     payload = {
         "workspace_id": workspace_id,
         "alert_id": alert.get("id"),
@@ -521,6 +951,14 @@ def deliver_alert_email(
     }
     if not prefs.get("email_alerts"):
         return {"ok": True, "delivered": False, "reason": "preferences_disabled", "payload": payload}
+    alert_type = str(alert.get("alert_type") or "").casefold()
+    category = (
+        "lifecycle" if "lifecycle" in alert_type else
+        "availability" if any(term in alert_type for term in ("stock", "availability", "inventory")) else
+        "risk"
+    )
+    if not prefs.get(category, True):
+        return {"ok": True, "delivered": False, "reason": f"{category}_notifications_disabled", "payload": payload}
     if not email_delivery_enabled():
         with _lock:
             _EMAIL_SINK.append({**payload, "sink": "mock-record"})
@@ -536,9 +974,7 @@ def deliver_alert_email(
         active(payload)
         return {"ok": True, "delivered": True, "payload": payload, "mode": "sink"}
     if _configured_email_transport():
-        recipient = str(
-            prefs.get("email_to") or prefs.get("notify_email") or prefs.get("email") or ""
-        ).strip()
+        recipient = str(recipient_email or prefs.get("email") or "").strip().lower()
         if not recipient:
             return {
                 "ok": False,
@@ -552,10 +988,12 @@ def deliver_alert_email(
             part = str(alert.get("part_number") or "component")
             subject = f"Cadivor monitoring alert · {part}"
             body = str(alert.get("alert_message") or alert.get("alert_type") or "Monitoring alert")
+            import html
+
             send_transactional_email(
                 to_email=recipient,
                 subject=subject,
-                html_body=f"<p>{body}</p>",
+                html_body=f"<p>{html.escape(body)}</p>",
                 text_body=body,
             )
             return {"ok": True, "delivered": True, "payload": payload, "mode": "resend"}

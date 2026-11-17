@@ -12,11 +12,16 @@ from typing import Any
 import pandas as pd
 
 from apps.api.synthetic_analyze import (
-    analyses_and_parts,
-    get_report,
-    list_reports,
+    analyses_and_parts as _stored_analyses_and_parts,
+    get_report as _stored_get_report,
+    list_reports as _stored_list_reports,
     synthetic_compare_part,
 )
+from apps.api.report_visibility import (
+    customer_visible_analyses,
+    is_internal_test_fixture_analysis,
+)
+from apps.api.sandbox_auth import is_production_runtime
 from src.cost_optimization import build_cost_optimization
 from src.datasheet_qa import (
     answer_datasheet_question,
@@ -72,12 +77,50 @@ def _json_safe(value: Any) -> Any:
         return None
     return value
 
+
+def get_report(analysis_id: str, *, workspace_id: str) -> dict[str, Any] | None:
+    """Return a report only when it belongs in a production customer view."""
+    report = _stored_get_report(analysis_id, workspace_id=workspace_id)
+    if report and is_production_runtime() and is_internal_test_fixture_analysis(report):
+        return None
+    return report
+
+
+def list_reports(*, workspace_id: str) -> list[dict[str, Any]]:
+    return customer_visible_analyses(
+        _stored_list_reports(workspace_id=workspace_id),
+        production=is_production_runtime(),
+    )
+
+
+def analyses_and_parts(
+    *, workspace_id: str, analysis_id: str | None = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if analysis_id and not get_report(analysis_id, workspace_id=workspace_id):
+        return [], []
+    analyses, parts = _stored_analyses_and_parts(
+        workspace_id=workspace_id, analysis_id=analysis_id
+    )
+    if not is_production_runtime():
+        return analyses, parts
+    visible_ids = {
+        str(row.get("id") or row.get("analysis_id") or "")
+        for row in list_reports(workspace_id=workspace_id)
+    }
+    return (
+        [row for row in analyses if str(row.get("id") or "") in visible_ids],
+        [row for row in parts if str(row.get("analysis_id") or "") in visible_ids],
+    )
+
 def _require_analysis(
     analysis_id: str | None, *, workspace_id: str
 ) -> dict[str, Any] | None:
     if analysis_id:
         return get_report(analysis_id, workspace_id=workspace_id)
-    reports = list_reports(workspace_id=workspace_id)
+    reports = customer_visible_analyses(
+        list_reports(workspace_id=workspace_id),
+        production=is_production_runtime(),
+    )
     if not reports:
         return None
     return get_report(reports[0]["id"], workspace_id=workspace_id)
@@ -352,7 +395,8 @@ def _monitoring_freshness(
 def _empty_monitoring_payload() -> dict[str, Any]:
     return {
         "ok": True,
-        "mode": "synthetic-preview",
+        "mode": "workspace-monitoring",
+        "analysis_id": None,
         "gap": "No analyzed BOM yet. Run BOM Analyzer first. This view needs saved analysis data.",
         "metrics": {
             "monitored_parts": 0,
@@ -1616,7 +1660,9 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
     requested_id = str(analysis_id or "").strip()
     if requested_id:
         report = get_report(requested_id, workspace_id=workspace_id)
-        if not report:
+        if not report or (
+            is_production_runtime() and is_internal_test_fixture_analysis(report)
+        ):
             return {
                 "ok": False,
                 "mode": "analysis-not-found",
