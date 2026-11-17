@@ -290,7 +290,7 @@ def test_saved_bom_management_moves_preserves_and_deletes_scoped_history(cutover
         assert conn.execute(
             "SELECT COUNT(*) AS n FROM migration_monitoring_email_deliveries WHERE workspace_id = %s AND alert_id = %s",
             (workspace_id, alert["id"]),
-        ).fetchone()["n"] == 0
+        ).fetchone()[0] == 0
     assert client.get(f"/reports/{destination['analysis_id']}", headers=headers_a).status_code == 200
     allowed_b = assert_other_user_only_sees_own(client, headers_b, seeded_b)
     assert len(allowed_b) >= 12
