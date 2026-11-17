@@ -174,6 +174,10 @@ def test_two_user_postgres_matrix_workspaces_boms_reports_decisions_monitoring(c
     assert_unauthenticated_denied(client, seeded_a)
 
     assert_owner_still_has_everything(client, headers_a, seeded_a)
+    allowed_b = assert_other_user_only_sees_own(client, headers_b, seeded_b)
+    assert len(allowed_b) >= 12
+    # B deleting their own project/report never touched A (verified in Postgres).
+    assert_owner_still_has_everything(client, headers_a, seeded_a)
 
 
 def test_saved_bom_management_moves_preserves_and_deletes_scoped_history(cutover_env):
@@ -292,10 +296,6 @@ def test_saved_bom_management_moves_preserves_and_deletes_scoped_history(cutover
             (workspace_id, alert["id"]),
         ).fetchone()[0] == 0
     assert client.get(f"/reports/{destination['analysis_id']}", headers=headers_a).status_code == 200
-    allowed_b = assert_other_user_only_sees_own(client, headers_b, seeded_b)
-    assert len(allowed_b) >= 12
-    # B deleting their own project/report never touched A (verified in Postgres).
-    assert_owner_still_has_everything(client, headers_a, seeded_a)
 
 
 def test_backup_restore_and_recovery(cutover_env, tmp_path):
