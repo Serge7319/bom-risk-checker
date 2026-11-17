@@ -258,8 +258,10 @@ class WorkspaceStore:
         self, analysis_id: str, *, workspace_id: str
     ) -> dict[str, Any] | None:
         wid = self._require_workspace(workspace_id)
+        # RLock: load() re-enters the same lock safely. Upsert always save()s
+        # before releasing, so a reload cannot observe a half-written report.
         with _LOCK:
-            # Reload so another process/replica write on a shared file is visible.
+            # Reload so another process write on a shared file is visible.
             self.load()
             report = self._data["reports"].get(analysis_id)
             if not report:
