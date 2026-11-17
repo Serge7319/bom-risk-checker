@@ -228,28 +228,14 @@ export function buildMultiDecisionSnapshot(
   const primary = columns[0]?.result || {};
   const candidateMpns = columns.map((column) => column.mpn);
   const multiCandidateManufacturers: Record<string, string> = {};
-  // Keep each pairwise compare payload intact (including snapshot_token) so the
-  // decision API can verify every candidate server-side.
+  // Keep each pairwise compare payload exactly as signed. Requested
+  // manufacturer labels stay in the aggregate sidecar above; rewriting
+  // manufacturer_b or part_cards would change the server digest and make a
+  // valid multi-candidate save fail.
   const candidateSnapshots = columns.map((column) => {
     const brand = candidateManufacturer(column);
     if (brand) multiCandidateManufacturers[column.mpn] = brand;
-    const result = { ...(column.result || {}) } as Record<string, unknown>;
-    result.mpn = column.mpn;
-    result.part_a = text(result.part_a || currentMpn, currentMpn);
-    result.part_b = text(result.part_b || column.mpn, column.mpn);
-    // Preserve this candidate's manufacturer independently of Part A / primary.
-    if (brand) result.manufacturer_b = brand;
-    const cards: Record<string, unknown> = {
-      ...((result.part_cards as Record<string, unknown>) || {}),
-    };
-    const cardB: Record<string, unknown> = {
-      ...((cards.b as Record<string, unknown>) || {}),
-      mpn: column.mpn,
-    };
-    if (brand) cardB.manufacturer = brand;
-    cards.b = cardB;
-    result.part_cards = cards;
-    return result;
+    return { ...(column.result || {}) } as Record<string, unknown>;
   });
   const primaryBrand = candidateManufacturer(columns[0] || { mpn: "", result: {} });
   return {

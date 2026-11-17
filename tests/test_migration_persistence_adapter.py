@@ -118,3 +118,101 @@ def test_ephemeral_file_store_still_works_for_tests(tmp_path: Path):
 
     with pytest.raises(WorkspaceAccessError):
         store.delete_analysis(report2["id"], workspace_id="ws-b")
+
+
+def test_project_and_bom_renames_preserve_reports_and_delete_bom_cascades(tmp_path: Path):
+    store = reset_store_for_tests(tmp_path / "managed.json")
+
+    def add_report(analysis_id: str, revision: str) -> dict:
+        return store.upsert_analysis_report(
+            {
+                "id": analysis_id,
+                "filename": "controller.csv",
+                "created_at": "2026-11-17T00:00:00Z",
+                "total_parts": 1,
+                "health_score": 82,
+                "health_status": "Review",
+                "high_risk_count": 1,
+                "medium_risk_count": 0,
+                "low_risk_count": 0,
+                "mode": "synthetic-preview",
+                "parts": [{"MPN": "MPU-6050", "Quantity": 1}],
+            },
+            workspace_id="ws-a",
+            project_name="Drone",
+            bom_name="Controller",
+            revision=revision,
+        )
+
+    rev_a = add_report("managed-a", "A")
+    rev_b = add_report("managed-b", "B")
+    project_id = rev_a["project_id"]
+    bom_id = rev_a["bom_id"]
+    other_project_report = store.upsert_analysis_report(
+        {
+            "id": "other-project-analysis",
+            "filename": "power.csv",
+            "created_at": "2026-11-17T00:00:00Z",
+            "total_parts": 1,
+            "parts": [{"MPN": "TPS5430", "Quantity": 1}],
+        },
+        workspace_id="ws-a",
+        project_name="Power Supply",
+        bom_name="Power BOM",
+        revision="A",
+    )
+    store.create_decision_record(
+        {
+            "analysis_id": "managed-a",
+            "part_a": "MPU-6050",
+            "part_b": "SEN0142",
+            "decision": "approve_alternate",
+        },
+        workspace_id="ws-a",
+    )
+    store.create_procurement_quote(
+        {
+            "analysis_id": "managed-a",
+            "requested_mpn": "MPU-6050",
+            "requested_manufacturer": "",
+        },
+        workspace_id="ws-a",
+    )
+
+    store.update_project(project_id, workspace_id="ws-a", name="Drone Control")
+    renamed_project_report = store.get_report("managed-a", workspace_id="ws-a")
+    assert renamed_project_report["project_name"] == "Drone Control — Controller"
+
+    store.update_bom(bom_id, workspace_id="ws-a", name="Flight Controller")
+    for analysis_id in ("managed-a", "managed-b"):
+        report = store.get_report(analysis_id, workspace_id="ws-a")
+        assert report["project_name"] == "Drone Control — Flight Controller"
+        assert report["bom_name"] == "Flight Controller"
+
+    store.update_bom(
+        bom_id,
+        workspace_id="ws-a",
+        project_id=other_project_report["project_id"],
+    )
+    moved = store.get_report("managed-a", workspace_id="ws-a")
+    assert moved["project_id"] == other_project_report["project_id"]
+    assert moved["project_name"] == "Power Supply — Flight Controller"
+    assert moved["bom_name"] == "Flight Controller"
+
+    with pytest.raises(WorkspaceAccessError):
+        store.delete_bom(bom_id, workspace_id="ws-b")
+
+    deleted_ids = store.delete_bom(bom_id, workspace_id="ws-a")
+    assert set(deleted_ids or []) == {"managed-a", "managed-b"}
+    assert store.get_report("managed-a", workspace_id="ws-a") is None
+    assert store.list_reports(workspace_id="ws-a") == []
+    assert store.list_decision_records(workspace_id="ws-a") == []
+    assert store.list_procurement_quotes(
+        workspace_id="ws-a", analysis_id="managed-a"
+    ) == []
+    remaining_projects = store.list_projects(workspace_id="ws-a")
+    assert any(
+        bom["id"] == other_project_report["bom_id"]
+        for project in remaining_projects
+        for bom in project["boms"]
+    )

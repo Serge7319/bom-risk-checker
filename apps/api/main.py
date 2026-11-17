@@ -38,12 +38,12 @@ from apps.api.report_visibility import (
     is_internal_test_fixture_analysis,
 )  # noqa: E402
 from apps.api.synthetic_analyze import (  # noqa: E402
-    PersistenceVerifyError,
     analyze_upload,
     delete_project as delete_project_record,
     delete_report,
     get_report,
     list_reports,
+    parse_bom_bytes,
 )
 from apps.api.sandbox_auth import (  # noqa: E402
     AuthError,
@@ -572,6 +572,91 @@ async def boms_analyze(request: Request) -> JSONResponse:
     project_name = str(form.get("project_name") or "").strip() or None
     bom_name = str(form.get("bom_name") or "").strip() or None
     revision = str(form.get("revision") or "").strip() or None
+    derived_from_analysis_id = str(form.get("source_analysis_id") or "").strip() or None
+    applied_decision_ids_raw = str(form.get("applied_decision_ids") or "").strip()
+    applied_decision_ids: list[str] = []
+    if applied_decision_ids_raw:
+        try:
+            parsed_decision_ids = json.loads(applied_decision_ids_raw)
+        except (TypeError, ValueError):
+            return _json({"detail": "Applied decision references are invalid."}, 400)
+        if not isinstance(parsed_decision_ids, list) or any(
+            not isinstance(item, str) or not item.strip() for item in parsed_decision_ids
+        ):
+            return _json({"detail": "Applied decision references are invalid."}, 400)
+        applied_decision_ids = list(dict.fromkeys(item.strip() for item in parsed_decision_ids))
+    used_decision_ids_raw = str(form.get("used_decision_ids") or "").strip()
+    used_decision_ids: list[str] = []
+    if used_decision_ids_raw:
+        try:
+            parsed_decision_ids = json.loads(used_decision_ids_raw)
+        except (TypeError, ValueError):
+            return _json({"detail": "Replacement decision references are invalid."}, 400)
+        if not isinstance(parsed_decision_ids, list) or any(
+            not isinstance(item, str) or not item.strip() for item in parsed_decision_ids
+        ):
+            return _json({"detail": "Replacement decision references are invalid."}, 400)
+        used_decision_ids = list(dict.fromkeys(item.strip() for item in parsed_decision_ids))
+    elif applied_decision_ids:
+        # Backward compatible for callers that send only approved decisions.
+        used_decision_ids = list(applied_decision_ids)
+    if set(applied_decision_ids) - set(used_decision_ids):
+        return _json({"detail": "Approved decisions must also be listed as applied candidates."}, 400)
+    if (applied_decision_ids or used_decision_ids) and not derived_from_analysis_id:
+        return _json({"detail": "Replacement decisions require a source BOM report."}, 400)
+    if derived_from_analysis_id:
+        source_report = _get_visible_report(
+            derived_from_analysis_id, workspace_id=ctx["workspace_id"]
+        )
+        if not source_report:
+            return _json({"detail": "Source BOM report not found"}, 404)
+        if applied_decision_ids or used_decision_ids:
+            source_decisions = get_store().list_decision_records(
+                workspace_id=ctx["workspace_id"],
+                analysis_id=derived_from_analysis_id,
+            )
+            decisions_by_id = {
+                str(record.get("id") or record.get("decision_id") or ""): record
+                for record in source_decisions
+            }
+            approved_by_id = {
+                str(record.get("id") or record.get("decision_id") or ""): record
+                for record in source_decisions
+                if record.get("decision") == "approve_alternate"
+            }
+            if any(decision_id not in approved_by_id for decision_id in applied_decision_ids):
+                return _json(
+                    {"detail": "Only approved alternate decisions can be linked as approval evidence."},
+                    400,
+                )
+            if any(
+                decision_id not in decisions_by_id
+                or decisions_by_id[decision_id].get("decision") == "reject_alternate"
+                for decision_id in used_decision_ids
+            ):
+                return _json(
+                    {"detail": "Only non-rejected replacement candidates from the source BOM can be applied."},
+                    400,
+                )
+            revised_parts = parse_bom_bytes(filename, payload)
+            revised_mpns = {
+                str(value or "").strip().casefold()
+                for value in revised_parts.get("mpn", [])
+                if str(value or "").strip()
+            }
+            for decision_id in used_decision_ids:
+                decision = decisions_by_id[decision_id]
+                current_mpn = str(decision.get("part_a") or "").strip().casefold()
+                candidate_mpn = str(decision.get("part_b") or "").strip().casefold()
+                if not candidate_mpn or candidate_mpn not in revised_mpns or current_mpn in revised_mpns:
+                    return _json(
+                        {
+                            "detail": (
+                                "The new BOM must contain each approved replacement and remove its current part before the decision can be linked."
+                            )
+                        },
+                        400,
+                    )
     unique_part_count = int(preview.get("unique_part_count") or 0)
 
     analysis_id = str(uuid.uuid4())
@@ -640,6 +725,9 @@ async def boms_analyze(request: Request) -> JSONResponse:
             bom_name=bom_name,
             revision=revision,
             analysis_id=analysis_id,
+            derived_from_analysis_id=derived_from_analysis_id,
+            applied_decision_ids=applied_decision_ids,
+            used_decision_ids=used_decision_ids,
         )
     except PersistenceNotConfiguredError as exc:
         if reserved_order_id:
@@ -649,23 +737,7 @@ async def boms_analyze(request: Request) -> JSONResponse:
                 analysis_id=analysis_id,
                 workspace_id=ctx["workspace_id"],
             )
-        return _json({"detail": str(exc), "code": "persistence_not_configured"}, 503)
-    except PersistenceVerifyError as exc:
-        if reserved_order_id:
-            _release_one_time_credit_if_report_was_not_saved(
-                access_token=access_token,
-                order_id=reserved_order_id,
-                analysis_id=analysis_id,
-                workspace_id=ctx["workspace_id"],
-            )
-        return _json(
-            {
-                "detail": str(exc),
-                "code": "persistence_verify_failed",
-                "persisted": False,
-            },
-            503,
-        )
+        return _json({"detail": str(exc)}, 503)
     except Exception as exc:  # noqa: BLE001
         if reserved_order_id:
             _release_one_time_credit_if_report_was_not_saved(
@@ -675,27 +747,6 @@ async def boms_analyze(request: Request) -> JSONResponse:
                 workspace_id=ctx["workspace_id"],
             )
         return _json({"detail": str(exc)}, 400)
-
-    if not report.get("persisted"):
-        if reserved_order_id:
-            _release_one_time_credit_if_report_was_not_saved(
-                access_token=access_token,
-                order_id=reserved_order_id,
-                analysis_id=str(report.get("id") or analysis_id),
-                workspace_id=ctx["workspace_id"],
-            )
-        return _json(
-            {
-                "detail": (
-                    "BOM analysis completed but was not saved to workspace storage. "
-                    "Retry the analysis."
-                ),
-                "code": "persistence_verify_failed",
-                "analysis_id": report.get("id"),
-                "persisted": False,
-            },
-            503,
-        )
 
     payment_reconciled = True
     if reserved_order_id:
@@ -737,7 +788,7 @@ async def boms_analyze(request: Request) -> JSONResponse:
             "bom_id": report.get("bom_id"),
             "bom_name": report.get("bom_name"),
             "revision": report.get("revision"),
-            "persisted": True,
+            "persisted": bool(report.get("persisted")),
             "has_hierarchy": bool(hierarchy.get("has_hierarchy")),
             "top_rolled_risk": top.get("rolled_risk_level"),
         }
@@ -810,6 +861,65 @@ async def projects_list(request: Request) -> JSONResponse:
             "workspace_id": ctx["workspace_id"],
             "persistence": persistence["backend"],
             "projects": projects,
+        }
+    )
+
+
+async def boms_update(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    bom_id = request.path_params["bom_id"]
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "A project name or project id is required."}, 400)
+    if "name" not in body and not str(body.get("project_id") or "").strip():
+        return _json({"detail": "A project name or project id is required."}, 400)
+    try:
+        updated = get_store().update_bom(
+            bom_id,
+            workspace_id=ctx["workspace_id"],
+            name=(str(body["name"]) if body.get("name") is not None else None),
+            project_id=(str(body.get("project_id") or "").strip() or None),
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "BOM not found"}, 404)
+    except LookupError:
+        return _json({"detail": "BOM not found"}, 404)
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "bom": updated, "workspace_id": ctx["workspace_id"]})
+
+
+async def boms_delete(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    bom_id = request.path_params["bom_id"]
+    try:
+        store = get_store()
+        analysis_ids = store.delete_bom(
+            bom_id, workspace_id=ctx["workspace_id"]
+        )
+        if analysis_ids is None:
+            return _json({"detail": "BOM not found"}, 404)
+        if getattr(store, "backend", "file") != "postgres":
+            monitoring_store.delete_analysis_scopes(ctx["workspace_id"], analysis_ids)
+    except WorkspaceAccessError:
+        return _json({"detail": "BOM not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json(
+        {
+            "ok": True,
+            "deleted": bom_id,
+            "deleted_analysis_count": len(analysis_ids),
+            "workspace_id": ctx["workspace_id"],
         }
     )
 
@@ -1256,7 +1366,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
                     "ok": False,
                     "code": "comparison_refresh_required",
                     "detail": (
-                        "Multi-candidate comparison is out of date for this BOM scope. "
+                        "Multi-candidate comparison evidence does not match this BOM scope or its signed snapshot. "
                         "Re-compare every candidate under the selected Project / BOM, "
                         "then record the decision again. Cadivor will not silently save "
                         "only the primary candidate."
@@ -1350,7 +1460,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "verified_primary_evidence": verified_primary,
                 "qualification_status": "not-qualified-by-cadivor",
                 "qualification_note": (
-                    "This record captures your decision and did not automatically qualify "
+                    "This record captures a human decision and did not automatically qualify "
                     "a drop-in replacement or update the BOM."
                 ),
                 "comparison_snapshot": snapshot,
@@ -3478,6 +3588,8 @@ app = Starlette(
         Route("/projects", projects_list, methods=["GET"]),
         Route("/projects/{project_id}", projects_update, methods=["PATCH"]),
         Route("/projects/{project_id}", projects_delete, methods=["DELETE"]),
+        Route("/boms/{bom_id}", boms_update, methods=["PATCH"]),
+        Route("/boms/{bom_id}", boms_delete, methods=["DELETE"]),
         Route("/workspace/home", workspace_home, methods=["GET"]),
         Route("/tools/monitoring", monitoring_get, methods=["GET"]),
         Route("/tools/compare-parts", compare_parts_post, methods=["POST"]),

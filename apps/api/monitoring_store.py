@@ -170,6 +170,68 @@ def _ws(state: dict[str, Any], workspace_id: str) -> dict[str, Any]:
     )
 
 
+def delete_analysis_scopes(workspace_id: str, analysis_ids: list[str]) -> None:
+    """Remove monitoring state tied to reports that a user deleted."""
+    wid = str(workspace_id or "").strip()
+    aids = sorted({str(aid or "").strip() for aid in analysis_ids if str(aid or "").strip()})
+    if not wid or not aids:
+        return
+    if _use_postgres():
+        with _pg_connect() as conn:
+            alert_rows = conn.execute(
+                """
+                SELECT id FROM migration_monitoring_alerts
+                WHERE workspace_id = %s AND analysis_id = ANY(%s)
+                """,
+                (wid, aids),
+            ).fetchall()
+            alert_ids = [str(row["id"]) for row in alert_rows]
+            if alert_ids:
+                conn.execute(
+                    "DELETE FROM migration_monitoring_email_deliveries WHERE workspace_id = %s AND alert_id = ANY(%s)",
+                    (wid, alert_ids),
+                )
+                conn.execute(
+                    "DELETE FROM migration_monitoring_alerts WHERE workspace_id = %s AND id = ANY(%s)",
+                    (wid, alert_ids),
+                )
+            conn.execute(
+                "DELETE FROM migration_monitoring_snapshots WHERE workspace_id = %s AND analysis_id = ANY(%s)",
+                (wid, aids),
+            )
+            conn.execute(
+                "DELETE FROM migration_monitoring_refresh_history WHERE workspace_id = %s AND analysis_id = ANY(%s)",
+                (wid, aids),
+            )
+            conn.commit()
+        return
+    with _lock:
+        state = _load_state()
+        bucket = _ws(state, wid)
+        aid_set = set(aids)
+        removed_alert_ids = {
+            str(row.get("id") or "")
+            for row in bucket.get("alerts", [])
+            if str(row.get("analysis_id") or "") in aid_set
+        }
+        bucket["alerts"] = [
+            row for row in bucket.get("alerts", [])
+            if str(row.get("analysis_id") or "") not in aid_set
+        ]
+        snapshots = bucket.setdefault("snapshots", {})
+        for aid in aids:
+            snapshots.pop(aid, None)
+        bucket["refresh_history"] = [
+            row for row in bucket.get("refresh_history", [])
+            if str(row.get("analysis_id") or "") not in aid_set
+        ]
+        deliveries = bucket.setdefault("email_deliveries", {})
+        for key, row in list(deliveries.items()):
+            if str(row.get("alert_id") or "") in removed_alert_ids:
+                deliveries.pop(key, None)
+        _save_state(state)
+
+
 def get_preferences(workspace_id: str) -> dict[str, Any]:
     if _use_postgres():
         with _pg_connect() as conn:

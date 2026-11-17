@@ -18,7 +18,6 @@ from src.saved_bom_project import (
     analysis_title_for_upload,
 )
 
-from apps.api.json_safe import json_safe
 from apps.api.workspace_store import WorkspaceAccessError
 from apps.api.report_visibility import customer_visible_analyses, customer_visible_projects
 
@@ -192,11 +191,7 @@ class PostgresWorkspaceStore:
                     """,
                     analysis,
                 )
-                safe_report = json_safe(report)
-                assert isinstance(safe_report, dict)
-                report = safe_report
-                report_payload = json.dumps(report, allow_nan=False)
-                report_write = conn.execute(
+                conn.execute(
                     """
                     INSERT INTO migration_reports (id, workspace_id, payload, created_at, updated_at)
                     VALUES (%s, %s, %s::jsonb, %s, %s)
@@ -208,17 +203,11 @@ class PostgresWorkspaceStore:
                     (
                         analysis_id,
                         wid,
-                        report_payload,
+                        json.dumps(report),
                         analysis["created_at"],
                         now,
                     ),
                 )
-                # ON CONFLICT with a mismatched workspace updates 0 rows and
-                # would otherwise return persisted=True without storing payload.
-                if getattr(report_write, "rowcount", None) == 0:
-                    raise WorkspaceAccessError(
-                        f"analysis {analysis_id} could not be saved for workspace {wid}"
-                    )
                 conn.execute(
                     """
                     UPDATE migration_revisions
@@ -729,6 +718,15 @@ class PostgresWorkspaceStore:
                     raise WorkspaceAccessError(
                         f"project {project_id} is not in workspace {wid}"
                     )
+                conflict = conn.execute(
+                    """
+                    SELECT 1 FROM migration_projects
+                    WHERE workspace_id = %s AND LOWER(name) = LOWER(%s) AND id <> %s
+                    """,
+                    (wid, new_name, project_id),
+                ).fetchone()
+                if conflict:
+                    raise ValueError("A project with this name already exists.")
                 now = _now()
                 conn.execute(
                     """
@@ -738,6 +736,45 @@ class PostgresWorkspaceStore:
                     """,
                     (new_name, now, project_id, wid),
                 )
+                linked = conn.execute(
+                    """
+                    SELECT id, bom_name FROM migration_analyses
+                    WHERE project_id = %s AND workspace_id = %s
+                    """,
+                    (project_id, wid),
+                ).fetchall()
+                for analysis in linked:
+                    aid = str(analysis["id"])
+                    title = analysis_title_for_upload(
+                        new_name, str(analysis.get("bom_name") or "Saved BOM")
+                    )
+                    conn.execute(
+                        """
+                        UPDATE migration_analyses SET project_name = %s, updated_at = %s
+                        WHERE id = %s AND workspace_id = %s
+                        """,
+                        (title, now, aid, wid),
+                    )
+                    report_row = conn.execute(
+                        """
+                        SELECT payload FROM migration_reports
+                        WHERE id = %s AND workspace_id = %s
+                        """,
+                        (aid, wid),
+                    ).fetchone()
+                    if report_row:
+                        payload = report_row["payload"]
+                        if isinstance(payload, str):
+                            payload = json.loads(payload)
+                        payload = dict(payload or {})
+                        payload["project_name"] = title
+                        conn.execute(
+                            """
+                            UPDATE migration_reports SET payload = %s::jsonb, updated_at = %s
+                            WHERE id = %s AND workspace_id = %s
+                            """,
+                            (json.dumps(payload), now, aid, wid),
+                        )
                 conn.commit()
                 updated = dict(row)
                 updated["name"] = new_name
@@ -746,6 +783,195 @@ class PostgresWorkspaceStore:
                 if hasattr(updated.get("created_at"), "isoformat"):
                     updated["created_at"] = updated["created_at"].isoformat()
                 return updated
+
+    def update_bom(
+        self,
+        bom_id: str,
+        *,
+        workspace_id: str,
+        name: str | None = None,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        wid = self._require_workspace(workspace_id)
+        with _LOCK:
+            with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT * FROM migration_boms WHERE id = %s",
+                    (bom_id,),
+                ).fetchone()
+                if not row:
+                    raise LookupError(f"BOM {bom_id} not found")
+                if row["workspace_id"] != wid:
+                    raise WorkspaceAccessError(f"BOM {bom_id} is not in workspace {wid}")
+                new_name = str(name if name is not None else row.get("name") or "").strip()
+                if not new_name:
+                    raise ValueError("name is required")
+                target_project_id = str(project_id or row["project_id"])
+                project = conn.execute(
+                    "SELECT id, name FROM migration_projects WHERE id = %s AND workspace_id = %s",
+                    (target_project_id, wid),
+                ).fetchone()
+                if not project:
+                    raise LookupError(f"project {target_project_id} not found")
+                conflict = conn.execute(
+                    """
+                    SELECT 1 FROM migration_boms
+                    WHERE workspace_id = %s AND project_id = %s AND LOWER(name) = LOWER(%s)
+                      AND id <> %s
+                    """,
+                    (wid, target_project_id, new_name, bom_id),
+                ).fetchone()
+                if conflict:
+                    raise ValueError("A BOM with this name already exists in this project.")
+                project_name = str(project.get("name") or DEFAULT_WORKSPACE_PROJECT)
+                now = _now()
+                conn.execute(
+                    """
+                    UPDATE migration_boms SET name = %s, project_id = %s, updated_at = %s
+                    WHERE id = %s AND workspace_id = %s
+                    """,
+                    (new_name, target_project_id, now, bom_id, wid),
+                )
+                linked = conn.execute(
+                    """
+                    SELECT id FROM migration_analyses
+                    WHERE bom_id = %s AND workspace_id = %s
+                    """,
+                    (bom_id, wid),
+                ).fetchall()
+                title = analysis_title_for_upload(project_name, new_name)
+                for analysis in linked:
+                    aid = str(analysis["id"])
+                    conn.execute(
+                        """
+                        UPDATE migration_analyses
+                        SET project_id = %s, bom_name = %s, project_name = %s, updated_at = %s
+                        WHERE id = %s AND workspace_id = %s
+                        """,
+                        (target_project_id, new_name, title, now, aid, wid),
+                    )
+                    report_row = conn.execute(
+                        """
+                        SELECT payload FROM migration_reports
+                        WHERE id = %s AND workspace_id = %s
+                        """,
+                        (aid, wid),
+                    ).fetchone()
+                    if report_row:
+                        payload = report_row["payload"]
+                        if isinstance(payload, str):
+                            payload = json.loads(payload)
+                        payload = dict(payload or {})
+                        payload["project_id"] = target_project_id
+                        payload["bom_name"] = new_name
+                        payload["project_name"] = title
+                        conn.execute(
+                            """
+                            UPDATE migration_reports SET payload = %s::jsonb, updated_at = %s
+                            WHERE id = %s AND workspace_id = %s
+                            """,
+                            (json.dumps(payload), now, aid, wid),
+                        )
+                for affected_project_id in {str(row["project_id"]), target_project_id}:
+                    conn.execute(
+                        """
+                        UPDATE migration_projects SET updated_at = %s
+                        WHERE id = %s AND workspace_id = %s
+                        """,
+                        (now, affected_project_id, wid),
+                    )
+                conn.commit()
+                updated = dict(row)
+                updated["name"] = new_name
+                updated["project_id"] = target_project_id
+                updated["updated_at"] = now
+                updated["id"] = str(updated["id"])
+                for key in ("created_at",):
+                    if hasattr(updated.get(key), "isoformat"):
+                        updated[key] = updated[key].isoformat()
+                return updated
+
+    def delete_bom(self, bom_id: str, *, workspace_id: str) -> list[str] | None:
+        """Delete a BOM and its saved revisions, reports, decisions, and quotes."""
+        wid = self._require_workspace(workspace_id)
+        with _LOCK:
+            with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT id FROM migration_boms WHERE id = %s",
+                    (bom_id,),
+                ).fetchone()
+                if not row:
+                    return None
+                owner = conn.execute(
+                    "SELECT workspace_id FROM migration_boms WHERE id = %s",
+                    (bom_id,),
+                ).fetchone()
+                if not owner or owner["workspace_id"] != wid:
+                    raise WorkspaceAccessError(f"BOM {bom_id} is not in workspace {wid}")
+                rows = conn.execute(
+                    """
+                    SELECT id FROM migration_analyses
+                    WHERE bom_id = %s AND workspace_id = %s
+                    """,
+                    (bom_id, wid),
+                ).fetchall()
+                analysis_ids = [str(item["id"]) for item in rows]
+                if analysis_ids:
+                    alert_rows = conn.execute(
+                        """
+                        SELECT id FROM migration_monitoring_alerts
+                        WHERE workspace_id = %s AND analysis_id = ANY(%s)
+                        """,
+                        (wid, analysis_ids),
+                    ).fetchall()
+                    alert_ids = [str(item["id"]) for item in alert_rows]
+                    if alert_ids:
+                        conn.execute(
+                            """
+                            DELETE FROM migration_monitoring_email_deliveries
+                            WHERE workspace_id = %s AND alert_id = ANY(%s)
+                            """,
+                            (wid, alert_ids),
+                        )
+                        conn.execute(
+                            """
+                            DELETE FROM migration_monitoring_alerts
+                            WHERE workspace_id = %s AND id = ANY(%s)
+                            """,
+                            (wid, alert_ids),
+                        )
+                    conn.execute(
+                        """
+                        DELETE FROM migration_monitoring_snapshots
+                        WHERE workspace_id = %s AND analysis_id = ANY(%s)
+                        """,
+                        (wid, analysis_ids),
+                    )
+                    conn.execute(
+                        """
+                        DELETE FROM migration_monitoring_refresh_history
+                        WHERE workspace_id = %s AND analysis_id = ANY(%s)
+                        """,
+                        (wid, analysis_ids),
+                    )
+                    conn.execute(
+                        "DELETE FROM migration_decision_records WHERE workspace_id = %s AND analysis_id = ANY(%s)",
+                        (wid, analysis_ids),
+                    )
+                    conn.execute(
+                        "DELETE FROM migration_reports WHERE workspace_id = %s AND id = ANY(%s)",
+                        (wid, analysis_ids),
+                    )
+                    conn.execute(
+                        "DELETE FROM migration_analyses WHERE workspace_id = %s AND id = ANY(%s)",
+                        (wid, analysis_ids),
+                    )
+                conn.execute(
+                    "DELETE FROM migration_boms WHERE id = %s AND workspace_id = %s",
+                    (bom_id, wid),
+                )
+                conn.commit()
+                return analysis_ids
 
     def delete_analysis(self, analysis_id: str, *, workspace_id: str) -> bool:
         wid = self._require_workspace(workspace_id)
@@ -763,6 +989,10 @@ class PostgresWorkspaceStore:
                     )
                 conn.execute(
                     "DELETE FROM migration_reports WHERE id = %s AND workspace_id = %s",
+                    (analysis_id, wid),
+                )
+                conn.execute(
+                    "DELETE FROM migration_decision_records WHERE analysis_id = %s AND workspace_id = %s",
                     (analysis_id, wid),
                 )
                 conn.execute(

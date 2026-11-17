@@ -20,8 +20,7 @@ from apps.api.bom_hierarchy import (
     has_hierarchy,
     rollup_assemblies,
 )
-from apps.api.json_safe import json_safe
-from apps.api.workspace_store import PersistenceNotConfiguredError, get_store
+from apps.api.workspace_store import get_store
 from src.bom_parser import (
     aggregate_bom_rows,
     clean_bom_data,
@@ -33,10 +32,6 @@ from src.risk_engine import calculate_risk
 
 # Process-local mirror kept for backward compatibility with in-flight callers.
 _REPORTS: dict[str, dict[str, Any]] = {}
-
-
-class PersistenceVerifyError(RuntimeError):
-    """Raised when an analysis write cannot be read back from the workspace store."""
 
 
 def _synthetic_part(mpn: str, manufacturer: str, description: str, quantity: Any) -> dict[str, Any]:
@@ -203,14 +198,20 @@ def analyze_upload(
     persist: bool = True,
     analysis_mode: str | None = None,
     analysis_id: str | None = None,
+    derived_from_analysis_id: str | None = None,
+    applied_decision_ids: list[str] | None = None,
+    used_decision_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     df = parse_bom_bytes(filename, payload)
     report = analyze_dataframe(df, analysis_mode=analysis_mode, analysis_id=analysis_id)
     report["filename"] = filename or "bom.csv"
     report["workspace_id"] = workspace_id
-    # Durable stores require JSON-safe payloads (no NaN / numpy scalars).
-    report = json_safe(report)
-    assert isinstance(report, dict)
+    if derived_from_analysis_id:
+        report["derived_from_analysis_id"] = str(derived_from_analysis_id)
+    if applied_decision_ids:
+        report["applied_decision_ids"] = [str(item) for item in applied_decision_ids]
+    if used_decision_ids:
+        report["used_decision_ids"] = [str(item) for item in used_decision_ids]
     _REPORTS[report["id"]] = report
     if persist:
         store = get_store()
@@ -221,24 +222,6 @@ def analyze_upload(
             bom_name=bom_name,
             revision=revision,
         )
-        verified = store.get_report(str(report["id"]), workspace_id=workspace_id)
-        if not verified:
-            _REPORTS.pop(str(report.get("id") or ""), None)
-            raise PersistenceVerifyError(
-                "BOM analysis could not be confirmed in workspace storage after save. "
-                "The report was not kept — retry the analysis."
-            )
-        if not verified.get("persisted", True):
-            raise PersistenceNotConfiguredError(
-                "BOM analysis completed but workspace storage did not mark it as saved."
-            )
-        parts = verified.get("parts") or []
-        if int(verified.get("total_parts") or 0) > 0 and not parts:
-            raise PersistenceVerifyError(
-                "BOM analysis saved without component rows. Retry the analysis."
-            )
-        report = verified
-        report["persisted"] = True
         _REPORTS[report["id"]] = report
     return report
 
