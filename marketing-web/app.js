@@ -25,6 +25,8 @@
   }
 
   function buildPublicStressUrl() {
+    // Dedicated Next.js anonymous route — never the authenticated home (`/?`).
+    // Keep embed + UTM attribution; middleware still remaps legacy `/?public=stress`.
     const params = new URLSearchParams({ embed: 'true' });
     const campaign = new URLSearchParams(window.location.search);
     ['utm_source', 'utm_medium', 'utm_campaign'].forEach(key => {

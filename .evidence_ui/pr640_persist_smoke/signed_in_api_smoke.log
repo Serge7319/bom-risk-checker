@@ -1,0 +1,9 @@
+login_ok sandbox-a@cadivor.test workspace ws-sandbox-a
+analyze_status 200
+analyze_body {"analysis_id": "a507dc60-ddbd-4462-b2db-512fee8a8f60", "persisted": true, "total_parts": 3, "health_status": "Healthy", "code": null, "detail": null}
+recent_contains_analysis True recent_count 1
+detailed_risk_ok True rows 3 mode synthetic-preview
+reload_rows 3
+missing_mode analysis-not-found missing_ok False
+persist_fail_status 503 code persistence_verify_failed persisted False
+SMOKE_PASS

@@ -2260,6 +2260,18 @@ def portfolio_payload(*, workspace_id: str) -> dict[str, Any]:
 def detailed_risk_payload(*, workspace_id: str, analysis_id: str | None = None) -> dict[str, Any]:
     report = _require_analysis(analysis_id, workspace_id=workspace_id)
     if not report:
+        if analysis_id:
+            return {
+                "ok": False,
+                "mode": "analysis-not-found",
+                "analysis_id": analysis_id,
+                "gap": (
+                    "This saved analysis was not found in your workspace. "
+                    "Re-run BOM Analyzer or choose a saved report."
+                ),
+                "rows": [],
+                "summary": {},
+            }
         return {
             "ok": True,
             "mode": "synthetic-preview",

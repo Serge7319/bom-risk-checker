@@ -38,6 +38,7 @@ from apps.api.report_visibility import (
     is_internal_test_fixture_analysis,
 )  # noqa: E402
 from apps.api.synthetic_analyze import (  # noqa: E402
+    PersistenceVerifyError,
     analyze_upload,
     delete_project as delete_project_record,
     delete_report,
@@ -648,7 +649,23 @@ async def boms_analyze(request: Request) -> JSONResponse:
                 analysis_id=analysis_id,
                 workspace_id=ctx["workspace_id"],
             )
-        return _json({"detail": str(exc)}, 503)
+        return _json({"detail": str(exc), "code": "persistence_not_configured"}, 503)
+    except PersistenceVerifyError as exc:
+        if reserved_order_id:
+            _release_one_time_credit_if_report_was_not_saved(
+                access_token=access_token,
+                order_id=reserved_order_id,
+                analysis_id=analysis_id,
+                workspace_id=ctx["workspace_id"],
+            )
+        return _json(
+            {
+                "detail": str(exc),
+                "code": "persistence_verify_failed",
+                "persisted": False,
+            },
+            503,
+        )
     except Exception as exc:  # noqa: BLE001
         if reserved_order_id:
             _release_one_time_credit_if_report_was_not_saved(
@@ -658,6 +675,27 @@ async def boms_analyze(request: Request) -> JSONResponse:
                 workspace_id=ctx["workspace_id"],
             )
         return _json({"detail": str(exc)}, 400)
+
+    if not report.get("persisted"):
+        if reserved_order_id:
+            _release_one_time_credit_if_report_was_not_saved(
+                access_token=access_token,
+                order_id=reserved_order_id,
+                analysis_id=str(report.get("id") or analysis_id),
+                workspace_id=ctx["workspace_id"],
+            )
+        return _json(
+            {
+                "detail": (
+                    "BOM analysis completed but was not saved to workspace storage. "
+                    "Retry the analysis."
+                ),
+                "code": "persistence_verify_failed",
+                "analysis_id": report.get("id"),
+                "persisted": False,
+            },
+            503,
+        )
 
     payment_reconciled = True
     if reserved_order_id:
@@ -699,7 +737,7 @@ async def boms_analyze(request: Request) -> JSONResponse:
             "bom_id": report.get("bom_id"),
             "bom_name": report.get("bom_name"),
             "revision": report.get("revision"),
-            "persisted": bool(report.get("persisted")),
+            "persisted": True,
             "has_hierarchy": bool(hierarchy.get("has_hierarchy")),
             "top_rolled_risk": top.get("rolled_risk_level"),
         }
@@ -1312,7 +1350,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "verified_primary_evidence": verified_primary,
                 "qualification_status": "not-qualified-by-cadivor",
                 "qualification_note": (
-                    "This record captures a human decision and did not automatically qualify "
+                    "This record captures your decision and did not automatically qualify "
                     "a drop-in replacement or update the BOM."
                 ),
                 "comparison_snapshot": snapshot,

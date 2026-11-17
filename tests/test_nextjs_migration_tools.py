@@ -205,6 +205,8 @@ def test_decision_records_round_trip_and_are_workspace_scoped():
     assert record["project_name"] == "Decision test"
     assert record["bom_name"] == "Synthetic controller"
     assert record["qualification_status"] == "not-qualified-by-cadivor"
+    assert "your decision" in record["qualification_note"]
+    assert "human decision" not in record["qualification_note"].lower()
     assert record["comparison_snapshot"]["rows"]
     assert record["validation_checks"] == payload["validation_checks"]
     assert record["follow_up_action"] == payload["follow_up_action"]

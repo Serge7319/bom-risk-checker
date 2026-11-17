@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Marketing iframe and direct links still use `/?public=stress`.
- * Redirect to the Next.js public audit page before the authenticated home gate.
+ * Legacy marketing links used `/?public=stress` (authenticated home + query).
+ * Prefer `/public-bom-audit` directly; this redirect keeps old embeds working
+ * before the signed-in workspace home gate.
  */
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;

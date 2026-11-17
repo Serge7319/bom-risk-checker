@@ -30,6 +30,9 @@ export function compactContextLabel(text: string): string {
   if (/saved analys/i.test(t) && /only|workspace/i.test(t)) {
     return "Based on saved analyses in this workspace";
   }
+  if (/was not found in your workspace|analysis-not-found/i.test(t)) {
+    return "Saved analysis not found in this workspace";
+  }
   if (/analyze a bom first|no analyzed bom|no saved analys/i.test(t)) {
     return "Requires a saved BOM analysis";
   }

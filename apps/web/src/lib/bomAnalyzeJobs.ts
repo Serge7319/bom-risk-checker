@@ -150,6 +150,17 @@ export function startAnalyzeJobWithRunner(
         emitJob(ownerKey);
         return;
       }
+      if (summary.persisted === false) {
+        activeJobsByOwner.set(ownerKey, {
+          ...job,
+          status: "failed",
+          finishedAt: new Date().toISOString(),
+          error:
+            "Analysis completed but was not saved to your workspace. Retry the analysis.",
+        });
+        emitJob(ownerKey);
+        return;
+      }
       activeJobsByOwner.set(ownerKey, {
         ...job,
         status: "succeeded",

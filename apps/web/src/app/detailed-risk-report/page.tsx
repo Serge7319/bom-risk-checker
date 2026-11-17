@@ -128,7 +128,26 @@ function DetailedRiskPageInner() {
               </table>
             </div>
           </section>
-        </> : <EmptyState icon="risk" title="No component risk rows found" body="Open a saved analysis with component data to view the detailed risk breakdown." action={<PrimaryLink href="/reports">Choose a saved report</PrimaryLink>} />
+        </> : (
+          <EmptyState
+            icon="risk"
+            title={
+              data.mode === "analysis-not-found"
+                ? "Saved analysis not found"
+                : "No component risk rows found"
+            }
+            body={
+              data.mode === "analysis-not-found"
+                ? "This analysis id is not in your workspace store. Re-run BOM Analyzer, then open risk review again."
+                : "Open a saved analysis with component data to view the detailed risk breakdown."
+            }
+            action={
+              <PrimaryLink href={data.mode === "analysis-not-found" ? "/bom-analyzer" : "/reports"}>
+                {data.mode === "analysis-not-found" ? "Open BOM Analyzer" : "Choose a saved report"}
+              </PrimaryLink>
+            }
+          />
+        )
       ) : null}
     </Shell>
   );

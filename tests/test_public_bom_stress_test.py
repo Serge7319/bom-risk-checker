@@ -39,11 +39,14 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertIn("a.href = '#/analyze'", script)
         self.assertNotIn("stressFullPage", script)
         self.assertIn("if (page === 'analyze')", script)
+        # Marketing iframe targets the Next anonymous route directly (not /?).
         self.assertIn("new URLSearchParams({ embed: 'true' })", script)
+        self.assertIn("${APP_ORIGIN}/public-bom-audit?", script)
+        self.assertNotIn("public: 'stress'", script)
         self.assertIn("params.set(key, value.slice(0, 80))", script)
         self.assertLess(entrypoint.index('st.query_params.get("public"'),
                         entrypoint.index("ensure_authenticated_or_stop()"))
-        # Next.js production app restores the marketing iframe path without login.
+        # Legacy /?public=stress still redirects before the authenticated home gate.
         self.assertIn('pathname = "/public-bom-audit"', next_middleware)
         self.assertIn('public") || "").trim().toLowerCase() !== "stress"', next_middleware)
         self.assertIn('data-testid="public-bom-audit"', next_page)
