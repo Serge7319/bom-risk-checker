@@ -1,46 +1,19 @@
 """Customer-facing visibility rules for clearly marked internal QA analyses."""
 from __future__ import annotations
 
-import re
 from typing import Any
 
 
-_INTERNAL_MARKER = re.compile(
-    r"(?<![a-z0-9])(?:synthetic|preview|fixture|e2e|qa)(?![a-z0-9])", re.I
-)
-_TEST_BOM_MARKER = re.compile(r"(?<![a-z0-9])test[\s_-]*bom(?:[\s_-]*\d+)?(?![a-z0-9])", re.I)
-_SMOKE_MARKER = re.compile(
-    r"(?<![a-z0-9])(?:smoke[\s_-]+(?:test|nested|flat)|(?:nested|flat)[\s_-]+smoke)(?![a-z0-9])",
-    re.I,
-)
-_DEMO_FIXTURE_MARKER = re.compile(
-    r"(?<![a-z0-9])demo[\s_-]+(?:controller(?:[\s_-]+bom)?|product[\s_-]+line)(?![a-z0-9])",
-    re.I,
-)
-
-
 def is_internal_test_fixture_analysis(row: dict[str, Any]) -> bool:
-    """Identify explicitly named demo/QA analyses without relying on evidence mode.
+    """Identify fixtures only through explicit server-side metadata.
 
-    Supplier evidence can be synthetic on a legitimate customer BOM, so mode
-    and evidence labels are deliberately not used to hide the analysis.
+    Project names, BOM names, revisions, and uploaded filenames are user data.
+    They can contain words such as "test", "QA", or "synthetic" without being
+    internal fixtures, so visibility must never be inferred from those values.
+    Evidence mode is also not a fixture marker: valid customer analyses may
+    legitimately use preview or synthetic evidence.
     """
-    if row.get("internal_test_fixture") is True or row.get("is_test_fixture") is True:
-        return True
-
-    values = [
-        str(row.get(key) or "").strip()
-        for key in ("project_name", "bom_name", "filename", "revision")
-    ]
-    searchable = " ".join(value for value in values if value)
-    if not searchable:
-        return False
-
-    if _INTERNAL_MARKER.search(searchable):
-        return True
-    if _TEST_BOM_MARKER.search(searchable) or _SMOKE_MARKER.search(searchable):
-        return True
-    return bool(_DEMO_FIXTURE_MARKER.search(searchable))
+    return row.get("internal_test_fixture") is True or row.get("is_test_fixture") is True
 
 
 def customer_visible_analyses(
@@ -77,8 +50,7 @@ def customer_visible_projects(
 
     result: list[dict[str, Any]] = []
     for project in projects:
-        project_name = str(project.get("name") or project.get("project_name") or "")
-        if is_internal_test_fixture_analysis({"project_name": project_name}):
+        if is_internal_test_fixture_analysis(project):
             continue
 
         boms = project.get("boms")
@@ -90,15 +62,7 @@ def customer_visible_projects(
         for bom in boms:
             if not isinstance(bom, dict):
                 continue
-            bom_name = str(bom.get("name") or bom.get("bom_name") or "")
-            if is_internal_test_fixture_analysis(
-                {
-                    "project_name": project_name,
-                    "bom_name": bom_name,
-                    "filename": bom.get("filename"),
-                    "revision": bom.get("revision"),
-                }
-            ):
+            if is_internal_test_fixture_analysis(bom):
                 continue
 
             bom_id = str(bom.get("id") or bom.get("bom_id") or "").strip()
