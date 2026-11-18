@@ -248,7 +248,7 @@ function LoginInner() {
           if (session.trial_status === "trialing") {
             trackMarketingEventOnce(
               "trial_started",
-              `trial_started:${session.user_id || session.email}`,
+              `trial_started:${session.user_id || ""}`,
               { intent: "trial" },
               "/login",
             );
@@ -302,7 +302,7 @@ function LoginInner() {
       if (newlyConfirmed && session.trial_status === "trialing") {
         trackMarketingEventOnce(
           "trial_started",
-          `trial_started:${session.user_id || session.email}`,
+          `trial_started:${session.user_id || ""}`,
           { intent: "trial" },
           "/login",
         );

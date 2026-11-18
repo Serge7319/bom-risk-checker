@@ -304,7 +304,7 @@ export default function Page() {
       if (!active || result.has_active_subscription !== true) return;
       trackMarketingEventOnce(
         "subscription_created",
-        `subscription_created:${session.user_id || session.email}`,
+        `subscription_created:${session.user_id || ""}`,
         { intent: String(result.current_plan || "subscription").toLowerCase() },
         "/settings",
       );

@@ -2910,7 +2910,9 @@ async def monitoring_scheduled_post(request: Request) -> JSONResponse:
     except Exception:  # noqa: BLE001
         body = {}
     dry_run = isinstance(body, dict) and body.get("dry_run") is True
-    result = monitoring_scheduler.run_scheduled_cycle(dry_run=dry_run)
+    # Supplier polling is blocking network I/O. Keep it off the ASGI event loop
+    # so normal API requests remain responsive during a scheduled cycle.
+    result = await run_in_threadpool(monitoring_scheduler.run_scheduled_cycle, dry_run=dry_run)
     return _json(result, 200 if result.get("ok") else 409)
 
 

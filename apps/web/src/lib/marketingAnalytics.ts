@@ -94,6 +94,19 @@ export function trackMarketingEvent(
   }).catch(() => undefined);
 }
 
+const pendingDedupeKeys = new Set<string>();
+
+async function analyticsDedupeKey(event: MarketingEvent, value: string): Promise<string | null> {
+  try {
+    if (!globalThis.crypto?.subtle) return null;
+    const input = new TextEncoder().encode(`${event}:${value.slice(0, 120)}`);
+    const digest = await globalThis.crypto.subtle.digest("SHA-256", input);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return null;
+  }
+}
+
 export function trackMarketingEventOnce(
   event: MarketingEvent,
   dedupeKey: string,
@@ -101,24 +114,42 @@ export function trackMarketingEventOnce(
   page?: string,
 ): void {
   if (typeof window === "undefined" || !marketingAnalyticsAllowed()) return;
-  const key = `cadivor_analytics_once:${dedupeKey.slice(0, 120)}`;
-  try { if (localStorage.getItem(key)) return; } catch { /* continue without browser storage */ }
-  const payload = {
-    event,
-    source: "app",
-    page: page || window.location.pathname,
-    session_id: analyticsSessionId(),
-    utm: captureMarketingAttribution(),
-    properties,
-  };
-  void fetch("/api/public/analytics", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    keepalive: true,
-  }).then((response) => {
-    if (response.ok) {
-      try { localStorage.setItem(key, "1"); } catch { /* still record this session */ }
+  void (async () => {
+    // Hash before persistence: callers may use account identifiers to dedupe,
+    // but raw identifiers (including an email fallback) never enter storage.
+    const fingerprint = await analyticsDedupeKey(event, dedupeKey || analyticsSessionId());
+    if (!fingerprint) {
+      trackMarketingEvent(event, properties, page);
+      return;
     }
-  }).catch(() => undefined);
+    const key = `cadivor_analytics_once:${event}:${fingerprint}`;
+    if (pendingDedupeKeys.has(key)) return;
+    try { if (localStorage.getItem(key)) return; } catch { /* continue without browser storage */ }
+    pendingDedupeKeys.add(key);
+    try {
+      const payload = {
+        event,
+        source: "app",
+        page: page || window.location.pathname,
+        session_id: analyticsSessionId(),
+        utm: captureMarketingAttribution(),
+        properties,
+      };
+      const response = await fetch("/api/public/analytics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      });
+      if (!response.ok) return;
+      const result = await response.json().catch(() => ({}));
+      if (result?.accepted === true) {
+        try { localStorage.setItem(key, "1"); } catch { /* still recorded for this page load */ }
+      }
+    } catch {
+      // Analytics must never interrupt the user flow; a failed send can retry later.
+    } finally {
+      pendingDedupeKeys.delete(key);
+    }
+  })();
 }

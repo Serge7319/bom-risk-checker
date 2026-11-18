@@ -66,6 +66,8 @@ the funnel at `/admin/marketing-analytics`.
 
 The root marketing experience remains a client-side site, with crawlable pages at `/product/`, `/solutions/` (including role pages), `/pricing/`, `/resources/`, `/security/`, `/privacy/`, and `/terms/`. Each page has a canonical URL and server-delivered content. `robots.txt` points crawlers to `sitemap.xml`. These direct pages reuse the current product copy and do not rely on JavaScript for their main content.
 
+The crawlable guide URLs are /release-readiness, /guides/alternate-qualification/, and /guides/implementation/. Each guide is static HTML with a canonical URL and server-delivered main content; the sitemap includes all three.
+
 ## Deployment
 
 This is a zero-build static site. Deploy `marketing-web/` as the site root on Cloudflare Pages, Vercel, Netlify, Railway, or another static host.

@@ -161,14 +161,17 @@ class _PostgresStore:
         bounded_days = max(1, min(int(days), 180))
         with self._connect() as conn:
             rows = conn.execute("""
-                SELECT event_name AS event, source, COALESCE(NULLIF(utm_source, ''), '(direct)') AS traffic_source,
-                       COUNT(*) AS events, COUNT(DISTINCT session_hash) AS sessions
+                SELECT event_name AS event,
+                       COALESCE(NULLIF(utm_source, ''), '(direct)') AS traffic_source,
+                       COUNT(*) AS events,
+                       COUNT(DISTINCT session_hash) AS sessions,
+                       ARRAY_AGG(DISTINCT source ORDER BY source) AS origins
                 FROM migration_marketing_events
                 WHERE created_at >= NOW() - (%s * INTERVAL '1 day')
-                GROUP BY event_name, source, traffic_source
-                ORDER BY traffic_source, source, event_name
+                GROUP BY event_name, traffic_source
+                ORDER BY traffic_source, event_name
             """, (bounded_days,)).fetchall()
-        return {"ok": True, "days": bounded_days, "rows": [dict(row) for row in rows], "retention_days": 180}
+        return _attach_visit_conversion([dict(row) for row in rows], bounded_days)
 
 
 def set_store_for_tests(store: Any | None) -> None:
@@ -206,15 +209,60 @@ def record_event(payload: Any) -> bool:
 
 
 def _summary(rows: list[dict[str, Any]], days: int) -> dict[str, Any]:
-    grouped: dict[tuple[str, str, str], dict[str, Any]] = {}
-    sessions: dict[tuple[str, str, str], set[str]] = {}
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    sessions: dict[tuple[str, str], set[str]] = {}
+    origins: dict[tuple[str, str], set[str]] = {}
     for row in rows:
-        key = (row.get("event", ""), row.get("source", ""), row.get("utm_source") or "(direct)")
-        group = grouped.setdefault(key, {"event": key[0], "source": key[1], "traffic_source": key[2], "events": 0, "sessions": 0})
+        key = (row.get("event", ""), row.get("utm_source") or "(direct)")
+        group = grouped.setdefault(
+            key,
+            {
+                "event": key[0],
+                "traffic_source": key[1],
+                "events": 0,
+                "sessions": 0,
+                "origins": [],
+            },
+        )
         group["events"] += 1
         session = row.get("session_id")
         if session:
             sessions.setdefault(key, set()).add(session)
+        origin = str(row.get("source") or "").strip()
+        if origin:
+            origins.setdefault(key, set()).add(origin)
     for key, group in grouped.items():
         group["sessions"] = len(sessions.get(key, set()))
-    return {"ok": True, "days": days, "rows": list(grouped.values()), "retention_days": 180}
+        group["origins"] = sorted(origins.get(key, set()))
+    return _attach_visit_conversion(list(grouped.values()), days)
+
+
+def _attach_visit_conversion(rows: list[dict[str, Any]], days: int) -> dict[str, Any]:
+    """Add unique page-view session counts and visit conversion rates by source."""
+    visits_by_source = {
+        str(row.get("traffic_source") or "(direct)"): int(row.get("sessions") or 0)
+        for row in rows
+        if row.get("event") == "page_view"
+    }
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        source = str(row.get("traffic_source") or "(direct)")
+        visits = visits_by_source.get(source, 0)
+        sessions = int(row.get("sessions") or 0)
+        enriched.append({
+            **row,
+            "visit_sessions": visits,
+            "conversion_from_visit_pct": (
+                round(sessions / visits * 100, 1)
+                if visits and row.get("event") != "page_view"
+                else None
+            ),
+        })
+    enriched.sort(key=lambda row: (str(row.get("traffic_source") or ""), str(row.get("event") or "")))
+    return {
+        "ok": True,
+        "days": days,
+        "rows": enriched,
+        "retention_days": 180,
+        "conversion_basis": "unique page-view sessions from the same traffic source",
+    }
