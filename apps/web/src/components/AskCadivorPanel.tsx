@@ -50,6 +50,7 @@ function formatCadivorAnswer(markdown: string): ReactNode[] {
       flushParagraph();
       const content = renderInline(heading[2]);
       const key = blockKey++;
+      index += 1;
       if (heading[1].length === 1) blocks.push(<h2 key={key}>{content}</h2>);
       else if (heading[1].length === 2) blocks.push(<h3 key={key}>{content}</h3>);
       else blocks.push(<h4 key={key}>{content}</h4>);
