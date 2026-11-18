@@ -19,6 +19,7 @@ import { cleanUserText, userFacingLabel } from "@/lib/display";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
 import { BrandLink } from "@/components/BrandLink";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
+import { marketingAnalyticsAllowed, trackMarketingEvent, trackMarketingEventOnce } from "@/lib/marketingAnalytics";
 import {
   parseSignupConfirmParams,
   SIGNUP_CONFIRM_EXPIRED_MESSAGE,
@@ -218,6 +219,10 @@ function LoginInner() {
         setConfirmMessage(cleanUserText(result.message));
         return;
       }
+      trackMarketingEvent("signup_completed", { intent: "trial" }, "/login");
+      if (marketingAnalyticsAllowed()) {
+        try { sessionStorage.setItem("cadivor_signup_confirmed_pending", "1"); } catch { /* analytics is optional */ }
+      }
       if (result.email) setEmail(result.email);
 
       const stressHandoff = consumeStressReportPending();
@@ -233,12 +238,21 @@ function LoginInner() {
             user_id: me.user_id,
             plan: me.plan,
             mode: me.mode,
+            platform_role: me.platform_role,
             trial_started_at: me.trial_started_at,
             trial_ends_at: me.trial_ends_at,
             trial_status: me.trial_status,
             trial_days_remaining: me.trial_days_remaining,
           };
           await setSession(session);
+          if (session.trial_status === "trialing") {
+            trackMarketingEventOnce(
+              "trial_started",
+              `trial_started:${session.user_id || session.email}`,
+              { intent: "trial" },
+              "/login",
+            );
+          }
           router.replace(reportsHandoffHref(stressHandoff.reportId));
           return;
         } catch {
@@ -280,6 +294,19 @@ function LoginInner() {
     try {
       const session = await login(email, password);
       await setSession(session);
+      let newlyConfirmed = false;
+      try {
+        newlyConfirmed = marketingAnalyticsAllowed() && sessionStorage.getItem("cadivor_signup_confirmed_pending") === "1";
+        if (newlyConfirmed) sessionStorage.removeItem("cadivor_signup_confirmed_pending");
+      } catch { /* analytics is optional */ }
+      if (newlyConfirmed && session.trial_status === "trialing") {
+        trackMarketingEventOnce(
+          "trial_started",
+          `trial_started:${session.user_id || session.email}`,
+          { intent: "trial" },
+          "/login",
+        );
+      }
       const stressHandoff = consumeStressReportPending();
       router.replace(
         stressHandoff.pending

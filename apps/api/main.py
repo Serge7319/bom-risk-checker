@@ -74,6 +74,9 @@ from apps.api import bom_validation  # noqa: E402
 from apps.api import legal_acceptance  # noqa: E402
 from apps.api import monitoring_store  # noqa: E402
 from apps.api import monitoring_scheduler  # noqa: E402
+from apps.api import marketing_leads  # noqa: E402
+from apps.api import marketing_analytics  # noqa: E402
+from apps.api.marketing_attribution import sanitize_marketing_attribution  # noqa: E402
 from apps.api import plan_limits  # noqa: E402
 from apps.api import supplier_lookup  # noqa: E402
 from apps.api import one_time_report_service  # noqa: E402
@@ -415,6 +418,9 @@ async def auth_signup(request: Request) -> JSONResponse:
             str(body.get("password") or ""),
             workspace_n,
             captcha_token=captcha_token,
+            marketing_attribution=sanitize_marketing_attribution(
+                body.get("marketing_attribution")
+            ),
         )
     except AuthNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
@@ -472,6 +478,7 @@ async def auth_me(request: Request) -> JSONResponse:
             "workspace_id": ctx["workspace_id"],
             "plan": ctx["plan"],
             "mode": ctx.get("mode") or "sandbox-jwt",
+            "platform_role": ctx.get("platform_role"),
             "client_workspace_id_trusted": False,
             "trial_started_at": ctx.get("trial_started_at"),
             "trial_ends_at": ctx.get("trial_ends_at"),
@@ -2482,6 +2489,200 @@ async def public_bom_stress_lead(request: Request) -> JSONResponse:
     )
 
 
+async def public_contact_post(request: Request) -> JSONResponse:
+    """Persist a public contact/demo/student request and notify Cadivor."""
+    throttle_identity = request.client.host if request.client else "unknown"
+    signed_visitor = _visitor_header(request)
+    if signed_visitor:
+        try:
+            from src.public_bom_stress_test import visitor_hash
+
+            throttle_identity = visitor_hash(signed_visitor)
+        except Exception:  # noqa: BLE001
+            return _json({"detail": "Refresh the page and try again."}, 403)
+    if _throttled(
+        request,
+        "public-contact",
+        limit=5,
+        window=600,
+        identity=throttle_identity,
+    ):
+        return _json({"detail": "Too many requests. Please try again later."}, 429)
+
+    try:
+        content_length = int(request.headers.get("content-length") or "0")
+    except ValueError:
+        return _json({"detail": "Invalid request size."}, 400)
+    if content_length > 16_384:
+        return _json({"detail": "Request is too large."}, 413)
+    raw = await request.body()
+    if len(raw) > 16_384:
+        return _json({"detail": "Request is too large."}, 413)
+    try:
+        body = json.loads(raw or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _json({"detail": "Invalid JSON."}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid request."}, 400)
+
+    # Quietly accept honeypot hits so automated form fillers do not learn the
+    # spam rule. The visitor still gets the standard confirmation state.
+    if str(body.get("website") or "").strip():
+        return _json({"ok": True, "received": True, "notification_status": "sent"}, 201)
+
+    def field(name: str, limit: int, *, required: bool = False) -> str:
+        value = str(body.get(name) or "").strip()
+        if len(value) > limit:
+            raise ValueError(f"{name}_too_long")
+        if required and not value:
+            raise ValueError(f"{name}_required")
+        return value
+
+    try:
+        name = field("name", 120, required=True)
+        email = field("email", 254, required=True).lower()
+        company = field("company", 160)
+        role = field("role", 120)
+        team_size = field("team_size", 40)
+        bom_volume = field("bom_volume", 60)
+        plan_interest = field("plan_interest", 80)
+        message = field("message", 4000, required=True)
+        source = field("source", 80) or "marketing-site"
+    except ValueError as exc:
+        reason = str(exc)
+        return _json({"detail": reason.replace("_", " ").capitalize() + "."}, 400)
+
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+        return _json({"detail": "Enter a valid email address."}, 400)
+    consent = body.get("consent")
+    if consent is not True and str(consent or "").strip().lower() not in {"true", "on", "1"}:
+        return _json(
+            {"detail": "Please allow Cadivor to use these details to respond to your request."},
+            400,
+        )
+
+    from src.email_routing import normalize_intent
+
+    topic = normalize_intent(str(body.get("topic") or "general"))
+    utm = sanitize_marketing_attribution(body.get("utm"))
+    fields = {
+        "name": name,
+        "email": email,
+        "company": company,
+        "role": role,
+        "team_size": team_size,
+        "bom_volume": bom_volume,
+        "plan_interest": plan_interest,
+        "topic": topic,
+        "message": message,
+        "source": source,
+        "utm": utm,
+    }
+
+    try:
+        lead = await run_in_threadpool(marketing_leads.create_submission, fields)
+    except PersistenceNotConfiguredError:
+        return _json({"detail": "Contact requests are temporarily unavailable."}, 503)
+    except marketing_leads.MarketingLeadError:
+        logging.exception("public_contact_persistence_failed")
+        return _json({"detail": "Contact requests are temporarily unavailable."}, 503)
+
+    notification_status = "sent"
+    try:
+        from src.email_delivery import email_delivery_configured
+
+        if not email_delivery_configured():
+            notification_status = "not_configured"
+        else:
+            await run_in_threadpool(marketing_leads.send_contact_notification, lead)
+    except Exception:  # noqa: BLE001
+        notification_status = "failed"
+        logging.warning("public_contact_notification_failed")
+    try:
+        await run_in_threadpool(
+            marketing_leads.update_notification, str(lead["id"]), notification_status
+        )
+    except Exception:  # noqa: BLE001
+        # The lead is already durable. Keep the user-facing success truthful
+        # while allowing the team to find rows whose status is still pending.
+        logging.warning("public_contact_notification_status_update_failed")
+
+    status_code = 201 if notification_status == "sent" else 202
+    return _json(
+        {
+            "ok": True,
+            "received": True,
+            "notification_status": notification_status,
+        },
+        status_code,
+    )
+
+
+async def public_marketing_analytics_post(request: Request) -> JSONResponse:
+    """Store allowlisted first-party events without PII or BOM data."""
+    throttle_identity = request.client.host if request.client else "unknown"
+    signed_visitor = _visitor_header(request)
+    if signed_visitor:
+        try:
+            from src.public_bom_stress_test import visitor_hash
+
+            throttle_identity = visitor_hash(signed_visitor)
+        except Exception:  # noqa: BLE001
+            return _json({"ok": True, "accepted": False}, 202)
+    if _throttled(
+        request,
+        "public-marketing-analytics",
+        limit=180,
+        window=60,
+        identity=throttle_identity,
+    ):
+        return _json({"ok": True, "accepted": False}, 202)
+    try:
+        content_length = int(request.headers.get("content-length") or "0")
+    except ValueError:
+        return _json({"detail": "Invalid request size."}, 400)
+    if content_length > 4096:
+        return _json({"detail": "Request is too large."}, 413)
+    raw = await request.body()
+    if len(raw) > 4096:
+        return _json({"detail": "Request is too large."}, 413)
+    try:
+        body = json.loads(raw or b"{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _json({"detail": "Invalid JSON."}, 400)
+    if marketing_analytics.validate_event(body) is None:
+        return _json({"detail": "Unsupported or invalid analytics event."}, 400)
+    try:
+        await run_in_threadpool(marketing_analytics.record_event, body)
+    except PersistenceNotConfiguredError:
+        logging.warning("marketing_analytics_storage_unavailable")
+        return _json({"ok": False, "accepted": False}, 202)
+    except marketing_analytics.MarketingAnalyticsError:
+        logging.warning("marketing_analytics_event_not_stored")
+        return _json({"ok": False, "accepted": False}, 202)
+    return _json({"ok": True, "accepted": True}, 202)
+
+
+async def marketing_analytics_admin_get(request: Request) -> JSONResponse:
+    """Show aggregated funnel counts to verified platform admins only."""
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    try:
+        days = int(request.query_params.get("days") or 30)
+    except ValueError:
+        days = 30
+    try:
+        return _json(await run_in_threadpool(marketing_analytics.get_store().summary, days))
+    except PersistenceNotConfiguredError:
+        return _json({"detail": "Marketing analytics storage is not configured."}, 503)
+    except Exception:  # noqa: BLE001
+        logging.exception("marketing_analytics_summary_failed")
+        return _json({"detail": "Marketing analytics summary is unavailable."}, 503)
+
+
 async def public_bom_stress_verified_get(request: Request) -> JSONResponse:
     """Return the full public audit only for the verified session email owner.
 
@@ -3054,10 +3255,17 @@ _THROTTLE: dict[str, list[float]] = {}
 _THROTTLE_LOCK = threading.Lock()
 
 
-def _throttled(request: Request, bucket: str, *, limit: int = 10, window: int = 60) -> bool:
+def _throttled(
+    request: Request,
+    bucket: str,
+    *,
+    limit: int = 10,
+    window: int = 60,
+    identity: str | None = None,
+) -> bool:
     """Best-effort per-process throttle for unauthenticated routes."""
     forwarded = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-    client = forwarded or (request.client.host if request.client else "unknown")
+    client = identity or forwarded or (request.client.host if request.client else "unknown")
     key = f"{bucket}:{client}"
     now = time.monotonic()
     with _THROTTLE_LOCK:
@@ -3667,6 +3875,9 @@ app = Starlette(
         Route("/public/bom-stress/status", public_bom_stress_status, methods=["GET"]),
         Route("/public/bom-stress/audit", public_bom_stress_audit, methods=["POST"]),
         Route("/public/bom-stress/lead", public_bom_stress_lead, methods=["POST"]),
+        Route("/public/contact", public_contact_post, methods=["POST"]),
+        Route("/public/analytics", public_marketing_analytics_post, methods=["POST"]),
+        Route("/admin/marketing-analytics", marketing_analytics_admin_get, methods=["GET"]),
         Route(
             "/public/bom-stress/verified-report",
             public_bom_stress_verified_get,

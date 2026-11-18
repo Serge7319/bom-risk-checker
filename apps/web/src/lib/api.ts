@@ -30,6 +30,7 @@ export type Session = {
   user_id?: string;
   plan: string;
   mode: string;
+  platform_role?: string;
   trial_started_at?: string;
   trial_ends_at?: string;
   trial_status?: string;
@@ -377,6 +378,7 @@ export async function signup(
   captchaToken?: string,
   acceptedTerms = false,
   versions?: { terms_version?: string; privacy_version?: string },
+  marketingAttribution?: Record<string, string>,
 ) {
   return apiJson<{ accepted: boolean; message: string }>("/auth/signup", {
     method: "POST",
@@ -388,6 +390,7 @@ export async function signup(
       accepted_terms: acceptedTerms,
       terms_version: versions?.terms_version,
       privacy_version: versions?.privacy_version,
+      marketing_attribution: marketingAttribution,
     }),
   });
 }
@@ -405,6 +408,7 @@ export async function fetchMe(token: string) {
     workspace_id: string;
     plan: string;
     mode: string;
+    platform_role?: string;
     client_workspace_id_trusted: boolean;
     trial_started_at?: string;
     trial_ends_at?: string;

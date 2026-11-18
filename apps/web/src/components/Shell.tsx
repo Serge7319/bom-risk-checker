@@ -107,6 +107,20 @@ export function Shell({
               })}
             </div>
           ))}
+          {session.platform_role === "admin" ? (
+            <div className="cv-nav-group">
+              <div className="cv-nav-label">Platform</div>
+              <Link
+                href="/admin/marketing-analytics"
+                className={pathname === "/admin/marketing-analytics" ? "active" : undefined}
+                aria-current={pathname === "/admin/marketing-analytics" ? "page" : undefined}
+                onClick={() => setNavOpen(false)}
+              >
+                <Icon name="spark" />
+                <span>Growth analytics</span>
+              </Link>
+            </div>
+          ) : null}
         </nav>
 
         <div className="cv-rail-bottom">

@@ -3246,6 +3246,7 @@ summary:focus-visible {
 }
 
 .page[data-page="contact"] .contact-field input,
+.page[data-page="contact"] .contact-field select,
 .page[data-page="contact"] .contact-field textarea {
   width: 100%;
   min-height: 46px;
@@ -3267,6 +3268,7 @@ summary:focus-visible {
 }
 
 .page[data-page="contact"] .contact-field input:focus,
+.page[data-page="contact"] .contact-field select:focus,
 .page[data-page="contact"] .contact-field textarea:focus {
   outline: none;
   border-color: #7aa8f5;
@@ -3286,6 +3288,41 @@ summary:focus-visible {
 .page[data-page="contact"] .contact-form .btn-primary.is-submitting {
   pointer-events: none;
   opacity: 0.82;
+}
+
+.page[data-page="contact"] .contact-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #536780;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.page[data-page="contact"] .contact-consent input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: #2867e8;
+}
+
+.page[data-page="contact"] .contact-consent a,
+.page[data-page="contact"] .contact-fallback-link {
+  color: #245dc5;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.page[data-page="contact"] .contact-honeypot {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  clip-path: inset(50%) !important;
 }
 
 .page[data-page="contact"] .contact-form-note {
@@ -4486,4 +4523,47 @@ body.home-motion-restrained .page[data-page="home"] .company-stats .kpi-card:hov
 .hero-copy .hero-resource-link:hover {
   color: #fff;
   text-decoration-color: currentColor;
+}
+
+.marketing-analytics-consent {
+  position: fixed;
+  z-index: 1200;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: min(760px, calc(100vw - 28px));
+  padding: 16px 18px;
+  border: 1px solid #c9d8eb;
+  border-radius: 16px;
+  background: #fff;
+  color: #1a2d49;
+  box-shadow: 0 16px 44px rgba(15, 35, 64, 0.2);
+}
+.marketing-analytics-consent[hidden],
+.marketing-privacy-choice-link[hidden] { display: none !important; }
+.marketing-analytics-consent strong { color: #10284b; font-size: 14px; }
+.marketing-analytics-consent p { margin: 4px 0 0; color: #536987; font-size: 12px; line-height: 1.45; }
+.marketing-analytics-consent-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+.marketing-analytics-consent-actions button,
+.marketing-privacy-choice-link {
+  min-height: 38px;
+  padding: 8px 11px;
+  border: 1px solid #cedaea;
+  border-radius: 9px;
+  background: #fff;
+  color: #1d3557;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.marketing-analytics-consent-actions button.primary { border-color: #2563eb; background: #2563eb; color: #fff; }
+.marketing-privacy-choice-link { position: fixed; z-index: 1199; right: 12px; bottom: 12px; }
+@media (max-width: 620px) {
+  .marketing-analytics-consent { align-items: stretch; flex-direction: column; gap: 12px; }
+  .marketing-analytics-consent-actions { justify-content: flex-end; }
 }

@@ -250,6 +250,9 @@ class AuthContext:
     trial_ends_at: str | None = None
     trial_status: str | None = None
     trial_days_remaining: int | None = None
+    # This is supplied only by verified production billing entitlements. It is
+    # not inferred from workspace membership or a browser-visible plan.
+    platform_role: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -270,6 +273,8 @@ class AuthContext:
             payload["trial_status"] = self.trial_status
         if self.trial_days_remaining is not None:
             payload["trial_days_remaining"] = self.trial_days_remaining
+        if self.platform_role is not None:
+            payload["platform_role"] = self.platform_role
         return payload
 
 

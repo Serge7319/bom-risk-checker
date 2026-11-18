@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { getSession } from "@/lib/api";
+import { marketingAnalyticsAllowed, trackMarketingEvent } from "@/lib/marketingAnalytics";
 import {
   fetchPublicBomStatus,
   requestPublicBomFullReport,
@@ -25,6 +26,7 @@ const STATUS_DISABLED_MESSAGE =
   "The free BOM stress test is being prepared. Please check back soon.";
 
 function leadSourceFromSearch(search: URLSearchParams): string {
+  if (!marketingAnalyticsAllowed()) return "homepage_stress_test";
   const fields: string[] = [];
   for (const key of ["utm_source", "utm_medium", "utm_campaign"] as const) {
     const raw = (search.get(key) || "").trim();
@@ -102,12 +104,14 @@ function PublicBomAuditInner() {
     }
     setBusy(true);
     setError("");
+    trackMarketingEvent("free_audit_started", { flow: "public-bom-audit" }, "/public-bom-audit");
     try {
       const result = await runPublicBomAudit(file, {
         turnstileToken: turnstileToken || null,
         accessToken: session?.access_token || null,
       });
       setReport(result);
+      trackMarketingEvent("free_audit_completed", { flow: "public-bom-audit" }, "/public-bom-audit");
       setPendingEmail("");
       setLeadError("");
       setTurnstileToken("");

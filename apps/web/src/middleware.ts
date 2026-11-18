@@ -20,6 +20,17 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
+  // Marketing CTAs historically use `/?auth=signup|login`. Resolve those
+  // intents before the authenticated home page redirects unsigned visitors,
+  // preserving UTM values for attribution at account creation.
+  const authIntent = (searchParams.get("auth") || "").trim().toLowerCase();
+  if (authIntent === "signup" || authIntent === "login") {
+    const target = request.nextUrl.clone();
+    target.pathname = authIntent === "signup" ? "/signup" : "/login";
+    target.searchParams.delete("auth");
+    return NextResponse.redirect(target);
+  }
+
   if ((searchParams.get("public") || "").trim().toLowerCase() !== "stress") {
     return NextResponse.next();
   }

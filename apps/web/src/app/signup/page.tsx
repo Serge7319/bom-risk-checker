@@ -7,6 +7,7 @@ import { TermsAcceptance } from "@/components/TermsAcceptance";
 import { BrandLink } from "@/components/BrandLink";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
 import { cleanUserText } from "@/lib/display";
+import { captureMarketingAttribution, trackMarketingEvent } from "@/lib/marketingAnalytics";
 
 export default function SignupPage() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
@@ -38,11 +39,12 @@ export default function SignupPage() {
       return;
     }
     setBusy(true);
+    trackMarketingEvent("signup_started", { intent: "trial" }, "/signup");
     try {
       const result = await signup(email, password, workspaceName, undefined, true, {
         terms_version: TERMS_VERSION,
         privacy_version: PRIVACY_VERSION,
-      });
+      }, captureMarketingAttribution());
       setMessage(cleanUserText(result.message));
       setPassword("");
       setConfirmPassword("");

@@ -2,9 +2,17 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Production configuration
 
-The Railway web service must set these public build-time variables:
+The Railway web service uses these settings:
 
-- `NEXT_PUBLIC_API_BASE` — the matching Cadivor API origin.
+- `NEXT_PUBLIC_API_BASE` — the matching Cadivor API origin used by browser requests and as a proxy fallback.
+- `CADIVOR_API_BASE` — optional server-only API origin used by public route proxies; preferred over the public fallback.
+- `CADIVOR_MARKETING_ORIGINS` — optional comma-separated origins allowed to submit public marketing forms; Cadivor's production domains are allowed by default.
+
+The first-party analytics intake and admin funnel use the migration Postgres
+database configured by `CADIVOR_MIGRATION_DATABASE_URL`. Anonymous event
+collection starts only after a visitor accepts the analytics choice. Funnel
+access is checked against the verified platform role returned by the billing
+service; a workspace admin alone does not grant platform-wide analytics access.
 - `NEXT_PUBLIC_SUPABASE_URL` — the Supabase project URL.
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — the project's publishable key. This key is designed to be public; never use a Supabase secret or service-role key here.
 
