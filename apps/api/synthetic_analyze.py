@@ -8,7 +8,6 @@ synthetic evidence so health scoring can complete offline.
 from __future__ import annotations
 
 import hashlib
-import io
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -22,12 +21,7 @@ from apps.api.bom_hierarchy import (
 )
 from apps.api.json_safe import json_safe
 from apps.api.workspace_store import PersistenceNotConfiguredError, get_store
-from src.bom_parser import (
-    aggregate_bom_rows,
-    clean_bom_data,
-    normalize_bom_columns,
-    validate_bom,
-)
+from src.bom_intake import BomIntakeError, IntakeResult, parse_intake
 from src.health_score import calculate_bom_health_score
 from src.risk_engine import calculate_risk
 
@@ -60,34 +54,57 @@ def _synthetic_part(mpn: str, manufacturer: str, description: str, quantity: Any
     }
 
 
-def parse_bom_bytes(filename: str, payload: bytes) -> pd.DataFrame:
-    buffer = io.BytesIO(payload)
-    buffer.name = filename or "bom.csv"
-    lower = (filename or "").lower()
-    if lower.endswith((".xlsx", ".xls")):
-        df = pd.read_excel(buffer)
-    else:
-        df = pd.read_csv(buffer)
-    df = normalize_bom_columns(df)
-    df = validate_bom(df)
-    # Preserve parent/child structure: aggregate only when flat.
-    hierarchical = "parent_mpn" in df.columns and df["parent_mpn"].fillna("").astype(str).str.strip().ne("").any()
-    if hierarchical:
-        # Aggregate identical (mpn, parent) pairs only.
-        if "parent_mpn" not in df.columns:
-            df["parent_mpn"] = ""
-        df["parent_mpn"] = df["parent_mpn"].fillna("").astype(str)
-        groups = []
-        for (_mpn, _parent), group in df.groupby(["mpn", "parent_mpn"], sort=False, dropna=False):
-            first = group.iloc[0].to_dict()
-            if "quantity" in group.columns:
-                quantity_values = pd.to_numeric(group["quantity"], errors="coerce")
-                first["quantity"] = quantity_values.fillna(0).sum()
-            groups.append(first)
-        df = pd.DataFrame(groups)
-    else:
-        df = aggregate_bom_rows(df)
-    return clean_bom_data(df)
+def parse_bom_intake(
+    filename: str,
+    payload: bytes,
+    *,
+    column_mapping: dict[str, str] | None = None,
+    supplier_specific: bool = False,
+    default_supplier: str = "",
+    exclude_invalid_rows: bool = False,
+    row_corrections: dict[str, dict[str, str]] | None = None,
+) -> IntakeResult:
+    """Read, map, and normalize a BOM without analyzing it."""
+    return parse_intake(
+        filename,
+        payload,
+        column_mapping=column_mapping,
+        supplier_specific=supplier_specific,
+        default_supplier=default_supplier,
+        exclude_invalid_rows=exclude_invalid_rows,
+        row_corrections=row_corrections,
+    )
+
+
+def _require_analyzable(result: IntakeResult) -> None:
+    if result.can_analyze:
+        return
+    preview = result.preview()
+    message = (preview.get("errors") or ["The BOM could not be analyzed."])[0]
+    raise BomIntakeError(message, preview=preview, code="bom_validation_failed")
+
+
+def parse_bom_bytes(filename: str, payload: bytes, **intake_options: Any) -> pd.DataFrame:
+    """Parse a BOM into the analysis frame, refusing files with unresolved errors."""
+    result = parse_bom_intake(filename, payload, **intake_options)
+    _require_analyzable(result)
+    return result.dataframe()
+
+
+def _attach_intake(report: dict[str, Any], result: IntakeResult) -> None:
+    """Keep each raw input value beside its normalized value on the saved report."""
+    by_part = result.source_rows_by_part()
+    for part in report.get("parts") or []:
+        mpn = str(part.get("mpn") or part.get("MPN") or "").strip().casefold()
+        parent = (
+            str(part.get("parent_mpn_display") or "").strip().casefold()
+            if result.hierarchical
+            else ""
+        )
+        rows = by_part.get((mpn, parent))
+        if rows:
+            part["source_rows"] = rows
+    report["intake"] = result.intake_record()
 
 
 def analyze_dataframe(
@@ -206,9 +223,25 @@ def analyze_upload(
     derived_from_analysis_id: str | None = None,
     applied_decision_ids: list[str] | None = None,
     used_decision_ids: list[str] | None = None,
+    column_mapping: dict[str, str] | None = None,
+    supplier_specific: bool = False,
+    default_supplier: str = "",
+    exclude_invalid_rows: bool = False,
+    row_corrections: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    df = parse_bom_bytes(filename, payload)
+    intake = parse_bom_intake(
+        filename,
+        payload,
+        column_mapping=column_mapping,
+        supplier_specific=supplier_specific,
+        default_supplier=default_supplier,
+        exclude_invalid_rows=exclude_invalid_rows,
+        row_corrections=row_corrections,
+    )
+    _require_analyzable(intake)
+    df = intake.dataframe()
     report = analyze_dataframe(df, analysis_mode=analysis_mode, analysis_id=analysis_id)
+    _attach_intake(report, intake)
     report["filename"] = filename or "bom.csv"
     report["workspace_id"] = workspace_id
     if derived_from_analysis_id:

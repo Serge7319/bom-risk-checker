@@ -8,6 +8,7 @@ from unittest import mock
 
 from apps.api.bom_validation import MAX_BOM_UPLOAD_BYTES, validation_preview
 from apps.api.synthetic_analyze import parse_bom_bytes
+from src.bom_intake import parse_intake
 
 ROOT = Path(__file__).resolve().parents[1]
 NESTED = ROOT / "tests" / "fixtures" / "nested_bom_product.csv"
@@ -72,7 +73,7 @@ class BomValidationPreviewTests(unittest.TestCase):
 
     def test_validation_does_not_run_risk_scoring_or_persist(self):
         payload = b"MPN,Quantity,Manufacturer\nLM358DR,4,TI\n"
-        with mock.patch("apps.api.bom_validation.parse_bom_bytes", wraps=parse_bom_bytes) as parsed:
+        with mock.patch("apps.api.bom_validation.parse_intake", wraps=parse_intake) as parsed:
             with mock.patch("apps.api.synthetic_analyze.analyze_upload") as analyze:
                 with mock.patch("apps.api.synthetic_analyze.analyze_dataframe") as score:
                     from apps.api import synthetic_analyze as sa

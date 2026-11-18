@@ -1,0 +1,4 @@
+Index,Quantity,Manufacturer Part Number,Manufacturer,Digi-Key Part Number,Customer Reference,Description,Quantity Available,Unit Price,Extended Price
+1,10,RC0603FR-0710KL,YAGEO,311-10.0KHRCT-ND,R1-R10,RES 10K OHM 1% 1/10W 0603,500000,0.10,1.00
+2,4,GRM188R71H104KA93D,Murata Electronics,490-1532-1-ND,C1-C4,CAP CER 0.1UF 50V X7R 0603,250000,0.10,0.40
+3,1,LM358DR,Texas Instruments,296-1177-1-ND,U1,IC OPAMP GP 2 CIRCUIT 8SOIC,12000,0.60,0.60

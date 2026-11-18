@@ -2432,6 +2432,11 @@ button {
   min-width: 0;
 }
 
+/* While a file is under review, give the review the full width. */
+.cv-bom-workspace-grid--review {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .cv-bom-recent-heading {
   display: flex;
   align-items: flex-start;
@@ -4444,3 +4449,188 @@ button {
   }
 }
 
+
+/* BOM intake review: mapping, options, and row-by-row raw vs. normalized values. */
+.cv-intake {
+  display: grid;
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.cv-intake h4,
+.cv-intake h5 {
+  margin: 0;
+  color: var(--ink);
+}
+
+.cv-intake h4 {
+  font-size: 15px;
+}
+
+.cv-intake h5 {
+  font-size: 13px;
+}
+
+.cv-intake-section {
+  display: grid;
+  gap: 10px;
+}
+
+.cv-intake-table select {
+  min-width: 210px;
+}
+
+.cv-intake-table select,
+.cv-intake-edit {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: #fff;
+}
+
+.cv-intake-edit {
+  margin-top: 6px;
+}
+
+.cv-intake-table th,
+.cv-intake-table td {
+  vertical-align: top;
+  font-size: 12px;
+  text-align: left;
+}
+
+.cv-intake-table td small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.cv-intake-confidence {
+  font-weight: 700;
+}
+
+.cv-intake-rows td:first-child {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-intake-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  min-width: 150px;
+}
+
+.cv-intake-pair small {
+  display: block;
+  margin: 0 0 2px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cv-intake-pair span {
+  overflow-wrap: anywhere;
+  font-weight: 650;
+}
+
+/* Status is always spelled out in text; the left rule is only reinforcement. */
+.cv-intake-row--error td:first-child {
+  box-shadow: inset 4px 0 0 var(--red);
+}
+
+.cv-intake-row--warning td:first-child {
+  box-shadow: inset 4px 0 0 var(--amber);
+}
+
+.cv-intake-row--excluded {
+  opacity: 0.7;
+}
+
+.cv-intake-flags {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 4px;
+}
+
+.cv-intake-rows-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cv-intake-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cv-intake-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.cv-intake-check input {
+  margin-top: 3px;
+}
+
+.cv-intake-check small {
+  display: block;
+  margin-top: 2px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cv-intake-supplier {
+  max-width: 420px;
+}
+
+.cv-intake-notes {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cv-intake-apply {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--blue);
+  border-radius: var(--radius-sm);
+  background: var(--blue-50);
+}
+
+.cv-intake-apply p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+@media (max-width: 760px) {
+  .cv-intake-pair {
+    grid-template-columns: 1fr;
+    min-width: 0;
+  }
+
+  .cv-intake-table select,
+  .cv-intake-edit {
+    min-height: 40px;
+  }
+}

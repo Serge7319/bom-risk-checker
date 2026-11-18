@@ -5,10 +5,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icons";
 import { Shell } from "@/components/Shell";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
+import { BomIntakeReview } from "@/components/BomIntakeReview";
 import {
+  DEFAULT_BOM_INTAKE_OPTIONS,
   listReports,
   validateBom,
   type AnalyzeSummary,
+  type BomIntakeOptions,
   type BomValidationPreview,
 } from "@/lib/api";
 import {
@@ -31,6 +34,27 @@ import { PAGE_META } from "@/lib/routes";
 import { userFacingLabel } from "@/lib/display";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
 import { trackMarketingEventOnce } from "@/lib/marketingAnalytics";
+
+function freshIntakeOptions(): BomIntakeOptions {
+  return { ...DEFAULT_BOM_INTAKE_OPTIONS, rowCorrections: {} };
+}
+
+/** Stable comparison so key order never makes a no-op edit look like a change. */
+function intakeSignature(options: BomIntakeOptions): string {
+  const mapping = options.columnMapping
+    ? Object.entries(options.columnMapping).sort(([a], [b]) => Number(a) - Number(b))
+    : null;
+  const corrections = Object.entries(options.rowCorrections)
+    .map(([row, fields]) => [row, Object.entries(fields).sort(([a], [b]) => a.localeCompare(b))])
+    .sort(([a], [b]) => Number(a) - Number(b));
+  return JSON.stringify({
+    mapping,
+    corrections,
+    supplierSpecific: options.supplierSpecific,
+    defaultSupplier: options.supplierSpecific ? options.defaultSupplier.trim() : "",
+    excludeInvalidRows: options.excludeInvalidRows,
+  });
+}
 
 function formatReportDate(value: unknown): string {
   if (!value) return "recently";
@@ -61,6 +85,10 @@ export default function BomAnalyzerPage() {
   const [validating, setValidating] = useState(false);
   const [validation, setValidation] = useState<BomValidationPreview | null>(null);
   const [validationError, setValidationError] = useState("");
+  // `intake` is what the user is editing; `appliedIntake` is what the preview
+  // on screen was actually built with. Analysis only runs when they match.
+  const [intake, setIntake] = useState<BomIntakeOptions>(freshIntakeOptions);
+  const [appliedIntake, setAppliedIntake] = useState<BomIntakeOptions>(freshIntakeOptions);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState("");
   const [oneTimeReportRequired, setOneTimeReportRequired] = useState(false);
@@ -89,8 +117,10 @@ export default function BomAnalyzerPage() {
         fileSize: file?.size || current.fileSize,
         fileType: file?.type || current.fileType,
         fileKey: fileContentKey || current.fileKey,
-        validation,
+        // Row detail and column samples are rebuilt from the file after a reload.
+        validation: validation ? { ...validation, rows: [] } : null,
         validationError,
+        intake: appliedIntake,
         analysisId,
         summary,
         analyzeError,
@@ -108,6 +138,7 @@ export default function BomAnalyzerPage() {
       fileContentKey,
       validation,
       validationError,
+      appliedIntake,
       analysisId,
       summary,
       analyzeError,
@@ -152,6 +183,13 @@ export default function BomAnalyzerPage() {
       setRevision(meta.revision || "A");
       setValidation(meta.validation);
       setValidationError(meta.validationError || "");
+      const restoredIntake: BomIntakeOptions = {
+        ...freshIntakeOptions(),
+        ...(meta.intake || {}),
+        rowCorrections: { ...(meta.intake?.rowCorrections || {}) },
+      };
+      setIntake(restoredIntake);
+      setAppliedIntake(restoredIntake);
       setValidatedFileKey(meta.fileKey || "");
       selectedFileKeyRef.current = meta.fileKey || "";
       setAnalyzeError(meta.analyzeError || "");
@@ -171,6 +209,10 @@ export default function BomAnalyzerPage() {
           setValidatedFileKey("");
         } else if (meta.validation && meta.fileKey === key) {
           setValidatedFileKey(key);
+          // Rebuild the row-by-row review from the file with the saved choices.
+          const requestId = ++validationRequestIdRef.current;
+          setValidating(true);
+          void runValidation(restored, requestId, key, restoredIntake);
         }
       }
       const job = getActiveAnalyzeJob(session);
@@ -327,6 +369,7 @@ export default function BomAnalyzerPage() {
     file,
     validation,
     validationError,
+    appliedIntake,
     analysisId,
     summary,
     analyzeError,
@@ -335,14 +378,15 @@ export default function BomAnalyzerPage() {
   ]);
 
   const runValidation = useCallback(
-    async (nextFile: File, requestId: number, fileKey: string) => {
+    async (nextFile: File, requestId: number, fileKey: string, options: BomIntakeOptions) => {
       if (!session) return;
       try {
-        const preview = await validateBom(nextFile, session.access_token);
+        const preview = await validateBom(nextFile, session.access_token, options);
         if (requestId !== validationRequestIdRef.current) return;
         if (selectedFileKeyRef.current !== fileKey) return;
         setValidation(preview);
         setValidatedFileKey(fileKey);
+        setAppliedIntake(options);
         if (!preview.can_analyze) {
           setValidationError(
             preview.errors[0] || "Required validation did not pass. Analysis stays disabled.",
@@ -377,6 +421,9 @@ export default function BomAnalyzerPage() {
     setFileContentKey("");
     setFile(next);
     setValidation(null);
+    // A new file never inherits another file's mapping or corrections.
+    setIntake(freshIntakeOptions());
+    setAppliedIntake(freshIntakeOptions());
     setValidationError("");
     setValidatedFileKey("");
     setDraftPersistNotice("");
@@ -439,12 +486,23 @@ export default function BomAnalyzerPage() {
           : "Draft could not be saved for later resume. Validation continues with the file still in memory.",
       );
     });
-    await runValidation(workingFile, requestId, nextKey);
+    await runValidation(workingFile, requestId, nextKey, freshIntakeOptions());
   }
+
+  function onRecheck() {
+    if (!session || !file || validating || analyzing || !fileContentKey) return;
+    const requestId = ++validationRequestIdRef.current;
+    setValidating(true);
+    setValidationError("");
+    void runValidation(file, requestId, fileContentKey, intake);
+  }
+
+  const intakeDirty = intakeSignature(intake) !== intakeSignature(appliedIntake);
 
   function onAnalyze() {
     if (!session || !file || analyzing) return;
     const matches =
+      !intakeDirty &&
       Boolean(validation?.can_analyze) &&
       Boolean(fileContentKey) &&
       validatedFileKey === fileContentKey &&
@@ -464,6 +522,7 @@ export default function BomAnalyzerPage() {
         projectName: projectName.trim() || undefined,
         bomName: bomName.trim() || file.name.replace(/\.(csv|xlsx)$/i, ""),
         revision: revision.trim() || "A",
+        intake: appliedIntake,
       },
       session,
     );
@@ -485,6 +544,7 @@ export default function BomAnalyzerPage() {
     .slice(0, 3);
   const canAnalyze = Boolean(
     file &&
+      !intakeDirty &&
       validationMatchesFile &&
       validation?.can_analyze &&
       !analyzing &&
@@ -501,7 +561,9 @@ export default function BomAnalyzerPage() {
       ? { label: "Analysis in progress…", disabled: true }
       : validating
         ? { label: "Validating…", disabled: true }
-        : analyzeError
+        : file && validationMatchesFile && intakeDirty
+          ? { label: "Re-check with my changes", action: "recheck" as const }
+          : analyzeError
           ? { label: "Retry analysis", action: "retry-analyze" as const }
           : canAnalyze
             ? { label: "Analyze BOM", action: "analyze" as const }
@@ -514,6 +576,10 @@ export default function BomAnalyzerPage() {
     if (!("action" in primary)) return;
     if (primary.action === "choose-file") {
       fileInputRef.current?.click();
+      return;
+    }
+    if (primary.action === "recheck") {
+      onRecheck();
       return;
     }
     if (primary.action === "analyze" || primary.action === "retry-analyze") {
@@ -535,7 +601,9 @@ export default function BomAnalyzerPage() {
         }
       />
 
-      <div className="cv-bom-workspace-grid">
+      <div
+        className={`cv-bom-workspace-grid${validation?.columns?.length ? " cv-bom-workspace-grid--review" : ""}`}
+      >
         <section className="cv-card pad cv-bom-create-card">
           <div>
             <h2 className="cv-card-title">Create a BOM analysis</h2>
@@ -617,7 +685,7 @@ export default function BomAnalyzerPage() {
                 <h3 className="cv-card-title">Validation preview</h3>
                 <p className="cv-card-subtitle">
                   Uses the same parse path as analysis. Analysis stays disabled until required checks pass.
-                  Row counts are source BOM rows before part aggregation.
+                  Row counts are source BOM rows before part aggregation. Nothing is guessed: unclear columns and values are flagged for you.
                 </p>
               </div>
               {validating ? (
@@ -645,6 +713,17 @@ export default function BomAnalyzerPage() {
                       <dd>{validation.can_analyze ? "Yes" : "No"}</dd>
                     </div>
                   </dl>
+                  {validation.columns?.length ? (
+                    <BomIntakeReview
+                      validation={validation}
+                      options={intake}
+                      onChange={setIntake}
+                      onApply={onRecheck}
+                      dirty={intakeDirty}
+                      busy={validating || analyzing}
+                    />
+                  ) : (
+                    <>
                   {validation.detected_columns.length ? (
                     <div className="cv-bom-column-list">
                       <p className="cv-small-note">Detected columns</p>
@@ -683,6 +762,8 @@ export default function BomAnalyzerPage() {
                       </ul>
                     </div>
                   ) : null}
+                    </>
+                  )}
                 </>
               ) : null}
               {validationError && !validation?.errors.length ? (
@@ -779,7 +860,7 @@ export default function BomAnalyzerPage() {
             <ul className="cv-bom-checklist">
               <li>
                 <span className="cv-bom-check-icon"><Icon name="check" /></span>
-                <span><strong>Confirm required columns</strong><small>MPN is required; quantity and manufacturer improve matching.</small></span>
+                <span><strong>Confirm required columns</strong><small>Part number and quantity are required; manufacturer is recommended. You can correct column roles and values before analysis.</small></span>
               </li>
               <li>
                 <span className="cv-bom-check-icon"><Icon name="shield" /></span>

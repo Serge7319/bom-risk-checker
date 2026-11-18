@@ -417,6 +417,66 @@ export async function fetchMe(token: string) {
   }>("/auth/me", { token });
 }
 
+export type BomIntakeSeverity = "error" | "warning" | "info";
+
+export type BomIntakeIssue = {
+  code: string;
+  severity: BomIntakeSeverity;
+  message: string;
+  field?: string | null;
+};
+
+/** A column role the user can assign. `requirement` drives the UI wording. */
+export type BomIntakeField = {
+  id: string;
+  label: string;
+  requirement: "required" | "recommended" | "supplier_specific" | "optional";
+  help: string;
+};
+
+export type BomIntakeColumn = {
+  index: number;
+  source: string;
+  suggested_field: string | null;
+  assigned_field: string;
+  /** recognized | confirm | choose | not-used | supplier-export | user */
+  confidence: string;
+  candidates: string[];
+  note: string;
+  sample: string[];
+};
+
+export type BomIntakeRow = {
+  row_number: number;
+  status: "ok" | "warning" | "error" | "excluded";
+  /** Values exactly as uploaded, keyed by column role. */
+  raw: Record<string, string>;
+  /** Values that will be used for analysis. */
+  normalized: Record<string, string | number | null>;
+  source: Record<string, string>;
+  corrections?: Record<string, { original: string; corrected: string }>;
+  issues: BomIntakeIssue[];
+};
+
+/** The user's explicit intake choices. Nothing here is ever inferred. */
+export type BomIntakeOptions = {
+  /** Zero-based column index -> role id, or "ignore". null = use detected mapping. */
+  columnMapping: Record<string, string> | null;
+  /** Spreadsheet row number -> corrected values by role id. */
+  rowCorrections: Record<string, Record<string, string>>;
+  supplierSpecific: boolean;
+  defaultSupplier: string;
+  excludeInvalidRows: boolean;
+};
+
+export const DEFAULT_BOM_INTAKE_OPTIONS: BomIntakeOptions = {
+  columnMapping: null,
+  rowCorrections: {},
+  supplierSpecific: false,
+  defaultSupplier: "",
+  excludeInvalidRows: false,
+};
+
 export type BomValidationPreview = {
   ok: boolean;
   can_analyze: boolean;
@@ -426,18 +486,59 @@ export type BomValidationPreview = {
   missing_required: string[];
   row_count: number;
   unique_part_count: number;
+  parsed_row_count?: number;
   errors: string[];
   warnings: string[];
   has_hierarchy_columns?: boolean;
   workspace_id?: string;
+  // Intake review (absent on drafts saved before the intake review existed).
+  format?: string;
+  sheet?: string;
+  header_row?: number;
+  supplier_profile?: { id: string; label: string; evidence: string[] };
+  fields?: BomIntakeField[];
+  columns?: BomIntakeColumn[];
+  applied_mapping?: Record<string, string>;
+  mapping_source?: "auto" | "user";
+  rows?: BomIntakeRow[];
+  rows_total?: number;
+  rows_shown?: number;
+  rows_truncated?: boolean;
+  issues?: BomIntakeIssue[];
+  counts?: Record<string, number>;
+  supplier_specific?: boolean;
+  default_supplier?: string;
+  exclude_invalid_rows?: boolean;
+  corrections_applied?: number;
+  blank_rows_skipped?: number;
 };
+
+/** Send only the choices the user actually made. */
+function appendIntakeOptions(body: FormData, options?: BomIntakeOptions) {
+  if (!options) return;
+  if (options.columnMapping) {
+    body.append("column_mapping", JSON.stringify(options.columnMapping));
+  }
+  if (Object.keys(options.rowCorrections).length) {
+    body.append("row_corrections", JSON.stringify(options.rowCorrections));
+  }
+  if (options.supplierSpecific) {
+    body.append("supplier_specific", "true");
+    if (options.defaultSupplier.trim()) {
+      body.append("default_supplier", options.defaultSupplier.trim());
+    }
+  }
+  if (options.excludeInvalidRows) body.append("exclude_invalid_rows", "true");
+}
 
 export async function validateBom(
   file: File,
   token: string,
+  options?: BomIntakeOptions,
 ): Promise<BomValidationPreview> {
   const body = new FormData();
   body.append("file", file);
+  appendIntakeOptions(body, options);
   return apiJson("/boms/validate", { method: "POST", token, body });
 }
 
@@ -451,6 +552,7 @@ export async function analyzeBom(
     sourceAnalysisId?: string;
     appliedDecisionIds?: string[];
     usedDecisionIds?: string[];
+    intake?: BomIntakeOptions;
   },
 ): Promise<AnalyzeSummary> {
   const body = new FormData();
@@ -465,6 +567,7 @@ export async function analyzeBom(
   if (meta?.usedDecisionIds?.length) {
     body.append("used_decision_ids", JSON.stringify(meta.usedDecisionIds));
   }
+  appendIntakeOptions(body, meta?.intake);
   return apiJson("/boms/analyze", { method: "POST", token, body });
 }
 

@@ -500,6 +500,63 @@ async def smoke_login(request: Request) -> JSONResponse:
 
 
 
+_INTAKE_TRUE = {"1", "true", "yes", "on"}
+
+
+def _intake_options_from_form(form: Any) -> tuple[dict[str, Any], JSONResponse | None]:
+    """Read the optional BOM intake choices (mapping, supplier mode, exclusions).
+
+    Returns ``(options, error_response)``. The mapping is keyed by zero-based
+    column index and is only ever the user's explicit choice.
+    """
+    mapping: dict[str, str] | None = None
+    raw_mapping = str(form.get("column_mapping") or "").strip()
+    if raw_mapping:
+        try:
+            parsed = json.loads(raw_mapping)
+        except (TypeError, ValueError):
+            parsed = None
+        if (
+            not isinstance(parsed, dict)
+            or len(parsed) > 200
+            or any(not isinstance(value, (str, type(None))) for value in parsed.values())
+        ):
+            return {}, _json(
+                {"detail": "The column mapping is invalid.", "code": "invalid_column_mapping"},
+                400,
+            )
+        mapping = {str(key): str(value or "ignore") for key, value in parsed.items()}
+    corrections: dict[str, dict[str, str]] | None = None
+    raw_corrections = str(form.get("row_corrections") or "").strip()
+    if raw_corrections:
+        try:
+            parsed_corrections = json.loads(raw_corrections)
+        except (TypeError, ValueError):
+            parsed_corrections = None
+        if not isinstance(parsed_corrections, dict) or any(
+            not isinstance(fields, dict) for fields in parsed_corrections.values()
+        ):
+            return {}, _json(
+                {"detail": "The row corrections are invalid.", "code": "invalid_row_corrections"},
+                400,
+            )
+        corrections = {
+            str(row): {str(k): "" if v is None else str(v) for k, v in fields.items()}
+            for row, fields in parsed_corrections.items()
+        }
+    return (
+        {
+            "column_mapping": mapping,
+            "row_corrections": corrections,
+            "supplier_specific": str(form.get("supplier_specific") or "").strip().lower() in _INTAKE_TRUE,
+            "default_supplier": str(form.get("default_supplier") or "").strip()[:120],
+            "exclude_invalid_rows": str(form.get("exclude_invalid_rows") or "").strip().lower()
+            in _INTAKE_TRUE,
+        },
+        None,
+    )
+
+
 async def boms_validate(request: Request) -> JSONResponse:
     """Validate a BOM upload without running the analysis engine."""
     ctx, denied = _auth_context(request)
@@ -522,7 +579,10 @@ async def boms_validate(request: Request) -> JSONResponse:
             },
             413,
         )
-    preview = bom_validation.validation_preview(filename, payload)
+    intake_options, option_error = _intake_options_from_form(form)
+    if option_error:
+        return option_error
+    preview = bom_validation.validation_preview(filename, payload, **intake_options)
     # Always return the preview payload so the UI can show column detection and
     # actionable errors without treating soft validation failure as a transport error.
     return _json({**preview, "workspace_id": ctx["workspace_id"]})
@@ -565,7 +625,10 @@ async def boms_analyze(request: Request) -> JSONResponse:
     # Validation is authoritative on the server. Do not depend on the UI's
     # preview gate: malformed or empty-part files must not consume plan/report
     # credits or create projects, BOMs, revisions, and empty analyses.
-    preview = bom_validation.validation_preview(filename, payload)
+    intake_options, option_error = _intake_options_from_form(form)
+    if option_error:
+        return option_error
+    preview = bom_validation.validation_preview(filename, payload, **intake_options)
     if not preview.get("can_analyze"):
         return _json(
             {
@@ -646,7 +709,7 @@ async def boms_analyze(request: Request) -> JSONResponse:
                     {"detail": "Only non-rejected replacement candidates from the source BOM can be applied."},
                     400,
                 )
-            revised_parts = parse_bom_bytes(filename, payload)
+            revised_parts = parse_bom_bytes(filename, payload, **intake_options)
             revised_mpns = {
                 str(value or "").strip().casefold()
                 for value in revised_parts.get("mpn", [])
@@ -736,6 +799,7 @@ async def boms_analyze(request: Request) -> JSONResponse:
             derived_from_analysis_id=derived_from_analysis_id,
             applied_decision_ids=applied_decision_ids,
             used_decision_ids=used_decision_ids,
+            **intake_options,
         )
     except PersistenceNotConfiguredError as exc:
         if reserved_order_id:
