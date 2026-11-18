@@ -202,7 +202,7 @@ export default function BomAnalyzerPage() {
           );
           trackMarketingEventOnce(
             "first_analysis_completed",
-            `first_analysis_completed:${session.user_id || session.email}`,
+            `first_analysis_completed:${session.user_id || ""}`,
             { flow: "saved-bom-analysis" },
             "/bom-analyzer",
           );
@@ -275,7 +275,7 @@ export default function BomAnalyzerPage() {
         );
         trackMarketingEventOnce(
           "first_analysis_completed",
-          `first_analysis_completed:${session.user_id || session.email}`,
+          `first_analysis_completed:${session.user_id || ""}`,
           { flow: "saved-bom-analysis" },
           "/bom-analyzer",
         );

@@ -10,28 +10,32 @@ import { PAGE_META } from "@/lib/routes";
 
 type FunnelRow = {
   event: string;
-  source: string;
   traffic_source: string;
   events: number;
   sessions: number;
+  origins: string[];
+  visit_sessions: number;
+  conversion_from_visit_pct: number | null;
 };
 
 const EVENT_LABELS: Record<string, string> = {
-  page_view: "Page views",
+  page_view: "Visits",
   cta_click: "CTA clicks",
   free_audit_started: "Free audits started",
   free_audit_completed: "Free audits completed",
   signup_started: "Signups started",
-  signup_completed: "Email verified / signup completed",
+  signup_completed: "Accounts verified",
   bom_uploaded: "BOM analyses saved",
   first_analysis_completed: "First analyses completed",
   trial_started: "Trials started",
-  upgrade_clicked: "Upgrade clicks",
+  upgrade_clicked: "Upgrade interest",
   checkout_started: "Checkouts started",
   subscription_created: "Subscriptions created",
-  demo_requested: "Demo requests",
   one_time_report_purchased: "One-time reports purchased",
+  demo_requested: "Demo requests",
 };
+
+const EVENT_ORDER = Object.keys(EVENT_LABELS);
 
 export default function MarketingAnalyticsPage() {
   const session = useRequireSession();
@@ -62,6 +66,13 @@ export default function MarketingAnalyticsPage() {
   }, [session, days]);
 
   const totals = useMemo(() => rows.reduce((sum, row) => sum + Number(row.events || 0), 0), [rows]);
+  const orderedRows = useMemo(() => {
+    const rank = new Map(EVENT_ORDER.map((event, index) => [event, index]));
+    return [...rows].sort((a, b) =>
+      a.traffic_source.localeCompare(b.traffic_source) ||
+      (rank.get(a.event) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.event) ?? Number.MAX_SAFE_INTEGER),
+    );
+  }, [rows]);
   if (!session) return null;
 
   return (
@@ -79,12 +90,12 @@ export default function MarketingAnalyticsPage() {
       <section className="cv-card pad" style={{ marginBottom: 16 }}>
         <h2 className="cv-card-title">Visit-to-paid funnel</h2>
         <p className="cv-card-subtitle">
-          First-party event totals by traffic source for the last {days} days. Events contain no email, IP address, BOM content, or part number. Data is retained for up to 180 days.
+          Opted-in sessions by traffic source for the last {days} days. Each rate is the share of page-view sessions from that same source that reached the event. Demo requests and one-time reports are separate outcomes. Events contain no email, IP address, BOM content, or part number; data is retained for up to 180 days.
         </p>
         {busy ? <p className="cv-small-note" role="status">Loading funnel…</p> : null}
         {error ? <div className="cv-error" role="alert">{error}</div> : null}
         {!busy && !error && loaded && rows.length === 0 ? (
-          <EmptyState icon="spark" title="No tracked activity yet" body="Page views and funnel events will appear here after the tracking release is deployed." />
+          <EmptyState icon="spark" title="No opted-in activity yet" body="This dashboard records activity only after a visitor allows optional analytics. Page views and funnel events will appear here as opted-in visitors use Cadivor." />
         ) : null}
         {!busy && !error && rows.length ? (
           <>
@@ -95,15 +106,30 @@ export default function MarketingAnalyticsPage() {
             </div>
             <div className="cv-table-wrap">
               <table className="cv-table">
-                <thead><tr><th>Stage</th><th>Traffic source</th><th>Entry</th><th>Events</th><th>Sessions</th></tr></thead>
+                <thead><tr><th>Stage</th><th>Traffic source</th><th>Unique sessions</th><th>Share of visits</th><th>Events</th><th>Recorded in</th></tr></thead>
                 <tbody>
-                  {rows.map((row) => (
-                    <tr key={`${row.event}:${row.traffic_source}:${row.source}`}>
+                  {orderedRows.map((row) => (
+                    <tr key={`${row.event}:${row.traffic_source}`}>
                       <td><strong>{EVENT_LABELS[row.event] || row.event}</strong></td>
                       <td>{row.traffic_source}</td>
-                      <td>{row.source === "marketing" ? "Marketing site" : "Cadivor app"}</td>
-                      <td>{Number(row.events).toLocaleString()}</td>
                       <td>{Number(row.sessions).toLocaleString()}</td>
+                      <td>
+                        {row.conversion_from_visit_pct === null ? (
+                          <span className="cv-small-note">{row.event === "page_view" ? "Visit baseline" : "No visit baseline"}</span>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 150 }}>
+                            <progress
+                              aria-label={`${EVENT_LABELS[row.event] || row.event}: ${row.conversion_from_visit_pct}% of visits`}
+                              max={100}
+                              value={Math.max(0, Math.min(100, row.conversion_from_visit_pct))}
+                              style={{ width: 96, accentColor: "#2563eb" }}
+                            />
+                            <strong>{Number(row.conversion_from_visit_pct).toFixed(1)}%</strong>
+                          </div>
+                        )}
+                      </td>
+                      <td>{Number(row.events).toLocaleString()}</td>
+                      <td>{row.origins.map((origin) => origin === "marketing" ? "Marketing site" : "Cadivor app").join(" + ") || "Unknown"}</td>
                     </tr>
                   ))}
                 </tbody>

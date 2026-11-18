@@ -70,7 +70,7 @@ export default function SingleBomReportPage() {
       if (!active || !result.orders?.some((order) => order.status === "paid")) return;
       trackMarketingEventOnce(
         "one_time_report_purchased",
-        `one_time_report_purchased:${session.user_id || session.email}`,
+        `one_time_report_purchased:${session.user_id || ""}`,
         { intent: "one-time-report" },
         "/single-bom-report",
       );

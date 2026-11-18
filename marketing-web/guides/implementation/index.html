@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cadivor Implementation Guide | Cadivor</title>
+  <meta name="description" content="A practical rollout guide for introducing BOM review, evidence-backed recommendations, engineering decision records, and monitoring into a hardware release workflow.">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <link rel="canonical" href="https://www.cadivor.com/guides/implementation/">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Cadivor">
+  <meta property="og:title" content="Cadivor Implementation Guide">
+  <meta property="og:description" content="Start with one controlled BOM workflow, define review ownership, and expand after the evidence and decision process works.">
+  <meta property="og:url" content="https://www.cadivor.com/guides/implementation/">
+  <meta name="twitter:card" content="summary">
+  <link rel="stylesheet" href="/seo.css">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Cadivor Implementation Guide","description":"A practical rollout guide for BOM review, evidence-backed recommendations, engineering decisions, and monitoring.","author":{"@type":"Organization","name":"Cadivor Engineering"},"publisher":{"@type":"Organization","name":"Cadivor","url":"https://www.cadivor.com"},"mainEntityOfPage":"https://www.cadivor.com/guides/implementation/"}</script>
+</head>
+<body>
+  <a class="seo-skip" href="#main">Skip to content</a>
+  <header class="seo-header">
+    <div class="seo-header-inner">
+      <a class="seo-brand" href="/" aria-label="Cadivor home"><span class="seo-brand-mark" aria-hidden="true">C</span>Cadivor</a>
+      <nav class="seo-nav" aria-label="Main navigation">
+        <a href="/product/">Product</a><a href="/solutions/">Solutions</a><a href="/pricing/">Pricing</a><a href="/resources/">Resources</a><a href="/security/">Security</a>
+      </nav>
+      <a class="seo-button seo-button-primary" href="https://app.cadivor.com/?auth=signup&amp;intent=trial&amp;source=marketing-guide">Start free trial</a>
+    </div>
+  </header>
+  <main id="main" class="seo-main">
+    <nav aria-label="Breadcrumb"><a href="/">Home</a> / <a href="/resources/">Resources</a> / Implementation guide</nav>
+    <section class="seo-hero">
+      <span class="seo-eyebrow">ROLLOUT GUIDE</span>
+      <h1>Introduce Cadivor through a controlled BOM review</h1>
+      <p class="seo-lede">Start with one representative hardware program. Agree on the data, reviewers, evidence expectations, and decision ownership before expanding to more BOMs or teams.</p>
+      <div class="seo-actions">
+        <a class="seo-button seo-button-primary" href="https://app.cadivor.com/bom-analyzer?source=marketing-guide">Open BOM Analyzer</a>
+        <a class="seo-button" href="https://app.cadivor.com/public-bom-audit?embed=true&amp;source=marketing-guide">Try the free BOM audit</a>
+      </div>
+      <p class="seo-note">Supplier coverage, freshness, and feature availability vary by component and workspace configuration. Verify source labels before acting.</p>
+    </section>
+    <section class="seo-section">
+      <h2>A practical first rollout</h2>
+      <p>Use the sequence below to make the workflow reviewable and to find data or ownership gaps early.</p>
+      <ol class="seo-list">
+        <li><strong>Select a contained pilot</strong><span>Choose one non-sensitive BOM with a clear engineering owner and a known review date. Use a copy with the columns needed to identify parts and quantities.</span></li>
+        <li><strong>Agree on BOM ownership and naming</strong><span>Decide how projects, BOM names, revisions, and reviewers will be represented so an analysis can be found and reopened later.</span></li>
+        <li><strong>Validate the uploaded data</strong><span>Review column mapping, part identity, manufacturer, quantity, and duplicate rows before relying on the analysis. Correct source data rather than hiding uncertain values.</span></li>
+        <li><strong>Review evidence with its limits</strong><span>Separate manufacturer evidence from distributor data, estimates, and missing coverage. Check exact part identity and retrieval time; do not treat stale, conflicting, or unavailable data as confirmation.</span></li>
+        <li><strong>Assign actions and decision authority</strong><span>Give each release-impacting risk an owner, due date, evidence, and proposed mitigation. Keep preliminary review, hold, conditional approval, and approval distinct.</span></li>
+        <li><strong>Preserve the decision record</strong><span>Capture the affected part and BOM revision, rationale, evidence snapshot, reviewer, approver, and unresolved follow-up. A recorded decision does not itself qualify a replacement.</span></li>
+        <li><strong>Define monitoring deliberately</strong><span>For approved mitigations, specify which supplier or lifecycle signal should reopen the decision, how often it is checked, and what happens when a source fails or goes stale.</span></li>
+        <li><strong>Review the pilot before expanding</strong><span>Ask whether the team found the evidence, understood uncertainty, completed assigned work, and could reopen the decision. Fix the workflow before adding more programs.</span></li>
+      </ol>
+    </section>
+    <section class="seo-section">
+      <h2>What to measure in the pilot</h2>
+      <div class="seo-grid seo-grid-two">
+        <article class="seo-card"><h3>Time to a reviewable BOM</h3><p>Track parsing and correction effort, including missing, ambiguous, or duplicated fields.</p></article>
+        <article class="seo-card"><h3>Evidence coverage</h3><p>Count how many prioritized parts have exact identity and source-backed evidence, and record where coverage is missing.</p></article>
+        <article class="seo-card"><h3>Decision ownership</h3><p>Check whether every action has a responsible owner, due date, rationale, and the right approval state.</p></article>
+        <article class="seo-card"><h3>Follow-up closure</h3><p>Review whether mitigations and monitoring rules are explicit and whether changed evidence reaches the owner.</p></article>
+      </div>
+    </section>
+    <section class="seo-callout">
+      <div><h2>Start with a small, reviewable BOM.</h2><p>Validate the input, inspect evidence, and keep a human owner on every release decision.</p></div>
+      <div class="seo-actions"><a class="seo-button seo-button-primary" href="https://app.cadivor.com/bom-analyzer?source=marketing-guide">Open BOM Analyzer</a><a class="seo-button" href="/resources/">Browse resources</a></div>
+    </section>
+  </main>
+  <footer class="seo-footer">
+    <div class="seo-footer-inner">
+      <div><a class="seo-brand" href="/"><span class="seo-brand-mark" aria-hidden="true">C</span>Cadivor</a><p>Engineering decision support for BOM risk, supplier evidence, and accountable release decisions.</p><p class="seo-disclaimer">Cadivor supports engineering review and does not replace component qualification or professional engineering judgment.</p></div>
+      <nav class="seo-footer-links" aria-label="Footer navigation"><a href="/product/">Product</a><a href="/solutions/">Solutions</a><a href="/pricing/">Pricing</a><a href="/resources/">Resources</a><a href="/release-readiness">Release checklist</a><a href="/guides/alternate-qualification/">Alternate qualification</a><a href="/security/">Security</a><a href="/privacy/">Privacy</a></nav>
+    </div>
+  </footer>
+  <aside id="seoAnalyticsConsent" class="seo-analytics-consent" aria-label="Optional analytics choice" hidden>
+    <div><strong>Help improve Cadivor</strong><p>Allow optional first-party usage events. We do not collect BOM contents or part numbers.</p></div>
+    <div class="seo-analytics-actions"><button type="button" data-seo-consent="rejected">Essential only</button><button type="button" class="primary" data-seo-consent="accepted">Allow analytics</button></div>
+  </aside>
+  <button id="seoPrivacyChoices" class="seo-privacy-choice" type="button" hidden>Privacy choices</button>
+  <script defer src="/seo-analytics.js"></script>
+</body>
+</html>

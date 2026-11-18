@@ -188,6 +188,27 @@ class MonitoringLiveSchedulerTests(unittest.TestCase):
         self.assertIsNone(monitoring_store.get_live_snapshot(self.workspace_id, analysis_id, "ABC123"))
         self.assertEqual(monitoring_store.list_refresh_history(self.workspace_id), [])
 
+    def test_scheduled_run_offloads_blocking_cycle_from_api_event_loop(self):
+        os.environ["CADIVOR_MONITORING_CRON_TOKEN"] = "local-cron-secret"
+        calls = {}
+
+        async def fake_run_in_threadpool(function, *args, **kwargs):
+            calls["function"] = function
+            calls["args"] = args
+            calls["kwargs"] = kwargs
+            return {"ok": True, "status": "dry_run", "supplier_calls": 0}
+
+        with patch.object(api_main, "run_in_threadpool", side_effect=fake_run_in_threadpool):
+            response = self.client.post(
+                "/tools/monitoring/scheduled-run",
+                headers={"x-cadivor-cron-token": "local-cron-secret"},
+                json={"dry_run": True},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIs(calls["function"], monitoring_scheduler.run_scheduled_cycle)
+        self.assertEqual(calls["kwargs"], {"dry_run": True})
+
     def test_email_delivery_uses_verified_member_address(self):
         analysis_id = self._analysis()
         self.client.put(
