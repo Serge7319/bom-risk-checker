@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { EmptyState } from "@/components/EmptyState";
+import { RiskLevelBadge, RiskLevelLegend } from "@/components/RiskLevelBadge";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { Icon } from "@/components/Icons";
 import { PartThumbnail } from "@/components/PartThumbnail";
@@ -526,6 +527,7 @@ function ProcurementPageInner() {
 
             {parts.length ? (
               <div className="cv-table-wrap">
+                <RiskLevelLegend />
                 <table className="cv-table cv-procurement-table">
                   <thead>
                     <tr>
@@ -563,7 +565,7 @@ function ProcurementPageInner() {
                         </td>
                         <td>{display(p.quantity)}</td>
                         <td>{display(p.lifecycle, "Unknown")}</td>
-                        <td>{display(p.risk_level, "Needs verification")}</td>
+                        <td><RiskLevelBadge value={p.risk_level} /></td>
                         <td>
                           <strong>{display(p.supplier, "No primary supplier recorded")}</strong>
                           <small className="cv-procurement-description">
