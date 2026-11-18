@@ -78,6 +78,63 @@ def _safe_spreadsheet_value(value: Any) -> Any:
     return value
 
 
+_XLSX_NUMERIC_FIELDS = {
+    "Quantity per Parent",
+    "Effective Quantity",
+    "Risk Score",
+    "Stock",
+    "Unit Price",
+    "Leaf Count",
+    "High-Risk Leaves",
+    "Medium-Risk Leaves",
+    "Needs Verification Leaves",
+    "Health score",
+    "Total components",
+    "Risk assessed",
+    "Risk not assessed",
+    "High risk",
+    "Medium risk",
+    "Low risk",
+}
+
+_XLSX_NUMBER_FORMATS = {
+    "Quantity per Parent": "#,##0.###",
+    "Effective Quantity": "#,##0.###",
+    "Risk Score": "0",
+    "Stock": "#,##0",
+    "Unit Price": "#,##0.00##",
+    "Leaf Count": "#,##0",
+    "High-Risk Leaves": "#,##0",
+    "Medium-Risk Leaves": "#,##0",
+    "Needs Verification Leaves": "#,##0",
+    "Health score": "0",
+    "Total components": "#,##0",
+    "Risk assessed": "#,##0",
+    "Risk not assessed": "#,##0",
+    "High risk": "#,##0",
+    "Medium risk": "#,##0",
+    "Low risk": "#,##0",
+}
+
+
+def _xlsx_value(field: str, value: Any) -> Any:
+    """Keep quantities, counts, prices, and scores numeric in Excel."""
+    if value is None or value == "":
+        return None
+    if field in _XLSX_NUMERIC_FIELDS and not isinstance(value, bool):
+        try:
+            from decimal import Decimal, InvalidOperation
+
+            number = Decimal(str(value).strip())
+        except (InvalidOperation, ValueError):
+            number = None
+        if number is not None and number.is_finite():
+            if number == number.to_integral_value():
+                return int(number)
+            return float(number)
+    return _safe_spreadsheet_value(_text(value))
+
+
 def _export_line_type(row: dict[str, Any]) -> str:
     """Keep Line Type only when the BOM supplied/mapped a non-default value."""
     raw = _first(row, "Line Type", "line_type", default="")
@@ -295,10 +352,12 @@ def _add_xlsx_sheet(
         sheet.cell(2, 1).alignment = Alignment(wrap_text=True, vertical="top")
     for row_index, component in enumerate(rows, start=2):
         for column, name in enumerate(columns, start=1):
-            value = _safe_spreadsheet_value(_text(component.get(name)))
+            value = _xlsx_value(name, component.get(name))
             cell = sheet.cell(row_index, column, value)
             cell.font = Font(name="Aptos", size=10, color="334155")
             cell.alignment = Alignment(wrap_text=True, vertical="top")
+            if name in _XLSX_NUMBER_FORMATS and cell.data_type == "n":
+                cell.number_format = _XLSX_NUMBER_FORMATS[name]
     if rows:
         last_col = get_column_letter(len(columns))
         table = Table(
@@ -315,8 +374,45 @@ def _add_xlsx_sheet(
         sheet.add_table(table)
         sheet.auto_filter.ref = f"A1:{last_col}{len(rows) + 1}"
     sheet.freeze_panes = "A2"
-    for index in range(1, len(columns) + 1):
-        sheet.column_dimensions[get_column_letter(index)].width = 18
+    widths = {
+        "MPN": 24,
+        "Assembly MPN": 24,
+        "Manufacturer": 26,
+        "Description": 44,
+        "Parent MPN": 22,
+        "Line Type": 16,
+        "Quantity per Parent": 18,
+        "Effective Quantity": 18,
+        "Lifecycle": 24,
+        "Risk Level": 18,
+        "Risk Score": 13,
+        "Risk Reasons": 58,
+        "Stock": 15,
+        "Unit Price": 15,
+        "Currency": 10,
+        "Evidence Class": 26,
+        "Evidence Source": 22,
+        "Identity Source": 22,
+        "Identity Retrieved At": 26,
+        "Lifecycle Source": 22,
+        "Lifecycle Retrieved At": 26,
+        "Stock Source": 22,
+        "Stock Retrieved At": 26,
+        "Price Source": 22,
+        "Price Type": 22,
+        "Price Retrieved At": 26,
+        "Supplier Product URL": 52,
+        "Datasheet URL": 52,
+        "Rolled Risk": 18,
+        "Leaf Count": 14,
+        "High-Risk Leaves": 18,
+        "Medium-Risk Leaves": 19,
+        "Needs Verification Leaves": 25,
+        "Top Contributors": 44,
+        "Contributor Evidence": 44,
+    }
+    for index, name in enumerate(columns, start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = widths.get(name, 18)
 
 
 def build_xlsx(report: dict[str, Any]) -> bytes:
@@ -377,12 +473,14 @@ def build_xlsx(report: dict[str, Any]) -> bytes:
     ]
     for index, (label, value) in enumerate(facts, start=4):
         summary.cell(index, 1, label)
-        summary.cell(index, 2, _safe_spreadsheet_value(_text(value)))
+        summary.cell(index, 2, _xlsx_value(label, value))
         summary.cell(index, 1).font = Font(name="Aptos", size=10, bold=True, color="17324D")
         summary.cell(index, 2).font = Font(name="Aptos", size=10, color="334155")
         summary.cell(index, 1).border = Border(bottom=Side(style="thin", color="D9E2EC"))
         summary.cell(index, 2).border = Border(bottom=Side(style="thin", color="D9E2EC"))
         summary.cell(index, 2).alignment = Alignment(wrap_text=True, vertical="top")
+        if label in _XLSX_NUMBER_FORMATS and summary.cell(index, 2).data_type == "n":
+            summary.cell(index, 2).number_format = _XLSX_NUMBER_FORMATS[label]
     summary.column_dimensions["A"].width = 25
     summary.column_dimensions["B"].width = 88
 
@@ -452,7 +550,8 @@ def build_pdf(report: dict[str, Any]) -> bytes:
     from reportlab.lib.enums import TA_LEFT
     from reportlab.lib.pagesizes import landscape, letter
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-    from reportlab.lib.units import inch
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
     from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, Spacer, TableStyle
 
     rows = _component_rows(report)
@@ -464,8 +563,26 @@ def build_pdf(report: dict[str, Any]) -> bytes:
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="CadivorExportTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=19, leading=23, textColor=colors.HexColor("#17324D"), alignment=TA_LEFT, spaceAfter=6))
     styles.add(ParagraphStyle(name="CadivorExportBody", parent=styles["BodyText"], fontSize=8.5, leading=11, textColor=colors.HexColor("#334155"), spaceAfter=4))
-    styles.add(ParagraphStyle(name="CadivorExportSmall", parent=styles["BodyText"], fontSize=7, leading=9, textColor=colors.HexColor("#334155")))
-    styles.add(ParagraphStyle(name="CadivorExportHead", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=7, leading=8, textColor=colors.white))
+    styles.add(ParagraphStyle(name="CadivorExportSmall", parent=styles["BodyText"], fontSize=6.5, leading=7.5, textColor=colors.HexColor("#334155")))
+    styles.add(ParagraphStyle(name="CadivorExportHead", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=6.5, leading=7.5, textColor=colors.white))
+
+    cjk_font = "HeiseiKakuGo-W5"
+    if cjk_font not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(UnicodeCIDFont(cjk_font))
+    cjk_pattern = re.compile(r"[\u2E80-\u2FFF\u3040-\u30FF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF]")
+    for name in ("CadivorExportTitle", "CadivorExportBody", "CadivorExportSmall", "CadivorExportHead"):
+        styles.add(
+            ParagraphStyle(
+                name=f"{name}CJK",
+                parent=styles[name],
+                fontName=cjk_font,
+            )
+        )
+
+    def paragraph(value: Any, style_name: str, *, markup: bool = False) -> Paragraph:
+        text = _text(value)
+        style = styles[f"{style_name}CJK"] if cjk_pattern.search(text) else styles[style_name]
+        return Paragraph(text if markup else escape(text), style)
 
     metadata = _metadata(report)
     health_score = report.get("health_score")
@@ -475,23 +592,25 @@ def build_pdf(report: dict[str, Any]) -> bytes:
         else _text(health_score)
     )
     story = [
-        Paragraph("Cadivor BOM Risk Report", styles["CadivorExportTitle"]),
-        Paragraph(
+        paragraph("Cadivor BOM Risk Report", "CadivorExportTitle"),
+        paragraph(
             "<b>Project:</b> " + escape(metadata["Project"]) +
             " &nbsp;&nbsp; <b>BOM:</b> " + escape(metadata["BOM"]) +
             " &nbsp;&nbsp; <b>Revision:</b> " + escape(metadata["Revision"]),
-            styles["CadivorExportBody"],
+            "CadivorExportBody",
+            markup=True,
         ),
-        Paragraph(
+        paragraph(
             "<b>Health:</b> " + escape(health_label) +
             (" / 100" if health_label not in {"Not scored"} else "") +
             " &nbsp;&nbsp; <b>Status:</b> " + escape(_text(report.get("health_status") or "Not reported")) +
             " &nbsp;&nbsp; <b>Components:</b> " + str(len(rows)) +
             " &nbsp;&nbsp; <b>High / medium / low:</b> " +
             " / ".join(escape(_text(report.get(key, 0))) for key in ("high_risk_count", "medium_risk_count", "low_risk_count")),
-            styles["CadivorExportBody"],
+            "CadivorExportBody",
+            markup=True,
         ),
-        Paragraph(escape(_synthetic_disclaimer(report)), styles["CadivorExportBody"]),
+        paragraph(_synthetic_disclaimer(report), "CadivorExportBody"),
         Spacer(1, 8),
     ]
 
@@ -500,39 +619,36 @@ def build_pdf(report: dict[str, Any]) -> bytes:
         story.append(Paragraph("Assembly risk roll-up", styles["CadivorExportBody"]))
         assembly_headers = ("Assembly", "Parent", "Rolled risk", "Leaves", "Top contributors / evidence")
         assembly_data: list[list[Any]] = [
-            [Paragraph(escape(name), styles["CadivorExportHead"]) for name in assembly_headers]
+            [paragraph(name, "CadivorExportHead") for name in assembly_headers]
         ]
         for row in assembly_rows[:40]:
             assembly_data.append(
                 [
-                    Paragraph(escape(_text(row["Assembly MPN"])), styles["CadivorExportSmall"]),
-                    Paragraph(escape(_text(row["Parent MPN"])), styles["CadivorExportSmall"]),
-                    Paragraph(escape(_text(row["Rolled Risk"])), styles["CadivorExportSmall"]),
-                    Paragraph(
-                        escape(
-                            f"{_text(row['Leaf Count'])} total · "
-                            f"H {_text(row['High-Risk Leaves'])} / "
-                            f"M {_text(row['Medium-Risk Leaves'])} / "
-                            f"NV {_text(row['Needs Verification Leaves'])}"
-                        ),
-                        styles["CadivorExportSmall"],
+                    paragraph(row["Assembly MPN"], "CadivorExportSmall"),
+                    paragraph(row["Parent MPN"], "CadivorExportSmall"),
+                    paragraph(row["Rolled Risk"], "CadivorExportSmall"),
+                    paragraph(
+                        f"{_text(row['Leaf Count'])} total · "
+                        f"H {_text(row['High-Risk Leaves'])} / "
+                        f"M {_text(row['Medium-Risk Leaves'])} / "
+                        f"NV {_text(row['Needs Verification Leaves'])}",
+                        "CadivorExportSmall",
                     ),
-                    Paragraph(
-                        escape(
-                            " · ".join(
-                                filter(
-                                    None,
-                                    (_text(row["Top Contributors"]), _text(row["Contributor Evidence"])),
-                                )
+                    paragraph(
+                        " · ".join(
+                            filter(
+                                None,
+                                (_text(row["Top Contributors"]), _text(row["Contributor Evidence"])),
                             )
                         ),
-                        styles["CadivorExportSmall"],
+                        "CadivorExportSmall",
                     ),
                 ]
             )
+        available_width = landscape(letter)[0] - doc.leftMargin - doc.rightMargin
         assembly_table = LongTable(
             assembly_data,
-            colWidths=[1.2 * inch, 0.9 * inch, 0.8 * inch, 1.5 * inch, 3.8 * inch],
+            colWidths=[available_width * part for part in (0.14, 0.11, 0.10, 0.16, 0.49)],
             repeatRows=1,
             hAlign="LEFT",
             splitByRow=1,
@@ -544,10 +660,10 @@ def build_pdf(report: dict[str, Any]) -> bytes:
                     ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D9E2EC")),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
                 ]
             )
         )
@@ -555,7 +671,7 @@ def build_pdf(report: dict[str, Any]) -> bytes:
         story.append(Spacer(1, 10))
 
     headers = ("MPN", "Manufacturer / description", "Parent", "Qty", "Lifecycle", "Risk", "Provenance", "Risk reasons")
-    data: list[list[Any]] = [[Paragraph(escape(name), styles["CadivorExportHead"]) for name in headers]]
+    data: list[list[Any]] = [[paragraph(name, "CadivorExportHead") for name in headers]]
     for row in rows:
         provenance = " · ".join(
             filter(
@@ -572,19 +688,20 @@ def build_pdf(report: dict[str, Any]) -> bytes:
         ) or _text(row.get("Evidence Class"))
         data.append(
             [
-                Paragraph(escape(_text(row["MPN"])), styles["CadivorExportSmall"]),
-                Paragraph(escape(" · ".join(filter(None, (_text(row["Manufacturer"]), _text(row["Description"]))))), styles["CadivorExportSmall"]),
-                Paragraph(escape(_text(row["Parent MPN"])), styles["CadivorExportSmall"]),
-                Paragraph(escape(_text(row["Effective Quantity"])), styles["CadivorExportSmall"]),
-                Paragraph(escape(_text(row["Lifecycle"])), styles["CadivorExportSmall"]),
-                Paragraph(escape(_text(row["Risk Level"])), styles["CadivorExportSmall"]),
-                Paragraph(escape(provenance), styles["CadivorExportSmall"]),
-                Paragraph(escape(_text(row["Risk Reasons"])), styles["CadivorExportSmall"]),
+                paragraph(row["MPN"], "CadivorExportSmall"),
+                paragraph(" · ".join(filter(None, (_text(row["Manufacturer"]), _text(row["Description"])))), "CadivorExportSmall"),
+                paragraph(row["Parent MPN"], "CadivorExportSmall"),
+                paragraph(row["Effective Quantity"], "CadivorExportSmall"),
+                paragraph(row["Lifecycle"], "CadivorExportSmall"),
+                paragraph(row["Risk Level"], "CadivorExportSmall"),
+                paragraph(provenance, "CadivorExportSmall"),
+                paragraph(row["Risk Reasons"], "CadivorExportSmall"),
             ]
         )
     if len(data) == 1:
-        data.append([Paragraph("No component rows are present in this report.", styles["CadivorExportSmall"])] + [""] * (len(headers) - 1))
-    widths = [0.95 * inch, 1.8 * inch, 0.78 * inch, 0.48 * inch, 0.78 * inch, 0.52 * inch, 1.2 * inch, 1.73 * inch]
+        data.append([paragraph("No component rows are present in this report.", "CadivorExportSmall")] + [""] * (len(headers) - 1))
+    available_width = landscape(letter)[0] - doc.leftMargin - doc.rightMargin
+    widths = [available_width * part for part in (0.12, 0.22, 0.09, 0.055, 0.10, 0.095, 0.15, 0.17)]
     table = LongTable(data, colWidths=widths, repeatRows=1, hAlign="LEFT", splitByRow=1)
     table.setStyle(
         TableStyle(
@@ -593,10 +710,10 @@ def build_pdf(report: dict[str, Any]) -> bytes:
                 ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D9E2EC")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
             ]
         )
     )
