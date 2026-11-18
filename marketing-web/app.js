@@ -525,7 +525,7 @@
     demo: {
       eyebrow: 'BOOK A DEMO',
       headline: 'Book a Cadivor demo for your engineering team.',
-      intro: 'See how Cadivor connects BOM analysis, supplier intelligence, Ask Cadivor, decision records, and continuous monitoring in one release workflow.',
+      intro: 'See how Cadivor connects guided BOM intake, supplier evidence, alternate review, engineering decisions, saved revisions, and selected-part monitoring.',
       formEyebrow: 'BOOK A DEMO',
       formTitle: 'Request a demo',
       formIntro: 'Share your BOM workflow and team context — we respond within one business day.',
@@ -728,7 +728,7 @@
     { key: 'supplier-qualification', label: 'Supplier qualification', focus: 'supplier', duration: 1100 },
     { key: 'decision-ready', label: 'Decision ready', focus: 'decision', duration: 1300 },
     { key: 'approved', label: 'Decision approved', focus: 'decision', duration: 1300 },
-    { key: 'monitoring-active', label: 'Monitoring active', focus: 'monitor', duration: 2200 }
+    { key: 'monitoring-active', label: 'Monitoring configured', focus: 'monitor', duration: 2200 }
   ];
   const heroMetrics = [
     null, null,
@@ -754,7 +754,7 @@
     { state: 'Scored', outcomeHtml: 'BOM Health <b>72</b> · <b>4</b> blockers', detail: 'MPU6050 EOL · LM35DN lead time · lifecycle notices matched', duration: 1300 },
     { state: 'Reviewing', outcomeHtml: '<b>14</b> evidence points reviewed', detail: 'Lifecycle, supply, alternates, and prior decisions assembled', duration: 1300 },
     { state: 'Approved', outcomeHtml: '<b>DR-1048</b> approved', detail: 'Owner Jordan Ellis · approval linked to the illustrative evidence record', duration: 1300 },
-    { state: 'Active', outcomeHtml: 'Lifecycle and supply monitoring active', detail: 'Watching MPU6050 · LM35DN · TPS54331 across authorized sources', duration: 0 }
+    { state: 'Configured', outcomeHtml: 'Selected-part checks configured', detail: 'Six-hour checks require workspace opt-in, enabled scheduling, and configured supplier sources', duration: 0 }
   ];
 
   // Start with the complete upload-to-monitoring story. The hero copy makes
@@ -1205,7 +1205,7 @@
 
     const acts = ['#actParse', '#actLifecycle', '#actSupplier', '#actDecisions', '#actMonitor'];
     [i >= 1, i >= 2, i >= 3, i >= 5, i >= 10].forEach((on, n) => $(acts[n])?.classList.toggle('active', on));
-    if ($('#actMonitor')) $('#actMonitor').textContent = i >= 10 ? 'Monitoring active' : 'Monitoring after approval';
+    if ($('#actMonitor')) $('#actMonitor').textContent = i >= 10 ? 'Monitoring configured' : 'Configure monitoring';
     applyHeroMetrics(i, i === 2 || i === 3);
     revealHeroRisks(i);
 
@@ -1286,7 +1286,7 @@
     }
     if ($('#heroDecisionStatus')) $('#heroDecisionStatus').textContent = i >= 9 ? 'Decision approved' : 'Awaiting approval';
     if ($('#heroMonitoringStatus')) {
-      $('#heroMonitoringStatus').textContent = i >= 10 ? 'Monitoring active' : 'Starts after approval';
+      $('#heroMonitoringStatus').textContent = i >= 10 ? 'Monitoring configured' : 'Available after approval';
     }
 
     const cursor = $('#demoCursor');
