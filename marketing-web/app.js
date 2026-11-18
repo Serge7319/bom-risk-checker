@@ -503,6 +503,7 @@
     product: 'support@cadivor.com',
     security: 'security@cadivor.com',
     disclosure: 'security@cadivor.com',
+    'responsible-disclosure': 'security@cadivor.com',
     legal: 'legal@cadivor.com',
     terms: 'legal@cadivor.com',
     privacy: 'legal@cadivor.com',
@@ -554,6 +555,17 @@
       submitLabel: 'Request student access',
       formNote: 'We store your request and referral source so we can respond and improve the site. See the Privacy Policy.',
       mailSubject: 'Cadivor Student plan request from'
+    },
+    security: {
+      eyebrow: 'SECURITY CONTACT',
+      headline: 'Contact Cadivor about a security issue.',
+      intro: 'Use this form for a security question or responsible disclosure. Do not include passwords, API keys, or customer BOMs.',
+      formEyebrow: 'SECURITY INQUIRY',
+      formTitle: 'Send a security inquiry',
+      formIntro: 'Describe the affected Cadivor area and observed behavior. Keep credentials, keys, and customer data out of the message.',
+      submitLabel: 'Send security inquiry',
+      formNote: 'This form stores your request and shows whether Cadivor could notify the configured contact inbox. Do not include credentials, keys, or customer data.',
+      mailSubject: 'Cadivor security inquiry from'
     }
   };
 
@@ -574,9 +586,12 @@
     if (!page) return;
     const qs = hashQueryParams();
     const intent = contactIntentFromQuery();
-    const mode = intent === 'demo' || intent === 'single-report' || intent === 'student'
-      ? intent
-      : 'general';
+    const securityInquiry = ['security', 'disclosure', 'responsible-disclosure'].includes(intent);
+    const mode = securityInquiry
+      ? 'security'
+      : intent === 'demo' || intent === 'single-report' || intent === 'student'
+        ? intent
+        : 'general';
     const copy = CONTACT_COPY[mode];
     const plan = String(qs.get('plan') || '').trim();
     page.dataset.contactMode = mode;
@@ -592,50 +607,65 @@
     const intro = $('p', aside);
     if (intro) intro.textContent = copy.intro;
     const reportInquiry = intent === 'single-report';
-    const benefits = reportInquiry
+    const benefits = securityInquiry
       ? [
-        'Review one BOM without starting a recurring subscription',
-        'Get the standard risk analysis and PDF/CSV reports',
-        'Keep the saved analysis available in your Cadivor account'
+        'Send a security question or responsible-disclosure report',
+        'Describe the affected Cadivor feature and observed behavior',
+        'Do not include passwords, API keys, or customer BOMs'
       ]
-      : intent === 'student'
+      : reportInquiry
         ? [
-          'Use Cadivor for coursework, capstone work, or a university lab',
-          'Review lifecycle and supplier risks in a sample or project BOM',
-          'Keep engineering judgment and evidence visible in your report'
+          'Review one BOM without starting a recurring subscription',
+          'Get the standard risk analysis and PDF/CSV reports',
+          'Keep the saved analysis available in your Cadivor account'
         ]
-      : [
-        'Product walkthrough tailored to your BOM workflow',
-        'Plan and deployment guidance for your team size',
-        'Engineering workflow review with evidence-linked decisions'
-      ];
+        : intent === 'student'
+          ? [
+            'Use Cadivor for coursework, capstone work, or a university lab',
+            'Review lifecycle and supplier risks in a sample or project BOM',
+            'Keep engineering judgment and evidence visible in your report'
+          ]
+        : [
+          'Product walkthrough tailored to your BOM workflow',
+          'Plan and deployment guidance for your team size',
+          'Engineering workflow review with evidence-linked decisions'
+        ];
     $$('.contact-benefits li', page).forEach((item, index) => { item.textContent = benefits[index]; });
     const agendaTitle = $('.contact-agenda h3', page);
-    if (agendaTitle) agendaTitle.textContent = reportInquiry
-      ? 'What to include in your inquiry'
-      : intent === 'student'
-        ? 'What to include in your request'
-        : 'Expected demo agenda';
-    const agenda = reportInquiry
+    if (agendaTitle) agendaTitle.textContent = securityInquiry
+      ? 'Helpful details for the security team'
+      : reportInquiry
+        ? 'What to include in your inquiry'
+        : intent === 'student'
+          ? 'What to include in your request'
+          : 'Expected demo agenda';
+    const agenda = securityInquiry
       ? [
-        'Approximate number of unique components',
-        'CSV or Excel BOM format',
-        'Risks or decisions your team needs to review',
-        'When you need the finished report'
+        'The Cadivor area or feature involved',
+        'What you observed and the potential impact',
+        'Steps to reproduce using test data, if relevant',
+        'Whether the issue is publicly disclosed or time-sensitive'
       ]
-      : intent === 'student'
+      : reportInquiry
         ? [
-          'Your school and program or course',
-          'Your school email address, if available',
-          'The project or lab where you plan to use Cadivor',
-          'Approximate BOM size and when you need access'
+          'Approximate number of unique components',
+          'CSV or Excel BOM format',
+          'Risks or decisions your team needs to review',
+          'When you need the finished report'
         ]
-      : [
-        'Upload and validate a representative BOM',
-        'Review release blockers and supplier intelligence',
-        'Walk through Ask Cadivor and decision records',
-        'Discuss rollout, plans, and monitoring'
-      ];
+        : intent === 'student'
+          ? [
+            'Your school and program or course',
+            'Your school email address, if available',
+            'The project or lab where you plan to use Cadivor',
+            'Approximate BOM size and when you need access'
+          ]
+        : [
+          'Upload and validate a representative BOM',
+          'Review release blockers and supplier intelligence',
+          'Walk through Ask Cadivor and decision records',
+          'Discuss rollout, plans, and monitoring'
+        ];
     $$('.contact-agenda li', page).forEach((item, index) => { item.textContent = agenda[index]; });
     const formCard = $('#contactFormCard');
     $('.contact-form-card__header .eyebrow', formCard)?.replaceChildren(document.createTextNode(copy.formEyebrow));
@@ -2514,6 +2544,9 @@
         if (!qs.has(key)) qs.set(key, value);
       });
       const topic = String(f.get('topic') || qs.get('intent') || 'general').trim().toLowerCase();
+      const contactInbox = resolveContactInbox(topic);
+      const securityRequest = ['security', 'disclosure', 'responsible-disclosure'].includes(topic);
+      const contactLabel = securityRequest ? 'the security team' : 'Cadivor';
       const utm = {};
       if (analyticsAllowed()) {
         ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'].forEach(key => {
@@ -2563,19 +2596,21 @@
         if (heading) heading.textContent = 'Request received';
         if (messageEl) {
           if (result.notification_status === 'sent') {
-            messageEl.textContent = 'Your request was submitted to Cadivor. We aim to follow up within one business day.';
+            messageEl.textContent = securityRequest
+            ? 'Your security request was submitted. Cadivor aims to follow up within one business day.'
+            : 'Your request was submitted to Cadivor. We aim to follow up within one business day.';
           } else if (result.notification_status === 'not_configured') {
-            messageEl.textContent = 'Your request was saved, but email delivery to Cadivor is not active yet. Please email info@cadivor.com for a timely reply.';
+            messageEl.textContent = `Your request was saved, but email delivery to ${contactLabel} is not active yet. Please email ${contactInbox} for a timely reply.`;
             const link = document.createElement('a');
-            link.href = 'mailto:info@cadivor.com?subject=Cadivor%20request%20follow-up';
-            link.textContent = 'Email Cadivor';
+            link.href = `mailto:${contactInbox}?subject=${encodeURIComponent(`Cadivor ${topic} request follow-up`)}`;
+            link.textContent = securityRequest ? 'Email the security team' : 'Email Cadivor';
             link.className = 'contact-fallback-link';
             messageEl.append(document.createElement('br'), link);
           } else {
-            messageEl.textContent = 'Your request was saved, but Cadivor could not be notified. Please email info@cadivor.com so we can respond.';
+            messageEl.textContent = `Your request was saved, but ${contactLabel} could not be notified. Please email ${contactInbox} so we can respond.`;
             const link = document.createElement('a');
-            link.href = 'mailto:info@cadivor.com?subject=Cadivor%20request%20follow-up';
-            link.textContent = 'Email Cadivor';
+            link.href = `mailto:${contactInbox}?subject=${encodeURIComponent(`Cadivor ${topic} request follow-up`)}`;
+            link.textContent = securityRequest ? 'Email the security team' : 'Email Cadivor';
             link.className = 'contact-fallback-link';
             messageEl.append(document.createElement('br'), link);
           }
@@ -2585,7 +2620,7 @@
         if (status) {
           status.textContent = error instanceof Error
             ? error.message
-            : 'Your request could not be sent. Please email info@cadivor.com.';
+            : `Your request could not be sent. Please email ${contactInbox}.`;
           status.setAttribute('role', 'alert');
         }
       } finally {
