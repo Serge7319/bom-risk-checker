@@ -7,6 +7,7 @@ import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import {
+  ApiError,
   beginBillingPortal,
   beginSubscriptionCheckout,
   cancelWorkspaceInvitation,
@@ -108,6 +109,15 @@ function settingsErrorMessage(err: unknown, fallback: string): string {
     return "Could not reach Cadivor. Check your connection and try again.";
   }
   return userFacingError(raw, fallback);
+}
+
+function billingErrorMessage(err: unknown, fallback: string): string {
+  const message = settingsErrorMessage(err, fallback);
+  const reference =
+    err instanceof ApiError && typeof err.payload.support_reference === "string"
+      ? userFacingLabel(err.payload.support_reference, "")
+      : "";
+  return reference ? message + " (Support reference: " + reference + ")" : message;
 }
 
 async function settledValue<T>(promise: Promise<T>): Promise<T | null> {
@@ -439,8 +449,7 @@ export default function Page() {
       }
       window.location.assign(url);
     } catch (err) {
-      const message = settingsErrorMessage(err, "Secure billing could not be opened.");
-      setBillingError(message);
+      setBillingError(billingErrorMessage(err, "Secure billing could not be opened."));
       setBillingAction("");
     }
   }
@@ -456,7 +465,7 @@ export default function Page() {
       }
       window.location.assign(result.checkout.url);
     } catch (err) {
-      setBillingError(settingsErrorMessage(err, "Billing settings could not be opened."));
+      setBillingError(billingErrorMessage(err, "Billing settings could not be opened."));
       setBillingAction("");
     }
   }
