@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "smoke:priority1:production": "node scripts/priority1_production_smoke.mjs"
   },
   "engines": {
     "node": ">=22.0.0"
