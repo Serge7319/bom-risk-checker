@@ -5,6 +5,7 @@ import csv
 import io
 import unicodedata
 import zipfile
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 import pytest
@@ -146,6 +147,49 @@ def test_exports_preserve_synthetic_label_and_neutralize_formula_cells():
     assert cell.value == "'=1+1"
 
 
+def test_xlsx_keeps_quantities_risk_stock_and_price_numeric():
+    report = {
+        "project_name": "Numeric export",
+        "bom_name": "numeric.csv",
+        "mode": "live",
+        "health_score": 81,
+        "parts": [
+            {
+                "MPN": "R-1",
+                "Manufacturer": "Example",
+                "quantity_per_parent": 2,
+                "effective_quantity": 6,
+                "Risk Score": 25,
+                "Stock": 1200,
+                "Unit Price": 0.125,
+                "Currency": "USD",
+            }
+        ],
+    }
+    workbook = load_workbook(io.BytesIO(build_xlsx(report)), data_only=False)
+    components = workbook["Components"]
+    columns = {cell.value: cell.column for cell in components[1]}
+    expected = {
+        "Quantity per Parent": 2,
+        "Effective Quantity": 6,
+        "Risk Score": 25,
+        "Stock": 1200,
+        "Unit Price": 0.125,
+    }
+    for field, value in expected.items():
+        cell = components.cell(row=2, column=columns[field])
+        assert cell.data_type == "n"
+        assert cell.value == value
+    assert components.column_dimensions["A"].width == 24
+    assert components.column_dimensions["C"].width == 44
+
+    summary = {row[0].value: row[1] for row in workbook["Summary"].iter_rows(min_row=4)}
+    assert summary["Health score"].data_type == "n"
+    assert summary["Health score"].value == 81
+    assert summary["Total components"].data_type == "n"
+    assert summary["Total components"].value == 1
+
+
 # ---------------------------------------------------------------------------
 # Acceptance D2 — PDF / Excel / CSV parity against the *saved* BOM
 # ---------------------------------------------------------------------------
@@ -212,12 +256,12 @@ def _upload_parity_bom(client: TestClient, token: str) -> tuple[str, dict[str, d
     return response.json()["analysis_id"], expected
 
 
-def _xlsx_rows(content: bytes, sheet: str) -> tuple[list[str], list[dict[str, str]]]:
+def _xlsx_rows(content: bytes, sheet: str) -> tuple[list[str], list[dict[str, object]]]:
     workbook = load_workbook(io.BytesIO(content), data_only=False)
     rows = list(workbook[sheet].iter_rows(values_only=True))
     header = [str(value) for value in rows[0]]
     body = [
-        {header[i]: ("" if value is None else str(value)) for i, value in enumerate(row)}
+        {header[i]: ("" if value is None else value) for i, value in enumerate(row)}
         for row in rows[1:]
     ]
     return header, body
@@ -300,9 +344,27 @@ def test_csv_xlsx_pdf_row_and_field_parity_against_saved_bom(client: TestClient)
         assert csv_row["BOM"] == "Parity BOM"
         assert csv_row["Revision"] == "C"
         for column in COMPONENT_COLUMNS:
-            assert csv_row[column] == xlsx_row[column], (
-                f"row {index} {mpn!r} column {column!r}: csv={csv_row[column]!r} xlsx={xlsx_row[column]!r}"
-            )
+            xlsx_value = xlsx_row[column]
+            if column in {
+                "Quantity per Parent",
+                "Effective Quantity",
+                "Risk Score",
+                "Stock",
+                "Unit Price",
+            }:
+                try:
+                    same_value = Decimal(csv_row[column]) == Decimal(str(xlsx_value))
+                except (InvalidOperation, ValueError):
+                    same_value = csv_row[column] == str(xlsx_value)
+                assert same_value, (
+                    f"row {index} {mpn!r} column {column!r}: "
+                    f"csv={csv_row[column]!r} xlsx={xlsx_value!r}"
+                )
+            else:
+                assert csv_row[column] == str(xlsx_value), (
+                    f"row {index} {mpn!r} column {column!r}: "
+                    f"csv={csv_row[column]!r} xlsx={xlsx_value!r}"
+                )
         # Exact part / source fields straight from the saved report.
         assert csv_row["MPN"].lstrip("'") == mpn
         assert csv_row["Manufacturer"] == part["Manufacturer"]
@@ -415,14 +477,6 @@ def test_pdf_and_csv_keep_unicode_manufacturer_names_for_latin_scripts():
     assert _normalized("Würth Elektronik · 10 k\u03a9 \u00b11% \u00abX7R\u00bb") in flat
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "KNOWN GAP (not fixed here): build_pdf uses the base-14 Helvetica font, so CJK "
-        "manufacturer glyphs render as black boxes in the PDF while CSV/XLSX keep them. "
-        "The row itself is still present. strict=True flips this to a failure once fixed."
-    ),
-)
 def test_pdf_preserves_cjk_manufacturer_glyphs():
     report = {
         "project_name": "CJK",
