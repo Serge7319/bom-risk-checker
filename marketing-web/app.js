@@ -525,7 +525,7 @@
     demo: {
       eyebrow: 'BOOK A DEMO',
       headline: 'Book a Cadivor demo for your engineering team.',
-      intro: 'See how Cadivor connects BOM analysis, supplier intelligence, Ask Cadivor, decision records, and continuous monitoring in one release workflow.',
+      intro: 'See how Cadivor connects guided BOM intake, supplier evidence, alternate review, engineering decisions, saved revisions, and selected-part monitoring.',
       formEyebrow: 'BOOK A DEMO',
       formTitle: 'Request a demo',
       formIntro: 'Share your BOM workflow and team context — we respond within one business day.',
@@ -728,7 +728,7 @@
     { key: 'supplier-qualification', label: 'Supplier qualification', focus: 'supplier', duration: 1100 },
     { key: 'decision-ready', label: 'Decision ready', focus: 'decision', duration: 1300 },
     { key: 'approved', label: 'Decision approved', focus: 'decision', duration: 1300 },
-    { key: 'monitoring-active', label: 'Monitoring active', focus: 'monitor', duration: 2200 }
+    { key: 'monitoring-active', label: 'Monitoring configured', focus: 'monitor', duration: 2200 }
   ];
   const heroMetrics = [
     null, null,
@@ -747,14 +747,14 @@
     { phase: 'Baseline risk posture', health: 72, blockers: 4, alerts: 17, decisions: 16, ring: 'Blocked', headline: 'Release blocked by component risks', detail: 'Cadivor is tracing lifecycle and supplier evidence before recommending action.', statuses: ['Blocker', 'Open', 'Review'] },
     { phase: 'Alternate identified', health: 81, blockers: 2, alerts: 12, decisions: 16, ring: 'Mitigation in progress', headline: 'MPU6050 alternate identified', detail: 'ICM-42688-P reduces confirmed EOL exposure while preserving electrical compatibility.', statuses: ['Resolved', 'Qualifying', 'Review'] },
     { phase: 'Second source qualified', health: 89, blockers: 1, alerts: 8, decisions: 17, ring: 'Final qualification', headline: 'LM35DN second source qualified', detail: 'DigiKey provides the strongest authorized inventory and verified lead-time posture.', statuses: ['Resolved', 'Qualified', 'Review'] },
-    { phase: 'Release posture resolved', health: 96, blockers: 0, alerts: 5, decisions: 18, ring: 'Ready for controlled production release', headline: 'Ready for controlled production release', detail: 'Cadivor linked 14 evidence points to DR-1048 and activated monitoring.', statuses: ['Resolved', 'Qualified', 'Monitoring'] }
+    { phase: 'Release posture resolved', health: 96, blockers: 0, alerts: 5, decisions: 18, ring: 'Ready for controlled production release', headline: 'Ready for controlled production release', detail: 'Cadivor linked 14 illustrative evidence points to DR-1048 and saved selected-part monitoring settings.', statuses: ['Resolved', 'Qualified', 'Configured'] }
   ];
   const WF_STEPS = [
     { state: 'Validated', outcomeHtml: 'Validated · <b>1,842</b> components', detail: 'motor_controller_rev_c.xlsx · 36 supplier records normalized', duration: 1200 },
     { state: 'Scored', outcomeHtml: 'BOM Health <b>72</b> · <b>4</b> blockers', detail: 'MPU6050 EOL · LM35DN lead time · lifecycle notices matched', duration: 1300 },
     { state: 'Reviewing', outcomeHtml: '<b>14</b> evidence points reviewed', detail: 'Lifecycle, supply, alternates, and prior decisions assembled', duration: 1300 },
     { state: 'Approved', outcomeHtml: '<b>DR-1048</b> approved', detail: 'Owner Jordan Ellis · approval linked to the illustrative evidence record', duration: 1300 },
-    { state: 'Active', outcomeHtml: 'Lifecycle and supply monitoring active', detail: 'Watching MPU6050 · LM35DN · TPS54331 across authorized sources', duration: 0 }
+    { state: 'Configured', outcomeHtml: 'Selected-part checks configured', detail: 'Six-hour checks require workspace opt-in, enabled scheduling, and configured supplier sources', duration: 0 }
   ];
 
   // Start with the complete upload-to-monitoring story. The hero copy makes
@@ -1205,7 +1205,7 @@
 
     const acts = ['#actParse', '#actLifecycle', '#actSupplier', '#actDecisions', '#actMonitor'];
     [i >= 1, i >= 2, i >= 3, i >= 5, i >= 10].forEach((on, n) => $(acts[n])?.classList.toggle('active', on));
-    if ($('#actMonitor')) $('#actMonitor').textContent = i >= 10 ? 'Monitoring active' : 'Monitoring after approval';
+    if ($('#actMonitor')) $('#actMonitor').textContent = i >= 10 ? 'Monitoring configured' : 'Configure monitoring';
     applyHeroMetrics(i, i === 2 || i === 3);
     revealHeroRisks(i);
 
@@ -1286,7 +1286,7 @@
     }
     if ($('#heroDecisionStatus')) $('#heroDecisionStatus').textContent = i >= 9 ? 'Decision approved' : 'Awaiting approval';
     if ($('#heroMonitoringStatus')) {
-      $('#heroMonitoringStatus').textContent = i >= 10 ? 'Monitoring active' : 'Starts after approval';
+      $('#heroMonitoringStatus').textContent = i >= 10 ? 'Monitoring configured' : 'Available after approval';
     }
 
     const cursor = $('#demoCursor');
@@ -2074,8 +2074,8 @@
       if (ownerEl) { ownerEl.textContent = 'Jordan Ellis'; ownerEl.classList.add('is-visible'); }
       if (confidenceEl) confidenceEl.textContent = '93%';
       if (evidenceEl) evidenceEl.textContent = '14 sources';
-      if (monitorEl) { monitorEl.textContent = 'Active'; monitorEl.classList.add('is-active'); }
-      if (monitorLabel) { monitorLabel.textContent = 'Active'; monitorLabel.classList.add('is-active'); }
+      if (monitorEl) { monitorEl.textContent = 'Configured'; monitorEl.classList.add('is-active'); }
+      if (monitorLabel) { monitorLabel.textContent = 'Configured'; monitorLabel.classList.add('is-active'); }
       monitorSwitch?.classList.add('is-active');
       approvedBadge?.removeAttribute('hidden');
       approvedBadge?.classList.add('is-visible');
@@ -2131,8 +2131,8 @@
       }, MOTION.standard + 1380 + 2 * (MOTION.standard + 100) + 120);
 
       schedule(() => {
-        fadeMonitoringLabel(monitorEl, 'Active');
-        fadeMonitoringLabel(monitorLabel, 'Active');
+        fadeMonitoringLabel(monitorEl, 'Configured');
+        fadeMonitoringLabel(monitorLabel, 'Configured');
         monitorSwitch?.classList.add('is-active');
         record.classList.add('decision-sequence-complete');
       }, MOTION.standard + 1380 + 3 * (MOTION.standard + 100) + 80);
