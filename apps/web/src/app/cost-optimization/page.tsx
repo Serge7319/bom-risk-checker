@@ -25,6 +25,26 @@ function withAnalysisId(href: string, analysisId: string) {
   return `${href}${joiner}analysis_id=${encodeURIComponent(analysisId)}`;
 }
 
+function formatEstimate(value: unknown) {
+  if (value === null || value === undefined || String(value).trim() === "") return "—";
+  const amount = typeof value === "number" ? value : Number(String(value).replace(/,/g, "").trim());
+  if (!Number.isFinite(amount)) return String(value);
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(amount);
+}
+
+function formatSavingsRate(value: unknown) {
+  if (value === null || value === undefined || String(value).trim() === "") return "—";
+  const rate = typeof value === "number" ? value : Number(String(value).trim());
+  if (!Number.isFinite(rate)) return String(value);
+  return new Intl.NumberFormat("en-US", {
+    style: "percent",
+    maximumFractionDigits: 1,
+  }).format(rate);
+}
+
 function CostOptimizationInner() {
   const session = useRequireSession();
   const router = useRouter();
@@ -146,7 +166,7 @@ function CostOptimizationInner() {
             <div className="cv-section-heading cv-section-heading--card">
               <div>
                 <h2>Cost opportunities</h2>
-                <p>Scenario quantity: {String(data.build_quantity ?? qty)} units. Review the source and price type shown on every row. Absent prices stay blank.</p>
+                <p>Scenario quantity: {String(data.build_quantity ?? qty)} units. Target prices and savings are illustrative model outputs using the listed 5%, 6%, or 8% assumption, not supplier quotes or guaranteed discounts. Review each recorded source and price type; absent prices stay blank.</p>
               </div>
               <span className="cv-data-note">{opportunities.length === 1 ? "1 opportunity" : opportunities.length + " opportunities"}</span>
             </div>
@@ -156,8 +176,10 @@ function CostOptimizationInner() {
                   <tr>
                     <th>Part</th>
                     <th className="cv-num">Qty</th>
-                    <th className="cv-num">Unit price</th>
-                    <th className="cv-num">Estimated savings</th>
+                    <th className="cv-num">Recorded unit price</th>
+                    <th className="cv-num">Modeled target unit price</th>
+                    <th className="cv-num">Modeled run savings</th>
+                    <th className="cv-num">Rate assumption</th>
                     <th>Evidence and rationale</th>
                   </tr>
                 </thead>
@@ -165,19 +187,22 @@ function CostOptimizationInner() {
                   {opportunities.slice(0, 40).map((row, i) => {
                     const unitPrice = row["Current Unit Price"] ?? row["Unit Price"] ?? row.unit_price;
                     const priceMissing = unitPrice === null || unitPrice === undefined || String(unitPrice).trim() === "";
+                    const estimatedSavings = row["Estimated Run Savings"];
                     return (
                       <tr key={i}>
                         <td><strong>{String(row["Part Number"] || row.mpn || row.Part || "")}</strong></td>
                         <td className="cv-num">{String(row["Units per Build"] ?? row.Quantity ?? row.quantity ?? row.Qty ?? "—")}</td>
                         <td className="cv-num">
-                          {priceMissing ? "Price absent" : String(unitPrice)}
+                          {priceMissing ? "Price absent" : formatEstimate(unitPrice)}
                           {!priceMissing ? (
                             <div className="cv-estimate-tag">
                               {evidenceSourceLabel(row.price_source || data.mode || "Synthetic estimate", "Synthetic estimate")}
                             </div>
                           ) : null}
                         </td>
-                        <td className="cv-num">{String(row["Estimated Run Savings"] ?? row["Extended Cost"] ?? row.extended ?? row.Extended ?? "—")}</td>
+                        <td className="cv-num">{priceMissing ? "—" : formatEstimate(row["Estimated Target Price"])}</td>
+                        <td className="cv-num">{formatEstimate(estimatedSavings)}</td>
+                        <td className="cv-num">{formatSavingsRate(row["Savings Rate"])}</td>
                         <td className="cv-cell-wrap">
                           <span className="cv-badge gray">{evidenceSourceLabel(data.mode || "Synthetic estimate", "Synthetic estimate")}</span>
                           <div className="cv-small-note">{String(row.Reason ?? row.Opportunity ?? row.note ?? row.Notes ?? "Modeled from saved price and quantity data.")}</div>

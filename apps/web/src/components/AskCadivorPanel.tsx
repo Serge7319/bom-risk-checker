@@ -1,8 +1,92 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import { EvidenceNotice } from "@/components/GapBanner";
 import { askCadivor } from "@/lib/api";
+
+function renderInline(markdown: string): ReactNode[] {
+  const parts = markdown.split(/(\*\*.+?\*\*|__.+?__|\x60[^\x60]+\x60|\*[^*]+\*)/g);
+  return parts.filter(Boolean).map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith("__") && part.endsWith("__")) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith("\x60") && part.endsWith("\x60")) {
+      return <code key={index}>{part.slice(1, -1)}</code>;
+    }
+    if (part.startsWith("*") && part.endsWith("*")) {
+      return <em key={index}>{part.slice(1, -1)}</em>;
+    }
+    return part;
+  });
+}
+
+function formatCadivorAnswer(markdown: string): ReactNode[] {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const blocks: ReactNode[] = [];
+  let paragraph: string[] = [];
+  let index = 0;
+  let blockKey = 0;
+
+  const flushParagraph = () => {
+    if (paragraph.length) {
+      blocks.push(<p key={blockKey++}>{renderInline(paragraph.join(" "))}</p>);
+      paragraph = [];
+    }
+  };
+
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (!line) {
+      flushParagraph();
+      index += 1;
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      const content = renderInline(heading[2]);
+      const key = blockKey++;
+      if (heading[1].length === 1) blocks.push(<h2 key={key}>{content}</h2>);
+      else if (heading[1].length === 2) blocks.push(<h3 key={key}>{content}</h3>);
+      else blocks.push(<h4 key={key}>{content}</h4>);
+      continue;
+    }
+
+    const unordered = line.match(/^[-*+]\s+(.+)$/);
+    const ordered = line.match(/^\d+[.)]\s+(.+)$/);
+    if (unordered || ordered) {
+      flushParagraph();
+      const listType = unordered ? "ul" : "ol";
+      const items: string[] = [];
+      while (index < lines.length) {
+        const itemLine = lines[index].trim();
+        const item = listType === "ul"
+          ? itemLine.match(/^[-*+]\s+(.+)$/)
+          : itemLine.match(/^\d+[.)]\s+(.+)$/);
+        if (!item) break;
+        items.push(item[1]);
+        index += 1;
+      }
+      const children = items.map((item, itemIndex) => (
+        <li key={itemIndex}>{renderInline(item)}</li>
+      ));
+      blocks.push(listType === "ul"
+        ? <ul key={blockKey++}>{children}</ul>
+        : <ol key={blockKey++}>{children}</ol>);
+      continue;
+    }
+
+    paragraph.push(line);
+    index += 1;
+  }
+
+  flushParagraph();
+  return blocks;
+}
 
 export function AskCadivorPanel({
   token,
@@ -74,7 +158,7 @@ export function AskCadivorPanel({
               Source: {provider}
             </div>
           ) : null}
-          <div className="cv-ask-answer-body">{answer}</div>
+          <div className="cv-ask-answer-body">{formatCadivorAnswer(answer)}</div>
         </div>
       ) : null}
     </section>
