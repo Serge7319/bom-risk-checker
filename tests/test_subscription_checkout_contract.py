@@ -13,7 +13,10 @@ class SubscriptionCheckoutContractTests(unittest.TestCase):
         self.assertIn('summary.code === "resource_missing"', source)
         self.assertIn('summary.param === "customer"', source)
         self.assertIn("if (!customerId || !isMissingStripeCustomer(error)) throw error;", source)
-        self.assertIn("checkoutSessionParams(origin, auth.user.id, auth.user.email!, token, priceId)", source)
+        self.assertRegex(
+            source,
+            r"checkoutSessionParams\(\s*origin,\s*auth\.user\.id,\s*auth\.user\.email!,\s*token,\s*priceId,\s*undefined,\s*marketingAttribution\(auth\.user\),\s*\)",
+        )
         self.assertIn("{ idempotencyKey: `${idempotencyKey}_fresh_customer` }", source)
 
     def test_checkout_errors_have_support_reference_without_logging_email_or_token(self):
