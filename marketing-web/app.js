@@ -2074,8 +2074,8 @@
       if (ownerEl) { ownerEl.textContent = 'Jordan Ellis'; ownerEl.classList.add('is-visible'); }
       if (confidenceEl) confidenceEl.textContent = '93%';
       if (evidenceEl) evidenceEl.textContent = '14 sources';
-      if (monitorEl) { monitorEl.textContent = 'Active'; monitorEl.classList.add('is-active'); }
-      if (monitorLabel) { monitorLabel.textContent = 'Active'; monitorLabel.classList.add('is-active'); }
+      if (monitorEl) { monitorEl.textContent = 'Configured'; monitorEl.classList.add('is-active'); }
+      if (monitorLabel) { monitorLabel.textContent = 'Configured'; monitorLabel.classList.add('is-active'); }
       monitorSwitch?.classList.add('is-active');
       approvedBadge?.removeAttribute('hidden');
       approvedBadge?.classList.add('is-visible');
@@ -2131,8 +2131,8 @@
       }, MOTION.standard + 1380 + 2 * (MOTION.standard + 100) + 120);
 
       schedule(() => {
-        fadeMonitoringLabel(monitorEl, 'Active');
-        fadeMonitoringLabel(monitorLabel, 'Active');
+        fadeMonitoringLabel(monitorEl, 'Configured');
+        fadeMonitoringLabel(monitorLabel, 'Configured');
         monitorSwitch?.classList.add('is-active');
         record.classList.add('decision-sequence-complete');
       }, MOTION.standard + 1380 + 3 * (MOTION.standard + 100) + 80);
