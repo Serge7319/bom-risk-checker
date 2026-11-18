@@ -28,6 +28,7 @@ import {
   type BomDraftMeta,
 } from "@/lib/bomDraft";
 import { PAGE_META } from "@/lib/routes";
+import { userFacingLabel } from "@/lib/display";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
 
 function formatReportDate(value: unknown): string {
@@ -694,7 +695,7 @@ export default function BomAnalyzerPage() {
           {summary ? (
             <div className="cv-bom-success" role="status">
               <p className="cv-bom-summary">
-                Saved {summary.project_name || summary.analysis_id}
+                Saved {userFacingLabel(summary.project_name || summary.bom_name, "BOM analysis")}
                 {summary.has_hierarchy
                   ? ` · assembly roll-up ${summary.top_rolled_risk || "n/a"}`
                   : ""}{" "}
@@ -785,7 +786,7 @@ export default function BomAnalyzerPage() {
               <ul className="cv-bom-recent-list">
                 {visibleReports.map((row) => {
                   const id = String(row.id || row.analysis_id || "");
-                  const title = String(row.bom_name || row.filename || row.project_name || id || "BOM analysis");
+                  const title = userFacingLabel(row.bom_name || row.filename || row.project_name, "BOM analysis");
                   const revisionLabel = row.revision ? ` · rev ${String(row.revision)}` : "";
                   const partsLabel = row.total_parts == null ? "Saved report" : `${String(row.total_parts)} parts`;
                   const dateLabel = formatReportDate(row.created_at);

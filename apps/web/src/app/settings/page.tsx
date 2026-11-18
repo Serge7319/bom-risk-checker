@@ -38,7 +38,7 @@ import {
 } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
-import { workspaceDisplayName } from "@/lib/display";
+import { cleanUserText, userFacingError, userFacingLabel, workspaceDisplayName } from "@/lib/display";
 
 type TabId = "profile" | "preferences" | "workspace" | "security" | "billing";
 
@@ -99,7 +99,7 @@ function usageValue(value: unknown, key: string): string {
   if (typeof value === "boolean") return value ? "Enabled" : "Disabled";
   if (value == null || value === "") return key.startsWith("limits.") ? "Unlimited" : "Not reported";
   if (typeof value === "number") return value.toLocaleString();
-  if (typeof value === "string") return value.slice(0, 120);
+  if (typeof value === "string") return cleanUserText(value).slice(0, 120);
   return "Not reported";
 }
 
@@ -108,7 +108,16 @@ function settingsErrorMessage(err: unknown, fallback: string): string {
   if (!raw || /failed to fetch/i.test(raw) || raw === "NetworkError when attempting to fetch resource.") {
     return "Could not reach Cadivor. Check your connection and try again.";
   }
-  return raw || fallback;
+  return userFacingError(raw, fallback);
+}
+
+function billingErrorMessage(err: unknown, fallback: string): string {
+  const message = settingsErrorMessage(err, fallback);
+  const reference =
+    err instanceof ApiError && typeof err.payload.support_reference === "string"
+      ? userFacingLabel(err.payload.support_reference, "")
+      : "";
+  return reference ? message + " (Support reference: " + reference + ")" : message;
 }
 
 async function settledValue<T>(promise: Promise<T>): Promise<T | null> {
@@ -440,11 +449,7 @@ export default function Page() {
       }
       window.location.assign(url);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Secure billing could not be opened.";
-      const reference = err instanceof ApiError && typeof err.payload.support_reference === "string"
-        ? err.payload.support_reference
-        : "";
-      setBillingError(reference ? `${message} (Support reference: ${reference})` : message);
+      setBillingError(billingErrorMessage(err, "Secure billing could not be opened."));
       setBillingAction("");
     }
   }
@@ -460,7 +465,7 @@ export default function Page() {
       }
       window.location.assign(result.checkout.url);
     } catch (err) {
-      setBillingError(err instanceof Error ? err.message : "Billing settings could not be opened.");
+      setBillingError(billingErrorMessage(err, "Billing settings could not be opened."));
       setBillingAction("");
     }
   }
@@ -699,9 +704,7 @@ export default function Page() {
                             await switchWorkspace(session.access_token, e.target.value);
                             window.location.reload();
                           } catch (err) {
-                            setError(
-                              err instanceof Error ? err.message : "Could not switch workspace",
-                            );
+                            setError(settingsErrorMessage(err, "Could not switch workspace"));
                             setSaving("");
                           }
                         })();
@@ -712,7 +715,7 @@ export default function Page() {
                           key={String(row.workspace_id)}
                           value={String(row.workspace_id)}
                         >
-                          {String(row.name || row.workspace_name || row.workspace_id)}
+                          {userFacingLabel(row.name || row.workspace_name, "Engineering workspace")}
                           {row.role ? ` · ${String(row.role)}` : ""}
                         </option>
                       ))}
@@ -762,14 +765,14 @@ export default function Page() {
                 <h3 className="cv-card-title">Workspace settings</h3>
                 <p className="cv-card-subtitle">
                   Name, timezone, and units for{" "}
-                  {String(workspace.name || workspaceDisplayName(session.workspace))}.
+                  {userFacingLabel(workspace.name, workspaceDisplayName(session.workspace))}.
                 </p>
                 <div className="cv-form-grid" style={{ marginTop: 14 }}>
                   <div className="cv-field">
                     <label htmlFor="ws-name">Workspace name</label>
                     <input
                       id="ws-name"
-                      value={String(workspace.name || "")}
+                      value={workspaceDisplayName(workspace.name)}
                       onChange={(e) => setWorkspace({ ...workspace, name: e.target.value })}
                       disabled={!canAdminister}
                       required
@@ -982,7 +985,7 @@ export default function Page() {
                           <tr key={String(row.id || `${row.created_at}-${row.event}`)}>
                             <td>{String(row.created_at || "").replace("T", " ").slice(0, 19)}</td>
                             <td>{String(row.event || "")}</td>
-                            <td>{String(row.message || "")}</td>
+                            <td>{cleanUserText(row.message)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1038,9 +1041,7 @@ export default function Page() {
                             "If this account uses email sign-in, a password reset link will arrive by email.",
                           );
                         } catch (err) {
-                          setError(
-                            err instanceof Error ? err.message : "Password reset could not start",
-                          );
+                          setError(settingsErrorMessage(err, "Password reset could not start"));
                         } finally {
                           setSaving("");
                         }
@@ -1074,9 +1075,7 @@ export default function Page() {
                         setNewPassword("");
                         setNotice("Password updated.");
                       } catch (err) {
-                        setError(
-                          err instanceof Error ? err.message : "Password could not be changed",
-                        );
+                        setError(settingsErrorMessage(err, "Password could not be changed"));
                       } finally {
                         setSaving("");
                       }
@@ -1126,9 +1125,7 @@ export default function Page() {
                           await revokeOtherSessions(session.access_token);
                           setNotice("Other sessions were signed out.");
                         } catch (err) {
-                          setError(
-                            err instanceof Error ? err.message : "Could not revoke sessions",
-                          );
+                          setError(settingsErrorMessage(err, "Could not revoke sessions"));
                         } finally {
                           setSaving("");
                         }
@@ -1351,7 +1348,7 @@ export default function Page() {
                         {connectorRows.map((row) => (
                           <tr key={String(row.id || row.display_name)}>
                             <td>
-                              <strong>{String(row.display_name || row.id || "")}</strong>
+                              <strong>{userFacingLabel(row.display_name, "Connector")}</strong>
                             </td>
                             <td>{String(row.category || "")}</td>
                             <td>

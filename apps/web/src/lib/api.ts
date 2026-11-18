@@ -1,4 +1,5 @@
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { userFacingError } from "@/lib/display";
 
 /** The deployed web service must set its matching API endpoint explicitly. */
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").trim().replace(/\/$/, "");
@@ -82,7 +83,7 @@ export class ApiError extends Error {
   payload: Record<string, unknown>;
 
   constructor(message: string, status: number, payload: Record<string, unknown>) {
-    super(message);
+    super(userFacingError(message, "The request could not be completed."));
     this.name = "ApiError";
     this.status = status;
     this.payload = payload;
@@ -316,7 +317,7 @@ export async function downloadReportCsv(analysisId: string, initialToken: string
   }
   if (!response.ok) {
     const detail = (await response.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(detail.detail || `Request failed (${response.status})`);
+    throw new Error(userFacingError(detail.detail, `Request failed (${response.status})`));
   }
 
   const blob = await response.blob();
@@ -549,7 +550,7 @@ export async function downloadReportExport(
   }
   if (!response.ok) {
     const detail = (await response.json().catch(() => ({}))) as { detail?: string };
-    throw new Error(detail.detail || `Report download failed (${response.status})`);
+    throw new Error(userFacingError(detail.detail, `Report download failed (${response.status})`));
   }
 
   const blob = await response.blob();

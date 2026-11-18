@@ -6,6 +6,7 @@ import { fetchAuthConfig, signup } from "@/lib/api";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
 import { BrandLink } from "@/components/BrandLink";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
+import { cleanUserText } from "@/lib/display";
 
 export default function SignupPage() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
@@ -42,7 +43,7 @@ export default function SignupPage() {
         terms_version: TERMS_VERSION,
         privacy_version: PRIVACY_VERSION,
       });
-      setMessage(result.message);
+      setMessage(cleanUserText(result.message));
       setPassword("");
       setConfirmPassword("");
       setAcceptedTerms(false);

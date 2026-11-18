@@ -7,11 +7,14 @@ import { Shell } from "@/components/Shell";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { runSupplyRisk } from "@/lib/api";
+import { cleanUserText, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
 function cell(value: unknown, fallback = "—") {
-  return value === null || value === undefined || value === "" ? fallback : String(value);
+  return value === null || value === undefined || value === ""
+    ? fallback
+    : cleanUserText(String(value)) || fallback;
 }
 
 function SupplyRiskInner() {
@@ -108,15 +111,15 @@ function SupplyRiskInner() {
   const scope = String(data?.scope || "").trim();
   const inheritanceNote =
     scopeSource === "url"
-      ? "Scope source: analysis_id from URL"
+      ? "Opened from a saved BOM"
       : scopeSource === "session"
-        ? "Scope source: inherited selected analysis from session"
+        ? "Using the selected saved BOM"
         : scopeSource === "explicit"
-          ? "Scope source: explicitly selected analysis"
-          : "Scope source: portfolio-wide (no analysis selected)";
+          ? "Using the selected saved BOM"
+          : "Using the whole workspace";
   const scopeLabel =
     scope === "analysis"
-      ? `Scoped to selected analysis${data?.analysis_label ? ` · ${String(data.analysis_label)}` : ""}`
+      ? `Scoped to selected analysis${data?.analysis_label ? ` · ${userFacingLabel(data.analysis_label, "Selected analysis")}` : ""}`
       : scope === "portfolio"
         ? "Portfolio-wide across saved analyses in this workspace"
         : "Scope unavailable";
@@ -152,7 +155,7 @@ function SupplyRiskInner() {
         <p className="cv-small-note" style={{ marginTop: 10 }} role="status">
           {scopeLabel}
           {Number.isFinite(sourcePartCount) ? ` · ${sourcePartCount} BOM part record${sourcePartCount === 1 ? "" : "s"}` : ""}
-          {activeAnalysisId ? ` · analysis_id=${activeAnalysisId}` : " · no analysis_id (portfolio)"}
+          {activeAnalysisId ? " · Scope: selected saved analysis" : " · Scope: entire workspace"}
           {` · ${inheritanceNote}`}
         </p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>

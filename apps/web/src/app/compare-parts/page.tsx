@@ -29,6 +29,7 @@ import {
   type MultiCompareColumn,
 } from "@/lib/multiCompare";
 import { PAGE_META } from "@/lib/routes";
+import { cleanUserText, userFacingLabel } from "@/lib/display";
 import { useRequireSession } from "@/lib/session";
 
 type CompareProgress = CompareProgressState;
@@ -36,7 +37,7 @@ type CompareProgress = CompareProgressState;
 type Row = Record<string, unknown>;
 
 function text(value: unknown, fallback = "—") {
-  const valueText = String(value ?? "").trim();
+  const valueText = cleanUserText(String(value ?? ""));
   return valueText || fallback;
 }
 
@@ -45,9 +46,9 @@ function getAnalysisId(row: Row) {
 }
 
 function reportLabel(row: Row) {
-  const bom = text(row.bom_name || row.filename || row.project_name, "Saved analysis");
+  const bom = userFacingLabel(row.bom_name || row.filename || row.project_name, "Saved analysis");
   const revision = row.revision ? ` · rev ${String(row.revision)}` : "";
-  const storedProject = String(row.project_name || "").trim();
+  const storedProject = userFacingLabel(row.project_name, "");
   const separator = storedProject.indexOf(" — ");
   const projectName = separator >= 0
     ? storedProject.slice(0, separator).trim()
@@ -942,7 +943,7 @@ function ComparePartsInner() {
                   ? `BOM context attached: ${reportLabel(reports.find((row) => getAnalysisId(row) === analysisId) || { id: analysisId })}.`
                   : reportsError
                     ? `${reportsError} You can still compare without a saved BOM.`
-                    : "Standalone compare unless a BOM is selected or handed off via analysis_id."}
+                    : "Standalone comparison unless you select a saved BOM or open this page from a BOM report."}
               </p>
             </div>
             <span className="cv-small-note" id="record-decision-help">
@@ -1426,7 +1427,7 @@ function ComparePartsInner() {
                         reportOptions.find((row) => getAnalysisId(row) === decisionAnalysisId)
                         || { id: decisionAnalysisId },
                       )}.`
-                    : "Workspace-level decision — not linked to a saved BOM. Saved with analysis_id unset."}
+                    : "Workspace-level decision — not linked to a saved BOM."}
                 </p>
                 {decisionScopeProgress ? (
                   <p className="cv-small-note" data-testid="decision-scope-progress" style={{ marginTop: 6 }}>

@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnalysisStageNavigation } from "@/components/AnalysisStageNavigation";
+import { userFacingLabel } from "@/lib/display";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
@@ -60,7 +61,7 @@ function DetailedRiskPageInner() {
       <PageHeader
         meta={{
           ...PAGE_META.risk,
-          title: data?.filename ? `Detailed risk · ${String(data.filename)}` : PAGE_META.risk.title,
+          title: data?.filename ? `Detailed risk · ${userFacingLabel(data.filename, "Saved analysis")}` : PAGE_META.risk.title,
         }}
         record
         actions={<PrimaryLink href="/reports">Open saved reports</PrimaryLink>}
@@ -83,7 +84,7 @@ function DetailedRiskPageInner() {
       {!busy && data ? (
         rows.length ? <>
           <div className="cv-kpis">
-            <KpiCard icon="shield" tone="blue" label="Health score" value={data.health_score == null ? "Not scored" : `${String(data.health_score)}/100`} detail={String(data.health_status || "Overall report rating")} />
+            <KpiCard icon="shield" tone="blue" label="Health score" value={data.health_score == null ? "Not scored" : `${String(data.health_score)}/100`} detail={userFacingLabel(data.health_status, "Overall report rating")} />
             <KpiCard icon="box" label="Components assessed" value={rows.length} detail="Rows in this report" />
             <KpiCard
               icon="risk"
@@ -138,7 +139,7 @@ function DetailedRiskPageInner() {
             }
             body={
               data.mode === "analysis-not-found"
-                ? "This analysis id is not in your workspace store. Re-run BOM Analyzer, then open risk review again."
+                ? "This saved report could not be found in your workspace. Choose another saved report or run a new BOM analysis."
                 : "Open a saved analysis with component data to view the detailed risk breakdown."
             }
             action={

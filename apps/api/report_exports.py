@@ -71,6 +71,24 @@ def _text(value: Any) -> str:
     return str(value)
 
 
+_OPAQUE_IDENTIFIER = re.compile(
+    r"\b[0-9a-f]{8}-(?:[a-z0-9]{2,12}-){1,}[a-z0-9]{0,16}(?:\.{3,})?(?=$|[^\w])",
+    re.IGNORECASE,
+)
+
+
+def _user_text(value: Any) -> str:
+    """Keep UUID-like internal record references out of report content."""
+    return _OPAQUE_IDENTIFIER.sub("record reference", _text(value)).strip()
+
+
+def _user_label(value: Any, fallback: str) -> str:
+    raw = _text(value).strip()
+    if not raw or _OPAQUE_IDENTIFIER.fullmatch(raw):
+        return fallback
+    return _user_text(raw) or fallback
+
+
 def _safe_spreadsheet_value(value: Any) -> Any:
     """Keep untrusted BOM text from being evaluated as a spreadsheet formula."""
     if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
@@ -176,64 +194,66 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         row = dict(source)
         evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}
-        output.append(
-            {
-                "MPN": _first(row, "MPN", "mpn", "manufacturer_part_number", "part_number"),
-                "Manufacturer": _first(row, "Manufacturer", "manufacturer"),
-                "Description": _first(row, "Description", "description", "part_description"),
-                "Parent MPN": _first(row, "Parent MPN", "parent_mpn_display", "parent_mpn"),
-                "Line Type": _export_line_type(row),
-                "Quantity per Parent": _first(row, "quantity_per_parent", "Quantity per parent", "Quantity", "quantity", "qty"),
-                "Effective Quantity": _first(row, "effective_quantity", "Effective Quantity", "Quantity", "quantity", "qty"),
-                "Lifecycle": _first(row, "Lifecycle", "lifecycle_status", "Lifecycle Status"),
-                "Risk Level": _export_risk_level(row),
-                "Risk Score": _export_risk_score(row),
-                "Risk Reasons": _first(row, "Risk Reasons", "risk_reasons", "reasons"),
-                "Stock": _first(row, "Stock", "stock_available", "stock"),
-                "Unit Price": _first(row, "Unit Price", "unit_price"),
-                "Currency": _first(row, "unit_price_currency", "currency"),
-                "Evidence Class": _first(evidence, "evidence_class", default=_first(row, "evidence_source", "source", default="not recorded")),
-                "Evidence Source": _first(evidence, "source", default=_first(row, "identity_source", "evidence_source", "source")),
-                "Identity Source": (
-                    _field_from_evidence(evidence, "identity", "source")
-                    or _first(row, "identity_source", "evidence_source", "source")
-                ),
-                "Identity Retrieved At": (
-                    _field_from_evidence(evidence, "identity", "retrieved_at")
-                    or _first(row, "identity_retrieved_at", "retrieved_at")
-                ),
-                "Lifecycle Source": (
-                    _field_from_evidence(evidence, "lifecycle", "source")
-                    or _first(row, "lifecycle_source")
-                ),
-                "Lifecycle Retrieved At": (
-                    _field_from_evidence(evidence, "lifecycle", "retrieved_at")
-                    or _first(row, "lifecycle_retrieved_at")
-                ),
-                "Stock Source": (
-                    _field_from_evidence(evidence, "stock", "source")
-                    or _first(row, "stock_source")
-                ),
-                "Stock Retrieved At": (
-                    _field_from_evidence(evidence, "stock", "retrieved_at")
-                    or _first(row, "stock_retrieved_at")
-                ),
-                "Price Source": (
-                    _field_from_evidence(evidence, "price", "source")
-                    or _first(row, "price_source")
-                ),
-                "Price Type": (
-                    _field_from_evidence(evidence, "price", "price_type")
-                    or _first(row, "price_type", default="not-recorded")
-                ),
-                "Price Retrieved At": (
-                    _field_from_evidence(evidence, "price", "retrieved_at")
-                    or _first(row, "price_retrieved_at")
-                ),
-                "Supplier Product URL": _first(row, "product_url", "source_url", "Supplier Product URL"),
-                "Datasheet URL": _first(row, "datasheet_url", "Datasheet URL"),
-            }
-        )
+        component = {
+            "MPN": _first(row, "MPN", "mpn", "manufacturer_part_number", "part_number"),
+            "Manufacturer": _first(row, "Manufacturer", "manufacturer"),
+            "Description": _first(row, "Description", "description", "part_description"),
+            "Parent MPN": _first(row, "Parent MPN", "parent_mpn_display", "parent_mpn"),
+            "Line Type": _export_line_type(row),
+            "Quantity per Parent": _first(row, "quantity_per_parent", "Quantity per parent", "Quantity", "quantity", "qty"),
+            "Effective Quantity": _first(row, "effective_quantity", "Effective Quantity", "Quantity", "quantity", "qty"),
+            "Lifecycle": _first(row, "Lifecycle", "lifecycle_status", "Lifecycle Status"),
+            "Risk Level": _export_risk_level(row),
+            "Risk Score": _export_risk_score(row),
+            "Risk Reasons": _first(row, "Risk Reasons", "risk_reasons", "reasons"),
+            "Stock": _first(row, "Stock", "stock_available", "stock"),
+            "Unit Price": _first(row, "Unit Price", "unit_price"),
+            "Currency": _first(row, "unit_price_currency", "currency"),
+            "Evidence Class": _first(evidence, "evidence_class", default=_first(row, "evidence_source", "source", default="not recorded")),
+            "Evidence Source": _first(evidence, "source", default=_first(row, "identity_source", "evidence_source", "source")),
+            "Identity Source": (
+                _field_from_evidence(evidence, "identity", "source")
+                or _first(row, "identity_source", "evidence_source", "source")
+            ),
+            "Identity Retrieved At": (
+                _field_from_evidence(evidence, "identity", "retrieved_at")
+                or _first(row, "identity_retrieved_at", "retrieved_at")
+            ),
+            "Lifecycle Source": (
+                _field_from_evidence(evidence, "lifecycle", "source")
+                or _first(row, "lifecycle_source")
+            ),
+            "Lifecycle Retrieved At": (
+                _field_from_evidence(evidence, "lifecycle", "retrieved_at")
+                or _first(row, "lifecycle_retrieved_at")
+            ),
+            "Stock Source": (
+                _field_from_evidence(evidence, "stock", "source")
+                or _first(row, "stock_source")
+            ),
+            "Stock Retrieved At": (
+                _field_from_evidence(evidence, "stock", "retrieved_at")
+                or _first(row, "stock_retrieved_at")
+            ),
+            "Price Source": (
+                _field_from_evidence(evidence, "price", "source")
+                or _first(row, "price_source")
+            ),
+            "Price Type": (
+                _field_from_evidence(evidence, "price", "price_type")
+                or _first(row, "price_type", default="not-recorded")
+            ),
+            "Price Retrieved At": (
+                _field_from_evidence(evidence, "price", "retrieved_at")
+                or _first(row, "price_retrieved_at")
+            ),
+            "Supplier Product URL": _first(row, "product_url", "source_url", "Supplier Product URL"),
+            "Datasheet URL": _first(row, "datasheet_url", "Datasheet URL"),
+        }
+        for field, value in component.items():
+            if isinstance(value, (str, list, tuple, dict)) and field not in {"Supplier Product URL", "Datasheet URL"}:
+                component[field] = _user_text(value)
+        output.append(component)
     return output
 
 
@@ -257,32 +277,34 @@ def _assembly_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             evidence = _text(contributor.get("evidence_source"))
             if evidence:
                 evidence_labels.append(f"{mpn}: {evidence}" if mpn else evidence)
-        output.append(
-            {
-                "Assembly MPN": _first(assembly, "mpn", "MPN"),
-                "Description": _first(assembly, "description", "Description"),
-                "Parent MPN": _first(assembly, "parent_mpn", "Parent MPN"),
-                "Line Type": _first(assembly, "line_type", default="assembly"),
-                "Quantity per Parent": assembly.get("quantity_per_parent"),
-                "Effective Quantity": assembly.get("effective_quantity"),
-                "Rolled Risk": _first(assembly, "rolled_risk_level", default="Unknown"),
-                "Leaf Count": assembly.get("leaf_count"),
-                "High-Risk Leaves": assembly.get("high_risk_leaves"),
-                "Medium-Risk Leaves": assembly.get("medium_risk_leaves"),
-                "Needs Verification Leaves": assembly.get("needs_verification_leaves"),
-                "Top Contributors": "; ".join(contributor_labels),
-                "Contributor Evidence": "; ".join(evidence_labels),
-            }
-        )
+        assembly_row = {
+            "Assembly MPN": _first(assembly, "mpn", "MPN"),
+            "Description": _first(assembly, "description", "Description"),
+            "Parent MPN": _first(assembly, "parent_mpn", "Parent MPN"),
+            "Line Type": _first(assembly, "line_type", default="assembly"),
+            "Quantity per Parent": assembly.get("quantity_per_parent"),
+            "Effective Quantity": assembly.get("effective_quantity"),
+            "Rolled Risk": _first(assembly, "rolled_risk_level", default="Unknown"),
+            "Leaf Count": assembly.get("leaf_count"),
+            "High-Risk Leaves": assembly.get("high_risk_leaves"),
+            "Medium-Risk Leaves": assembly.get("medium_risk_leaves"),
+            "Needs Verification Leaves": assembly.get("needs_verification_leaves"),
+            "Top Contributors": "; ".join(contributor_labels),
+            "Contributor Evidence": "; ".join(evidence_labels),
+        }
+        for field, value in assembly_row.items():
+            if isinstance(value, (str, list, tuple, dict)):
+                assembly_row[field] = _user_text(value)
+        output.append(assembly_row)
     return output
 
 
 def _metadata(report: dict[str, Any]) -> dict[str, str]:
     return {
-        "Project": _text(_first(report, "project_name", default="Saved BOM")),
-        "BOM": _text(_first(report, "bom_name", "filename", default="Saved BOM")),
-        "Revision": _text(_first(report, "revision", default="—")),
-        "Analyzed At": _text(_first(report, "created_at", default="—")),
+        "Project": _user_label(_first(report, "project_name", default=""), "Engineering workspace"),
+        "BOM": _user_label(_first(report, "bom_name", "filename", default=""), "Saved BOM"),
+        "Revision": _user_label(_first(report, "revision", default=""), "—"),
+        "Analyzed At": _user_text(_first(report, "created_at", default="—")),
     }
 
 
@@ -302,6 +324,62 @@ def _synthetic_disclaimer(report: dict[str, Any]) -> str:
             "date for each component before acting."
         )
     return "Review each component's evidence source and retrieval date before acting."
+
+
+def _risk_distribution(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"high": 0, "medium": 0, "low": 0, "unassessed": 0}
+    for row in rows:
+        level = str(row.get("Risk Level") or "").strip().casefold()
+        if level in {"high", "critical"}:
+            counts["high"] += 1
+        elif level == "medium":
+            counts["medium"] += 1
+        elif level in {"low", "healthy"}:
+            counts["low"] += 1
+        else:
+            counts["unassessed"] += 1
+    return counts
+
+
+def _risk_summary_counts(
+    report: dict[str, Any], rows: list[dict[str, Any]]
+) -> dict[str, int]:
+    """Prefer visible row ratings; use saved aggregates only when rows are absent."""
+    if rows:
+        return _risk_distribution(rows)
+    counts: dict[str, int] = {}
+    for key in ("high", "medium", "low"):
+        try:
+            value = int(report.get(f"{key}_risk_count") or 0)
+        except (TypeError, ValueError):
+            value = 0
+        counts[key] = max(0, value)
+    try:
+        total_parts = int(report.get("total_parts") or 0)
+    except (TypeError, ValueError):
+        total_parts = 0
+    counts["unassessed"] = max(
+        0, total_parts - counts["high"] - counts["medium"] - counts["low"]
+    )
+    return counts
+
+
+def _executive_summary(report: dict[str, Any], rows: list[dict[str, Any]]) -> str:
+    saved_summary = _user_text(report.get("summary_message"))
+    if saved_summary:
+        return saved_summary
+    counts = _risk_distribution(rows)
+    total = len(rows)
+    if not total:
+        return "No component rows are present in this report."
+    summary = (
+        f"Saved analysis contains {total} component(s): {counts['high']} high risk, "
+        f"{counts['medium']} medium risk, {counts['low']} low risk, and "
+        f"{counts['unassessed']} needing verification."
+    )
+    if counts["unassessed"]:
+        summary += " Unassessed components are not evidence of low risk."
+    return summary
 
 
 def build_csv(report: dict[str, Any]) -> bytes:
@@ -425,9 +503,13 @@ def build_xlsx(report: dict[str, Any]) -> bytes:
     def _is_unscored(row: dict[str, Any]) -> bool:
         score = str(row.get("Risk Score") or "").strip().casefold()
         level = str(row.get("Risk Level") or "").strip().casefold()
-        return score in {"", "none", "not assessed"} or level == "not assessed"
+        unscored = score in {"", "none", "not assessed"}
+        if level in {"", "unknown", "not assessed", "needs verification"}:
+            return True
+        return unscored and level in {"low", "healthy"}
 
     not_assessed = [row for row in rows if _is_unscored(row)]
+    risk_counts = _risk_summary_counts(report, rows)
     high_rows = [
         row
         for row in rows
@@ -456,20 +538,21 @@ def build_xlsx(report: dict[str, Any]) -> bytes:
     facts = [
         *meta.items(),
         ("Health score", report.get("health_score", "Not scored")),
-        ("Health status", report.get("health_status", "Not reported")),
+        ("Health status", _user_label(report.get("health_status"), "Not reported")),
         ("Total components", len(rows)),
         ("Risk assessed", assessed),
         ("Risk not assessed", len(not_assessed)),
-        ("High risk", report.get("high_risk_count", len(high_rows))),
-        ("Medium risk", report.get("medium_risk_count", 0)),
-        ("Low risk", report.get("low_risk_count", 0)),
+        ("High risk", risk_counts["high"]),
+        ("Medium risk", risk_counts["medium"]),
+        ("Low risk", risk_counts["low"]),
         (
             "Unscored parts",
             f"{len(not_assessed)} of {len(rows)} part(s) were not assessed — not proof of low risk"
             if not_assessed
             else "All listed parts include a recorded risk assessment",
         ),
-        ("Evidence mode", report.get("mode", "Not reported")),
+        ("Evidence mode", _user_label(report.get("mode"), "Not reported")),
+        ("Executive summary", _executive_summary(report, rows)),
     ]
     for index, (label, value) in enumerate(facts, start=4):
         summary.cell(index, 1, label)
@@ -479,6 +562,8 @@ def build_xlsx(report: dict[str, Any]) -> bytes:
         summary.cell(index, 1).border = Border(bottom=Side(style="thin", color="D9E2EC"))
         summary.cell(index, 2).border = Border(bottom=Side(style="thin", color="D9E2EC"))
         summary.cell(index, 2).alignment = Alignment(wrap_text=True, vertical="top")
+        if label == "Executive summary":
+            summary.row_dimensions[index].height = 42
         if label in _XLSX_NUMBER_FORMATS and summary.cell(index, 2).data_type == "n":
             summary.cell(index, 2).number_format = _XLSX_NUMBER_FORMATS[label]
     summary.column_dimensions["A"].width = 25
@@ -565,12 +650,13 @@ def build_pdf(report: dict[str, Any]) -> bytes:
     styles.add(ParagraphStyle(name="CadivorExportBody", parent=styles["BodyText"], fontSize=8.5, leading=11, textColor=colors.HexColor("#334155"), spaceAfter=4))
     styles.add(ParagraphStyle(name="CadivorExportSmall", parent=styles["BodyText"], fontSize=6.5, leading=7.5, textColor=colors.HexColor("#334155")))
     styles.add(ParagraphStyle(name="CadivorExportHead", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=6.5, leading=7.5, textColor=colors.white))
+    styles.add(ParagraphStyle(name="CadivorExportSubhead", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=10, leading=13, textColor=colors.HexColor("#17324D"), spaceBefore=5, spaceAfter=3))
 
     cjk_font = "HeiseiKakuGo-W5"
     if cjk_font not in pdfmetrics.getRegisteredFontNames():
         pdfmetrics.registerFont(UnicodeCIDFont(cjk_font))
     cjk_pattern = re.compile(r"[\u2E80-\u2FFF\u3040-\u30FF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF]")
-    for name in ("CadivorExportTitle", "CadivorExportBody", "CadivorExportSmall", "CadivorExportHead"):
+    for name in ("CadivorExportTitle", "CadivorExportBody", "CadivorExportSmall", "CadivorExportHead", "CadivorExportSubhead"):
         styles.add(
             ParagraphStyle(
                 name=f"{name}CJK",
@@ -591,6 +677,7 @@ def build_pdf(report: dict[str, Any]) -> bytes:
         if health_score is None or str(health_score).strip().casefold() in {"", "not scored", "unknown", "none"}
         else _text(health_score)
     )
+    risk_counts = _risk_summary_counts(report, rows)
     story = [
         paragraph("Cadivor BOM Risk Report", "CadivorExportTitle"),
         paragraph(
@@ -603,14 +690,22 @@ def build_pdf(report: dict[str, Any]) -> bytes:
         paragraph(
             "<b>Health:</b> " + escape(health_label) +
             (" / 100" if health_label not in {"Not scored"} else "") +
-            " &nbsp;&nbsp; <b>Status:</b> " + escape(_text(report.get("health_status") or "Not reported")) +
+            " &nbsp;&nbsp; <b>Status:</b> " + escape(_user_label(report.get("health_status"), "Not reported")) +
             " &nbsp;&nbsp; <b>Components:</b> " + str(len(rows)) +
             " &nbsp;&nbsp; <b>High / medium / low:</b> " +
-            " / ".join(escape(_text(report.get(key, 0))) for key in ("high_risk_count", "medium_risk_count", "low_risk_count")),
+            " / ".join(str(risk_counts[key]) for key in ("high", "medium", "low")),
             "CadivorExportBody",
             markup=True,
         ),
         paragraph(_synthetic_disclaimer(report), "CadivorExportBody"),
+        paragraph("Executive summary", "CadivorExportSubhead"),
+        paragraph(_executive_summary(report, rows), "CadivorExportBody"),
+        paragraph(
+            "Risk distribution: "
+            f"{risk_counts['high']} high · {risk_counts['medium']} medium · "
+            f"{risk_counts['low']} low · {risk_counts['unassessed']} needs verification",
+            "CadivorExportBody",
+        ),
         Spacer(1, 8),
     ]
 
@@ -745,7 +840,11 @@ def build_report_export(report: dict[str, Any], file_format: str) -> tuple[bytes
 
 
 def safe_download_stem(report: dict[str, Any]) -> str:
-    raw = _text(_first(report, "bom_name", "filename", "project_name", default="cadivor-report"))
+    raw = _text(_first(report, "bom_name", "filename", "project_name", default="cadivor-report")).strip()
+    if _OPAQUE_IDENTIFIER.fullmatch(raw):
+        raw = "cadivor-report"
+    else:
+        raw = _user_text(raw)
     leaf = raw.rsplit("/", 1)[-1]
     leaf = re.sub(r"\.(?:csv|xlsx|xls)$", "", leaf, flags=re.IGNORECASE)
     stem = re.sub(r"[^A-Za-z0-9._-]+", "-", leaf).strip(".-_")

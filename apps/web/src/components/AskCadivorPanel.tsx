@@ -3,6 +3,7 @@
 import { type FormEvent, type ReactNode, useState } from "react";
 import { EvidenceNotice } from "@/components/GapBanner";
 import { askCadivor } from "@/lib/api";
+import { cleanUserText, userFacingLabel } from "@/lib/display";
 
 function renderInline(markdown: string): ReactNode[] {
   const parts = markdown.split(/(\*\*.+?\*\*|__.+?__|\x60[^\x60]+\x60|\*[^*]+\*)/g);
@@ -112,9 +113,9 @@ export function AskCadivorPanel({
         analysis_id: analysisId,
         question,
       });
-      setAnswer(String(data.answer || ""));
-      setGap(typeof data.gap === "string" ? data.gap : "");
-      setProvider(String(data.provider || ""));
+      setAnswer(cleanUserText(data.answer));
+      setGap(cleanUserText(data.gap));
+      setProvider(userFacingLabel(data.provider, ""));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ask Cadivor failed");
       setAnswer("");

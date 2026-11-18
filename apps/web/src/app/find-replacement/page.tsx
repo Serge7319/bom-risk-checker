@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
+import { cleanUserText } from "@/lib/display";
 import { findReplacement } from "@/lib/api";
 import {
   shouldShowIdentityDisambiguation,
@@ -389,7 +390,7 @@ function FindReplacementInner() {
                     : "Manufacturer lineage context"}
               </h3>
               <p className="cv-card-subtitle">
-                {String(result.detail || result.gap || "") ||
+                {cleanUserText(result.detail || result.gap) ||
                   (identityReviewOnly
                     ? "Catalog leads below are review-only. Typed manufacturer text is not identity proof — retry with a supplier-confirmed brand when available."
                     : `${mpn} is offered by more than one manufacturer with official product evidence. Choose the intended brand before reviewing replacements.`)}
@@ -413,7 +414,7 @@ function FindReplacementInner() {
                     >
                       <strong>{choiceMfr || "Manufacturer"}</strong>
                       <p className="cv-small-note" style={{ marginTop: 4 }}>
-                        {String(choice.note || "Official product evidence available.")}
+                        {cleanUserText(choice.note) || "Official product evidence available."}
                       </p>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                         {showRetry ? (
@@ -471,7 +472,7 @@ function FindReplacementInner() {
             <p className="cv-card-subtitle">
               {String(original.mpn || result.requested_mpn || mpn)}
               {original.manufacturer ? ` · ${String(original.manufacturer)}` : ""}
-              {original.description ? ` · ${String(original.description)}` : ""}
+              {original.description ? ` · ${cleanUserText(original.description)}` : ""}
             </p>
             <p className="cv-small-note" style={{ marginTop: 8 }}>
               Lifecycle: {String(original.lifecycle_status || "Unknown")}
@@ -481,7 +482,7 @@ function FindReplacementInner() {
               <ul className="cv-small-note" style={{ marginTop: 6, paddingLeft: 18 }}>
                 {(original.lifecycle_evidence as Array<Record<string, unknown>>).slice(0, 4).map((row, index) => (
                   <li key={index}>
-                    {String(row.source || "Supplier")}: {String(row.status || row.normalized_status || "status not recorded")}
+                    {cleanUserText(row.source) || "Supplier"}: {cleanUserText(row.status || row.normalized_status) || "status not recorded"}
                     {row.retrieved_at ? ` (${String(row.retrieved_at)})` : ""}
                   </li>
                 ))}
@@ -523,14 +524,14 @@ function FindReplacementInner() {
                       <tr key={row.name}>
                         <td><strong>{row.name}</strong></td>
                         <td>{row.outcome}</td>
-                        <td>{row.message || "—"}</td>
+                        <td>{cleanUserText(row.message) || "—"}</td>
                       </tr>
                     ))}
                     {providerFailures.map((row, index) => (
                       <tr key={`failure-${index}`}>
-                        <td><strong>{String(row.provider || row.source || "Provider")}</strong></td>
-                        <td>{String(row.status || row.outcome || "Failed")}</td>
-                        <td>{String(row.message || row.detail || "—")}</td>
+                        <td><strong>{cleanUserText(row.provider || row.source) || "Provider"}</strong></td>
+                        <td>{cleanUserText(row.status || row.outcome) || "Failed"}</td>
+                        <td>{cleanUserText(row.message || row.detail) || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -644,7 +645,7 @@ function FindReplacementInner() {
                                   />
                                   <span>
                                     <strong>{cand}</strong>
-                                    <div className="cv-small-note">{String(row.rationale || "")}</div>
+                                    <div className="cv-small-note">{cleanUserText(row.rationale)}</div>
                                   </span>
                                 </label>
                               </td>
@@ -723,7 +724,7 @@ function FindReplacementInner() {
                             <tr key={`unclassified-${cand}`}>
                               <td className="cv-mpn-cell" data-label="Lead">
                                 <strong>{cand}</strong>
-                                <div className="cv-small-note">{String(row.rationale || "")}</div>
+                                <div className="cv-small-note">{cleanUserText(row.rationale)}</div>
                               </td>
                               <td data-label="Manufacturer">
                                 <span className="cv-table-value">{String(row.manufacturer || "—")}</span>
@@ -782,7 +783,7 @@ function FindReplacementInner() {
                             <tr key={`lead-${cand}`}>
                               <td className="cv-mpn-cell" data-label="Lead">
                                 <strong>{cand}</strong>
-                                <div className="cv-small-note">{String(row.rationale || "")}</div>
+                                <div className="cv-small-note">{cleanUserText(row.rationale)}</div>
                               </td>
                               <td data-label="Manufacturer">
                                 <span className="cv-table-value">{String(row.manufacturer || "—")}</span>
