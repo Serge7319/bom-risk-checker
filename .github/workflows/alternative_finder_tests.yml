@@ -32,7 +32,15 @@ jobs:
           pip install -r requirements.txt PyMuPDF pytest embedded-postgres
 
       - name: Run migration API, report visibility, Supabase Auth, and trial tests
-        run: python -m pytest tests/test_nextjs_migration_api.py tests/test_nextjs_migration_tools.py tests/test_nextjs_report_exports.py tests/test_report_visibility.py tests/test_supabase_auth.py -q
+        run: |
+          python -m pytest \
+            tests/test_nextjs_migration_api.py \
+            tests/test_nextjs_migration_tools.py \
+            tests/test_nextjs_report_exports.py \
+            tests/test_report_visibility.py \
+            tests/test_supabase_auth.py \
+            tests/test_marketing_analytics.py \
+            tests/test_public_contact_intake.py -q
 
       - name: Install Next.js web dependencies
         run: npm ci --prefix apps/web

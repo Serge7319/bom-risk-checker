@@ -7,6 +7,70 @@
   const APP_ORIGIN = String(
     window.CADIVOR_APP_ORIGIN || window.CADIVOR_APP_URL || APP_PRODUCTION_DEFAULT
   ).replace(/\/$/, '');
+
+  const ANALYTICS_SESSION_KEY = 'cadivor_analytics_session_v1';
+  const ANALYTICS_UTM_KEY = 'cadivor_analytics_utm_v1';
+  const ANALYTICS_CONSENT_KEY = 'cadivor_analytics_consent_v1';
+  function analyticsAllowed() {
+    try { return localStorage.getItem(ANALYTICS_CONSENT_KEY) === 'accepted'; } catch (_) { return false; }
+  }
+  function analyticsSessionId() {
+    if (!analyticsAllowed()) return '';
+    try {
+      const stored = sessionStorage.getItem(ANALYTICS_SESSION_KEY) || '';
+      if (/^[0-9a-f-]{36}$/i.test(stored)) return stored;
+      const id = crypto.randomUUID
+        ? crypto.randomUUID()
+        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = Math.random() * 16 | 0;
+            return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+          });
+      sessionStorage.setItem(ANALYTICS_SESSION_KEY, id);
+      return id;
+    } catch (_) { return ''; }
+  }
+
+  function marketingUtm() {
+    if (!analyticsAllowed()) return {};
+    const params = new URLSearchParams(window.location.search);
+    hashQueryParams().forEach((value, key) => { if (!params.has(key)) params.set(key, value); });
+    const result = {};
+    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'].forEach(key => {
+      const value = (params.get(key) || '').trim().slice(0, 80);
+      if (value) result[key] = value;
+    });
+    if (Object.keys(result).length) {
+      try { sessionStorage.setItem(ANALYTICS_UTM_KEY, JSON.stringify(result)); } catch (_) {}
+      return result;
+    }
+    try { return JSON.parse(sessionStorage.getItem(ANALYTICS_UTM_KEY) || '{}'); } catch (_) { return {}; }
+  }
+
+  function marketingPage() {
+    const route = (location.hash.match(/^#([^?]*)/) || [])[1];
+    if (route) return route.startsWith('/') ? route : `/${route}`;
+    return location.pathname || '/';
+  }
+
+  function trackMarketingEvent(event, properties = {}) {
+    if (!analyticsAllowed()) return;
+    try {
+      fetch(`${APP_ORIGIN}/api/public/analytics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          event,
+          source: 'marketing',
+          page: marketingPage(),
+          session_id: analyticsSessionId(),
+          utm: marketingUtm(),
+          properties
+        }),
+        keepalive: true,
+        cache: 'no-store'
+      }).catch(() => undefined);
+    } catch (_) {}
+  }
   const stressSection = document.getElementById('bomStressTestSection');
   if (stressSection && window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED === true) {
     stressSection.hidden = false;
@@ -20,6 +84,18 @@
     if (page) params.set('page', page);
     if (purchase) params.set('cadivor_purchase', purchase);
     if (source) params.set('source', source);
+    const campaign = new URLSearchParams(window.location.search);
+    hashQueryParams().forEach((value, key) => {
+      if (!campaign.has(key)) campaign.set(key, value);
+    });
+    if (analyticsAllowed()) {
+      ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'].forEach(key => {
+        const value = campaign.get(key);
+        if (value) params.set(key, value.slice(0, 80));
+      });
+      const sessionId = analyticsSessionId();
+      if (sessionId) params.set('cadivor_visit_id', sessionId);
+    }
     const qs = params.toString();
     return qs ? `${APP_ORIGIN}/?${qs}` : `${APP_ORIGIN}/`;
   }
@@ -29,10 +105,14 @@
     // Keep embed + UTM attribution; middleware still remaps legacy `/?public=stress`.
     const params = new URLSearchParams({ embed: 'true' });
     const campaign = new URLSearchParams(window.location.search);
-    ['utm_source', 'utm_medium', 'utm_campaign'].forEach(key => {
-      const value = campaign.get(key);
-      if (value) params.set(key, value.slice(0, 80));
-    });
+    if (analyticsAllowed()) {
+      ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'].forEach(key => {
+        const value = campaign.get(key);
+        if (value) params.set(key, value.slice(0, 80));
+      });
+      const sessionId = analyticsSessionId();
+      if (sessionId) params.set('cadivor_visit_id', sessionId);
+    }
     return `${APP_ORIGIN}/public-bom-audit?${params.toString()}`;
   }
 
@@ -44,6 +124,7 @@
     workspace: buildAppUrl({ source: 'marketing' }),
     demo: '#/contact?intent=demo'
   };
+  const CONTACT_SUBMIT_URL = `${APP_ORIGIN}/api/public/contact`;
 
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
@@ -367,6 +448,46 @@
   }
   bindApplicationLinks();
 
+  function initializeAnalyticsConsent() {
+    const banner = $('#marketingAnalyticsConsent');
+    const manage = $('#marketingPrivacyChoices');
+    if (!banner || !manage) return;
+    const applyChoice = () => {
+      let choice = '';
+      try { choice = localStorage.getItem(ANALYTICS_CONSENT_KEY) || ''; } catch (_) { choice = 'rejected'; }
+      banner.hidden = Boolean(choice);
+      manage.hidden = choice !== 'rejected';
+    };
+    banner.querySelectorAll('[data-marketing-consent]').forEach(button => {
+      button.addEventListener('click', () => {
+        const choice = button.dataset.marketingConsent === 'accepted' ? 'accepted' : 'rejected';
+        try { localStorage.setItem(ANALYTICS_CONSENT_KEY, choice); } catch (_) {}
+        applyChoice();
+        bindApplicationLinks();
+        if (choice === 'accepted') trackMarketingEvent('page_view');
+      });
+    });
+    manage.addEventListener('click', () => { banner.hidden = false; manage.hidden = true; });
+    applyChoice();
+  }
+  initializeAnalyticsConsent();
+
+  trackMarketingEvent('page_view');
+  window.addEventListener('hashchange', () => trackMarketingEvent('page_view'));
+  document.addEventListener('click', event => {
+    const target = event.target instanceof Element ? event.target : null;
+    const cta = target?.closest('.app-link, .demo-link, .contact-submit, [data-analytics-cta]');
+    if (!cta) return;
+    const region = cta.closest('section, header, article');
+    const location = String(region?.id || region?.dataset?.analyticsLocation || 'page').slice(0, 80);
+    const label = String(cta.getAttribute('data-analytics-cta') || cta.getAttribute('aria-label') || cta.textContent || '')
+      .replace(/\s+/g, ' ').trim().slice(0, 80);
+    trackMarketingEvent('cta_click', { location, cta: label });
+    if (cta.dataset.app === 'single-report') {
+      trackMarketingEvent('upgrade_clicked', { location, intent: 'one-time-report' });
+    }
+  }, true);
+
   const CONTACT_INBOX = {
     general: 'info@cadivor.com',
     inquiry: 'info@cadivor.com',
@@ -398,7 +519,7 @@
       formTitle: 'Send us a message',
       formIntro: 'Share your workflow context — we respond within one business day.',
       submitLabel: 'Send message',
-      formNote: 'This form opens your email client with the completed request.',
+      formNote: 'We store your request and referral source so we can respond and improve the site. See the Privacy Policy.',
       mailSubject: 'Cadivor inquiry from'
     },
     demo: {
@@ -409,7 +530,7 @@
       formTitle: 'Request a demo',
       formIntro: 'Share your BOM workflow and team context — we respond within one business day.',
       submitLabel: 'Request a demo',
-      formNote: 'This form opens your email client with your demo request.',
+      formNote: 'We store your request and referral source so we can respond and improve the site. See the Privacy Policy.',
       mailSubject: 'Cadivor demo request from'
     },
     'single-report': {
@@ -420,8 +541,19 @@
       formTitle: 'Ask about a one-time report',
       formIntro: 'Share the size of your BOM and the decision you need to make.',
       submitLabel: 'Prepare report inquiry',
-      formNote: 'This form opens your email client with the completed inquiry.',
+      formNote: 'We store your request and referral source so we can respond and improve the site. See the Privacy Policy.',
       mailSubject: 'Cadivor one-time BOM report inquiry from'
+    },
+    student: {
+      eyebrow: 'STUDENT PLAN',
+      headline: 'Bring Cadivor into your engineering project.',
+      intro: 'Tell us where you study and what you are building. We will review your request for the Cadivor Student plan.',
+      formEyebrow: 'STUDENT ACCESS',
+      formTitle: 'Request student access',
+      formIntro: 'Use your school email when available and include a short project description.',
+      submitLabel: 'Request student access',
+      formNote: 'We store your request and referral source so we can respond and improve the site. See the Privacy Policy.',
+      mailSubject: 'Cadivor Student plan request from'
     }
   };
 
@@ -442,7 +574,9 @@
     if (!page) return;
     const qs = hashQueryParams();
     const intent = contactIntentFromQuery();
-    const mode = intent === 'demo' || intent === 'single-report' ? intent : 'general';
+    const mode = intent === 'demo' || intent === 'single-report' || intent === 'student'
+      ? intent
+      : 'general';
     const copy = CONTACT_COPY[mode];
     const plan = String(qs.get('plan') || '').trim();
     page.dataset.contactMode = mode;
@@ -464,6 +598,12 @@
         'Get the standard risk analysis and PDF/CSV reports',
         'Keep the saved analysis available in your Cadivor account'
       ]
+      : intent === 'student'
+        ? [
+          'Use Cadivor for coursework, capstone work, or a university lab',
+          'Review lifecycle and supplier risks in a sample or project BOM',
+          'Keep engineering judgment and evidence visible in your report'
+        ]
       : [
         'Product walkthrough tailored to your BOM workflow',
         'Plan and deployment guidance for your team size',
@@ -471,7 +611,11 @@
       ];
     $$('.contact-benefits li', page).forEach((item, index) => { item.textContent = benefits[index]; });
     const agendaTitle = $('.contact-agenda h3', page);
-    if (agendaTitle) agendaTitle.textContent = reportInquiry ? 'What to include in your inquiry' : 'Expected demo agenda';
+    if (agendaTitle) agendaTitle.textContent = reportInquiry
+      ? 'What to include in your inquiry'
+      : intent === 'student'
+        ? 'What to include in your request'
+        : 'Expected demo agenda';
     const agenda = reportInquiry
       ? [
         'Approximate number of unique components',
@@ -479,6 +623,13 @@
         'Risks or decisions your team needs to review',
         'When you need the finished report'
       ]
+      : intent === 'student'
+        ? [
+          'Your school and program or course',
+          'Your school email address, if available',
+          'The project or lab where you plan to use Cadivor',
+          'Approximate BOM size and when you need access'
+        ]
       : [
         'Upload and validate a representative BOM',
         'Review release blockers and supplier intelligence',
@@ -495,11 +646,9 @@
     const submitLabel = $('.contact-submit-label');
     if (submitLabel) submitLabel.textContent = copy.submitLabel;
     const successMessage = $('.contact-success p', formCard);
-    if (successMessage) successMessage.textContent = intent === 'single-report'
-      ? 'Opening your email client with your one-time report inquiry.'
-      : intent === 'demo'
-        ? 'Opening your email client with your demo request.'
-        : 'Opening your email client with your message.';
+    if (successMessage && !formCard?.classList.contains('is-success')) {
+      successMessage.textContent = 'Your request was received.';
+    }
     const status = $('#formStatus');
     if (status && !formCard?.classList.contains('is-success')) status.textContent = copy.formNote;
   }
@@ -604,7 +753,7 @@
     { state: 'Validated', outcomeHtml: 'Validated · <b>1,842</b> components', detail: 'motor_controller_rev_c.xlsx · 36 supplier records normalized', duration: 1200 },
     { state: 'Scored', outcomeHtml: 'BOM Health <b>72</b> · <b>4</b> blockers', detail: 'MPU6050 EOL · LM35DN lead time · lifecycle notices matched', duration: 1300 },
     { state: 'Reviewing', outcomeHtml: '<b>14</b> evidence points reviewed', detail: 'Lifecycle, supply, alternates, and prior decisions assembled', duration: 1300 },
-    { state: 'Approved', outcomeHtml: '<b>DR-1048</b> approved', detail: 'Owner Jordan Ellis · evidence hash verified', duration: 1300 },
+    { state: 'Approved', outcomeHtml: '<b>DR-1048</b> approved', detail: 'Owner Jordan Ellis · approval linked to the illustrative evidence record', duration: 1300 },
     { state: 'Active', outcomeHtml: 'Lifecycle and supply monitoring active', detail: 'Watching MPU6050 · LM35DN · TPS54331 across authorized sources', duration: 0 }
   ];
 
@@ -732,14 +881,13 @@
       el.textContent = `${target}${suffix}`;
       return;
     }
-    el.textContent = `0${suffix}`;
     animateNumber(el, target, suffix);
   }
 
   function resetKpiElement(el) {
     if (!el || !el.dataset.kpiCounter) return;
     delete el.dataset.kpiAnimated;
-    el.textContent = `0${el.dataset.kpiSuffix || ''}`;
+    el.textContent = `${el.dataset.kpiCounter}${el.dataset.kpiSuffix || ''}`;
   }
 
   function animateMetricText(el) {
@@ -847,7 +995,7 @@
   function applyHeroMetrics(i, stagger = false) {
     const m = heroMetrics[i];
     if (!m) {
-      ['#healthValue', '#blockerValue', '#alertValue', '#alternateValue'].forEach(sel => { const el = $(sel); if (el) el.textContent = '—'; });
+      ['#healthValue', '#blockerValue', '#alertValue', '#alternateValue'].forEach(sel => { const el = $(sel); if (el) el.textContent = 'Pending'; });
       return;
     }
     const apply = (sel, val, delay = 0) => {
@@ -1878,30 +2026,12 @@
 
     function animatePercent(el, target) {
       if (!el) return;
-      if (reducedMotion) { el.textContent = `${target}%`; return; }
-      let step = 0;
-      const tick = setInterval(() => {
-        step++;
-        el.textContent = `${Math.round((target * step) / MOTION.steps)}%`;
-        if (step >= MOTION.steps) {
-          clearInterval(tick);
-          el.textContent = `${target}%`;
-        }
-      }, MOTION.tick);
+      animateNumber(el, target, '%');
     }
 
     function animateSources(el, target) {
       if (!el) return;
-      if (reducedMotion) { el.textContent = `${target} sources`; return; }
-      let step = 0;
-      const tick = setInterval(() => {
-        step++;
-        el.textContent = `${Math.round((target * step) / MOTION.steps)} sources`;
-        if (step >= MOTION.steps) {
-          clearInterval(tick);
-          el.textContent = `${target} sources`;
-        }
-      }, MOTION.tick);
+      animateNumber(el, target, ' sources');
     }
 
     function fadeMonitoringLabel(el, text) {
@@ -1922,9 +2052,9 @@
       approveBtn.textContent = 'Approve decision';
       approveBtn.disabled = false;
       if (statusEl) statusEl.textContent = 'READY FOR APPROVAL';
-      if (ownerEl) { ownerEl.textContent = '—'; ownerEl.classList.remove('is-visible'); }
-      if (confidenceEl) confidenceEl.textContent = '0%';
-      if (evidenceEl) evidenceEl.textContent = '0 sources';
+      if (ownerEl) { ownerEl.textContent = 'Jordan Ellis'; ownerEl.classList.add('is-visible'); }
+      if (confidenceEl) confidenceEl.textContent = '93%';
+      if (evidenceEl) evidenceEl.textContent = '14 sources';
       if (monitorEl) { monitorEl.textContent = 'Pending'; monitorEl.classList.remove('is-active', 'is-fading'); }
       if (monitorLabel) { monitorLabel.textContent = 'Pending'; monitorLabel.classList.remove('is-active', 'is-fading'); }
       monitorSwitch?.classList.remove('is-active');
@@ -1932,8 +2062,8 @@
       approvedBadge?.setAttribute('hidden', '');
       timelineNodes.forEach(n => n.classList.remove('done', 'is-current'));
       decisionLines.forEach(l => l.classList.remove('is-visible'));
-      if (signatureName) signatureName.textContent = 'Awaiting signature';
-      if (signatureTime) signatureTime.textContent = '—';
+      if (signatureName) signatureName.textContent = 'Awaiting approval';
+      if (signatureTime) signatureTime.textContent = 'Illustrative sample record';
     }
 
     function applyFinalDecisionState() {
@@ -1952,7 +2082,7 @@
       timelineNodes.forEach(n => n.classList.add('done'));
       decisionLines.forEach(l => l.classList.add('is-visible'));
       if (signatureName) signatureName.textContent = 'Jordan Ellis';
-      if (signatureTime) signatureTime.textContent = 'Approved moments ago · Evidence hash EV-84A2';
+      if (signatureTime) signatureTime.textContent = 'Approval shown in this illustrative sample';
       schedule(() => record.classList.remove('signing'), 900);
     }
 
@@ -1996,7 +2126,7 @@
         approvedBadge?.classList.add('is-visible');
         record.classList.add('approved', 'signing');
         if (signatureName) signatureName.textContent = 'Jordan Ellis';
-        if (signatureTime) signatureTime.textContent = 'Approved moments ago · Evidence hash EV-84A2';
+        if (signatureTime) signatureTime.textContent = 'Approval shown in this illustrative sample';
         schedule(() => record.classList.remove('signing'), MOTION.standard + 80);
       }, MOTION.standard + 1380 + 2 * (MOTION.standard + 100) + 120);
 
@@ -2267,7 +2397,7 @@
         entries.forEach(entry => {
           if (!entry.isIntersecting) {
             delete row.dataset.counted;
-            $$('strong[data-count-target]', row).forEach(el => { el.textContent = '0'; });
+            $$('strong[data-count-target]', row).forEach(el => { el.textContent = el.dataset.countTarget; });
             return;
           }
           if (row.dataset.counted) return;
@@ -2326,7 +2456,31 @@
     const resetBtn = $('#contactReset');
     const submitBtn = $('#contactSubmit');
     const status = $('#formStatus');
+    $$('a[href^="mailto:"]').forEach(link => {
+      const href = link.getAttribute('href') || '';
+      const normalizedHref = href.toLowerCase();
+      if (normalizedHref.includes('student%20plan%20request') || normalizedHref.includes('student plan request')) {
+        link.href = '#/contact?intent=student';
+      }
+    });
     if (!form) return;
+
+    // Keep the single public form useful for demo, sales, and student requests.
+    const companyField = $('[name="company"]', form)?.closest('.contact-field');
+    if (companyField && !$('[name="role"]', form)) {
+      companyField.insertAdjacentHTML('afterend', `
+        <label class="contact-field"><span>Role</span><input name="role" placeholder="Your role" autocomplete="organization-title" maxlength="120"></label>
+        <label class="contact-field"><span>Team size</span><select name="team_size"><option value="">Select team size</option><option>1</option><option>2–10</option><option>11–50</option><option>51–200</option><option>201+</option></select></label>
+        <label class="contact-field"><span>BOM volume</span><select name="bom_volume"><option value="">Select monthly BOM volume</option><option>1–5 BOMs/month</option><option>6–20 BOMs/month</option><option>21–100 BOMs/month</option><option>100+ BOMs/month</option><option>Not sure</option></select></label>
+      `);
+    }
+    const submitButton = $('#contactSubmit', form);
+    if (submitButton && !$('[name="consent"]', form)) {
+      submitButton.insertAdjacentHTML('beforebegin', `
+        <label class="contact-consent"><input type="checkbox" name="consent" value="true" required><span>I agree Cadivor may use these details and referral source to respond to my request. Read the <a class="route-link" href="#/privacy">Privacy Policy</a>.</span></label>
+        <label class="contact-honeypot" aria-hidden="true">Leave this field empty<input name="website" tabindex="-1" autocomplete="off"></label>
+      `);
+    }
 
     resetBtn?.addEventListener('click', () => {
       card?.classList.remove('is-success');
@@ -2335,7 +2489,7 @@
       applyContactMode();
     });
 
-    form.addEventListener('submit', e => {
+    form.addEventListener('submit', async e => {
       e.preventDefault();
       const f = new FormData(form);
       const name = String(f.get('name') || '').trim();
@@ -2355,32 +2509,89 @@
         }
         return;
       }
-      const qs = hashQueryParams();
+      const qs = new URLSearchParams(location.search);
+      hashQueryParams().forEach((value, key) => {
+        if (!qs.has(key)) qs.set(key, value);
+      });
       const topic = String(f.get('topic') || qs.get('intent') || 'general').trim().toLowerCase();
-      const intent = CONTACT_INBOX[topic] ? topic : (qs.get('intent') === 'demo' ? 'demo' : 'general');
-      const plan = String(qs.get('plan') || '').trim();
-      const copy = CONTACT_COPY[intent === 'demo' || intent === 'single-report' ? intent : 'general'];
-      const inbox = resolveContactInbox(intent);
-      const subject = encodeURIComponent(`${copy.mailSubject} ${name}`);
-      const bodyParts = [
-        `Name: ${name}`,
-        `Email: ${email}`,
-        `Company: ${f.get('company') || ''}`,
-        `Topic: ${topic || intent}`
-      ];
-      if (plan) bodyParts.push(`Plan interest: ${plan}`);
-      bodyParts.push('', message);
-      const body = encodeURIComponent(bodyParts.join('\n'));
+      const utm = {};
+      if (analyticsAllowed()) {
+        ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'].forEach(key => {
+          const value = qs.get(key);
+          if (value) utm[key] = value.slice(0, 80);
+        });
+      }
+      const payload = {
+        name,
+        email,
+        company: String(f.get('company') || '').trim(),
+        role: String(f.get('role') || '').trim(),
+        team_size: String(f.get('team_size') || '').trim(),
+        bom_volume: String(f.get('bom_volume') || '').trim(),
+        plan_interest: qs.get('plan') || '',
+        topic,
+        message,
+        consent: f.get('consent') === 'true',
+        website: String(f.get('website') || '').trim(),
+        source: qs.get('source') || 'marketing-site',
+        utm
+      };
       submitBtn?.classList.add('is-submitting');
-      if (status) status.textContent = 'Preparing your request…';
-      const mailto = `mailto:${inbox}?subject=${subject}&body=${body}`;
-      setTimeout(() => {
-        submitBtn?.classList.remove('is-submitting');
+      if (submitBtn) submitBtn.disabled = true;
+      if (status) {
+        status.textContent = 'Sending your request…';
+        status.setAttribute('role', 'status');
+      }
+      try {
+        const response = await fetch(CONTACT_SUBMIT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(payload),
+          cache: 'no-store'
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result.ok !== true) {
+          throw new Error(result.detail || 'Your request could not be sent. Please try again.');
+        }
+        if (topic === 'demo') {
+          trackMarketingEvent('demo_requested', { intent: 'demo', location: 'contact-form' });
+        }
         card?.classList.add('is-success');
         success?.removeAttribute('hidden');
+        const heading = $('.contact-success h3', card);
+        const messageEl = $('.contact-success p', card);
+        if (heading) heading.textContent = 'Request received';
+        if (messageEl) {
+          if (result.notification_status === 'sent') {
+            messageEl.textContent = 'Your request was submitted to Cadivor. We aim to follow up within one business day.';
+          } else if (result.notification_status === 'not_configured') {
+            messageEl.textContent = 'Your request was saved, but email delivery to Cadivor is not active yet. Please email info@cadivor.com for a timely reply.';
+            const link = document.createElement('a');
+            link.href = 'mailto:info@cadivor.com?subject=Cadivor%20request%20follow-up';
+            link.textContent = 'Email Cadivor';
+            link.className = 'contact-fallback-link';
+            messageEl.append(document.createElement('br'), link);
+          } else {
+            messageEl.textContent = 'Your request was saved, but Cadivor could not be notified. Please email info@cadivor.com so we can respond.';
+            const link = document.createElement('a');
+            link.href = 'mailto:info@cadivor.com?subject=Cadivor%20request%20follow-up';
+            link.textContent = 'Email Cadivor';
+            link.className = 'contact-fallback-link';
+            messageEl.append(document.createElement('br'), link);
+          }
+        }
         if (status) status.textContent = '';
-        setTimeout(() => { location.href = mailto; }, reducedMotion ? 0 : MOTION.standard + 160);
-      }, reducedMotion ? 0 : MOTION.standard - 40);
+      } catch (error) {
+        if (status) {
+          status.textContent = error instanceof Error
+            ? error.message
+            : 'Your request could not be sent. Please email info@cadivor.com.';
+          status.setAttribute('role', 'alert');
+        }
+      } finally {
+        submitBtn?.classList.remove('is-submitting');
+        if (submitBtn) submitBtn.disabled = false;
+      }
     });
   }
 

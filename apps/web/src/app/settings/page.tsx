@@ -39,6 +39,7 @@ import {
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 import { cleanUserText, userFacingError, userFacingLabel, workspaceDisplayName } from "@/lib/display";
+import { trackMarketingEvent, trackMarketingEventOnce } from "@/lib/marketingAnalytics";
 
 type TabId = "profile" | "preferences" | "workspace" | "security" | "billing";
 
@@ -295,6 +296,23 @@ export default function Page() {
   }
 
   useEffect(() => {
+    if (!session || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("billing") !== "success") return;
+    let active = true;
+    void fetchBillingStatus(session.access_token).then((result) => {
+      if (!active || result.has_active_subscription !== true) return;
+      trackMarketingEventOnce(
+        "subscription_created",
+        `subscription_created:${session.user_id || session.email}`,
+        { intent: String(result.current_plan || "subscription").toLowerCase() },
+        "/settings",
+      );
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [session]);
+
+  useEffect(() => {
     if (!session) return;
     void reload(session);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -439,6 +457,7 @@ export default function Page() {
     const token = String(plan.purchase_token || "");
     setBillingAction(name);
     setBillingError("");
+    trackMarketingEvent("upgrade_clicked", { plan: token, intent: "subscription" }, "/settings");
     try {
       const result = canManageBilling
         ? await beginBillingPortal(session.access_token)
@@ -446,6 +465,9 @@ export default function Page() {
       const url = result.checkout?.url;
       if (!result.ok || !url) {
         throw new Error(result.detail || "Secure billing could not be opened.");
+      }
+      if (!canManageBilling) {
+        trackMarketingEvent("checkout_started", { plan: token, intent: "subscription" }, "/settings");
       }
       window.location.assign(url);
     } catch (err) {

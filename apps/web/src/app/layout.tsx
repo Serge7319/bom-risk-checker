@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AnalyticsTracker } from "@/components/AnalyticsTracker";
+import { AnalyticsConsent } from "@/components/AnalyticsConsent";
 
 export const metadata: Metadata = {
   title: "Cadivor",
@@ -25,7 +27,11 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <AnalyticsTracker />
+        <AnalyticsConsent />
+        {children}
+      </body>
     </html>
   );
 }

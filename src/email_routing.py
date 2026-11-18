@@ -40,6 +40,7 @@ INBOX_BY_INTENT: dict[str, str] = {
     "student": INFO_EMAIL,
     "enterprise": INFO_EMAIL,
     "sales": INFO_EMAIL,
+    "single-report": INFO_EMAIL,
     "beta": BETA_EMAIL,
     "blocker": BETA_EMAIL,
     "support": SUPPORT_EMAIL,

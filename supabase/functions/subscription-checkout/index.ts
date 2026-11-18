@@ -76,6 +76,21 @@ function stripeErrorSummary(error: unknown): StripeErrorSummary {
   };
 }
 
+function marketingAttribution(user: { user_metadata?: unknown }): Record<string, string> {
+  const metadata = user.user_metadata && typeof user.user_metadata === "object"
+    ? user.user_metadata as Record<string, unknown>
+    : {};
+  const supplied = metadata.cadivor_marketing_attribution && typeof metadata.cadivor_marketing_attribution === "object"
+    ? metadata.cadivor_marketing_attribution as Record<string, unknown>
+    : {};
+  const result: Record<string, string> = {};
+  for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
+    const value = typeof supplied[key] === "string" ? supplied[key].trim().slice(0, 80) : "";
+    if (value && !value.includes("@") && /^[\w .:+~/=-]{1,80}$/u.test(value)) result[key] = value;
+  }
+  return result;
+}
+
 function isMissingStripeCustomer(error: unknown): boolean {
   const summary = stripeErrorSummary(error);
   return summary.code === "resource_missing" && (
@@ -90,8 +105,9 @@ function checkoutSessionParams(
   token: string,
   priceId: string,
   customerId?: string,
+  attribution: Record<string, string> = {},
 ) {
-  const metadata = { user_id: userId, cadivor_plan: token };
+  const metadata = { user_id: userId, cadivor_plan: token, ...attribution };
   return {
     mode: "subscription" as const,
     ...(customerId ? { customer: customerId } : { customer_email: email }),
@@ -299,7 +315,15 @@ serve(async (request) => {
     let session: Stripe.Checkout.Session;
     try {
       session = await stripe.checkout.sessions.create(
-        checkoutSessionParams(origin, auth.user.id, auth.user.email!, token, priceId, customerId || undefined),
+        checkoutSessionParams(
+          origin,
+          auth.user.id,
+          auth.user.email!,
+          token,
+          priceId,
+          customerId || undefined,
+          marketingAttribution(auth.user),
+        ),
         { idempotencyKey },
       );
     } catch (error) {
@@ -308,7 +332,15 @@ serve(async (request) => {
       // new subscription customer from the verified account email.
       if (!customerId || !isMissingStripeCustomer(error)) throw error;
       session = await stripe.checkout.sessions.create(
-        checkoutSessionParams(origin, auth.user.id, auth.user.email!, token, priceId),
+        checkoutSessionParams(
+          origin,
+          auth.user.id,
+          auth.user.email!,
+          token,
+          priceId,
+          undefined,
+          marketingAttribution(auth.user),
+        ),
         { idempotencyKey: `${idempotencyKey}_fresh_customer` },
       );
     }

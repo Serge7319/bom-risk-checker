@@ -30,6 +30,7 @@ import {
 import { PAGE_META } from "@/lib/routes";
 import { userFacingLabel } from "@/lib/display";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
+import { trackMarketingEventOnce } from "@/lib/marketingAnalytics";
 
 function formatReportDate(value: unknown): string {
   if (!value) return "recently";
@@ -193,6 +194,18 @@ export default function BomAnalyzerPage() {
           setAnalyzing(false);
           clearFinishedAnalyzeJob(session);
         } else {
+          trackMarketingEventOnce(
+            "bom_uploaded",
+            `bom_uploaded:${summaryResult.analysis_id}`,
+            { flow: "saved-bom-analysis" },
+            "/bom-analyzer",
+          );
+          trackMarketingEventOnce(
+            "first_analysis_completed",
+            `first_analysis_completed:${session.user_id || session.email}`,
+            { flow: "saved-bom-analysis" },
+            "/bom-analyzer",
+          );
           setSummary(summaryResult);
           setAnalysisId(summaryResult.analysis_id);
           setAnalyzing(false);
@@ -254,6 +267,18 @@ export default function BomAnalyzerPage() {
           clearFinishedAnalyzeJob(session);
           return;
         }
+        trackMarketingEventOnce(
+          "bom_uploaded",
+          `bom_uploaded:${summaryResult.analysis_id}`,
+          { flow: "saved-bom-analysis" },
+          "/bom-analyzer",
+        );
+        trackMarketingEventOnce(
+          "first_analysis_completed",
+          `first_analysis_completed:${session.user_id || session.email}`,
+          { flow: "saved-bom-analysis" },
+          "/bom-analyzer",
+        );
         setSummary(summaryResult);
         setAnalysisId(summaryResult.analysis_id);
         setAnalyzeError("");

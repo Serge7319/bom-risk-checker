@@ -181,6 +181,9 @@ def account_entitlements(access_token: str) -> dict[str, Any]:
             if plan not in allowed_plans:
                 plan = "Subscription inactive"
             snapshot = {"plan": plan}
+            platform_role = str(result.get("role") or "").strip().lower()
+            if platform_role in {"admin", "user"}:
+                snapshot["platform_role"] = platform_role
             for field in (
                 "trial_started_at",
                 "trial_ends_at",
@@ -554,6 +557,7 @@ def signup(
     workspace_name: str,
     *,
     captcha_token: str | None = None,
+    marketing_attribution: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Request Supabase's verified-email signup; provision after verified login.
 
@@ -568,12 +572,19 @@ def signup(
     )
     from src.signup_intent import standard_trial_signup_metadata
 
+    user_metadata: dict[str, Any] = {
+        "workspace_name": workspace_n,
+        **standard_trial_signup_metadata(),
+    }
+    if marketing_attribution:
+        from apps.api.marketing_attribution import sanitize_marketing_attribution
+
+        clean_attribution = sanitize_marketing_attribution(marketing_attribution)
+        if clean_attribution:
+            user_metadata["cadivor_marketing_attribution"] = clean_attribution
     options: dict[str, Any] = {
         "email_redirect_to": _signup_redirect_url(),
-        "data": {
-            "workspace_name": workspace_n,
-            **standard_trial_signup_metadata(),
-        },
+        "data": user_metadata,
     }
     if captcha_token:
         options["captcha_token"] = captcha_token
@@ -710,6 +721,7 @@ def login(
         "workspace": membership["workspace"],
         "workspace_id": membership["workspace_id"],
         "plan": entitlements["plan"],
+        "platform_role": entitlements.get("platform_role"),
         "mode": "supabase-jwt",
         "sandbox_only": False,
         "production_auth": True,
@@ -792,6 +804,7 @@ def resolve_bearer(access_token: str) -> AuthContext:
         trial_ends_at=trial_ends,
         trial_status=entitlements.get("trial_status"),
         trial_days_remaining=entitlements.get("trial_days_remaining"),
+        platform_role=entitlements.get("platform_role"),
     )
 
 

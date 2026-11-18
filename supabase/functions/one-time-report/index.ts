@@ -73,6 +73,21 @@ async function verifiedPrice() {
   return price;
 }
 
+function marketingAttribution(user: { user_metadata?: unknown }): Record<string, string> {
+  const metadata = user.user_metadata && typeof user.user_metadata === "object"
+    ? user.user_metadata as Record<string, unknown>
+    : {};
+  const supplied = metadata.cadivor_marketing_attribution && typeof metadata.cadivor_marketing_attribution === "object"
+    ? metadata.cadivor_marketing_attribution as Record<string, unknown>
+    : {};
+  const result: Record<string, string> = {};
+  for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) {
+    const value = typeof supplied[key] === "string" ? supplied[key].trim().slice(0, 80) : "";
+    if (value && !value.includes("@") && /^[\w .:+~/=-]{1,80}$/u.test(value)) result[key] = value;
+  }
+  return result;
+}
+
 async function existingCheckout(userId: string) {
   const { data, error } = await supabase
     .from("cadivor_one_time_bom_orders")
@@ -138,7 +153,7 @@ async function statusFor(userId: string) {
   };
 }
 
-async function beginCheckout(user: { id: string; email: string }) {
+async function beginCheckout(user: { id: string; email: string; user_metadata?: unknown }) {
   if (!salesEnabled()) return { status: 409, body: { ok: false, code: "checkout_disabled", detail: "One-time reports are temporarily unavailable." } };
   const open = await existingCheckout(user.id);
   if (open) return { status: 200, body: { ok: true, checkout: open } };
@@ -169,6 +184,7 @@ async function beginCheckout(user: { id: string; email: string }) {
           cadivor_product: "single_bom_report",
           cadivor_order_id: created.id,
           user_id: user.id,
+          ...marketingAttribution(user),
         },
       },
       { idempotencyKey: `cadivor_single_bom_${created.id}` },
@@ -276,7 +292,11 @@ serve(async (req) => {
   try {
     if (body.action === "status") return response(await statusFor(auth.user.id), 200, origin);
     if (body.action === "checkout") {
-      const result = await beginCheckout({ id: auth.user.id, email: auth.user.email! });
+      const result = await beginCheckout({
+        id: auth.user.id,
+        email: auth.user.email!,
+        user_metadata: auth.user.user_metadata,
+      });
       return response(result.body, result.status, origin);
     }
     if (body.action === "reserve") {

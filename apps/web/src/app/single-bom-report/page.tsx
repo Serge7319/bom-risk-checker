@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
+import { trackMarketingEvent, trackMarketingEventOnce } from "@/lib/marketingAnalytics";
 
 function formatPrice(value: OneTimeReportStatus["price"]): string {
   if (!value || !Number.isFinite(value.amount)) return "Price unavailable";
@@ -61,10 +62,27 @@ export default function SingleBomReportPage() {
     void refresh();
   }, [session, refresh]);
 
+  useEffect(() => {
+    if (!session || typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("checkout") !== "success") return;
+    let active = true;
+    void fetchOneTimeReportStatus(session.access_token).then((result) => {
+      if (!active || !result.orders?.some((order) => order.status === "paid")) return;
+      trackMarketingEventOnce(
+        "one_time_report_purchased",
+        `one_time_report_purchased:${session.user_id || session.email}`,
+        { intent: "one-time-report" },
+        "/single-bom-report",
+      );
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [session]);
+
   async function onPurchase() {
     if (!session) return;
     setCheckoutBusy(true);
     setError("");
+    trackMarketingEvent("upgrade_clicked", { intent: "one-time-report" }, "/single-bom-report");
     try {
       const result = await beginOneTimeReportCheckout(session.access_token);
       const checkoutUrl = result.checkout?.url;
@@ -74,6 +92,7 @@ export default function SingleBomReportPage() {
         return;
       }
       if (!checkoutUrl) throw new Error(result.detail || "Secure checkout could not be started.");
+      trackMarketingEvent("checkout_started", { intent: "one-time-report" }, "/single-bom-report");
       window.location.assign(checkoutUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Secure checkout could not be started.");
