@@ -10,6 +10,7 @@ import { KpiCard } from "@/components/KpiCard";
 import { Icon } from "@/components/Icons";
 import { PartThumbnail } from "@/components/PartThumbnail";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
+import { getReportRiskCounts, ReportOverview } from "@/components/ReportOverview";
 import {
   analyzeBom,
   downloadReportExport,
@@ -27,7 +28,7 @@ import {
   readReviewProgress,
   type BomReviewProgress,
 } from "@/lib/bomDraft";
-import { analysisModeLabel, evidenceSourceLabel } from "@/lib/display";
+import { analysisModeLabel, cleanUserText, evidenceSourceLabel, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
 
@@ -174,10 +175,8 @@ export default function ReportPage() {
       const projectName = projects.find(
         (project) => String(project.id || "") === String(report.project_id || ""),
       )?.name;
-      setProjectNameDraft(
-        String(projectName || String(report.project_name || "").split(" — ")[0] || "General"),
-      );
-      setBomNameDraft(String(report.bom_name || report.filename || "Saved BOM"));
+      setProjectNameDraft(userFacingLabel(projectName || String(report.project_name || "").split(" — ")[0], "General"));
+      setBomNameDraft(userFacingLabel(report.bom_name || report.filename, "Saved BOM"));
       setRevisionDraft(revisionCandidate(String(report.revision || "A"), used));
       setBomEditorRows(editableRows(report.parts || []));
       setAppliedDecisionIds([]);
@@ -278,8 +277,8 @@ export default function ReportPage() {
 
   const meta = {
     ...PAGE_META.ei,
-    title: report?.filename
-      ? `EI · ${report.filename}`
+    title: report?.filename && userFacingLabel(report.filename, "")
+      ? `EI · ${userFacingLabel(report.filename, "Saved analysis")}`
       : PAGE_META.ei.title,
   };
   const evidenceSummary = (report?.evidence_summary || {}) as Record<string, unknown>;
@@ -292,6 +291,7 @@ export default function ReportPage() {
   );
   const syntheticSupplierRows = Number(evidenceSummary.synthetic_count ?? 0);
   const missingSupplierRows = Number(evidenceSummary.missing_count ?? 0);
+  const reportRiskCounts = report ? getReportRiskCounts(report) : null;
 
   return (
     <Shell session={session}>
@@ -445,7 +445,7 @@ export default function ReportPage() {
             </div>
             <div className="cv-record-field">
               <dt>Status</dt>
-              <dd>{report.health_status}</dd>
+              <dd>{userFacingLabel(report.health_status, "Not reported")}</dd>
             </div>
             <div className="cv-record-field">
               <dt>Components</dt>
@@ -456,6 +456,8 @@ export default function ReportPage() {
               <dd>{analysisModeLabel(report.mode)}</dd>
             </div>
           </dl>
+
+          <ReportOverview report={report} />
 
           {report.derived_from_analysis_id ? (
             <section className="cv-card pad" style={{ marginBottom: 14 }} data-testid="revision-provenance">
@@ -498,20 +500,20 @@ export default function ReportPage() {
               icon="risk"
               tone="amber"
               label="High risk"
-              value={report.high_risk_count}
+              value={reportRiskCounts?.high ?? report.high_risk_count}
               detail="Needs review"
             />
             <KpiCard
               icon="bell"
               tone="blue"
               label="Medium risk"
-              value={report.medium_risk_count}
+              value={reportRiskCounts?.medium ?? report.medium_risk_count}
               detail="Follow up"
             />
             <KpiCard
               icon="check"
               label="Low risk"
-              value={report.low_risk_count}
+              value={reportRiskCounts?.low ?? report.low_risk_count}
               detail="Within BOM"
             />
           </div>
@@ -524,26 +526,24 @@ export default function ReportPage() {
           <section className="cv-card pad" style={{ marginBottom: 14 }}>
             <div className="cv-eyebrow">Engineering decision record</div>
             <h2 className="cv-card-title" style={{ fontSize: 20, marginTop: 8 }}>
-              {report.project_name || report.filename || "Saved analysis"}
+              {userFacingLabel(report.project_name || report.filename, "Saved analysis")}
             </h2>
             <p className="cv-card-subtitle">
               {[
-                report.bom_name ? `BOM ${report.bom_name}` : null,
-                report.revision ? `rev ${report.revision}` : null,
+                report.bom_name ? `BOM ${userFacingLabel(report.bom_name, "Saved BOM")}` : null,
+                report.revision ? `rev ${userFacingLabel(report.revision, "—")}` : null,
                 report.persisted ? "Saved to this workspace" : null,
               ]
                 .filter(Boolean)
                 .join(" · ") ||
-                report.summary_message ||
+                cleanUserText(report.summary_message) ||
                 "Synthetic analysis; live supplier data is not included."}
             </p>
-            <p className="cv-small-note" style={{ marginTop: 8 }}>
-              {verifiedSupplierRows > 0 || syntheticSupplierRows > 0 || missingSupplierRows > 0
-                ? `Live authorized-supplier identity: ${verifiedSupplierRows}; synthetic/preview: ${syntheticSupplierRows}; no supplier match: ${missingSupplierRows} (of ${report.parts.length}). Identity, lifecycle, stock, and price each keep their own source — a live identity never makes a synthetic price appear live.`
-                : report.mode === "synthetic-preview"
-                  ? "Supplier prices, stock, and lifecycle are synthetic estimates, not live distributor evidence."
-                  : "No per-row supplier evidence summary is available for this analysis yet."}
-            </p>
+            {verifiedSupplierRows > 0 || syntheticSupplierRows > 0 || missingSupplierRows > 0 || report.mode === "synthetic-preview" ? (
+              <p className="cv-small-note" style={{ marginTop: 8 }}>
+                Evidence is recorded per field. A live identity match does not make synthetic prices, stock, or lifecycle values live.
+              </p>
+            ) : null}
           </section>
 
           <section className="cv-card pad cv-report-decisions" style={{ marginBottom: 14 }}>
@@ -580,7 +580,7 @@ export default function ReportPage() {
                         <td><span className="cv-badge blue">{decision.decision_label}</span></td>
                         <td>
                           {decision.reviewer}
-                          <div className="cv-muted">{decision.rationale}</div>
+                          <div className="cv-muted">{cleanUserText(decision.rationale)}</div>
                         </td>
                         <td>
                           {decision.validation_checks?.length ? (
@@ -716,7 +716,7 @@ export default function ReportPage() {
                               <td>
                                 <strong>{String(row.mpn)}</strong>
                                 <div className="cv-small-note">
-                                  {String(row.why || "")}
+                                  {cleanUserText(row.why)}
                                 </div>
                               </td>
                               <td>{String(row.bom_path || "")}</td>

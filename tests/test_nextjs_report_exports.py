@@ -20,6 +20,7 @@ from apps.api.report_exports import (
     build_pdf,
     build_report_export,
     build_xlsx,
+    safe_download_stem,
 )
 from apps.api.sandbox_auth import reset_auth_store_for_tests
 from apps.api.workspace_store import reset_store_for_tests
@@ -188,6 +189,110 @@ def test_xlsx_keeps_quantities_risk_stock_and_price_numeric():
     assert summary["Health score"].value == 81
     assert summary["Total components"].data_type == "n"
     assert summary["Total components"].value == 1
+
+
+def test_report_summaries_keep_unverified_parts_out_of_low_risk_counts():
+    report = {
+        "project_name": "Verification check",
+        "bom_name": "verification.csv",
+        "mode": "live",
+        "total_parts": 2,
+        "summary_message": "Supplier evidence is incomplete for one component.",
+        "high_risk_count": 0,
+        "medium_risk_count": 0,
+        "low_risk_count": 1,
+        "parts": [
+            {"MPN": "PART-UNKNOWN", "Risk Level": "Needs verification", "Risk Score": 0},
+            {"MPN": "PART-LOW", "Risk Level": "Low", "Risk Score": 18},
+        ],
+    }
+
+    workbook = load_workbook(io.BytesIO(build_xlsx(report)), data_only=True)
+    summary_text = " ".join(
+        str(cell.value or "")
+        for row in workbook["Summary"].iter_rows()
+        for cell in row
+    )
+    summary_facts = {
+        row[0].value: row[1].value
+        for row in workbook["Summary"].iter_rows(min_row=4)
+        if row[0].value
+    }
+    assert "Executive summary" in summary_text
+    assert "Supplier evidence is incomplete" in summary_text
+    assert summary_facts["Risk not assessed"] == 1
+    assert summary_facts["Low risk"] == 1
+
+    pdf_text, _ = _pdf_text(build_pdf(report))
+    normalized = _normalized(pdf_text)
+    assert _normalized("Executive summary") in normalized
+    assert _normalized("Supplier evidence is incomplete") in normalized
+    assert _normalized("1 needs verification") in normalized
+
+
+def test_report_exports_reconcile_saved_counts_from_visible_rows():
+    report = {
+        "project_name": "Reconciliation check",
+        "bom_name": "reconciliation.csv",
+        "mode": "live",
+        "total_parts": 2,
+        "high_risk_count": 0,
+        "medium_risk_count": 0,
+        "low_risk_count": 2,
+        "parts": [
+            {"MPN": "PART-HIGH", "Risk Level": "High"},
+            {"MPN": "PART-LOW", "Risk Level": "Low", "Risk Score": 16},
+        ],
+    }
+
+    workbook = load_workbook(io.BytesIO(build_xlsx(report)), data_only=True)
+    summary = {
+        row[0].value: row[1].value
+        for row in workbook["Summary"].iter_rows(min_row=4)
+        if row[0].value
+    }
+    assert summary["Risk assessed"] == 2
+    assert summary["Risk not assessed"] == 0
+    assert summary["High risk"] == 1
+    assert summary["Low risk"] == 1
+
+    pdf_text, _ = _pdf_text(build_pdf(report))
+    assert _normalized("High / medium / low: 1 / 0 / 1") in _normalized(pdf_text)
+
+
+def test_exports_hide_opaque_record_references_from_names_and_summary():
+    opaque_reference = "faf64399-Ofsd7-......"
+    report = {
+        "project_name": opaque_reference,
+        "bom_name": f"controller {opaque_reference}.csv",
+        "mode": "live",
+        "health_status": opaque_reference,
+        "summary_message": f"Review this saved analysis: {opaque_reference}",
+        "parts": [
+            {
+                "MPN": "PART-1",
+                "Risk Level": "Needs verification",
+                "Risk Reasons": f"Review source record {opaque_reference}.",
+            }
+        ],
+    }
+
+    csv_text = build_csv(report).decode("utf-8-sig")
+    workbook = load_workbook(io.BytesIO(build_xlsx(report)), data_only=True)
+    workbook_text = " ".join(
+        str(cell.value or "")
+        for sheet in workbook.worksheets
+        for row in sheet.iter_rows()
+        for cell in row
+    )
+    pdf_text = _normalized(_pdf_text(build_pdf(report))[0])
+
+    assert opaque_reference not in csv_text
+    assert opaque_reference not in workbook_text
+    assert opaque_reference not in pdf_text
+    assert "Engineering workspace" in workbook_text
+    assert "controller record reference.csv" in workbook_text
+    assert safe_download_stem({"bom_name": opaque_reference}) == "cadivor-report-risk-report"
 
 
 # ---------------------------------------------------------------------------

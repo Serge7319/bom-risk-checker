@@ -231,11 +231,11 @@ class ComparePartsCoreTests(unittest.TestCase):
         self.assertFalse(comparison["datasheet_identity"]["part_b"]["verified"])
         self.assertNotEqual(comparison["finding"], FINDING_COMPATIBLE)
 
-    def test_capacitor_material_voltage_difference(self):
+    def test_unverified_capacitor_voltage_difference_needs_verification(self):
         comparison = build_parts_comparison(_cap(v="50V"), _cap(v="25V", mpn="ALT"))
-        self.assertEqual(comparison["finding"], FINDING_MATERIAL)
+        self.assertEqual(comparison["finding"], FINDING_NEEDS_DATA)
         assessments = {row["Attribute"]: row["Assessment"] for row in comparison["rows"]}
-        self.assertEqual(assessments.get("Rated voltage"), FINDING_MATERIAL)
+        self.assertEqual(assessments.get("Rated voltage"), FINDING_NEEDS_DATA)
 
     def test_resistor_inductor_diode_families(self):
         for builder, family in (
@@ -392,7 +392,7 @@ class ComparePartsCoreTests(unittest.TestCase):
         self.assertTrue(comparison["family_mismatch"])
         self.assertEqual(comparison["finding"], FINDING_MATERIAL)
         family_row = next(row for row in comparison["rows"] if row["Attribute"] == "Component family")
-        self.assertEqual(family_row["Assessment"], FINDING_MATERIAL)
+        self.assertEqual(family_row["Assessment"], FINDING_NEEDS_DATA)
 
     def test_missing_data_never_inferred_as_match(self):
         left = {"description": "Ceramic capacitor", "package": "0603", "manufacturer_part_number": "A"}
@@ -496,7 +496,10 @@ class ComparePartsCoreTests(unittest.TestCase):
         self.assertIn("does not infer compatibility", result["error"])
         self.assertIsInstance(comparison, dict)
         self.assertTrue(comparison["rows"])
-        self.assertEqual(sum(comparison["counts"].values()), len(comparison["rows"]))
+        self.assertEqual(
+            sum(value for key, value in comparison["counts"].items() if key != "breakdown"),
+            len(comparison["rows"]),
+        )
         self.assertTrue(
             all(FINDING_NEEDS_DATA == row["Assessment"] for row in comparison["rows"])
         )
@@ -605,7 +608,7 @@ class ComparePartsCoreTests(unittest.TestCase):
         self.assertEqual(comparison["part_b"]["mpn"], "NE555P")
         self.assertTrue(comparison["rows"])
         self.assertEqual(
-            sum(comparison["counts"].values()),
+            sum(value for key, value in comparison["counts"].items() if key != "breakdown"),
             len(comparison["rows"]),
         )
         self.assertTrue(

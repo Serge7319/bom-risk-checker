@@ -10,7 +10,7 @@ import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchMonitoring, notifyMonitoringAlert, refreshLiveMonitoring, refreshMonitoring, updateMonitoringPreferences } from "@/lib/api";
 import { markReviewProgress, readReviewProgress } from "@/lib/bomDraft";
-import { evidenceSourceLabel } from "@/lib/display";
+import { cleanUserText, evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
@@ -84,9 +84,6 @@ function MonitoringPageInner() {
   const liveRefresh = (data?.live_refresh || {}) as Record<string, unknown>;
   const scheduler = (data?.scheduler || {}) as Record<string, unknown>;
   const schedulerReady = scheduler.status === "ready";
-  const schedulerGaps = Array.isArray(scheduler.missing_requirements)
-    ? (scheduler.missing_requirements as unknown[]).map(String)
-    : [];
   const emailReady = preferences.email_delivery_enabled === true
     && preferences.email_transport_ready === true;
   const failedParts = partStatus.filter((row) => row.provider_failure === true);
@@ -163,7 +160,7 @@ function MonitoringPageInner() {
     try {
       const result = await notifyMonitoringAlert(session.access_token, alertId);
       setRefreshNote(
-        `Explicit notify for alert ${alertId}: ${String(result.status || result.detail || "requested")}. Refresh never sends email.`,
+        `Manual notification request: ${cleanUserText(result.status || result.detail || "requested")}. Refresh never sends email.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Notify failed");
@@ -181,7 +178,7 @@ function MonitoringPageInner() {
       <AnalysisStageNavigation analysisId={activeAnalysisId} current="monitor" />
       {activeAnalysisId ? (
         <p className="cv-evidence-context" role="note">
-          Monitoring signals for analysis <strong>{activeAnalysisId}</strong>
+          Monitoring signals for this saved analysis
           {requestedAnalysisId ? " (selected from report)" : " (last remembered analysis)"}.
         </p>
       ) : null}
@@ -239,7 +236,7 @@ function MonitoringPageInner() {
             </div>
             {liveRefresh.status !== "ready" ? (
               <p className="cv-small-note" style={{ marginTop: 8 }}>
-                Live supplier refresh is {String(liveRefresh.status || "not connected").replaceAll("_", " ")}. {String(liveRefresh.detail || "Provider credentials and the live refresh gate are required.")}
+                Live supplier refresh is {cleanUserText(String(liveRefresh.status || "not connected").replaceAll("_", " "))}. {cleanUserText(liveRefresh.detail) || "Provider credentials and the live refresh gate are required."}
               </p>
             ) : null}
           </section>
@@ -248,7 +245,7 @@ function MonitoringPageInner() {
             <p className="cv-card-subtitle">
               {schedulerReady
                 ? "Automatic supplier checks run every six hours for saved analyses in this workspace after you opt in."
-                : `Your supplier-check preference can be saved now; automatic checks are not active yet${schedulerGaps.length ? ` until ${schedulerGaps.join(", ")}` : ""}.`}{" "}
+                : "Automatic supplier checks are not running yet. Your preference will take effect when scheduled monitoring is enabled."}{" "}
               Email alerts go only to your verified Cadivor account address: <strong>{String(preferences.email || session.email)}</strong>.
             </p>
             <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
@@ -259,7 +256,7 @@ function MonitoringPageInner() {
                   disabled={Boolean(savingPreferences)}
                   onChange={(event) => void savePreference("supplier_checks", event.target.checked)}
                 />
-                <span><strong>Automatically check supplier data</strong><br /><small className="cv-small-note">Only exact, identity-matched results update the monitoring snapshot. Distributor API limits apply.</small></span>
+                <span><strong>{schedulerReady ? "Automatically check supplier data" : "Enable automatic supplier checks when available"}</strong><br /><small className="cv-small-note">Only exact, identity-matched results update the monitoring snapshot.</small></span>
               </label>
               <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                 <input
@@ -268,7 +265,7 @@ function MonitoringPageInner() {
                   disabled={Boolean(savingPreferences)}
                   onChange={(event) => void savePreference("email_alerts", event.target.checked)}
                 />
-                <span><strong>Email me when a new monitoring alert is found</strong><br /><small className="cv-small-note">{emailReady ? "Email delivery is configured. You can turn this off at any time." : "Your opt-in is saved, but delivery is not active until Cadivor configures and enables its verified email service."}</small></span>
+                <span><strong>Email me when a new monitoring alert is found</strong><br /><small className="cv-small-note">{emailReady ? "Email delivery is on. You can turn this off at any time." : "Your preference is saved, but email alerts are not being sent yet."}</small></span>
               </label>
             </div>
           </section>
@@ -298,7 +295,7 @@ function MonitoringPageInner() {
                         <td><span className={`cv-badge ${String(a.severity).toLowerCase() === "high" ? "red" : "amber"}`}>{String(a.severity)}</span></td>
                         <td><strong>{String(a.part_number || "")}</strong></td>
                         <td>{String(a.alert_type || "")}</td>
-                        <td>{String(a.alert_message || "")}</td>
+                        <td>{cleanUserText(a.alert_message)}</td>
                         <td>{evidenceSourceLabel(a.evidence_source)}</td>
                         <td>{a.persisted === false ? <span className="cv-badge amber">Not saved — refresh</span> : <span className="cv-badge green">Saved</span>}</td>
                         <td style={{ whiteSpace: "nowrap" }}>

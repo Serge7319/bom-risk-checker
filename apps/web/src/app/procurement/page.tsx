@@ -16,14 +16,14 @@ import {
   listReports,
   type ProcurementQuote,
 } from "@/lib/api";
-import { evidenceSourceLabel } from "@/lib/display";
+import { cleanUserText, evidenceSourceLabel, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
 function analysisLabel(row: Record<string, unknown>) {
-  const project = String(row.project_name || "").trim();
-  const bom = String(row.bom_name || row.filename || "").trim();
-  const revision = String(row.revision || "").trim();
+  const project = userFacingLabel(row.project_name, "");
+  const bom = userFacingLabel(row.bom_name || row.filename, "");
+  const revision = userFacingLabel(row.revision, "");
   const title = [project, bom].filter(Boolean).join(" · ") || "Saved analysis";
   return revision ? `${title} (rev ${revision})` : title;
 }
@@ -283,16 +283,16 @@ function ProcurementPageInner() {
   const selectedPart =
     allParts.find((part) => partKey(part) === selectedPartKey) || allParts[0] || null;
   const contextLabel = [
-    String(data?.project_name || "").trim(),
-    String(data?.bom_name || data?.filename || "").trim(),
-    data?.revision ? `rev ${String(data.revision)}` : "",
+    userFacingLabel(data?.project_name, ""),
+    userFacingLabel(data?.bom_name || data?.filename, ""),
+    data?.revision ? `rev ${userFacingLabel(data.revision, "—")}` : "",
   ]
     .filter(Boolean)
     .join(" · ");
 
   const display = (value: unknown, fallback = "Not recorded") => {
     if (value === null || value === undefined || String(value).trim() === "") return fallback;
-    return String(value);
+    return cleanUserText(String(value));
   };
 
   const comparisonRows: ComparisonRow[] = useMemo(() => {
@@ -480,9 +480,9 @@ function ProcurementPageInner() {
                 </p>
                 <p className="cv-small-note" style={{ marginTop: 8 }} data-testid="procurement-context">
                   {contextLabel
-                    ? `Showing ${contextLabel}${activeAnalysisId ? ` · ${activeAnalysisId}` : ""}`
+                    ? `Showing ${contextLabel}`
                     : activeAnalysisId
-                      ? `Showing analysis ${activeAnalysisId}`
+                      ? "Showing the selected saved analysis"
                       : "No analysis selected — choose a saved BOM below."}
                 </p>
               </div>
@@ -710,7 +710,7 @@ function ProcurementPageInner() {
                       <ul>
                         {comparisonSummaries.map((summary) => (
                           <li key={summary.currency}>
-                            At {comparisonQuantity} units, the lowest recorded tier is {summary.currency} {summary.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} per unit from {summary.supplier}{summary.reference ? ` (${summary.reference})` : ""}.
+                            At {comparisonQuantity} units, the lowest recorded tier is {summary.currency} {summary.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} per unit from {summary.supplier}{summary.reference ? ` (${cleanUserText(summary.reference)})` : ""}.
                           </li>
                         ))}
                       </ul>
@@ -755,7 +755,7 @@ function ProcurementPageInner() {
                           <tr key={row.id}>
                             <td>
                               <strong>{row.supplier}</strong>
-                              <small className="cv-procurement-description">{row.kind}{row.quoteReference ? ` · ${row.quoteReference}` : ""}</small>
+                              <small className="cv-procurement-description">{cleanUserText(row.kind)}{row.quoteReference ? ` · ${cleanUserText(row.quoteReference)}` : ""}</small>
                             </td>
                             <td>
                               <span className={`cv-badge ${row.exactPart ? "green" : "amber"}`}>

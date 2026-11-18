@@ -15,6 +15,7 @@ import {
   type AnalyzeSummary,
   type DecisionRecord,
 } from "@/lib/api";
+import { cleanUserText, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
@@ -121,7 +122,7 @@ function EngineeringDecisionsPageInner() {
           <div style={{ marginBottom: 12 }}>
             <h3 className="cv-card-title">Decision queue from {requestedAnalysisId ? "selected analysis" : "latest analysis"}</h3>
             <p className="cv-card-subtitle">
-              {last.filename || "BOM"} · {last.total_parts} parts. Open the report
+              {userFacingLabel(last.filename, "BOM")} · {last.total_parts} parts. Open the report
               for part-level evidence. Supplier prices and fit approvals require verified
               source data, so this report does not infer them.
             </p>
@@ -214,10 +215,10 @@ function EngineeringDecisionsPageInner() {
                     <tr key={record.id}>
                       <td>{record.created_at ? new Date(record.created_at).toLocaleDateString() : "—"}</td>
                       <td>
-                        <strong>{record.project_name || "Workspace"}</strong>
+                        <strong>{userFacingLabel(record.project_name, "Workspace")}</strong>
                         <div className="cv-muted">
                           {record.analysis_id
-                            ? `${record.bom_name || "Saved BOM"}${record.revision ? ` · rev ${record.revision}` : ""}`
+                            ? `${userFacingLabel(record.bom_name, "Saved BOM")}${record.revision ? ` · rev ${cleanUserText(record.revision)}` : ""}`
                             : "No BOM — workspace-level decision"}
                         </div>
                       </td>
@@ -251,7 +252,7 @@ function EngineeringDecisionsPageInner() {
                         <div className="cv-muted">{record.reviewer}</div>
                       </td>
                       <td>
-                        <div>{record.rationale}</div>
+                        <div>{cleanUserText(record.rationale)}</div>
                         {record.validation_checks?.length ? (
                           <div className="cv-small-note">
                             Checks completed: {record.validation_checks.map((item) => item.replaceAll("_", " ")).join(" · ")}
@@ -259,8 +260,8 @@ function EngineeringDecisionsPageInner() {
                         ) : null}
                         {record.follow_up_action ? (
                           <div className="cv-small-note">
-                            Follow-up: {record.follow_up_action}
-                            {record.follow_up_owner ? ` · ${record.follow_up_owner}` : ""}
+                            Follow-up: {cleanUserText(record.follow_up_action)}
+                            {record.follow_up_owner ? ` · ${cleanUserText(record.follow_up_owner)}` : ""}
                             {record.follow_up_due_date ? ` · due ${record.follow_up_due_date}` : ""}
                           </div>
                         ) : null}
@@ -272,8 +273,8 @@ function EngineeringDecisionsPageInner() {
                             snapshot.engineering_evidence_status
                             || (record.verified_primary_evidence ? "verified" : "unverified"),
                           );
-                          const sourceA = snapshot.source_a ? String(snapshot.source_a) : "";
-                          const sourceB = snapshot.source_b ? String(snapshot.source_b) : "";
+                          const sourceA = cleanUserText(snapshot.source_a);
+                          const sourceB = cleanUserText(snapshot.source_b);
                           return (
                             <>
                               {finding ? <div className="cv-small-note">Compare finding: {finding}</div> : null}

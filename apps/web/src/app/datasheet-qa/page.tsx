@@ -68,18 +68,18 @@ function DatasheetQaPageInner() {
           ).trim();
           if (mfr) setManufacturer(mfr);
           setBomNote(
-            `Bound to BOM analysis ${analysisId}: ${queryMpn}${mfr ? ` · ${mfr}` : ""}. The PDF must verify this exact part.`,
+            `Selected from the saved BOM: ${queryMpn}${mfr ? ` · ${mfr}` : ""}. The datasheet must verify this exact part.`,
           );
         } else {
           setBomNote(
-            `MPN ${queryMpn} is selected, but it was not found in analysis ${analysisId}. Enter manufacturer manually if needed.`,
+            `MPN ${queryMpn} is selected, but it was not found in the saved BOM. Enter the manufacturer manually if needed.`,
           );
         }
       })
       .catch(() => {
         if (!active) return;
         setBomNote(
-          `Selected part ${queryMpn}. Could not load analysis ${analysisId}; manufacturer may need to be entered manually.`,
+          `Selected part ${queryMpn}. The saved BOM could not be loaded; enter the manufacturer manually if needed.`,
         );
       });
     return () => {

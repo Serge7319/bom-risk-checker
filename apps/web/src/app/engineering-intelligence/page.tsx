@@ -7,6 +7,7 @@ import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { listReports } from "@/lib/api";
+import { userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
@@ -69,18 +70,14 @@ export default function EngineeringIntelligencePage() {
         <section className="cv-card pad cv-record-header">
           <div className="cv-eyebrow">Latest saved engineering report</div>
           <h2 className="cv-card-title" style={{ fontSize: 22, marginTop: 8 }}>
-            {last.filename || "BOM analysis"}
+            {userFacingLabel(last.filename, "BOM analysis")}
           </h2>
           <p className="cv-card-subtitle">
-            Health {last.health_score ?? "—"}/100 · {last.health_status} ·{" "}
+            Health {last.health_score ?? "—"}/100 · {userFacingLabel(last.health_status, "Not reported")} ·{" "}
             {last.total_parts} components · {last.high_risk_count} high /{" "}
             {last.medium_risk_count} medium risk
           </p>
           <dl className="cv-record-meta" style={{ marginTop: 16 }}>
-            <div className="cv-record-field">
-              <dt>Record</dt>
-              <dd style={{ fontSize: 11 }}>{last.analysis_id}</dd>
-            </div>
             <div className="cv-record-field">
               <dt>Saved</dt>
               <dd>

@@ -7,6 +7,7 @@ import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchPortfolio } from "@/lib/api";
+import { userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
@@ -52,7 +53,7 @@ export default function PortfolioPage() {
                   <tbody>
                     {reports.map((r, i) => (
                       <tr key={i}>
-                        <td data-label="File"><strong>{String(r.filename || "")}</strong></td>
+                        <td data-label="File"><strong>{userFacingLabel(r.bom_name || r.filename, "Saved analysis")}</strong></td>
                         <td className="cv-num" data-label="Health">{String(r.health_score ?? "—")}</td>
                         <td className="cv-num" data-label="Parts">{String(r.total_parts ?? "—")}</td>
                         <td className="cv-num" data-label="High">{String(r.high_risk_count ?? "—")}</td>
@@ -70,7 +71,7 @@ export default function PortfolioPage() {
                   <tbody>
                     {projects.slice(0, 20).map((r, i) => (
                       <tr key={i}>
-                        <td data-label="Project"><strong>{String(r.Project || r.project || "")}</strong></td>
+                        <td data-label="Project"><strong>{userFacingLabel(r.Project || r.project, "Project")}</strong></td>
                         <td className="cv-num" data-label="Health">{String(
                           r.Health == null || r.Health === "" || String(r.Health).toLowerCase() === "unknown"
                             ? "Not scored"

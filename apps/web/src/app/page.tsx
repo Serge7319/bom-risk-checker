@@ -7,7 +7,7 @@ import { LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { fetchWorkspaceHome } from "@/lib/api";
-import { evidenceSourceLabel } from "@/lib/display";
+import { cleanUserText, evidenceSourceLabel, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
@@ -107,7 +107,7 @@ export default function HomePage() {
               </div>
               <div className="cv-hero-side-copy">
                 {latest
-                  ? `${String(latest.project_name || latest.filename || "BOM")} · rev ${String(latest.revision || "—")} · ${String(latest.total_parts ?? 0)} parts`
+                  ? `${userFacingLabel(latest.bom_name || latest.project_name || latest.filename, "BOM")} · rev ${String(latest.revision || "—")} · ${String(latest.total_parts ?? 0)} parts`
                   : "No saved analysis yet."}
               </div>
               <div className="cv-hero-source">Data: saved to this workspace</div>
@@ -175,7 +175,7 @@ export default function HomePage() {
                         return (
                           <tr key={String(project.id)}>
                             <td>
-                              <strong>{String(project.name)}</strong>
+                              <strong>{userFacingLabel(project.name, "Project")}</strong>
                             </td>
                             <td>{String(project.bom_count ?? boms.length)}</td>
                             <td>
@@ -237,12 +237,12 @@ export default function HomePage() {
                           <div className="cv-priority-title">
                             {item.mpn
                               ? String(item.mpn)
-                              : String(item.bom_name || "BOM")}
-                            {item.why ? ` · ${String(item.why)}` : ""}
+                              : userFacingLabel(item.bom_name, "BOM")}
+                            {item.why ? ` · ${cleanUserText(item.why)}` : ""}
                           </div>
                           <div className="cv-priority-meta">
-                            {String(item.project_name || "")}
-                            {item.bom_path ? ` · ${String(item.bom_path)}` : ""}
+                            {userFacingLabel(item.project_name, "")}
+                            {item.bom_path ? ` · ${cleanUserText(item.bom_path)}` : ""}
                           </div>
                           <div className="cv-evidence-chips">
                             <span className="cv-evidence-chip">
@@ -297,7 +297,7 @@ export default function HomePage() {
                   <h3 className="cv-card-title" style={{ fontSize: 16 }}>
                     {String(action.title)}
                   </h3>
-                  <p className="cv-card-subtitle">{String(action.detail)}</p>
+                  <p className="cv-card-subtitle">{cleanUserText(action.detail)}</p>
                   {live ? (
                     <div style={{ marginTop: 12 }}>
                       <SecondaryLink href={href}>Open</SecondaryLink>

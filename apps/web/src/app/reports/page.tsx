@@ -26,6 +26,7 @@ import {
   type PublicBomVerifiedReport,
 } from "@/lib/publicBomStress";
 import { PAGE_META } from "@/lib/routes";
+import { userFacingLabel } from "@/lib/display";
 import { useRequireSession } from "@/lib/session";
 
 function projectNameDraftsFor(projects: Array<Record<string, unknown>>): Record<string, string> {
@@ -169,7 +170,7 @@ function ReportsInner() {
       await moveBom(session.access_token, bomId, projectId);
       await reloadSavedBoms();
       const target = projects.find((project) => String(project.id || "") === projectId);
-      setManagementNotice(`BOM moved to ${String(target?.name || "the selected project")}; its report history is preserved.`);
+      setManagementNotice(`BOM moved to ${userFacingLabel(target?.name, "the selected project")}; its report history is preserved.`);
     } catch (err) {
       setManagementError(err instanceof Error ? err.message : "BOM could not be moved to that project.");
     } finally {
@@ -180,7 +181,7 @@ function ReportsInner() {
   async function onDeleteBom(bom: Record<string, unknown>) {
     if (!session) return;
     const bomId = String(bom.id || "");
-    const bomName = String(bom.name || "this BOM");
+    const bomName = userFacingLabel(bom.name, "this BOM");
     const revisions = Number(bom.revision_count || 0);
     const reportCount = Number(bom.analysis_count || (bom.latest_analysis_id ? 1 : 0));
     const confirmed = window.confirm(
@@ -283,7 +284,7 @@ function ReportsInner() {
           {managementNotice ? <p className="cv-small-note" role="status">{managementNotice}</p> : null}
           {projects.map((project) => {
             const projectId = String(project.id || "");
-            const projectName = String(project.name || "Project");
+            const projectName = userFacingLabel(project.name, "Project");
             const boms = (project.boms || []) as Array<Record<string, unknown>>;
             if (!boms.length) return null;
             return (
@@ -320,7 +321,7 @@ function ReportsInner() {
                     <tbody>
                       {boms.map((bom) => {
                         const bomId = String(bom.id || "");
-                        const bomName = String(bom.name || "Saved BOM");
+                        const bomName = userFacingLabel(bom.name, "Saved BOM");
                         const bomReports = reports.filter((report) => String(report.bom_id || "") === bomId);
                         const revisions = [...new Set(bomReports.map((report) => String(report.revision || "").trim()).filter(Boolean))];
                         const latest = (bom.latest_analysis || {}) as Record<string, unknown>;
@@ -367,7 +368,7 @@ function ReportsInner() {
                                   >
                                     {projects.map((option) => (
                                       <option key={String(option.id)} value={String(option.id)}>
-                                        {String(option.name || "Project")}
+                                        {userFacingLabel(option.name, "Project")}
                                       </option>
                                     ))}
                                   </select>
@@ -439,7 +440,7 @@ function ReportsInner() {
           {stressReport ? (
             <>
               <p className="cv-small-note" style={{ marginTop: 0 }}>
-                {stressReport.filename || "Uploaded BOM"} ·{" "}
+                {userFacingLabel(stressReport.filename, "Uploaded BOM")} ·{" "}
                 {stressReport.row_count ?? stressReport.results?.length ?? 0}{" "}
                 components
                 {stressReport.created_at
@@ -585,7 +586,7 @@ function ReportsInner() {
                     const id = String(row.id || row.analysis_id || "");
                     return (
                       <tr key={id}>
-                        <td><strong>{String(row.filename || row.bom_name || id)}</strong></td>
+                      <td><strong>{userFacingLabel(row.bom_name || row.filename || row.project_name, "Saved analysis")}</strong></td>
                         <td>{row.health_score == null ? "Not scored" : `${String(row.health_score)}/100`}</td>
                         <td>{String(row.total_parts ?? "—")}</td>
                         <td>{String(row.high_risk_count ?? "—")}</td>

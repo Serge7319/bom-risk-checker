@@ -150,9 +150,9 @@ def test_nested_smoke_bom_quantities_rollups_exports_and_consumers():
     assert len(report["parts"]) == 8
     by_mpn = {p["MPN"]: p for p in report["parts"]}
     assert by_mpn["LM358DR"]["quantity_per_parent"] == 4
-    assert by_mpn["CAP100U"]["quantity_per_parent"] == 4
+    assert by_mpn["CAP-100U"]["quantity_per_parent"] == 4
     assert by_mpn["LM358DR"]["effective_quantity"] == 8
-    assert by_mpn["CAP100U"]["effective_quantity"] == 8
+    assert by_mpn["CAP-100U"]["effective_quantity"] == 8
 
     hierarchy = report["hierarchy"]
     assert hierarchy["has_hierarchy"] is True
@@ -178,7 +178,7 @@ def test_nested_smoke_bom_quantities_rollups_exports_and_consumers():
         for row in procurement.get("parts") or []
     }
     assert float(proc_by_mpn["LM358DR"]["quantity"]) == 8
-    assert float(proc_by_mpn["CAP100U"]["quantity"]) == 8
+    assert float(proc_by_mpn["CAP-100U"]["quantity"]) == 8
 
     impact = design_impact_payload(
         workspace_id=SMOKE_WORKSPACE_ID,
@@ -209,9 +209,9 @@ def test_nested_smoke_bom_quantities_rollups_exports_and_consumers():
     assert len(rows) == 8
     csv_by_mpn = {row["MPN"]: row for row in rows}
     assert float(csv_by_mpn["LM358DR"]["Effective Quantity"]) == 8
-    assert float(csv_by_mpn["CAP100U"]["Effective Quantity"]) == 8
+    assert float(csv_by_mpn["CAP-100U"]["Effective Quantity"]) == 8
     assert float(csv_by_mpn["LM358DR"]["Quantity per Parent"]) == 4
-    assert float(csv_by_mpn["CAP100U"]["Quantity per Parent"]) == 4
+    assert float(csv_by_mpn["CAP-100U"]["Quantity per Parent"]) == 4
 
     xlsx_bytes = build_xlsx(report)
     with zipfile.ZipFile(io.BytesIO(xlsx_bytes)) as archive:
@@ -227,7 +227,7 @@ def test_nested_smoke_bom_quantities_rollups_exports_and_consumers():
         if row[mpn_idx]:
             xlsx_map[str(row[mpn_idx])] = row
     assert float(xlsx_map["LM358DR"][eff_idx]) == 8
-    assert float(xlsx_map["CAP100U"][eff_idx]) == 8
+    assert float(xlsx_map["CAP-100U"][eff_idx]) == 8
     assert float(xlsx_map["LM358DR"][qpp_idx]) == 4
 
 
@@ -337,7 +337,7 @@ def test_monitoring_scoped_to_analysis_with_saved_provenance():
 
 
 def test_find_replacements_dedupes_canonical_mpn_and_flags_lifecycle_conflicts(monkeypatch):
-    def fake_search(state, mpn):
+    def fake_search(state, mpn, **_kwargs):
         state["alternative_finder_result"] = {
             "original_data": {
                 "manufacturer_part_number": mpn,

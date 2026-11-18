@@ -15,6 +15,7 @@ import {
   type Session,
 } from "@/lib/api";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { cleanUserText, userFacingLabel } from "@/lib/display";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
 import { BrandLink } from "@/components/BrandLink";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
@@ -214,7 +215,7 @@ function LoginInner() {
       const result = await verifySignupEmail(client, tokenHash);
       if (!result.ok) {
         setConfirmPhase("invalid");
-        setConfirmMessage(result.message);
+        setConfirmMessage(cleanUserText(result.message));
         return;
       }
       if (result.email) setEmail(result.email);
@@ -455,7 +456,7 @@ function LoginInner() {
           <div className="cv-card pad" style={{ marginBottom: 14, padding: 12 }} role="status">
             <strong>Invitation</strong>
             <p className="cv-small-note" style={{ marginTop: 6 }}>
-              Join <strong>{invite.workspace_name}</strong> as{" "}
+              Join <strong>{userFacingLabel(invite.workspace_name, "your workspace")}</strong> as{" "}
               {invite.role.replace(/_/g, " ")}.
             </p>
           </div>

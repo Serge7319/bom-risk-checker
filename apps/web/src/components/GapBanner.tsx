@@ -3,6 +3,7 @@ import {
   compactContextLabel,
   type EvidenceNoticeTone,
 } from "@/lib/evidenceNotice";
+import { cleanUserText } from "@/lib/display";
 
 export function GapBanner({
   children,
@@ -36,7 +37,7 @@ export function EvidenceNotice({
   gap: unknown;
   forceTone?: Exclude<EvidenceNoticeTone, "hide" | "service">;
 }) {
-  const text = typeof gap === "string" ? gap.trim() : "";
+  const text = cleanUserText(gap);
   if (!text) return null;
   const tone = forceTone || classifyEvidenceNotice(text);
   if (tone === "hide" || tone === "service") return null;

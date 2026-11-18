@@ -7,14 +7,14 @@ import { Shell } from "@/components/Shell";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchCostOptimization, listReports } from "@/lib/api";
-import { evidenceSourceLabel } from "@/lib/display";
+import { cleanUserText, evidenceSourceLabel, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
 
 function analysisLabel(row: Record<string, unknown>) {
-  const project = String(row.project_name || "").trim();
-  const bom = String(row.bom_name || row.filename || "").trim();
-  const revision = String(row.revision || "").trim();
+  const project = userFacingLabel(row.project_name, "");
+  const bom = userFacingLabel(row.bom_name || row.filename, "");
+  const revision = userFacingLabel(row.revision, "");
   const title = [project, bom].filter(Boolean).join(" · ") || "Saved analysis";
   return revision ? `${title} (rev ${revision})` : title;
 }
@@ -99,9 +99,9 @@ function CostOptimizationInner() {
   const missingPrices = Number(evidenceSummary.missing_price_count || 0);
   const activeAnalysisId = String(data?.analysis_id || selectedAnalysisId || "").trim();
   const contextLabel = [
-    String(data?.project_name || "").trim(),
-    String(data?.bom_name || data?.filename || "").trim(),
-    data?.revision ? `rev ${String(data.revision)}` : "",
+    userFacingLabel(data?.project_name, ""),
+    userFacingLabel(data?.bom_name || data?.filename, ""),
+    data?.revision ? `rev ${userFacingLabel(data.revision, "—")}` : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -152,9 +152,9 @@ function CostOptimizationInner() {
       </div>
       <p className="cv-small-note" style={{ marginBottom: 14 }} data-testid="cost-optimization-context">
         {contextLabel
-          ? `Showing ${contextLabel}${activeAnalysisId ? ` · ${activeAnalysisId}` : ""}`
+          ? `Showing ${contextLabel}`
           : activeAnalysisId
-            ? `Showing analysis ${activeAnalysisId}`
+            ? "Showing the selected saved analysis"
             : "No analysis selected — choose the same saved BOM used in Procurement."}
         {missingPrices > 0 ? ` · ${missingPrices} part(s) have no recorded unit price.` : ""}
       </p>
@@ -205,7 +205,7 @@ function CostOptimizationInner() {
                         <td className="cv-num">{formatSavingsRate(row["Savings Rate"])}</td>
                         <td className="cv-cell-wrap">
                           <span className="cv-badge gray">{evidenceSourceLabel(data.mode || "Synthetic estimate", "Synthetic estimate")}</span>
-                          <div className="cv-small-note">{String(row.Reason ?? row.Opportunity ?? row.note ?? row.Notes ?? "Modeled from saved price and quantity data.")}</div>
+                          <div className="cv-small-note">{cleanUserText(row.Reason ?? row.Opportunity ?? row.note ?? row.Notes) || "Modeled from saved price and quantity data."}</div>
                         </td>
                       </tr>
                     );

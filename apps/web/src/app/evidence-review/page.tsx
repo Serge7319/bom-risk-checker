@@ -10,7 +10,7 @@ import { PartThumbnail } from "@/components/PartThumbnail";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import { fetchReport, type Report } from "@/lib/api";
 import { markReviewProgress, readReviewProgress } from "@/lib/bomDraft";
-import { evidenceSourceLabel } from "@/lib/display";
+import { evidenceSourceLabel, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
@@ -83,7 +83,7 @@ function EvidenceReviewPageInner() {
 
       {report ? (
         <p className="cv-evidence-context" role="note">
-          Evidence for <strong>{report.bom_name || report.filename || analysisId}</strong>. Source labels describe what was recorded with the analysis; missing fields remain unverified.
+          Evidence for <strong>{userFacingLabel(report.bom_name || report.filename, "Saved analysis")}</strong>. Source labels describe what was recorded with the analysis; missing fields remain unverified.
         </p>
       ) : null}
       {busy ? <LoadingCard label="Loading component evidence…" /> : null}
