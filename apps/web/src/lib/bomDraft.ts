@@ -3,7 +3,9 @@
 import {
   analyzeBom,
   ApiError,
+  DEFAULT_BOM_INTAKE_OPTIONS,
   type AnalyzeSummary,
+  type BomIntakeOptions,
   type BomValidationPreview,
   type Session,
 } from "@/lib/api";
@@ -73,6 +75,8 @@ export type BomDraftMeta = {
   updatedAt: string;
   validation: BomValidationPreview | null;
   validationError: string;
+  /** The mapping, corrections, and options the saved validation was run with. */
+  intake: BomIntakeOptions;
   analysisId: string | null;
   summary: AnalyzeSummary | null;
   analyzeError: string;
@@ -135,6 +139,7 @@ export function emptyDraftMeta(): BomDraftMeta {
     updatedAt: new Date().toISOString(),
     validation: null,
     validationError: "",
+    intake: { ...DEFAULT_BOM_INTAKE_OPTIONS, rowCorrections: {} },
     analysisId: null,
     summary: null,
     analyzeError: "",
@@ -159,7 +164,11 @@ export function writeDraftMeta(meta: BomDraftMeta, session?: SessionIdentity): v
   if (typeof window === "undefined") return;
   const summary = meta.summary ? parseAnalyzeSummary(meta.summary) : null;
   const next = { ...meta, summary, updatedAt: new Date().toISOString() };
-  window.localStorage.setItem(draftMetaStorageKey(session), JSON.stringify(next));
+  try {
+    window.localStorage.setItem(draftMetaStorageKey(session), JSON.stringify(next));
+  } catch {
+    // Draft metadata is best-effort; a full browser quota must not break intake.
+  }
 }
 
 export function clearDraftMeta(session?: SessionIdentity): void {
@@ -314,7 +323,12 @@ export function markReviewProgress(
 export function startAnalyzeJob(
   file: File,
   token: string,
-  meta: { projectName?: string; bomName?: string; revision?: string },
+  meta: {
+    projectName?: string;
+    bomName?: string;
+    revision?: string;
+    intake?: BomIntakeOptions;
+  },
   session?: SessionIdentity,
 ): AnalyzeJob {
   return startAnalyzeJobWithRunner(

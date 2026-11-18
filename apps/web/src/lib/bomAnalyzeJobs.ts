@@ -1,6 +1,6 @@
 /** In-memory analyze jobs scoped by authenticated user + workspace. */
 
-import type { AnalyzeSummary } from "./api";
+import type { AnalyzeSummary, BomIntakeOptions } from "./api";
 
 export type AnalyzeJobStatus = "idle" | "running" | "succeeded" | "failed";
 
@@ -34,7 +34,12 @@ type JobListener = (job: AnalyzeJob | null) => void;
 export type AnalyzeRunner = (
   file: { name: string },
   token: string,
-  meta: { projectName?: string; bomName?: string; revision?: string },
+  meta: {
+    projectName?: string;
+    bomName?: string;
+    revision?: string;
+    intake?: BomIntakeOptions;
+  },
 ) => Promise<AnalyzeJobResult>;
 
 const activeJobsByOwner = new Map<string, AnalyzeJob>();
@@ -112,7 +117,12 @@ export function subscribeAnalyzeJob(
 export function startAnalyzeJobWithRunner(
   file: { name: string },
   token: string,
-  meta: { projectName?: string; bomName?: string; revision?: string },
+  meta: {
+    projectName?: string;
+    bomName?: string;
+    revision?: string;
+    intake?: BomIntakeOptions;
+  },
   session: JobSessionIdentity | undefined,
   runner: AnalyzeRunner,
   onErrorPayload?: (err: unknown) => { message: string; oneTimeReportRequired?: boolean },
