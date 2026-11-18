@@ -117,7 +117,7 @@ export default function BomAnalyzerPage() {
         fileSize: file?.size || current.fileSize,
         fileType: file?.type || current.fileType,
         fileKey: fileContentKey || current.fileKey,
-        // Row detail is rebuilt from the file after a reload; keep storage small.
+        // Row detail and column samples are rebuilt from the file after a reload.
         validation: validation ? { ...validation, rows: [] } : null,
         validationError,
         intake: appliedIntake,

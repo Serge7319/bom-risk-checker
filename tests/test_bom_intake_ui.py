@@ -108,6 +108,9 @@ def test_draft_storage_stays_small_and_restores_the_review():
     assert "intake: appliedIntake" in PAGE
     assert "Rebuild the row-by-row review" in PAGE
     assert "Draft metadata is best-effort" in DRAFT
+    # Column samples are rebuilt with the review, so they are not kept in metadata.
+    assert "validationWithoutCellSamples" in DRAFT
+    assert "sample: []" in DRAFT
 
 
 def test_review_tolerates_drafts_saved_before_intake_review_existed():

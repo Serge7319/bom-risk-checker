@@ -974,13 +974,19 @@ class IntakeResult:
         return out
 
     def excluded_rows_record(self) -> list[dict[str, Any]]:
+        """Provenance for rows the user chose to leave out.
+
+        Only mapped intake fields are stored. ``row.source`` still holds every
+        nonblank upload column for the live review, including unassigned price,
+        stock, and inventory columns, and that dict must not be saved.
+        """
         if not self.exclude_invalid_rows:
             return []
+        allowed = set(self.assigned.values())
         return [
             {
                 "row_number": r.row_number,
-                "raw": r.raw,
-                "source": r.source,
+                "raw": {field: r.raw[field] for field in FIELD_ORDER if field in allowed and field in r.raw},
                 "reasons": [i["message"] for i in r.issues if i["severity"] == "error"],
                 "codes": [i["code"] for i in r.issues if i["severity"] == "error"],
             }

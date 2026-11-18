@@ -536,6 +536,36 @@ def test_saved_report_records_corrections_and_excluded_rows(store):
     assert {p["mpn"] for p in report["parts"]} == {"LM358DR", "CD4017BE"}
 
 
+def test_saved_report_omits_unassigned_price_stock_and_inventory_on_excluded_rows(store):
+    price = "PRICE-SENTINEL-7c1e"
+    stock = "STOCK-SENTINEL-7c1e"
+    inventory = "INVENTORY-SENTINEL-7c1e"
+    payload = (
+        "MPN,Quantity,Unit Price,Qty Available,Inventory\n"
+        f"LM358DR,2,{price},{stock},{inventory}\n"
+        f",abc,{price},{stock},{inventory}\n"
+    ).encode()
+    report = analyze_upload(
+        filename="priced.csv",
+        payload=payload,
+        workspace_id="ws-intake",
+        analysis_mode="synthetic-preview",
+        exclude_invalid_rows=True,
+    )
+    from apps.api.workspace_store import get_store
+
+    saved = get_store().get_report(str(report["id"]), workspace_id="ws-intake")
+    serialized = json.dumps(saved, allow_nan=False)
+    for sentinel in (price, stock, inventory):
+        assert sentinel not in serialized
+    excluded = saved["intake"]["rows_excluded"]
+    assert [row["row_number"] for row in excluded] == [3]
+    assert excluded[0]["reasons"]
+    assert "missing_mpn" in excluded[0]["codes"]
+    assert "source" not in excluded[0]
+    assert excluded[0]["raw"] == {"mpn": "", "quantity": "abc"}
+
+
 def test_analyze_upload_refuses_unresolved_errors_and_saves_nothing(store):
     with pytest.raises(BomIntakeError) as excinfo:
         analyze_upload(
