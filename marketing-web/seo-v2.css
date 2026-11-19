@@ -25,3 +25,62 @@
 .seo-hero .seo-button:not(.seo-button-primary):hover{background:rgba(255,255,255,.13)}
 .seo-section,.seo-callout{width:min(1160px,calc(100% - 40px));margin-left:auto;margin-right:auto}
 @media(max-width:560px){.seo-section,.seo-callout{width:calc(100% - 28px)}.seo-main{padding-bottom:46px}}
+
+/* Keep crawlable pages aligned with the wider Cadivor marketing shell. */
+.seo-header-inner,.seo-footer-inner{width:min(1580px,calc(100% - 56px))}
+.seo-section,.seo-callout{width:min(1580px,calc(100% - 56px))}
+.seo-hero{padding-left:max(28px,calc((100% - 1580px)/2));padding-right:max(28px,calc((100% - 1580px)/2))}
+
+/* Give the pricing page the richer plan-card hierarchy used across Cadivor. */
+.seo-pricing-section{width:min(1280px,calc(100% - 56px));padding:36px;background:linear-gradient(180deg,#fff 0%,#f9fbff 100%);border-color:#d5e1f2;border-radius:22px;box-shadow:0 18px 46px rgba(16,40,75,.08)}
+.seo-pricing-section>h2,.seo-pricing-heading h2{font-size:30px}
+.seo-pricing-heading p{max-width:760px;margin:0;color:var(--muted)}
+.seo-pricing-section>.seo-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;align-items:stretch;margin-top:24px}
+.seo-pricing-card{position:relative;display:flex;flex-direction:column;min-height:450px;padding:25px 22px;border-color:#d8e3f2;border-radius:16px;background:linear-gradient(180deg,#fff 0%,#f9fbff 100%);box-shadow:0 14px 34px rgba(16,40,75,.07);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.seo-pricing-card:hover{transform:translateY(-4px);border-color:#b8cdf0;box-shadow:0 22px 46px rgba(16,40,75,.13)}
+.seo-pricing-card.is-featured{border:1.5px solid #3b77f2;background:linear-gradient(180deg,#f3f7ff 0%,#fff 48%);box-shadow:0 20px 44px rgba(37,99,235,.16);transform:translateY(-6px)}
+.seo-pricing-card.is-featured:hover{transform:translateY(-10px);box-shadow:0 26px 54px rgba(37,99,235,.2)}
+.seo-pricing-card .seo-kicker{margin-bottom:9px;color:#2e63c6;letter-spacing:.14em}
+.seo-pricing-card .seo-price{margin:4px 0 12px;color:#10284b;font-size:32px;line-height:1.15;letter-spacing:-.04em}
+.seo-pricing-card .seo-price small{margin-left:5px;color:#718198;font-size:12px;font-weight:700;letter-spacing:0}
+.seo-pricing-card>p{min-height:64px;color:#536987;font-size:13px;line-height:1.55}
+.seo-pricing-card>ul{flex:1;margin:18px 0 0;padding-left:18px;color:#455c7b;font-size:14px;line-height:1.7}
+.seo-pricing-card>ul li+li{margin-top:4px}
+.seo-pricing-card .plan-includes{color:#173b73;font-weight:800;list-style:none;margin-left:-18px}
+.pricing-cta{width:100%;margin-top:10px}
+.seo-pricing-card .pricing-cta:not(.seo-button-primary){border-color:#ccdaee;background:#fff;color:#1b3d6d}
+.pricing-popular{position:absolute;top:-12px;right:18px;padding:5px 9px;border-radius:999px;background:linear-gradient(135deg,#3b77f2,#215bc5);box-shadow:0 6px 14px rgba(37,99,235,.25);color:#fff;font-size:10px;font-weight:850;letter-spacing:.06em}
+.seo-pricing-one-time{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:24px 0;padding:25px 28px;border:1px solid #cbdcff;border-radius:18px;background:linear-gradient(120deg,#f0f6ff,#eaf2ff);box-shadow:0 10px 28px rgba(37,99,235,.08)}
+.seo-pricing-one-time h3{margin:0;color:#10284b;font-size:24px;line-height:1.25;letter-spacing:-.025em}
+.seo-pricing-one-time p{margin:7px 0 0;color:#526784;font-size:14px}
+.seo-pricing-one-time .seo-button{flex:0 0 auto;border-color:#b9cdee;background:#fff;color:#1b3d6d}
+.seo-pricing-enterprise{display:grid;grid-template-columns:minmax(210px,1fr) minmax(320px,1.4fr) auto;align-items:center;gap:22px;margin-top:18px;padding:22px 24px;border:1px solid #d7e1ef;border-radius:16px;background:linear-gradient(100deg,#f8fbff,#fff);box-shadow:0 10px 28px rgba(16,40,75,.05)}
+.seo-pricing-enterprise h3{margin:0;color:#10284b;font-size:18px}
+.seo-pricing-enterprise p{margin:5px 0 0;color:#5c6f89;font-size:13px}
+.seo-pricing-enterprise .seo-kicker{margin-bottom:5px}
+.seo-pricing-enterprise ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 18px;margin:0;padding-left:18px;color:#526784;font-size:12px}
+.seo-pricing-enterprise .seo-button{white-space:nowrap}
+.seo-pricing-disclosures{margin-top:18px;color:#718198;font-size:12px;line-height:1.6}
+.seo-pricing-disclosures p{margin:5px 0}
+@media(max-width:1279px){.seo-pricing-section>.seo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:800px){.seo-header-inner,.seo-footer-inner,.seo-section,.seo-callout{width:min(100% - 36px,1580px)}.seo-pricing-section{width:min(100% - 36px,1280px)}}
+@media(max-width:900px){.seo-pricing-section{padding:24px 20px}.seo-pricing-card{min-height:420px;padding:22px 18px}.seo-pricing-card.is-featured{transform:none}.seo-pricing-card.is-featured:hover{transform:translateY(-4px)}.seo-pricing-one-time{align-items:flex-start;flex-direction:column;padding:22px}.seo-pricing-one-time .seo-button{width:100%}.seo-pricing-enterprise{grid-template-columns:1fr;gap:14px}.seo-pricing-enterprise ul{grid-template-columns:repeat(2,minmax(0,1fr))}.seo-pricing-enterprise .seo-button{width:100%}}
+@media(max-width:560px){.seo-header-inner,.seo-footer-inner,.seo-section,.seo-callout{width:calc(100% - 28px)}.seo-pricing-section{width:calc(100% - 28px);padding:22px 16px}.seo-hero{padding-left:14px;padding-right:14px}.seo-pricing-card{min-height:0}.seo-pricing-card>p{min-height:0}.seo-pricing-card>ul{flex:initial}.seo-pricing-one-time{padding:20px 18px}.seo-pricing-one-time h3{font-size:21px}.seo-pricing-enterprise{padding:20px 18px}.seo-pricing-enterprise ul{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.seo-pricing-card{transition:none}}
+
+/* Match the marketing site's 1580px shell so the logo, hero and page content share one left edge. */
+.seo-main{width:100%;max-width:none;margin:0 auto;padding:0 0 76px}
+.seo-header{background:#061329;border-color:rgba(255,255,255,.1)}
+.seo-header .seo-brand{color:#fff}
+.seo-header .seo-brand-mark{background:linear-gradient(135deg,#4e8cff,#2359c8);color:#fff;box-shadow:0 8px 24px rgba(43,106,220,.28)}
+.seo-header .seo-nav a{color:#c5d2e5}
+.seo-header .seo-nav a:hover{color:#fff}
+.seo-pricing-page .seo-hero{width:100%;max-width:none;min-height:320px;margin:0;padding:48px max(28px,calc((100vw - 1580px)/2)) 46px;color:#fff;background:radial-gradient(circle at 78% 14%,#173f78 0,transparent 38%),linear-gradient(135deg,#061329,#092550)}
+.seo-pricing-page .seo-hero .seo-eyebrow{color:#6fa0ff}
+.seo-pricing-page .seo-hero h1{max-width:1400px;color:#fff;font-size:clamp(42px,4.2vw,64px);line-height:1.04;letter-spacing:-.055em}
+.seo-pricing-page .seo-hero .seo-lede{max-width:700px;color:#bdcde2;font-size:16px;line-height:1.65}
+.seo-pricing-page .seo-hero .seo-note{max-width:800px;color:#a6bad4}
+.seo-pricing-page .seo-hero .seo-button:not(.seo-button-primary){border-color:rgba(255,255,255,.38);background:rgba(255,255,255,.08);color:#fff}
+.seo-pricing-section{margin-top:42px}
+@media(max-width:800px){.seo-pricing-page .seo-hero{min-height:0;padding:44px 22px 40px}.seo-pricing-page .seo-hero h1{font-size:clamp(36px,9vw,52px)}}
+@media(max-width:560px){.seo-pricing-page .seo-hero{padding:38px 16px 34px}}
