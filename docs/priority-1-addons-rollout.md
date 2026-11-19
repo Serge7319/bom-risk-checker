@@ -29,10 +29,10 @@ Cadivor reads the amount and currency from Stripe and displays them in Settings.
 
 No annual plan price is changed by these steps.
 
-The Professional API add-on unlocks workspace-scoped, read-only report endpoints
-with revocable API keys. Apply the migration and deploy `subscription-checkout`
-before creating keys. Endpoint and key behavior are documented in
-`developer-api.md`.
+The Professional API add-on unlocks developer API keys for workspace-scoped BOM
+analysis submissions and report reads. API keys are revocable. Apply the
+migration and deploy `subscription-checkout` before creating keys. Endpoint and
+key behavior are documented in `developer-api.md`.
 
 ## Slack
 

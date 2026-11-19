@@ -1,0 +1,18 @@
+{
+  "identifier": "com.cadivor.kicad",
+  "name": "Cadivor BOM Check",
+  "description": "Send the open KiCad PCB bill of materials to Cadivor and open the saved engineering report.",
+  "runtime": {
+    "type": "python"
+  },
+  "actions": [
+    {
+      "identifier": "send-board-bom",
+      "name": "Analyze BOM with Cadivor",
+      "description": "Send BOM fields from the open PCB to Cadivor.",
+      "show-button": true,
+      "scopes": ["pcb"],
+      "entrypoint": "cadivor_action.py"
+    }
+  ]
+}

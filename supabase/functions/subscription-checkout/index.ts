@@ -303,6 +303,8 @@ async function resolveDeveloperApiKey(apiKey: string) {
   if (!(await apiAccessEnabled(String(data.user_id), profile))) {
     return response({ ok: false, detail: "Developer API access is not active for this account." }, 403);
   }
+  const effective = effectivePlan(profile);
+  const apiAddon = await apiAddonFor(String(data.user_id));
   const { error: touchError } = await supabase
     .from("cadivor_developer_api_keys")
     .update({ last_used_at: new Date().toISOString() })
@@ -314,6 +316,9 @@ async function resolveDeveloperApiKey(apiKey: string) {
     key_id: data.id,
     user_id: data.user_id,
     workspace_id: data.workspace_id,
+    plan: effective.plan,
+    trial_status: effective.trial_status,
+    api_access_addon_active: apiAddon.active,
   });
 }
 
