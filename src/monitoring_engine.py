@@ -270,6 +270,58 @@ def detect_monitor_alerts(
             )
         )
 
+    def pcn_event(snapshot):
+        snapshot = snapshot if isinstance(snapshot, dict) else {}
+        status = _display_text(snapshot.get("pcn_status"), "")
+        no_notice_labels = {"none", "no pcn", "no notice", "not found", "not reported", "unknown"}
+        number = _display_text(snapshot.get("pcn_number"), "")
+        date = _display_text(snapshot.get("pcn_date"), "")
+        url = _display_text(snapshot.get("pcn_url"), "")
+        has_notice = bool(number or date or url or (status and status.casefold() not in no_notice_labels))
+        evidence_is_specific = (
+            snapshot.get("pcn_evidence_class") == "live-authorized-supplier"
+            and url.startswith("https://")
+        )
+        return (number, date, status, url), has_notice and evidence_is_specific
+
+    previous_pcn, previous_pcn_supported = pcn_event(previous_snapshot)
+    current_pcn, current_pcn_supported = pcn_event(current_snapshot)
+    previous_pcn_present = any(previous_pcn)
+    current_pcn_present = any(current_pcn)
+    if current_pcn_supported and current_pcn_present:
+        pcn_number, pcn_date, pcn_status, pcn_url = current_pcn
+        details = []
+        if pcn_number:
+            details.append(f"notice {pcn_number}")
+        if pcn_date:
+            details.append(f"dated {pcn_date}")
+        if pcn_status:
+            details.append(f"status: {pcn_status}")
+        detail = ", ".join(details) or "a new notice"
+        alert_message = f"Supplier reported a product change notice ({detail}); review the linked notice before release."
+        messages.append(f"⚠ {alert_message}")
+        alert = build_alert_record(
+            user_id,
+            analysis_id,
+            part_number,
+            "Product Change Notice",
+            alert_message,
+            "High",
+            "Previously not recorded" if not previous_pcn_supported or not previous_pcn_present else "; ".join(item for item in previous_pcn[:3] if item),
+            "; ".join(item for item in current_pcn[:3] if item),
+            workspace_id=workspace_id,
+            supplier=current_snapshot.get("supplier"),
+            product_url=pcn_url,
+            datasheet_url=current_snapshot.get("datasheet_url"),
+        )
+        alert.update({
+            "pcn_number": pcn_number,
+            "pcn_date": pcn_date,
+            "evidence_source": "live-authorized-supplier",
+            "source_url": pcn_url,
+        })
+        alerts.append(alert)
+
     # A meaningful schedule spike is at least a 50% increase and at least
     # two weeks. Both values must come from exact-part supplier evidence.
     if (

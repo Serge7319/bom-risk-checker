@@ -1609,7 +1609,7 @@ def deliver_alert_email(
         return {"ok": True, "delivered": False, "reason": "preferences_disabled", "payload": payload}
     alert_type = str(alert.get("alert_type") or "").casefold()
     category = (
-        "lifecycle" if "lifecycle" in alert_type else
+        "lifecycle" if any(term in alert_type for term in ("lifecycle", "pcn", "product change notice")) else
         "availability" if any(term in alert_type for term in ("stock", "availability", "inventory", "lead time", "lead_time")) else
         "risk"
     )

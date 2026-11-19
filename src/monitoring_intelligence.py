@@ -41,7 +41,9 @@ def _alert_priority(row: Dict[str, Any]) -> int:
     if "stock" in alert_type or "inventory" in alert_type or "stock" in message:
         current = _number(row.get("current_value"), 0)
         score += 35 if current <= 0 else 20 if current < 100 else 10 if current < 500 else 0
-    if "lifecycle" in alert_type or "lifecycle" in message:
+    if "pcn" in alert_type or "product change notice" in alert_type or "product change notice" in message:
+        score += 35
+    elif "lifecycle" in alert_type or "lifecycle" in message:
         score += 35 if any(x in message for x in ("obsolete", "eol", "end of life")) else 25 if any(x in message for x in ("replacement", "nrnd", "not recommended")) else 12
     if "supplier" in alert_type or "lead" in alert_type:
         score += 15
@@ -141,6 +143,8 @@ def _recommended_action(row: Dict[str, Any]) -> Dict[str, str]:
         if _number(row.get("current_value"), 0) <= 0:
             return {"action": f"Qualify an alternate source or replacement for {part}", "owner": "Procurement", "deadline": "Today", "impact": "Protects the next build from a material-driven delay.", "route": "alternative"}
         return {"action": f"Review purchasing coverage for {part}", "owner": "Supply Chain", "deadline": "This week", "impact": "Preserves purchasing lead time before inventory becomes critical.", "route": "alternative"}
+    if "pcn" in alert_type or "product change notice" in alert_type or "product change notice" in message:
+        return {"action": f"Review the linked product change notice for {part} and assess design impact", "owner": "Component Engineering", "deadline": "Before the affected build or release", "impact": "Identifies affected form, fit, function, or sourcing before a change is accepted.", "route": "alternative"}
     if "lifecycle" in alert_type or "lifecycle" in message:
         if any(x in message for x in ("obsolete", "eol", "end of life")):
             return {"action": f"Begin immediate replacement qualification for {part}", "owner": "Engineering", "deadline": "Before production approval", "impact": "Reduces emergency redesign and continuity risk.", "route": "alternative"}

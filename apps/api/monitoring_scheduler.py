@@ -143,6 +143,11 @@ def _baseline(part: dict[str, Any]) -> dict[str, Any]:
     lead_time = _optional_number(
         _first_value(part, "Lead Time Weeks", "lead_time_weeks", "lead_time")
     )
+    lifecycle_event = part.get("lifecycle_event_evidence")
+    lifecycle_event = lifecycle_event if isinstance(lifecycle_event, dict) else {}
+    pcn_evidence = part.get("pcn_evidence")
+    if not isinstance(pcn_evidence, dict):
+        pcn_evidence = lifecycle_event.get("pcn") if isinstance(lifecycle_event.get("pcn"), dict) else {}
     return {
         "stock": stock,
         "unit_price": price,
@@ -152,6 +157,18 @@ def _baseline(part: dict[str, Any]) -> dict[str, Any]:
         "supplier": str(_first_value(part, "Best Source", "source") or "Saved analysis"),
         "product_url": str(_first_value(part, "Product URL", "product_detail_url", "product_url") or ""),
         "datasheet_url": str(_first_value(part, "Datasheet URL", "datasheet_url") or ""),
+        "pcn_number": str(_first_value(part, "pcn_number", "pcn_id", "PCN Number") or pcn_evidence.get("notice_number") or pcn_evidence.get("pcn_number") or pcn_evidence.get("id") or ""),
+        "pcn_date": str(_first_value(part, "pcn_date", "PCN Date") or pcn_evidence.get("date") or pcn_evidence.get("notice_date") or ""),
+        "pcn_status": str(_first_value(part, "pcn_status", "PCN Status") or pcn_evidence.get("status") or ""),
+        "pcn_url": str(_first_value(part, "pcn_url", "PCN URL") or pcn_evidence.get("source_url") or pcn_evidence.get("url") or lifecycle_event.get("pcn_url") or ""),
+        "pcn_evidence_class": str(
+            _first_value(part, "pcn_evidence_class")
+            or pcn_evidence.get("evidence_class")
+            or ""
+        ),
+        "last_time_buy_date": str(_first_value(part, "last_time_buy_date", "Last Time Buy Date") or ""),
+        "end_of_life_date": str(_first_value(part, "end_of_life_date", "eol_date", "End Of Life Date") or ""),
+        "estimated_eol_years": _optional_number(_first_value(part, "estimated_eol_years", "Estimated EOL Years")),
     }
 
 
@@ -191,7 +208,7 @@ def _send_weekly_monitoring_digest(workspace_id: str, member: dict[str, Any]) ->
             continue
         alert_type = str(alert.get("alert_type") or "").casefold()
         category = (
-            "lifecycle" if "lifecycle" in alert_type else
+            "lifecycle" if any(term in alert_type for term in ("lifecycle", "pcn", "product change notice")) else
             "availability" if any(term in alert_type for term in ("stock", "availability", "inventory", "lead time", "lead_time")) else
             "risk"
         )
@@ -392,6 +409,40 @@ def run_live_analysis_refresh(
             "evidence_source": "live-authorized-supplier",
             "identity_verified": True,
         }
+        lifecycle_event = fresh.get("lifecycle_event_evidence")
+        lifecycle_event = lifecycle_event if isinstance(lifecycle_event, dict) else {}
+        pcn_evidence = fresh.get("pcn_evidence")
+        if not isinstance(pcn_evidence, dict):
+            pcn_evidence = lifecycle_event.get("pcn") if isinstance(lifecycle_event.get("pcn"), dict) else {}
+        pcn_url = str(
+            _first_value(fresh, "pcn_url", "PCN URL")
+            or lifecycle_event.get("pcn_url")
+            or pcn_evidence.get("source_url")
+            or ""
+        ).strip()
+        current.update({
+            "pcn_number": str(
+                _first_value(fresh, "pcn_number", "pcn_id", "PCN Number")
+                or pcn_evidence.get("notice_number") or pcn_evidence.get("pcn_number") or pcn_evidence.get("id") or ""
+            ).strip(),
+            "pcn_date": str(
+                _first_value(fresh, "pcn_date", "PCN Date")
+                or pcn_evidence.get("date") or pcn_evidence.get("notice_date") or ""
+            ).strip(),
+            "pcn_status": str(
+                _first_value(fresh, "pcn_status", "PCN Status")
+                or pcn_evidence.get("status") or ""
+            ).strip(),
+            "pcn_url": pcn_url,
+            "pcn_evidence_class": str(
+                _first_value(fresh, "pcn_evidence_class")
+                or pcn_evidence.get("evidence_class")
+                or ""
+            ).strip(),
+            "last_time_buy_date": str(_first_value(fresh, "last_time_buy_date", "Last Time Buy Date") or "").strip(),
+            "end_of_life_date": str(_first_value(fresh, "end_of_life_date", "eol_date", "End Of Life Date") or "").strip(),
+            "estimated_eol_years": _optional_number(_first_value(fresh, "estimated_eol_years", "Estimated EOL Years")),
+        })
         from src.risk_engine import calculate_risk
 
         assessed_risk = calculate_risk({
@@ -416,6 +467,21 @@ def run_live_analysis_refresh(
             comparison_current["lifecycle_status"] = current["lifecycle_status"]
             observed_fields.append("lifecycle_status")
             field_retrieved_at["lifecycle_status"] = retrieved_at
+        # A PCN is an event, not a catalog identity attribute. Only compare
+        # it when the supplier attached a component-specific live source URL.
+        if (
+            current.get("pcn_url")
+            and current.get("pcn_evidence_class") == "live-authorized-supplier"
+            and any(current.get(key) for key in ("pcn_number", "pcn_date", "pcn_status"))
+        ):
+            for field in (
+                "pcn_number", "pcn_date", "pcn_status", "pcn_url",
+                "pcn_evidence_class", "last_time_buy_date", "end_of_life_date",
+                "estimated_eol_years",
+            ):
+                if current.get(field) not in (None, ""):
+                    comparison_current[field] = current[field]
+            observed_fields.append("pcn_event")
         if current.get("risk_level") in {"High", "Medium", "Low"}:
             comparison_current["risk_level"] = current["risk_level"]
             observed_fields.append("risk_level")
@@ -428,6 +494,14 @@ def run_live_analysis_refresh(
             "lead_time_weeks": comparison_current.get("lead_time_weeks"),
             "lifecycle_status": comparison_current.get("lifecycle_status", "Unknown"),
             "risk_level": current.get("risk_level"),
+            "pcn_number": comparison_current.get("pcn_number", ""),
+            "pcn_date": comparison_current.get("pcn_date", ""),
+            "pcn_status": comparison_current.get("pcn_status", ""),
+            "pcn_url": comparison_current.get("pcn_url", ""),
+            "pcn_evidence_class": comparison_current.get("pcn_evidence_class", ""),
+            "last_time_buy_date": comparison_current.get("last_time_buy_date", ""),
+            "end_of_life_date": comparison_current.get("end_of_life_date", ""),
+            "estimated_eol_years": comparison_current.get("estimated_eol_years"),
             "observed_fields": observed_fields,
             "field_retrieved_at": field_retrieved_at,
         })

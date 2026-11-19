@@ -17,9 +17,12 @@ Streamlit's Supabase ``workspace_*`` tables are not read or written here.
 from __future__ import annotations
 
 import hashlib
+import csv
+import json
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
+from io import StringIO
 from typing import Any
 
 from apps.api import invitation_email
@@ -915,6 +918,30 @@ def list_activity(ctx: dict[str, Any], limit: int = 50) -> dict[str, Any]:
         for row in rows
     ]
     return {"activity": items, "audit_detail": role in ADMIN_ROLES}
+
+
+def export_activity_csv(ctx: dict[str, Any]) -> bytes:
+    """Export workspace audit activity to admins only, bounded to recent history."""
+    require_admin(ctx)
+    rows = get_team_store().list_activity(ctx["workspace_id"], limit=5000)
+    output = StringIO(newline="")
+    columns = ("Timestamp", "Actor", "Action", "Summary", "Metadata")
+    writer = csv.DictWriter(output, fieldnames=columns, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        metadata = row.get("metadata") or {}
+        values = {
+            "Timestamp": row.get("created_at") or "",
+            "Actor": row.get("actor_name") or "",
+            "Action": row.get("action") or "",
+            "Summary": row.get("summary") or "",
+            "Metadata": json.dumps(metadata, sort_keys=True, ensure_ascii=False, default=str),
+        }
+        for key, value in values.items():
+            if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+                values[key] = "'" + value
+        writer.writerow(values)
+    return output.getvalue().encode("utf-8-sig")
 
 
 # --------------------------------------------------------------------------

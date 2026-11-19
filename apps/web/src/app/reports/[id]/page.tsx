@@ -13,6 +13,7 @@ import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import { getReportRiskCounts, ReportOverview } from "@/components/ReportOverview";
 import {
   analyzeBom,
+  downloadCompliancePack,
   downloadReportExport,
   fetchReport,
   listProjects,
@@ -22,6 +23,7 @@ import {
   type DecisionRecord,
   type Report,
   type ReportExportFormat,
+  type CompliancePackType,
 } from "@/lib/api";
 import {
   markReviewProgress,
@@ -99,6 +101,8 @@ export default function ReportPage() {
   const [error, setError] = useState("");
   const [exportError, setExportError] = useState("");
   const [exporting, setExporting] = useState<ReportExportFormat | null>(null);
+  const [complianceExporting, setComplianceExporting] = useState<CompliancePackType | null>(null);
+  const [complianceExportError, setComplianceExportError] = useState("");
   const [review, setReview] = useState<BomReviewProgress | null>(null);
   const [bomEditorOpen, setBomEditorOpen] = useState(false);
   const [bomEditorRows, setBomEditorRows] = useState<EditableBomRow[]>([]);
@@ -164,6 +168,23 @@ export default function ReportPage() {
       setExportError(err instanceof Error ? err.message : "The report could not be downloaded.");
     } finally {
       setExporting(null);
+    }
+  }
+
+  async function onDownloadCompliance(packType: CompliancePackType) {
+    if (!session || !report) return;
+    setComplianceExporting(packType);
+    setComplianceExportError("");
+    try {
+      await downloadCompliancePack(
+        session.access_token,
+        String(report.analysis_id || report.id),
+        packType,
+      );
+    } catch (err) {
+      setComplianceExportError(err instanceof Error ? err.message : "The evidence pack could not be downloaded.");
+    } finally {
+      setComplianceExporting(null);
     }
   }
 
@@ -498,11 +519,39 @@ export default function ReportPage() {
               <button type="button" className="cv-button" onClick={() => onDownload("csv")} disabled={exporting !== null}>
                 <Icon name="download" /> {exporting === "csv" ? "Preparing CSV…" : "Download CSV audit"}
               </button>
+              <button type="button" className="cv-button" onClick={() => onDownload("plm-csv")} disabled={exporting !== null}>
+                <Icon name="download" /> {exporting === "plm-csv" ? "Preparing CSV…" : "Download PLM / ERP CSV"}
+              </button>
             </div>
             {exportError ? <div className="cv-error" role="alert">{exportError}</div> : null}
             {report.mode === "synthetic-preview" ? (
               <p className="cv-small-note">This report uses synthetic preview evidence. Stock, prices, and lifecycle estimates are not live supplier verification.</p>
             ) : null}
+          </section>
+
+          <section className="cv-card pad cv-report-export" aria-labelledby="compliance-export-title">
+            <div>
+              <h2 id="compliance-export-title" className="cv-card-title">Compliance and lifecycle evidence</h2>
+              <p className="cv-card-subtitle">
+                Download component-level RoHS, REACH, PFAS, PCN, or combined evidence data for this BOM. Missing or unverified fields remain unknown; Cadivor does not assert compliance.
+              </p>
+            </div>
+            <div className="cv-report-export-controls">
+              {(["rohs", "reach", "pfas", "pcn", "audit"] as CompliancePackType[]).map((packType) => (
+                <button
+                  key={packType}
+                  type="button"
+                  className="cv-button"
+                  onClick={() => void onDownloadCompliance(packType)}
+                  disabled={complianceExporting !== null}
+                >
+                  {complianceExporting === packType
+                    ? "Preparing JSON…"
+                    : packType === "audit" ? "Evidence bundle" : `${packType.toUpperCase()} pack`}
+                </button>
+              ))}
+            </div>
+            {complianceExportError ? <div className="cv-error" role="alert">{complianceExportError}</div> : null}
           </section>
 
           <div className="cv-kpis">

@@ -73,6 +73,7 @@ from src.saved_bom_project import split_project_and_bom  # noqa: E402
 
 from apps.api import billing_prep  # noqa: E402
 from apps.api import compliance_packs  # noqa: E402
+from apps.api import decision_record_exports  # noqa: E402
 from apps.api import connectors  # noqa: E402
 from apps.api import bom_validation  # noqa: E402
 from apps.api import legal_acceptance  # noqa: E402
@@ -1228,8 +1229,8 @@ async def reports_export(request: Request) -> Response:
         return _json({"detail": str(exc)}, 503)
     if not report:
         return _json({"detail": "Report not found"}, 404)
-    if file_format not in {"pdf", "csv", "xlsx"}:
-        return _json({"detail": "Choose one of the supported export formats: PDF, Excel, or CSV."}, 400)
+    if file_format not in {"pdf", "csv", "xlsx", "plm-csv"}:
+        return _json({"detail": "Choose one of the supported export formats: PDF, Excel, or CSV; PLM/ERP CSV is also available."}, 400)
 
     export_report = annotate_report_parts(report)
     try:
@@ -1385,6 +1386,52 @@ async def decision_records_get(request: Request) -> JSONResponse:
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
     return _json({"ok": True, "records": records})
+
+
+async def decision_records_export_get(request: Request) -> Response:
+    """Export workspace decisions using an explicitly review-required layout."""
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    template = str(request.path_params.get("template") or "").strip().lower()
+    if template not in decision_record_exports.TEMPLATES:
+        return _json({"detail": "Choose the medical-device or aerospace draft template."}, 400)
+    analysis_id = (request.query_params.get("analysis_id") or "").strip()
+    try:
+        if analysis_id and not _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"]):
+            return _json({"detail": "Report not found"}, 404)
+        records = await run_in_threadpool(
+            get_store().list_decision_records,
+            workspace_id=ctx["workspace_id"],
+            analysis_id=analysis_id or None,
+        )
+        if not analysis_id and is_production_runtime():
+            visible_ids = {
+                str(row.get("id") or row.get("analysis_id") or "")
+                for row in customer_visible_analyses(
+                    list_reports(workspace_id=ctx["workspace_id"]), production=True
+                )
+            }
+            records = [
+                row for row in records
+                if not row.get("analysis_id") or str(row.get("analysis_id")) in visible_ids
+            ]
+        payload = decision_record_exports.build_decision_record_export(records, template)
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
+    return Response(
+        payload,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="cadivor-{template}-decision-draft.csv"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 async def decision_record_share_post(request: Request) -> JSONResponse:
@@ -4126,6 +4173,28 @@ async def workspace_activity_get(request: Request) -> JSONResponse:
         return _team_error(exc)
 
 
+async def workspace_activity_export_get(request: Request) -> Response:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        payload = await run_in_threadpool(team_service.export_activity_csv, ctx)
+    except TeamError as exc:
+        return _team_error(exc)
+    except Exception:  # noqa: BLE001
+        logging.exception("workspace_activity_export_failed")
+        return _json({"detail": "Workspace activity export is unavailable."}, 503)
+    return Response(
+        payload,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="cadivor-workspace-activity.csv"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 async def workspace_settings_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -4834,6 +4903,7 @@ app = Starlette(
             methods=["DELETE"],
         ),
         Route("/workspace/activity", workspace_activity_get, methods=["GET"]),
+        Route("/workspace/activity/export.csv", workspace_activity_export_get, methods=["GET"]),
         # Compatibility aliases for the Next web client / sandbox tests.
         Route("/workspaces/switch", workspaces_switch_post, methods=["POST"]),
         Route(
@@ -4858,6 +4928,7 @@ app = Starlette(
         Route("/tools/monitoring", monitoring_get, methods=["GET"]),
         Route("/tools/compare-parts", compare_parts_post, methods=["POST"]),
         Route("/decision-records", decision_records_get, methods=["GET"]),
+        Route("/decision-records/export/{template}", decision_records_export_get, methods=["GET"]),
         Route("/decision-records", decision_records_post, methods=["POST"]),
         Route("/decision-records/share", decision_record_share_post, methods=["POST"]),
         Route("/decision-records/share/{token}", decision_record_share_get, methods=["GET"]),

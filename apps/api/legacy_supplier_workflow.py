@@ -245,6 +245,32 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
         "Lifecycle Evidence": list(part.get("lifecycle_evidence") or []),
         "Lifecycle Conflict": bool(part.get("lifecycle_conflict")),
         "lifecycle_conflict": bool(part.get("lifecycle_conflict")),
+        # Compliance declarations and formal lifecycle notices are passed
+        # through only when the authorized source returned them. Identity
+        # verification alone does not establish a compliance declaration.
+        "compliance_evidence": dict(part.get("compliance_evidence") or {})
+        if isinstance(part.get("compliance_evidence"), dict) else {},
+        "rohs_status": str(part.get("rohs_status") or ""),
+        "rohs_source_url": str(part.get("rohs_source_url") or ""),
+        "rohs_evidence_class": str(part.get("rohs_evidence_class") or ""),
+        "reach_status": str(part.get("reach_status") or ""),
+        "reach_source_url": str(part.get("reach_source_url") or ""),
+        "reach_evidence_class": str(part.get("reach_evidence_class") or ""),
+        "pfas_status": str(part.get("pfas_status") or ""),
+        "pfas_source_url": str(part.get("pfas_source_url") or ""),
+        "pfas_evidence_class": str(part.get("pfas_evidence_class") or ""),
+        "pcn_number": str(part.get("pcn_number") or part.get("pcn_id") or ""),
+        "pcn_date": str(part.get("pcn_date") or ""),
+        "pcn_status": str(part.get("pcn_status") or ""),
+        "pcn_url": str(part.get("pcn_url") or ""),
+        "pcn_evidence_class": str(part.get("pcn_evidence_class") or ""),
+        "pcn_evidence": dict(part.get("pcn_evidence") or {})
+        if isinstance(part.get("pcn_evidence"), dict) else {},
+        "last_time_buy_date": str(part.get("last_time_buy_date") or ""),
+        "end_of_life_date": str(part.get("end_of_life_date") or part.get("eol_date") or ""),
+        "estimated_eol_years": _number(part.get("estimated_eol_years")),
+        "lifecycle_event_evidence": dict(part.get("lifecycle_event_evidence") or {})
+        if isinstance(part.get("lifecycle_event_evidence"), dict) else {},
         "Product URL": str(part.get("product_detail_url") or part.get("product_url") or part.get("source_url") or ""),
         "product_url": str(part.get("product_detail_url") or part.get("product_url") or part.get("source_url") or ""),
         "Datasheet URL": str(part.get("datasheet_url") or part.get("datasheet") or ""),

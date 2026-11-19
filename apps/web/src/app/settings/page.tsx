@@ -24,6 +24,7 @@ import {
   fetchDeveloperApiKeys,
   createDeveloperApiKey,
   revokeDeveloperApiKey,
+  downloadWorkspaceActivityExport,
   type DeveloperApiKey,
   type ServiceReadiness,
   fetchPreferences,
@@ -180,6 +181,8 @@ export default function Page() {
   const [members, setMembers] = useState<Array<Record<string, unknown>>>([]);
   const [invites, setInvites] = useState<Array<Record<string, unknown>>>([]);
   const [activity, setActivity] = useState<Array<Record<string, unknown>>>([]);
+  const [activityAuditDetail, setActivityAuditDetail] = useState(false);
+  const [activityExporting, setActivityExporting] = useState(false);
   const [usage, setUsage] = useState<Record<string, unknown> | null>(null);
   const [billing, setBilling] = useState<Record<string, unknown> | null>(null);
   const [connectors, setConnectors] = useState<Record<string, unknown> | null>(null);
@@ -264,6 +267,7 @@ export default function Page() {
     }
     if (activityRes) {
       setActivity(asRows(activityRes.activity || activityRes.items));
+      setActivityAuditDetail(activityRes.audit_detail === true);
     }
     setInvites(asRows(invitesRes?.invitations));
 
@@ -1105,7 +1109,33 @@ export default function Page() {
               ) : null}
 
               <section className="cv-card pad">
-                <h3 className="cv-card-title">Activity</h3>
+                <div className="cv-section-heading">
+                  <div>
+                    <h3 className="cv-card-title">Activity</h3>
+                    <p className="cv-card-subtitle">Recent workspace changes and access events.</p>
+                  </div>
+                  {activityAuditDetail ? (
+                    <button
+                      className="cv-button"
+                      type="button"
+                      disabled={activityExporting}
+                      onClick={() => void (async () => {
+                        if (!session) return;
+                        setActivityExporting(true);
+                        setError("");
+                        try {
+                          await downloadWorkspaceActivityExport(session.access_token);
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : "Could not export workspace activity.");
+                        } finally {
+                          setActivityExporting(false);
+                        }
+                      })()}
+                    >
+                      {activityExporting ? "Preparing CSV…" : "Download audit CSV"}
+                    </button>
+                  ) : null}
+                </div>
                 {activity.length ? (
                   <div className="cv-table-wrap" style={{ marginTop: 12 }}>
                     <table className="cv-table">
@@ -1120,8 +1150,8 @@ export default function Page() {
                         {activity.map((row) => (
                           <tr key={String(row.id || `${row.created_at}-${row.event}`)}>
                             <td>{String(row.created_at || "").replace("T", " ").slice(0, 19)}</td>
-                            <td>{String(row.event || "")}</td>
-                            <td>{cleanUserText(row.message)}</td>
+                            <td>{String(row.action || row.event || "")}</td>
+                            <td>{cleanUserText(row.summary || row.message)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1420,7 +1450,7 @@ export default function Page() {
               {asRecord(usage?.limits).api_access === true || hasProfessionalApiAddon ? (
                 <section className="cv-card pad" style={{ marginBottom: 14 }}>
                   <h3 className="cv-card-title">Developer API keys</h3>
-                  <p className="cv-card-subtitle">Create keys for the read-only v1 Reports API. Keys inherit this workspace’s access and stop working when API access or workspace membership ends. The secret is shown once at creation.</p>
+                  <p className="cv-card-subtitle">Create keys to submit BOM analyses and read reports through the v1 API. Keys inherit this workspace’s access and stop working when API access or workspace membership ends. The secret is shown once at creation. <a href="https://www.cadivor.com/developers/" target="_blank" rel="noreferrer">Read the API guide</a></p>
                   <form className="cv-form-grid" onSubmit={(event) => void createApiKey(event)} style={{ marginTop: 14 }}>
                     <div className="cv-field">
                       <label htmlFor="developer-api-key-name">Key name</label>
