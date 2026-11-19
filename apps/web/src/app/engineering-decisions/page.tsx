@@ -90,11 +90,12 @@ function EngineeringDecisionsPageInner() {
 
   async function createShareLink(record: DecisionRecord) {
     const id = String(record.id || record.decision_id || "");
-    if (!id) return;
+    const accessToken = session?.access_token;
+    if (!id || !accessToken) return;
     setShareBusy(id);
     setShareError("");
     try {
-      const result = await createDecisionRecordShare(session.access_token, id);
+      const result = await createDecisionRecordShare(accessToken, id);
       setShareLinks((current) => ({
         ...current,
         [id]: `${window.location.origin}/decision-share/${encodeURIComponent(result.token)}`,
