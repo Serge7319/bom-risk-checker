@@ -603,6 +603,43 @@ async def boms_analyze(request: Request) -> JSONResponse:
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     form = await request.form()
+    return await _analyze_bom_form(request, ctx, form, allow_one_time_purchase=True)
+
+
+async def developer_api_analyze_post(request: Request) -> JSONResponse:
+    ctx, denied = await _developer_api_key_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not _developer_api_entitled(ctx):
+        return _json({"detail": "Developer API access is not active for this account."}, 403)
+    if _throttled(request, "developer-api-analysis", limit=5, window=60, identity=ctx["key_id"]):
+        return _json({"detail": "Analysis submission rate limit reached. Retry shortly."}, 429)
+    try:
+        form = await request.form()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Expected a multipart/form-data upload."}, 400)
+    result = await _analyze_bom_form(request, ctx, form, allow_one_time_purchase=False)
+    if result.status_code == 200:
+        try:
+            payload = json.loads(result.body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return result
+        analysis_id = str(payload.get("analysis_id") or "").strip()
+        if analysis_id:
+            origin = _web_origin(request)
+            payload["report_url"] = f"{origin}/reports/{analysis_id}"
+            payload["report_endpoint"] = f"/v1/reports/{analysis_id}"
+            return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+    return result
+
+
+async def _analyze_bom_form(
+    request: Request,
+    ctx: dict[str, Any],
+    form: Any,
+    *,
+    allow_one_time_purchase: bool,
+) -> JSONResponse:
     upload = form.get("file")
     if upload is None:
         return _json({"detail": "Missing file"}, 400)
@@ -754,6 +791,16 @@ async def boms_analyze(request: Request) -> JSONResponse:
             (usage_limits.get("usage") or {}).get("overage_credit_reservation_id") or ""
         )
     except plan_limits.PlanLimitError as exc:
+        if not allow_one_time_purchase:
+            return _json(
+                {
+                    "code": exc.code,
+                    "detail": exc.detail,
+                    "limits": exc.limits,
+                    "billing_action": "none",
+                },
+                402,
+            )
         if unique_part_count > 100:
             return _json(
                 {
@@ -2710,7 +2757,7 @@ async def developer_api_key_delete(request: Request) -> JSONResponse:
     return _json({"ok": True, "revoked": True})
 
 
-async def _developer_api_key_context(request: Request) -> tuple[dict[str, str] | None, JSONResponse | None]:
+async def _developer_api_key_context(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
     authorization = str(request.headers.get("authorization") or "")
     candidate = authorization.removeprefix("Bearer ").strip() if authorization.startswith("Bearer ") else ""
     api_key = candidate or str(request.headers.get("x-api-key") or "").strip()
@@ -2740,7 +2787,18 @@ async def _developer_api_key_context(request: Request) -> tuple[dict[str, str] |
         return None, _json({"detail": "This API key no longer has active workspace access."}, 403)
     if _throttled(request, "developer-api", limit=180, window=60, identity=key_id):
         return None, _json({"detail": "API request rate limit reached. Retry shortly."}, 429)
-    return {"user_id": user_id, "workspace_id": workspace_id, "key_id": key_id}, None
+    credits = result.get("usage_credits")
+    ctx: dict[str, Any] = {
+        "user_id": user_id,
+        "workspace_id": workspace_id,
+        "key_id": key_id,
+        "plan": str(result.get("plan") or "Subscription inactive"),
+        "trial_status": result.get("trial_status"),
+        "api_access_addon_active": result.get("api_access_addon_active") is True,
+        "usage_credits": credits if isinstance(credits, dict) else {},
+    }
+    ctx["entitlement_overrides"] = plan_limits.account_feature_overrides(user_id)
+    return ctx, None
 
 
 async def developer_api_reports_get(request: Request) -> JSONResponse:
@@ -4836,6 +4894,7 @@ app = Starlette(
         Route("/developer/api-keys", developer_api_keys_get, methods=["GET"]),
         Route("/developer/api-keys", developer_api_keys_post, methods=["POST"]),
         Route("/developer/api-keys/{key_id}", developer_api_key_delete, methods=["DELETE"]),
+        Route("/v1/analyses", developer_api_analyze_post, methods=["POST"]),
         Route("/v1/reports", developer_api_reports_get, methods=["GET"]),
         Route("/v1/reports/{analysis_id}", developer_api_report_get, methods=["GET"]),
         Route("/billing/portal", billing_portal_post, methods=["POST"]),
