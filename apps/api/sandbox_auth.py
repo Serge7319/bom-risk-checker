@@ -253,6 +253,8 @@ class AuthContext:
     # This is supplied only by verified production billing entitlements. It is
     # not inferred from workspace membership or a browser-visible plan.
     platform_role: str | None = None
+    api_access_addon_active: bool | None = None
+    usage_credits: dict[str, int] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -275,6 +277,10 @@ class AuthContext:
             payload["trial_days_remaining"] = self.trial_days_remaining
         if self.platform_role is not None:
             payload["platform_role"] = self.platform_role
+        if self.api_access_addon_active is not None:
+            payload["api_access_addon_active"] = self.api_access_addon_active
+        if self.usage_credits is not None:
+            payload["usage_credits"] = self.usage_credits
         return payload
 
 

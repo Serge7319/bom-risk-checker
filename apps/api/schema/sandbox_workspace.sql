@@ -187,6 +187,32 @@ CREATE TABLE IF NOT EXISTS migration_decision_record_shares (
 CREATE INDEX IF NOT EXISTS migration_decision_record_shares_expiry_idx
   ON migration_decision_record_shares (expires_at);
 
+-- An approver invitation is scoped to one decision only. The raw bearer token
+-- is emailed once and never stored; acceptance writes an append-only response
+-- record without granting workspace access.
+CREATE TABLE IF NOT EXISTS migration_decision_record_approvers (
+  token_hash TEXT PRIMARY KEY CHECK (length(token_hash) = 64 AND token_hash ~ '^[0-9a-f]{64}$'),
+  workspace_id TEXT NOT NULL,
+  decision_record_id TEXT NOT NULL REFERENCES migration_decision_records(id) ON DELETE CASCADE,
+  created_by TEXT NOT NULL REFERENCES migration_users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'revoked')),
+  response_rationale TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  responded_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS migration_decision_record_approvers_expiry_idx
+  ON migration_decision_record_approvers (expires_at);
+
+CREATE TABLE IF NOT EXISTS migration_account_entitlement_overrides (
+  user_id TEXT PRIMARY KEY,
+  feature_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_by TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Immutable supplier quote snapshots tied to the exact saved BOM analysis.
 CREATE TABLE IF NOT EXISTS migration_procurement_quotes (
   id TEXT PRIMARY KEY,
@@ -229,6 +255,8 @@ CREATE TABLE IF NOT EXISTS migration_notification_preferences (
   workspace_id TEXT PRIMARY KEY,
   email_alerts BOOLEAN NOT NULL DEFAULT FALSE,
   weekly_digest BOOLEAN NOT NULL DEFAULT FALSE,
+  slack_alerts BOOLEAN NOT NULL DEFAULT FALSE,
+  slack_webhook_ciphertext TEXT,
   lifecycle BOOLEAN NOT NULL DEFAULT TRUE,
   availability BOOLEAN NOT NULL DEFAULT TRUE,
   risk BOOLEAN NOT NULL DEFAULT TRUE,
@@ -236,6 +264,17 @@ CREATE TABLE IF NOT EXISTS migration_notification_preferences (
 );
 ALTER TABLE migration_notification_preferences
   ADD COLUMN IF NOT EXISTS weekly_digest BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE migration_notification_preferences
+  ADD COLUMN IF NOT EXISTS slack_alerts BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE migration_notification_preferences
+  ADD COLUMN IF NOT EXISTS slack_webhook_ciphertext TEXT;
+
+CREATE TABLE IF NOT EXISTS migration_workspace_monitoring_capacity (
+  workspace_id TEXT PRIMARY KEY,
+  max_parts INTEGER,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (max_parts IS NULL OR max_parts >= 0)
+);
 
 -- Member-level opt-in: emails always go to the verified account address
 -- established by the authenticated API, never a browser-supplied recipient.
@@ -287,6 +326,22 @@ CREATE TABLE IF NOT EXISTS migration_monitoring_email_deliveries (
 
 CREATE INDEX IF NOT EXISTS migration_monitoring_email_deliveries_lease_idx
   ON migration_monitoring_email_deliveries (status, lease_until);
+
+-- Workspace-level Slack sends use short leases and retry after transient
+-- delivery failures without posting the same active alert repeatedly.
+CREATE TABLE IF NOT EXISTS migration_monitoring_slack_deliveries (
+  workspace_id TEXT NOT NULL,
+  alert_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'sending'
+    CHECK (status IN ('sending', 'sent')),
+  lease_until TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (workspace_id, alert_id)
+);
+
+CREATE INDEX IF NOT EXISTS migration_monitoring_slack_deliveries_pending_idx
+  ON migration_monitoring_slack_deliveries (updated_at)
+  WHERE status <> 'sent';
 
 -- Per-member claim/receipt for weekly monitoring summaries. The scheduler may
 -- run several times a day, but a successful member digest is sent at most once

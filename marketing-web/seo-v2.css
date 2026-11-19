@@ -94,3 +94,13 @@
 .seo-pricing-one-time{min-height:148px;margin:0 0 32px;padding:28px 32px}
 @media(max-width:800px){.seo-pricing-section{width:min(100% - 36px,1216px)}}
 @media(max-width:560px){.seo-pricing-section{width:calc(100% - 28px)}.seo-pricing-one-time{min-height:0;margin-bottom:24px;padding:20px 18px}}
+
+.seo-pricing-billing{display:flex;align-items:center;gap:16px;margin:0 0 22px;padding:13px 16px;border:1px solid #dce6f4;border-radius:14px;background:#f8fbff}
+.seo-pricing-billing-switch{display:inline-flex;flex:0 0 auto;gap:4px;padding:4px;border:1px solid #d6e1f0;border-radius:11px;background:#fff}
+.seo-pricing-billing-switch button{min-height:38px;padding:8px 15px;border:0;border-radius:8px;background:transparent;color:#526784;font-family:inherit;font-size:13px;font-weight:700;line-height:1;cursor:pointer}
+.seo-pricing-billing-switch button.is-active{background:#eaf1ff;color:#17458c}
+.seo-pricing-billing-switch button:disabled{color:#9aa9bd;cursor:not-allowed}
+.seo-pricing-billing>p{margin:0;color:#637690;font-size:12px;line-height:1.5}
+.seo-pricing-card .seo-annual-note{min-height:0;margin:-7px 0 9px;color:#2e63c6;font-size:12px;font-weight:700;line-height:1.4}
+.seo-pricing-card .seo-annual-note[hidden]{display:none}
+@media(max-width:560px){.seo-pricing-billing{align-items:flex-start;flex-direction:column;gap:8px;padding:12px}.seo-pricing-billing-switch{width:100%}.seo-pricing-billing-switch button{flex:1}}

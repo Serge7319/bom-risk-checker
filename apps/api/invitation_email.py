@@ -103,3 +103,43 @@ def send_workspace_invitation(
             "Cadivor could not submit the email to its delivery provider."
         ) from exc
     return {"mode": "resend"}
+
+
+def send_decision_approver_invitation(
+    *,
+    to_email: str,
+    inviter_name: str,
+    decision_summary: str,
+    approval_url: str,
+    expires_in_days: int = 7,
+) -> dict[str, Any]:
+    """Send a decision-scoped invitation through the configured mail sink/provider."""
+    sink = _SINK
+    if sink is not None:
+        sink({
+            "kind": "decision_approver_invitation",
+            "to": to_email,
+            "inviter_name": inviter_name,
+            "decision_summary": decision_summary,
+            "approval_url": approval_url,
+            "expires_in_days": expires_in_days,
+        })
+        return {"mode": "sink"}
+    try:
+        from src.email_delivery import (
+            EmailDeliveryError,
+            send_decision_approver_invitation_email,
+        )
+
+        send_decision_approver_invitation_email(
+            to_email=to_email,
+            inviter_name=inviter_name,
+            decision_summary=decision_summary,
+            approval_url=approval_url,
+            expires_in_days=expires_in_days,
+        )
+    except EmailDeliveryError as exc:
+        raise InvitationEmailError(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise InvitationEmailError("Cadivor could not submit the email to its delivery provider.") from exc
+    return {"mode": "resend"}

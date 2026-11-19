@@ -60,6 +60,7 @@ def _empty() -> dict[str, Any]:
         "reports": {},
         "decision_records": {},
         "decision_record_shares": {},
+        "decision_record_approvers": {},
         "procurement_quotes": {},
     }
 
@@ -286,12 +287,13 @@ class WorkspaceStore:
                 rows, key=lambda row: str(row.get("created_at") or ""), reverse=True
             )
 
-    def list_monitoring_analyses(self) -> list[dict[str, str]]:
+    def list_monitoring_analyses(self) -> list[dict[str, Any]]:
         """Return saved analysis scopes for the scheduler, without report contents."""
         with _LOCK:
             return [
                 {"workspace_id": str(row.get("workspace_id") or ""),
-                 "analysis_id": str(row.get("id") or "")}
+                 "analysis_id": str(row.get("id") or ""),
+                 "total_parts": int(row.get("total_parts") or len(row.get("parts") or []))}
                 for row in self._data.get("analyses", {}).values()
                 if row.get("workspace_id") and row.get("id")
             ]
@@ -388,6 +390,90 @@ class WorkspaceStore:
             if not isinstance(record, dict) or str(record.get("workspace_id") or "") != str(share.get("workspace_id") or ""):
                 return None
             return {"record": dict(record), "expires_at": share.get("expires_at")}
+
+    def create_decision_record_approver(
+        self,
+        *,
+        workspace_id: str,
+        decision_record_id: str,
+        token_hash: str,
+        created_by: str,
+        email: str,
+        expires_at: str,
+    ) -> None:
+        wid = self._require_workspace(workspace_id)
+        record_id = str(decision_record_id or "").strip()
+        if not any(
+            str(row.get("id") or row.get("decision_id") or "") == record_id
+            for row in self.list_decision_records(workspace_id=wid)
+        ):
+            raise WorkspaceAccessError("Decision record was not found.")
+        with _LOCK:
+            self._data.setdefault("decision_record_approvers", {})[token_hash] = {
+                "workspace_id": wid,
+                "decision_record_id": record_id,
+                "created_by": str(created_by or ""),
+                "email": str(email or "").lower(),
+                "status": "pending",
+                "response_rationale": None,
+                "created_at": _now(),
+                "expires_at": expires_at,
+                "responded_at": None,
+            }
+            self.save()
+
+    def get_decision_record_approver(self, token_hash: str) -> dict[str, Any] | None:
+        candidate = str(token_hash or "").strip()
+        with _LOCK:
+            invite = dict(self._data.setdefault("decision_record_approvers", {}).get(candidate) or {})
+        if not invite or invite.get("status") == "revoked":
+            return None
+        try:
+            expires = datetime.fromisoformat(str(invite.get("expires_at") or "").replace("Z", "+00:00"))
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if expires <= datetime.now(timezone.utc):
+                return None
+        except ValueError:
+            return None
+        record = next((row for row in self.list_decision_records(workspace_id=str(invite.get("workspace_id") or ""))
+                       if str(row.get("id") or row.get("decision_id") or "") == str(invite.get("decision_record_id") or "")), None)
+        if not record:
+            return None
+        return {
+            "email": str(invite.get("email") or ""),
+            "status": str(invite.get("status") or "pending"),
+            "response_rationale": invite.get("response_rationale"),
+            "responded_at": invite.get("responded_at"),
+            "record": record,
+            "expires_at": invite.get("expires_at"),
+        }
+
+    def respond_to_decision_record_approver(
+        self, token_hash: str, *, decision: str, rationale: str
+    ) -> bool:
+        with _LOCK:
+            invite = self._data.setdefault("decision_record_approvers", {}).get(str(token_hash or "").strip())
+            if not invite or invite.get("status") != "pending":
+                return False
+            try:
+                expires = datetime.fromisoformat(str(invite.get("expires_at") or "").replace("Z", "+00:00"))
+                if expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=timezone.utc)
+            except ValueError:
+                return False
+            if expires <= datetime.now(timezone.utc):
+                return False
+            invite.update({"status": decision, "response_rationale": rationale, "responded_at": _now()})
+            self.save()
+            return True
+
+    def revoke_decision_record_approver(self, token_hash: str) -> None:
+        with _LOCK:
+            invite = self._data.setdefault("decision_record_approvers", {}).get(str(token_hash or "").strip())
+            if invite and invite.get("status") == "pending":
+                invite["status"] = "revoked"
+                self.save()
 
     def create_procurement_quote(
         self, quote: dict[str, Any], *, workspace_id: str

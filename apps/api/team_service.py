@@ -248,10 +248,9 @@ def _expiry_days(value: Any) -> int:
 
 
 def _seat_limit_reached(ctx: dict[str, Any]) -> tuple[bool, int | None]:
-    from apps.api.plan_limits import effective_plan_name
-    from src.plans import get_plan
+    from apps.api.plan_limits import effective_plan
 
-    plan = get_plan(effective_plan_name(ctx))
+    plan = effective_plan(ctx)
     included = plan.get("included_users")
     if included is None:
         return False, None
@@ -277,6 +276,14 @@ def create_invitation(
     web_origin: str,
 ) -> dict[str, Any]:
     actor_role = require_admin(ctx)
+    from apps.api.plan_limits import effective_plan
+
+    if effective_plan(ctx).get("team_features") is False:
+        raise TeamError(
+            "Workspace invitations are not included in this account's entitlements.",
+            402,
+            "feature_unavailable",
+        )
     role_n = str(role or "").strip().lower()
     if role_n not in ASSIGNABLE_ROLES:
         raise TeamError("Choose admin, engineer, or viewer.", 400)
@@ -711,11 +718,10 @@ def update_workspace_settings(ctx: dict[str, Any], payload: dict[str, Any]) -> d
 
 
 def _can_create_workspace(ctx: dict[str, Any]) -> tuple[bool, str]:
-    from apps.api.plan_limits import effective_plan_name
-    from src.plans import get_plan
+    from apps.api.plan_limits import effective_plan, effective_plan_name
 
     plan_name = effective_plan_name(ctx)
-    plan = get_plan(plan_name)
+    plan = effective_plan(ctx)
     if not plan.get("team_features"):
         return False, (
             f"The {plan_name} plan is for individual use. Upgrade to a team plan "

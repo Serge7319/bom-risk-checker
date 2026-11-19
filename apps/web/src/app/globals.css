@@ -3852,6 +3852,29 @@ button {
 .cv-decision-share-section p { margin: 0; color: #354d68; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .cv-decision-share-section ul { margin: 0; padding-left: 20px; color: #354d68; }
 .cv-decision-share-caution { margin: 22px 0; padding: 12px 14px; border-left: 3px solid #5e8bc5; background: #f1f6fc; color: #49617c; font-size: 13px; line-height: 1.55; }
+.cv-decision-approver-invite { display: grid; gap: 6px; max-width: 280px; margin-top: 14px; }
+.cv-decision-approver-invite label { color: #52677f; font-size: 11px; font-weight: 700; }
+.cv-decision-approver-invite input,
+.cv-decision-share-card textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #d6dfeb; border-radius: 8px; background: #fff; color: #182f4c; font: inherit; }
+.cv-decision-share-card textarea { display: block; resize: vertical; }
+.cv-admin-entitlement-list { display: grid; gap: 10px; margin-top: 14px; }
+.cv-admin-entitlement-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px; border: 1px solid #dce5f0; border-radius: 10px; }
+.cv-admin-entitlement-row > span { display: grid; gap: 3px; }
+.cv-admin-entitlement-row small { color: #607189; font-size: 12px; }
+.cv-admin-entitlement-row select { min-width: 170px; padding: 8px; border: 1px solid #d6dfeb; border-radius: 8px; background: #fff; }
+.cv-addon-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.cv-addon-card { display: grid; align-content: start; gap: 8px; min-width: 0; padding: 16px; border: 1px solid #dce5f0; border-radius: 12px; background: #fbfdff; }
+.cv-addon-card h4 { margin: 0; color: #183453; font-size: 15px; }
+.cv-addon-card p { margin: 0; color: #334b66; line-height: 1.5; }
+.cv-addon-card .cv-button { justify-self: start; margin-top: 4px; }
+.cv-api-key-secret { display: grid; gap: 8px; margin-top: 14px; padding: 14px; border: 1px solid #b7d1ee; border-radius: 10px; background: #f3f8ff; color: #214366; }
+.cv-api-key-secret code { display: block; padding: 10px; border-radius: 7px; background: #e6eef8; color: #1d3553; overflow-wrap: anywhere; user-select: all; }
+.cv-api-key-secret .cv-button { justify-self: start; }
+.cv-api-key-list { display: grid; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.cv-api-key-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid #dce5f0; border-radius: 10px; }
+.cv-api-key-list li > span { display: grid; gap: 4px; min-width: 0; }
+.cv-api-key-list small { color: #607189; font-size: 12px; }
+.cv-api-key-list code { color: #344963; }
 .cv-decision-history .cv-table td,
 .cv-report-decisions .cv-table td { vertical-align: top; }
 .cv-decision-history .cv-table,
@@ -3863,6 +3886,10 @@ button {
 @media (max-width: 700px) {
   .cv-decision-share-page { padding: 0 12px 28px; }
   .cv-decision-share-grid { grid-template-columns: 1fr; }
+  .cv-addon-grid { grid-template-columns: 1fr; }
+  .cv-admin-entitlement-row { align-items: flex-start; flex-direction: column; }
+  .cv-admin-entitlement-row select { width: 100%; }
+  .cv-api-key-list li { align-items: flex-start; flex-direction: column; }
   .cv-compare-parts-grid,
   .cv-compare-evidence-grid,
   .cv-modal-component-pair,
