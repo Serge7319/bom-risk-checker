@@ -124,8 +124,12 @@ def _file_path() -> Path | None:
 def _load_state() -> dict[str, Any]:
     path = _file_path()
     if path and path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return getattr(_load_state, "_mem", {"workspaces": {}})  # type: ignore[attr-defined]
+        state = json.loads(path.read_text(encoding="utf-8"))
+    else:
+        state = getattr(_load_state, "_mem", {"workspaces": {}})  # type: ignore[attr-defined]
+    state.setdefault("workspaces", {})
+    state.setdefault("scheduled_runs", {})
+    return state
 
 
 def _save_state(state: dict[str, Any]) -> None:
@@ -139,7 +143,7 @@ def _save_state(state: dict[str, Any]) -> None:
 
 def reset_monitoring_store_for_tests() -> None:
     with _lock:
-        setattr(_load_state, "_mem", {"workspaces": {}})
+        setattr(_load_state, "_mem", {"workspaces": {}, "scheduled_runs": {}})
         path = _file_path()
         if path and path.exists():
             path.unlink()
@@ -152,7 +156,186 @@ def reset_monitoring_store_for_tests() -> None:
                 conn.execute("DELETE FROM migration_monitoring_snapshots")
                 conn.execute("DELETE FROM migration_monitoring_email_deliveries")
                 conn.execute("DELETE FROM migration_monitoring_refresh_history")
+                conn.execute("DELETE FROM migration_monitoring_scheduled_runs")
                 conn.commit()
+
+
+def _scheduled_run_row(row: Any) -> dict[str, Any]:
+    if not row:
+        return {}
+    item = dict(row)
+    for key in ("started_at", "updated_at", "finished_at"):
+        value = item.get(key)
+        if value is not None and hasattr(value, "isoformat"):
+            item[key] = value.isoformat()
+    result = item.get("result")
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except json.JSONDecodeError:
+            result = {}
+    item["result"] = result if isinstance(result, dict) else {}
+    return item
+
+
+def begin_scheduled_run(run_id: str) -> dict[str, Any]:
+    """Atomically claim the single active scheduled cycle and persist its ID."""
+    rid = str(run_id or "").strip()
+    if not rid or len(rid) > 100:
+        raise ValueError("A valid monitoring run ID is required")
+    if _use_postgres():
+        with _pg_connect() as conn:
+            conn.execute(
+                "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                ("cadivor_monitoring_scheduled_runs",),
+            )
+            conn.execute(
+                """
+                UPDATE migration_monitoring_scheduled_runs
+                   SET status = 'failed', updated_at = NOW(), finished_at = NOW(),
+                       error = 'The prior run stopped reporting progress.'
+                 WHERE status = 'running'
+                   AND updated_at < NOW() - INTERVAL '60 minutes'
+                """
+            )
+            existing = conn.execute(
+                "SELECT * FROM migration_monitoring_scheduled_runs WHERE id = %s",
+                (rid,),
+            ).fetchone()
+            if existing:
+                return {"created": False, **_scheduled_run_row(existing)}
+            active = conn.execute(
+                "SELECT * FROM migration_monitoring_scheduled_runs WHERE status = 'running' LIMIT 1"
+            ).fetchone()
+            if active:
+                return {"created": False, "busy": True, **_scheduled_run_row(active)}
+            row = conn.execute(
+                """
+                INSERT INTO migration_monitoring_scheduled_runs (id, status)
+                VALUES (%s, 'running')
+                RETURNING *
+                """,
+                (rid,),
+            ).fetchone()
+        return {"created": True, **_scheduled_run_row(row)}
+
+    with _lock:
+        state = _load_state()
+        runs = state.setdefault("scheduled_runs", {})
+        existing = runs.get(rid)
+        if existing:
+            return {"created": False, **dict(existing)}
+        now = utc_now()
+        stale_before = datetime.now(timezone.utc) - timedelta(minutes=60)
+        for previous in runs.values():
+            if previous.get("status") != "running":
+                continue
+            try:
+                updated = datetime.fromisoformat(str(previous.get("updated_at") or ""))
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=timezone.utc)
+            except ValueError:
+                updated = stale_before - timedelta(seconds=1)
+            if updated < stale_before:
+                previous.update({
+                    "status": "failed",
+                    "updated_at": now,
+                    "finished_at": now,
+                    "error": "The prior run stopped reporting progress.",
+                })
+        active = next((row for row in runs.values() if row.get("status") == "running"), None)
+        if active:
+            return {"created": False, "busy": True, **dict(active)}
+        record = {
+            "id": rid,
+            "status": "running",
+            "started_at": now,
+            "updated_at": now,
+            "finished_at": None,
+            "result": {},
+            "error": None,
+        }
+        runs[rid] = record
+        _save_state(state)
+        return {"created": True, **dict(record)}
+
+
+def get_scheduled_run(run_id: str) -> dict[str, Any] | None:
+    rid = str(run_id or "").strip()
+    if not rid:
+        return None
+    if _use_postgres():
+        with _pg_connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM migration_monitoring_scheduled_runs WHERE id = %s",
+                (rid,),
+            ).fetchone()
+        return _scheduled_run_row(row) if row else None
+    with _lock:
+        row = _load_state().get("scheduled_runs", {}).get(rid)
+        return dict(row) if row else None
+
+
+def touch_scheduled_run(run_id: str) -> None:
+    rid = str(run_id or "").strip()
+    if not rid:
+        return
+    now = utc_now()
+    if _use_postgres():
+        with _pg_connect() as conn:
+            conn.execute(
+                "UPDATE migration_monitoring_scheduled_runs SET updated_at = NOW() WHERE id = %s AND status = 'running'",
+                (rid,),
+            )
+            conn.commit()
+        return
+    with _lock:
+        state = _load_state()
+        row = state.get("scheduled_runs", {}).get(rid)
+        if row and row.get("status") == "running":
+            row["updated_at"] = now
+            _save_state(state)
+
+
+def finish_scheduled_run(
+    run_id: str,
+    *,
+    status: str,
+    result: dict[str, Any] | None = None,
+    error: str | None = None,
+) -> None:
+    rid = str(run_id or "").strip()
+    if not rid:
+        return
+    if status not in {"succeeded", "completed_with_failures", "failed"}:
+        raise ValueError("Invalid scheduled monitoring terminal status")
+    payload = result if isinstance(result, dict) else {}
+    if _use_postgres():
+        with _pg_connect() as conn:
+            conn.execute(
+                """
+                UPDATE migration_monitoring_scheduled_runs
+                   SET status = %s, updated_at = NOW(), finished_at = NOW(),
+                       result = %s::jsonb, error = %s
+                 WHERE id = %s AND status = 'running'
+                """,
+                (status, json.dumps(payload), str(error or "")[:1000] or None, rid),
+            )
+            conn.commit()
+        return
+    with _lock:
+        state = _load_state()
+        row = state.get("scheduled_runs", {}).get(rid)
+        if row and row.get("status") == "running":
+            now = utc_now()
+            row.update({
+                "status": status,
+                "updated_at": now,
+                "finished_at": now,
+                "result": payload,
+                "error": str(error or "")[:1000] or None,
+            })
+            _save_state(state)
 
 
 def _ws(state: dict[str, Any], workspace_id: str) -> dict[str, Any]:
