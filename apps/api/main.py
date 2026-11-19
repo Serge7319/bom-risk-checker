@@ -20,6 +20,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
+from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
@@ -2964,7 +2965,7 @@ async def monitoring_live_refresh_post(request: Request) -> JSONResponse:
 
 
 async def monitoring_scheduled_post(request: Request) -> JSONResponse:
-    """Cron-only six-hour cycle; all vendor and email effects remain separately gated."""
+    """Accept a cron cycle quickly; supplier and email work runs in the background."""
     if not monitoring_scheduler.authorize_cron(
         request.headers.get("x-cadivor-cron-token")
     ):
@@ -2974,10 +2975,99 @@ async def monitoring_scheduled_post(request: Request) -> JSONResponse:
     except Exception:  # noqa: BLE001
         body = {}
     dry_run = isinstance(body, dict) and body.get("dry_run") is True
-    # Supplier polling is blocking network I/O. Keep it off the ASGI event loop
-    # so normal API requests remain responsive during a scheduled cycle.
-    result = await run_in_threadpool(monitoring_scheduler.run_scheduled_cycle, dry_run=dry_run)
-    return _json(result, 200 if result.get("ok") else 409)
+    if dry_run:
+        result = await run_in_threadpool(
+            monitoring_scheduler.run_scheduled_cycle, dry_run=True
+        )
+        return _json(result, 200 if result.get("ok") else 409)
+
+    run_id = str(body.get("run_id") or uuid.uuid4()).strip()
+    try:
+        run = await run_in_threadpool(monitoring_store.begin_scheduled_run, run_id)
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
+    if run.get("busy"):
+        return _json(
+            {
+                "ok": False,
+                "status": "already_running",
+                "active_run_id": run.get("id"),
+            },
+            409,
+        )
+    if not run.get("created"):
+        status = str(run.get("status") or "failed")
+        return _json(
+            {
+                "ok": status == "running" or status == "succeeded",
+                "status": status,
+                "run_id": run_id,
+                "result": run.get("result") or {},
+                "error": run.get("error"),
+            },
+            202 if status == "running" else 200,
+        )
+    return JSONResponse(
+        {
+            "ok": True,
+            "status": "accepted",
+            "run_id": run_id,
+        },
+        status_code=202,
+        background=BackgroundTask(_execute_scheduled_monitoring_run, run_id),
+    )
+
+
+def _execute_scheduled_monitoring_run(run_id: str) -> None:
+    """Run the slow supplier cycle off-request and persist an observable result."""
+    try:
+        result = monitoring_scheduler.run_scheduled_cycle(
+            dry_run=False,
+            progress_callback=lambda: monitoring_store.touch_scheduled_run(run_id)
+        )
+        if not result.get("ok"):
+            status = "failed"
+        elif result.get("failures"):
+            status = "completed_with_failures"
+        else:
+            status = "succeeded"
+        monitoring_store.finish_scheduled_run(run_id, status=status, result=result)
+    except Exception as exc:  # noqa: BLE001
+        logging.exception("scheduled_monitoring_cycle_failed", extra={"run_id": run_id})
+        try:
+            monitoring_store.finish_scheduled_run(
+                run_id,
+                status="failed",
+                error="Scheduled supplier checks did not complete. See API logs for the run ID.",
+            )
+        except Exception:  # noqa: BLE001
+            logging.exception("scheduled_monitoring_status_write_failed", extra={"run_id": run_id})
+
+
+async def monitoring_scheduled_get(request: Request) -> JSONResponse:
+    """Cron-only polling endpoint for a previously accepted scheduled cycle."""
+    if not monitoring_scheduler.authorize_cron(
+        request.headers.get("x-cadivor-cron-token")
+    ):
+        return _json({"detail": "Unauthorized"}, 401)
+    run_id = str(request.path_params.get("run_id") or "").strip()
+    run = await run_in_threadpool(monitoring_store.get_scheduled_run, run_id)
+    if not run:
+        return _json({"detail": "Monitoring run not found"}, 404)
+    status = str(run.get("status") or "failed")
+    return _json(
+        {
+            "ok": status == "succeeded",
+            "status": status,
+            "run_id": run_id,
+            "result": run.get("result") or {},
+            "error": run.get("error"),
+            "started_at": run.get("started_at"),
+            "updated_at": run.get("updated_at"),
+            "finished_at": run.get("finished_at"),
+        },
+        200 if status != "running" else 202,
+    )
 
 
 def _team_error(exc: TeamError) -> JSONResponse:
@@ -3927,6 +4017,7 @@ app = Starlette(
         Route("/tools/monitoring/refresh", monitoring_refresh_post, methods=["POST"]),
         Route("/tools/monitoring/live-refresh", monitoring_live_refresh_post, methods=["POST"]),
         Route("/tools/monitoring/scheduled-run", monitoring_scheduled_post, methods=["POST"]),
+        Route("/tools/monitoring/scheduled-run/{run_id}", monitoring_scheduled_get, methods=["GET"]),
         Route("/billing/status", billing_status_get, methods=["GET"]),
         Route("/billing/checkout", billing_checkout_post, methods=["POST"]),
         Route("/billing/portal", billing_portal_post, methods=["POST"]),

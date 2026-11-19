@@ -188,26 +188,89 @@ class MonitoringLiveSchedulerTests(unittest.TestCase):
         self.assertIsNone(monitoring_store.get_live_snapshot(self.workspace_id, analysis_id, "ABC123"))
         self.assertEqual(monitoring_store.list_refresh_history(self.workspace_id), [])
 
-    def test_scheduled_run_offloads_blocking_cycle_from_api_event_loop(self):
+    def test_scheduled_run_is_accepted_and_status_reports_completion(self):
         os.environ["CADIVOR_MONITORING_CRON_TOKEN"] = "local-cron-secret"
-        calls = {}
-
-        async def fake_run_in_threadpool(function, *args, **kwargs):
-            calls["function"] = function
-            calls["args"] = args
-            calls["kwargs"] = kwargs
-            return {"ok": True, "status": "dry_run", "supplier_calls": 0}
-
-        with patch.object(api_main, "run_in_threadpool", side_effect=fake_run_in_threadpool):
+        result = {
+            "ok": True,
+            "status": "complete",
+            "analysis_count": 1,
+            "supplier_calls": 1,
+            "updated_parts": 1,
+            "alert_count": 0,
+            "email_sent": 0,
+            "failures": [],
+        }
+        with patch.object(monitoring_scheduler, "run_scheduled_cycle", return_value=result) as cycle:
             response = self.client.post(
                 "/tools/monitoring/scheduled-run",
                 headers={"x-cadivor-cron-token": "local-cron-secret"},
-                json={"dry_run": True},
+                json={"run_id": "monitoring-run-test-1"},
             )
 
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertIs(calls["function"], monitoring_scheduler.run_scheduled_cycle)
-        self.assertEqual(calls["kwargs"], {"dry_run": True})
+        self.assertEqual(response.status_code, 202, response.text)
+        self.assertEqual(response.json()["status"], "accepted")
+        cycle.assert_called_once()
+        self.assertEqual(cycle.call_args.kwargs["dry_run"], False)
+        status = self.client.get(
+            "/tools/monitoring/scheduled-run/monitoring-run-test-1",
+            headers={"x-cadivor-cron-token": "local-cron-secret"},
+        )
+        self.assertEqual(status.status_code, 200, status.text)
+        self.assertEqual(status.json()["status"], "succeeded")
+        self.assertEqual(status.json()["result"], result)
+
+    def test_scheduled_run_idempotency_does_not_start_duplicate_cycles(self):
+        os.environ["CADIVOR_MONITORING_CRON_TOKEN"] = "local-cron-secret"
+        with patch.object(
+            monitoring_scheduler,
+            "run_scheduled_cycle",
+            return_value={"ok": True, "status": "complete", "failures": []},
+        ) as cycle:
+            first = self.client.post(
+                "/tools/monitoring/scheduled-run",
+                headers={"x-cadivor-cron-token": "local-cron-secret"},
+                json={"run_id": "monitoring-run-idempotent"},
+            )
+            second = self.client.post(
+                "/tools/monitoring/scheduled-run",
+                headers={"x-cadivor-cron-token": "local-cron-secret"},
+                json={"run_id": "monitoring-run-idempotent"},
+            )
+        self.assertEqual(first.status_code, 202, first.text)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["status"], "succeeded")
+        cycle.assert_called_once()
+
+    def test_scheduled_cycle_reports_component_failure_and_refreshes_heartbeat(self):
+        analysis_id = self._analysis()
+        monitoring_store.update_user_preferences(
+            self.workspace_id,
+            self.user_id,
+            SMOKE_EMAIL,
+            {"supplier_checks": True},
+        )
+        os.environ["CADIVOR_MONITORING_SCHEDULER_ENABLED"] = "1"
+        os.environ["CADIVOR_MONITORING_LIVE_SUPPLIER_REFRESH_ENABLED"] = "1"
+        progress = []
+        with patch.object(monitoring_scheduler, "configured_supplier_count", return_value=1), patch.object(
+            monitoring_scheduler,
+            "run_live_analysis_refresh",
+            return_value={
+                "ok": True,
+                "supplier_calls": 1,
+                "updated_parts": 0,
+                "alert_count": 0,
+                "failed_parts": [{"part_number": "ABC123", "status": "supplier_unavailable"}],
+            },
+        ) as refresh:
+            result = monitoring_scheduler.run_scheduled_cycle(
+                progress_callback=lambda: progress.append("heartbeat")
+            )
+
+        self.assertEqual(result["status"], "completed_with_failures")
+        self.assertEqual(result["failures"][0]["reason"], "supplier_unavailable")
+        self.assertTrue(callable(refresh.call_args.kwargs["progress_callback"]))
+        self.assertEqual(progress, ["heartbeat"])
 
     def test_email_delivery_uses_verified_member_address(self):
         analysis_id = self._analysis()

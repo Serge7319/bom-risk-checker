@@ -166,6 +166,7 @@ def run_live_analysis_refresh(
     supplier_lookup: Callable[..., dict[str, Any]] | None = None,
     dry_run: bool = False,
     scheduled: bool = False,
+    progress_callback: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Poll exact MPNs, persist matched snapshots and change alerts.
 
@@ -211,6 +212,12 @@ def run_live_analysis_refresh(
     new_alerts: list[dict[str, Any]] = []
     calls = 0
     for part in parts:
+        if progress_callback is not None:
+            try:
+                progress_callback()
+            except Exception:  # noqa: BLE001
+                # Heartbeat bookkeeping must not interrupt supplier polling.
+                pass
         mpn = str(part.get("MPN") or part.get("mpn") or "").strip()
         requested_manufacturer = str(
             part.get("Manufacturer") or part.get("manufacturer") or ""
@@ -364,8 +371,21 @@ def run_live_analysis_refresh(
     }
 
 
-def run_scheduled_cycle(*, dry_run: bool = False) -> dict[str, Any]:
+def run_scheduled_cycle(
+    *,
+    dry_run: bool = False,
+    progress_callback: Callable[[], None] | None = None,
+) -> dict[str, Any]:
     """Run six-hour supplier checks for workspaces with member opt-in."""
+    def _report_progress() -> None:
+        if progress_callback is None:
+            return
+        try:
+            progress_callback()
+        except Exception:  # noqa: BLE001
+            # Progress bookkeeping must not interrupt a supplier refresh.
+            pass
+
     try:
         scopes = get_store().list_monitoring_analyses()
     except Exception:  # noqa: BLE001
@@ -400,20 +420,32 @@ def run_scheduled_cycle(*, dry_run: bool = False) -> dict[str, Any]:
         email_members.setdefault(str(row.get("workspace_id") or ""), []).append(row)
     for scope in targets:
         result = run_live_analysis_refresh(
-            str(scope["workspace_id"]), str(scope["analysis_id"]), scheduled=True
+            str(scope["workspace_id"]),
+            str(scope["analysis_id"]),
+            scheduled=True,
+            progress_callback=progress_callback,
         )
         summary["supplier_calls"] += int(result.get("supplier_calls") or 0)
         summary["updated_parts"] += int(result.get("updated_parts") or 0)
         summary["alert_count"] += int(result.get("alert_count") or 0)
         if not result.get("ok"):
             summary["failures"].append({"workspace_id": scope["workspace_id"], "analysis_id": scope["analysis_id"], "reason": result.get("reason") or result.get("status")})
+            _report_progress()
             continue
         workspace_id = str(scope["workspace_id"])
         candidates = new_alerts_by_workspace.setdefault(workspace_id, {})
+        for failed_part in result.get("failed_parts") or []:
+            summary["failures"].append({
+                "workspace_id": scope["workspace_id"],
+                "analysis_id": scope["analysis_id"],
+                "part_number": failed_part.get("part_number"),
+                "reason": failed_part.get("status") or "supplier_data_unavailable",
+            })
         for alert in result.get("alerts") or []:
             alert_id = str(alert.get("id") or "").strip()
             if alert_id and alert.get("evidence_source") == "live-authorized-supplier":
                 candidates[alert_id] = alert
+        _report_progress()
 
     # Retry prior failed mail independently of whether this refresh observed a
     # fresh value change. A later poll must not erase a notification event.
@@ -467,6 +499,16 @@ def run_scheduled_cycle(*, dry_run: bool = False) -> dict[str, Any]:
                 )
                 if delivery.get("delivered"):
                     summary["email_sent"] += 1
+                else:
+                    summary["failures"].append({
+                        "workspace_id": workspace_id,
+                        "user_id": user_id,
+                        "alert_id": alert_id,
+                        "reason": delivery.get("reason") or "email_delivery_failed",
+                    })
+                _report_progress()
+    if summary["failures"]:
+        summary["status"] = "completed_with_failures"
     return summary
 
 

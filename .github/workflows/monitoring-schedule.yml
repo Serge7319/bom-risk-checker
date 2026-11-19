@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Call the protected monitoring schedule endpoint
+      - name: Start and track the protected monitoring cycle
         env:
           API_BASE: ${{ vars.CADIVOR_API_BASE }}
           CRON_TOKEN: ${{ secrets.CADIVOR_MONITORING_CRON_TOKEN }}
@@ -36,10 +36,42 @@ jobs:
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$MANUAL_DRY_RUN" = "true" ]; then
             DRY_RUN=true
           fi
-          curl --silent --show-error --fail-with-body \
-            --connect-timeout 10 --max-time 900 \
+          RUN_ID="$(python -c 'import uuid; print(uuid.uuid4())')"
+          START_RESPONSE="$(curl --silent --show-error --fail-with-body \
+            --connect-timeout 10 --max-time 30 \
             -X POST \
             -H "Content-Type: application/json" \
             -H "x-cadivor-cron-token: $CRON_TOKEN" \
-            --data "{\"dry_run\":$DRY_RUN}" \
-            "${API_BASE%/}/tools/monitoring/scheduled-run"
+            --data "{\"dry_run\":$DRY_RUN,\"run_id\":\"$RUN_ID\"}" \
+            "${API_BASE%/}/tools/monitoring/scheduled-run")"
+          echo "$START_RESPONSE"
+          if [ "$DRY_RUN" = "true" ]; then
+            exit 0
+          fi
+          RUN_STATUS="$(printf '%s' "$START_RESPONSE" | python -c 'import json,sys; print(json.load(sys.stdin).get("status", ""))')"
+          if [ "$RUN_STATUS" != "accepted" ]; then
+            echo "Monitoring cycle was not accepted: $RUN_STATUS"
+            exit 1
+          fi
+          for attempt in $(seq 1 220); do
+            sleep 5
+            STATUS_RESPONSE="$(curl --silent --show-error --fail-with-body \
+              --connect-timeout 10 --max-time 30 \
+              -H "x-cadivor-cron-token: $CRON_TOKEN" \
+              "${API_BASE%/}/tools/monitoring/scheduled-run/$RUN_ID")"
+            RUN_STATUS="$(printf '%s' "$STATUS_RESPONSE" | python -c 'import json,sys; print(json.load(sys.stdin).get("status", ""))')"
+            if [ "$RUN_STATUS" = "succeeded" ]; then
+              echo "$STATUS_RESPONSE"
+              exit 0
+            fi
+            if [ "$RUN_STATUS" = "completed_with_failures" ] || [ "$RUN_STATUS" = "failed" ]; then
+              echo "$STATUS_RESPONSE"
+              exit 1
+            fi
+            if [ "$RUN_STATUS" != "running" ]; then
+              echo "Unexpected monitoring cycle status: $RUN_STATUS"
+              exit 1
+            fi
+          done
+          echo "Monitoring cycle did not finish within the 18-minute polling window (run $RUN_ID)."
+          exit 1
