@@ -18,3 +18,5 @@ alter function public.cadivor_touch_updated_at()
   set search_path = pg_catalog, public;
 alter function public.cadivor_touch_monitor_alert_updated_at()
   set search_path = pg_catalog, public;
+
+commit;
