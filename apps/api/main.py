@@ -2296,6 +2296,47 @@ async def billing_checkout_prep_post(request: Request) -> JSONResponse:
     return _json(result, status)
 
 
+async def billing_public_catalog_get(request: Request) -> JSONResponse:
+    """Expose only public plan prices for the marketing pricing page."""
+    try:
+        result, status = subscription_billing_service.request_public_catalog()
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"ok": False, "detail": "Pricing is temporarily unavailable."}, 503)
+    if status < 200 or status >= 300 or result.get("ok") is not True:
+        return _json({"ok": False, "detail": "Pricing is temporarily unavailable."}, 503)
+
+    raw_plans = result.get("plans")
+    if not isinstance(raw_plans, list):
+        return _json({"ok": False, "detail": "Pricing is temporarily unavailable."}, 503)
+    plans = []
+    for value in raw_plans:
+        if not isinstance(value, dict):
+            continue
+        annual = value.get("annual") if isinstance(value.get("annual"), dict) else {}
+        plans.append(
+            {
+                "name": str(value.get("name") or ""),
+                "token": str(value.get("token") or ""),
+                "enabled": value.get("enabled") is True,
+                "amount": value.get("amount") if isinstance(value.get("amount"), int) else None,
+                "currency": str(value.get("currency") or ""),
+                "interval": str(value.get("interval") or ""),
+                "annual": {
+                    "enabled": annual.get("enabled") is True,
+                    "amount": annual.get("amount") if isinstance(annual.get("amount"), int) else None,
+                    "currency": str(annual.get("currency") or ""),
+                    "interval": str(annual.get("interval") or ""),
+                    "discount_percent": annual.get("discount_percent")
+                    if isinstance(annual.get("discount_percent"), (int, float))
+                    else None,
+                },
+            }
+        )
+    response = _json({"ok": True, "plans": plans}, 200)
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return response
+
+
 async def one_time_report_status_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -4162,6 +4203,7 @@ app = Starlette(
         Route("/billing/status", billing_status_get, methods=["GET"]),
         Route("/billing/checkout", billing_checkout_post, methods=["POST"]),
         Route("/billing/portal", billing_portal_post, methods=["POST"]),
+        Route("/billing/public-catalog", billing_public_catalog_get, methods=["GET"]),
         Route("/billing/checkout-prep", billing_checkout_prep_post, methods=["POST"]),
         Route("/billing/one-time-report", one_time_report_status_get, methods=["GET"]),
         Route("/billing/one-time-report/checkout", one_time_report_checkout_post, methods=["POST"]),

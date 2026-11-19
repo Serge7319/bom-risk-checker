@@ -291,9 +291,6 @@ serve(async (request) => {
   if (request.method === "OPTIONS") return response({ ok: true }, 200, origin);
   if (request.method !== "POST") return response({ ok: false, detail: "Method not allowed." }, 405, origin);
 
-  const auth = await verifiedUser(request);
-  if (!auth.user) return response({ ok: false, detail: "Sign in with a verified Cadivor account." }, auth.status, origin);
-
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -301,6 +298,20 @@ serve(async (request) => {
     return response({ ok: false, detail: "Invalid request." }, 400, origin);
   }
   const action = String(body.action || "").trim().toLowerCase();
+
+  // Marketing pages may read the public price catalog without an account.
+  // It contains only active prices and plan labels, never Stripe IDs or keys.
+  if (action === "catalog") {
+    try {
+      return response({ ok: true, plans: await priceCatalog() }, 200, origin);
+    } catch {
+      return response({ ok: false, detail: "Pricing is temporarily unavailable." }, 503, origin);
+    }
+  }
+
+  const auth = await verifiedUser(request);
+  if (!auth.user) return response({ ok: false, detail: "Sign in with a verified Cadivor account." }, auth.status, origin);
+
   let planToken = "unknown";
   const supportReference = crypto.randomUUID();
   try {
