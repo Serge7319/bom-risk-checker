@@ -1230,7 +1230,7 @@ async def reports_export(request: Request) -> Response:
     if not report:
         return _json({"detail": "Report not found"}, 404)
     if file_format not in {"pdf", "csv", "xlsx", "plm-csv"}:
-        return _json({"detail": "Choose PDF, Excel, CSV audit, or neutral PLM/ERP CSV."}, 400)
+        return _json({"detail": "Choose one of the supported export formats: PDF, Excel, or CSV; PLM/ERP CSV is also available."}, 400)
 
     export_report = annotate_report_parts(report)
     try:
