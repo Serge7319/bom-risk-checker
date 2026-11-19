@@ -60,7 +60,8 @@
 .seo-pricing-enterprise .seo-kicker{margin-bottom:5px}
 .seo-pricing-enterprise ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 18px;margin:0;padding-left:18px;color:#526784;font-size:12px}
 .seo-pricing-enterprise .seo-button{white-space:nowrap}
-.seo-pricing-disclosures{margin-top:18px;color:#718198;font-size:12px;line-height:1.6}
+.seo-pricing-disclosures{margin-top:18px;padding:14px 18px;border:1px solid #dce6f4;border-radius:12px;background:#f8fbff;color:#718198;font-size:12px;line-height:1.6}
+.seo-pricing-disclosures h2{margin:0 0 4px;color:#29415f;font-size:13px;font-weight:700;letter-spacing:.01em}
 .seo-pricing-disclosures p{margin:5px 0}
 @media(max-width:1279px){.seo-pricing-section>.seo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:800px){.seo-header-inner,.seo-footer-inner,.seo-section,.seo-callout{width:min(100% - 36px,1580px)}.seo-pricing-section{width:min(100% - 36px,1280px)}}
