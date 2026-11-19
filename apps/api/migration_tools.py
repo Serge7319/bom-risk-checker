@@ -463,7 +463,8 @@ def monitoring_payload(
     action_center = build_monitoring_action_center(alert_df, monitor_df)
     high = sum(1 for a in scoped if str(a.get("severity")).lower() == "high")
     lifecycle_n = sum(
-        1 for a in scoped if "lifecycle" in str(a.get("alert_type") or "").lower()
+        1 for a in scoped
+        if any(term in str(a.get("alert_type") or "").lower() for term in ("lifecycle", "pcn", "product change notice"))
     )
     history = monitoring_store.list_refresh_history(workspace_id)
     scoped_history = [
@@ -2237,12 +2238,62 @@ def portfolio_payload(*, workspace_id: str) -> dict[str, Any]:
     analyses, parts = analyses_and_parts(workspace_id=workspace_id)
     monitoring = monitoring_payload(workspace_id=workspace_id)
     alerts = monitoring.get("alerts") or []
+    all_alerts = monitoring_store.list_alerts(workspace_id)
+    open_blocker_alerts = [
+        row for row in all_alerts
+        if isinstance(row, dict)
+        and row.get("active") is not False
+        and str(row.get("status") or "active").lower() == "active"
+        and not bool(row.get("acknowledged"))
+        and str(row.get("severity") or "").lower() == "high"
+    ]
+    approver_lister = getattr(get_store(), "list_decision_record_approvers", None)
+    pending_approvers = (
+        approver_lister(workspace_id=workspace_id, status="pending")
+        if callable(approver_lister) else []
+    )
+    opted_in_members = monitoring_store.list_user_preferences(
+        workspace_id=workspace_id, supplier_checks=True
+    )
+    monitored_analysis_ids: set[str] = set()
+    if opted_in_members:
+        try:
+            scope_rows = [
+                row for row in get_store().list_monitoring_analyses()
+                if str(row.get("workspace_id") or "") == str(workspace_id)
+            ]
+            capacity = monitoring_store.get_workspace_monitoring_capacity(workspace_id)
+            if capacity is None:
+                monitored_analysis_ids = {
+                    str(row.get("analysis_id") or "") for row in scope_rows
+                    if str(row.get("analysis_id") or "")
+                }
+            else:
+                included_parts = 0
+                for row in scope_rows:
+                    analysis_key = str(row.get("analysis_id") or "")
+                    part_count = max(0, int(row.get("total_parts") or 0))
+                    if analysis_key and included_parts + part_count <= capacity:
+                        monitored_analysis_ids.add(analysis_key)
+                        included_parts += part_count
+        except Exception:  # noqa: BLE001
+            # Keep the dashboard honest when the schedule scope is unavailable.
+            monitored_analysis_ids = set()
+    leadership_metrics = {
+        "open_blocker_alerts": len(open_blocker_alerts),
+        "decisions_awaiting_approval": len({
+            str(row.get("decision_record_id") or "") for row in pending_approvers
+            if str(row.get("decision_record_id") or "")
+        }),
+        "monitored_boms": len({item for item in monitored_analysis_ids if item}),
+    }
     if not analyses:
         return {
             "ok": True,
             "mode": "synthetic-preview",
             "gap": "No saved analyses yet. Analyze a BOM first.",
             "intelligence": {},
+            "leadership_metrics": leadership_metrics,
             "reports": [],
         }
     intelligence = build_portfolio_intelligence(analyses, parts, alerts)
@@ -2251,6 +2302,7 @@ def portfolio_payload(*, workspace_id: str) -> dict[str, Any]:
             "ok": True,
             "mode": "synthetic-preview",
             "gap": "Based on saved analyses in this workspace.",
+            "leadership_metrics": leadership_metrics,
             "reports": list_reports(workspace_id=workspace_id),
             "intelligence": intelligence,
         }

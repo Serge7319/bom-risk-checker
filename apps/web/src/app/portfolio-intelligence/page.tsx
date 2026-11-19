@@ -28,6 +28,7 @@ export default function PortfolioPage() {
   if (!session) return null;
   const reports = (data?.reports || []) as Array<Record<string, unknown>>;
   const intel = (data?.intelligence || {}) as Record<string, unknown>;
+  const leadership = (data?.leadership_metrics || {}) as Record<string, unknown>;
   const projects = (intel.project_health || intel.projects || []) as Array<Record<string, unknown>>;
   const shared = (intel.shared_components || intel.shared || []) as Array<Record<string, unknown>>;
 
@@ -39,6 +40,11 @@ export default function PortfolioPage() {
       {error ? <div className="cv-error" role="alert">Portfolio data could not load. {error}</div> : null}
       {!busy && data ? (
         reports.length ? <>
+          <div className="cv-kpis">
+            <KpiCard icon="risk" tone="amber" label="Open blocker alerts" value={Number(leadership.open_blocker_alerts || 0)} detail="High severity, unacknowledged" />
+            <KpiCard icon="clock" tone="blue" label="Decisions awaiting approval" value={Number(leadership.decisions_awaiting_approval || 0)} detail="Active approver requests" />
+            <KpiCard icon="bell" label="Monitored BOMs" value={Number(leadership.monitored_boms || 0)} detail="Workspace opted in to supplier checks" />
+          </div>
           <div className="cv-kpis">
             <KpiCard icon="report" tone="blue" label="Saved analyses" value={reports.length} detail="Reports in this workspace" />
             <KpiCard icon="portfolio" label="Projects represented" value={projects.length} detail="Projects with saved BOM records" />

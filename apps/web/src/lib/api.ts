@@ -632,7 +632,7 @@ export async function fetchReport(analysisId: string, token: string): Promise<Re
   return apiJson(`/reports/${analysisId}`, { token });
 }
 
-export type ReportExportFormat = "pdf" | "csv" | "xlsx";
+export type ReportExportFormat = "pdf" | "csv" | "xlsx" | "plm-csv";
 
 export async function downloadReportExport(
   analysisId: string,
@@ -671,6 +671,58 @@ export async function downloadReportExport(
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadAuthenticatedCsv(path: string, token: string, fallbackName: string): Promise<void> {
+  assertApiBaseConfigured();
+  const send = (accessToken: string) => fetch(`${API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const activeToken = await currentSupabaseAccessToken(token);
+  let response = await send(activeToken);
+  if (response.status === 401) {
+    const refreshedToken = await refreshSupabaseAccessToken();
+    if (refreshedToken && refreshedToken !== activeToken) response = await send(refreshedToken);
+    if (response.status === 401) redirectToLoginAfterAuthFailure();
+  }
+  if (!response.ok) {
+    const detail = (await response.json().catch(() => ({}))) as { detail?: string };
+    throw new Error(userFacingError(detail.detail, `CSV download failed (${response.status})`));
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || fallbackName;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export type DecisionRecordExportTemplate = "medical-device" | "aerospace";
+
+export async function downloadDecisionRecordExport(
+  token: string,
+  template: DecisionRecordExportTemplate,
+  analysisId?: string,
+): Promise<void> {
+  const query = analysisId ? `?analysis_id=${encodeURIComponent(analysisId)}` : "";
+  await downloadAuthenticatedCsv(
+    `/decision-records/export/${template}${query}`,
+    token,
+    `cadivor-${template}-decision-draft.csv`,
+  );
+}
+
+export async function downloadWorkspaceActivityExport(token: string): Promise<void> {
+  await downloadAuthenticatedCsv(
+    "/workspace/activity/export.csv",
+    token,
+    "cadivor-workspace-activity.csv",
+  );
 }
 
 export async function listReports(token: string) {
@@ -1265,11 +1317,31 @@ export async function fetchServiceReadiness(token: string) {
   return apiJson<ServiceReadiness>("/integrations/service-readiness", { token });
 }
 
-export async function fetchCompliancePack(token: string, packType: string) {
+export type CompliancePackType = "rohs" | "reach" | "pfas" | "conflict_minerals" | "pcn" | "audit";
+
+export async function fetchCompliancePack(token: string, packType: CompliancePackType, analysisId?: string) {
+  const analysisQuery = analysisId ? `?analysis_id=${encodeURIComponent(analysisId)}` : "";
   return apiJson<Record<string, unknown>>(
-    `/compliance/${encodeURIComponent(packType)}`,
+    `/compliance/${encodeURIComponent(packType)}${analysisQuery}`,
     { token },
   );
+}
+
+export async function downloadCompliancePack(
+  token: string,
+  analysisId: string,
+  packType: CompliancePackType,
+): Promise<void> {
+  const result = await fetchCompliancePack(token, packType, analysisId);
+  const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `cadivor-${packType}-${analysisId.slice(0, 12)}.json`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export async function fetchProfile(token: string) {

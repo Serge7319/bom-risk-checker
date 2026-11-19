@@ -557,6 +557,30 @@ class PostgresWorkspaceStore:
             "expires_at": expires.isoformat() if hasattr(expires, "isoformat") else expires,
         }
 
+    def list_decision_record_approvers(
+        self, *, workspace_id: str, status: str = "pending"
+    ) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT decision_record_id, status, expires_at
+                  FROM migration_decision_record_approvers
+                 WHERE workspace_id = %s AND status = %s AND expires_at > NOW()
+                 ORDER BY created_at DESC
+                """,
+                (wid, str(status or "pending").strip().lower()),
+            ).fetchall()
+        return [
+            {
+                "decision_record_id": str(row["decision_record_id"]),
+                "status": str(row["status"]),
+                "expires_at": row["expires_at"].isoformat()
+                if hasattr(row["expires_at"], "isoformat") else row["expires_at"],
+            }
+            for row in rows
+        ]
+
     def respond_to_decision_record_approver(
         self, token_hash: str, *, decision: str, rationale: str
     ) -> bool:

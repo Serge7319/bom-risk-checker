@@ -449,6 +449,36 @@ class WorkspaceStore:
             "expires_at": invite.get("expires_at"),
         }
 
+    def list_decision_record_approvers(
+        self, *, workspace_id: str, status: str = "pending"
+    ) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        wanted = str(status or "pending").strip().lower()
+        now = datetime.now(timezone.utc)
+        with _LOCK:
+            rows = []
+            for invite in self._data.setdefault("decision_record_approvers", {}).values():
+                if str(invite.get("workspace_id") or "") != wid:
+                    continue
+                if str(invite.get("status") or "").lower() != wanted:
+                    continue
+                try:
+                    expires = datetime.fromisoformat(
+                        str(invite.get("expires_at") or "").replace("Z", "+00:00")
+                    )
+                    if expires.tzinfo is None:
+                        expires = expires.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+                if expires <= now:
+                    continue
+                rows.append({
+                    "decision_record_id": str(invite.get("decision_record_id") or ""),
+                    "status": wanted,
+                    "expires_at": invite.get("expires_at"),
+                })
+            return rows
+
     def respond_to_decision_record_approver(
         self, token_hash: str, *, decision: str, rationale: str
     ) -> bool:

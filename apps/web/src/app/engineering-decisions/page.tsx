@@ -11,6 +11,7 @@ import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import {
   createDecisionRecordShare,
+  downloadDecisionRecordExport,
   inviteDecisionApprover,
   listDecisionRecords,
   listReports,
@@ -35,6 +36,8 @@ function EngineeringDecisionsPageInner() {
   const [shareLinks, setShareLinks] = useState<Record<string, string>>({});
   const [shareCopied, setShareCopied] = useState("");
   const [shareError, setShareError] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [exportingTemplate, setExportingTemplate] = useState("");
   const [approverEmails, setApproverEmails] = useState<Record<string, string>>({});
   const [approverBusy, setApproverBusy] = useState("");
   const [approverNotice, setApproverNotice] = useState("");
@@ -140,6 +143,20 @@ function EngineeringDecisionsPageInner() {
       setShareError(err instanceof Error ? err.message : "Could not send the approval invitation.");
     } finally {
       setApproverBusy("");
+    }
+  }
+
+  async function exportDecisionDraft(template: "medical-device" | "aerospace") {
+    const accessToken = session?.access_token;
+    if (!accessToken || exportingTemplate) return;
+    setExportingTemplate(template);
+    setExportError("");
+    try {
+      await downloadDecisionRecordExport(accessToken, template, requestedAnalysisId || undefined);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Could not export decision records.");
+    } finally {
+      setExportingTemplate("");
     }
   }
 
@@ -254,10 +271,22 @@ function EngineeringDecisionsPageInner() {
               <div className="cv-eyebrow">Workspace history</div>
               <h2 className="cv-card-title">Recorded engineering decisions</h2>
               <p className="cv-card-subtitle">User review records include the comparison snapshot available when they were saved. Cadivor does not qualify alternates or change a BOM.</p>
+              {records.length ? (
+                <div className="cv-inline-actions" style={{ marginTop: 10 }}>
+                  <button className="cv-button small" type="button" disabled={Boolean(exportingTemplate)} onClick={() => void exportDecisionDraft("medical-device")}>
+                    {exportingTemplate === "medical-device" ? "Preparing…" : "Medical device draft CSV"}
+                  </button>
+                  <button className="cv-button small" type="button" disabled={Boolean(exportingTemplate)} onClick={() => void exportDecisionDraft("aerospace")}>
+                    {exportingTemplate === "aerospace" ? "Preparing…" : "Aerospace draft CSV"}
+                  </button>
+                </div>
+              ) : null}
             </div>
             <PrimaryLink href="/compare-parts">Compare parts</PrimaryLink>
           </div>
           {shareError ? <div className="cv-error" role="alert">{shareError}</div> : null}
+          {exportError ? <div className="cv-error" role="alert">{exportError}</div> : null}
+          {records.length ? <p className="cv-small-note">Draft layouts only. Compliance review is required before regulated use; these exports are not certifications.</p> : null}
           {approverNotice ? <div className="cv-evidence-context" role="status">{approverNotice}</div> : null}
           {records.length ? (
             <div className="cv-table-wrap" style={{ marginTop: 14 }}>

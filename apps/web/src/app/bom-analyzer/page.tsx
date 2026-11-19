@@ -855,6 +855,10 @@ export default function BomAnalyzerPage() {
             <small className="cv-small-note">
               Illustrative quantities and project grouping; supplier evidence is fetched live when available.
             </small>
+            <div className="cv-small-note" style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center" }}>
+              <a href="/templates/cadivor-basic-bom-template.csv" download>Download basic BOM CSV template</a>
+              <a href="/templates/cadivor-plm-erp-bom-template.csv" download>Download PLM / ERP item template</a>
+            </div>
           </div>
 
           {file ? (

@@ -29,6 +29,19 @@ COMPONENT_COLUMNS = (
     "Identity Retrieved At",
     "Lifecycle Source",
     "Lifecycle Retrieved At",
+    "Last Time Buy Date",
+    "End of Life Date",
+    "Estimated EOL Years",
+    "PCN Number",
+    "PCN Date",
+    "PCN Status",
+    "PCN Source URL",
+    "RoHS Status",
+    "RoHS Source URL",
+    "REACH Status",
+    "REACH Source URL",
+    "PFAS Status",
+    "PFAS Source URL",
     "Stock Source",
     "Stock Retrieved At",
     "Price Source",
@@ -100,6 +113,7 @@ _XLSX_NUMERIC_FIELDS = {
     "Quantity per Parent",
     "Effective Quantity",
     "Risk Score",
+    "Estimated EOL Years",
     "Stock",
     "Unit Price",
     "Leaf Count",
@@ -119,6 +133,7 @@ _XLSX_NUMBER_FORMATS = {
     "Quantity per Parent": "#,##0.###",
     "Effective Quantity": "#,##0.###",
     "Risk Score": "0",
+    "Estimated EOL Years": "0.0",
     "Stock": "#,##0",
     "Unit Price": "#,##0.00##",
     "Leaf Count": "#,##0",
@@ -227,6 +242,19 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
                 _field_from_evidence(evidence, "lifecycle", "retrieved_at")
                 or _first(row, "lifecycle_retrieved_at")
             ),
+            "Last Time Buy Date": _first(row, "last_time_buy_date", "Last Time Buy Date"),
+            "End of Life Date": _first(row, "end_of_life_date", "eol_date", "End Of Life Date"),
+            "Estimated EOL Years": _first(row, "estimated_eol_years", "Estimated EOL Years"),
+            "PCN Number": _first(row, "pcn_number", "pcn_id", "PCN Number"),
+            "PCN Date": _first(row, "pcn_date", "PCN Date"),
+            "PCN Status": _first(row, "pcn_status", "PCN Status"),
+            "PCN Source URL": _first(row, "pcn_url", "PCN URL"),
+            "RoHS Status": _first(row, "rohs_status", "RoHS status"),
+            "RoHS Source URL": _first(row, "rohs_source_url", "rohs_evidence_url"),
+            "REACH Status": _first(row, "reach_status", "REACH status"),
+            "REACH Source URL": _first(row, "reach_source_url", "reach_evidence_url"),
+            "PFAS Status": _first(row, "pfas_status", "PFAS status"),
+            "PFAS Source URL": _first(row, "pfas_source_url", "pfas_evidence_url"),
             "Stock Source": (
                 _field_from_evidence(evidence, "stock", "source")
                 or _first(row, "stock_source")
@@ -399,6 +427,65 @@ def build_csv(report: dict[str, Any]) -> bytes:
                 },
             }
         )
+    return output.getvalue().encode("utf-8-sig")
+
+
+def build_interchange_csv(report: dict[str, Any]) -> bytes:
+    """Export BOM structure in a neutral PLM/ERP-friendly column contract.
+
+    This is a file interchange format, not a live connector. Only BOM fields
+    supplied in the source report are copied; Cadivor never invents item IDs,
+    units, references, or hierarchy.
+    """
+    columns = (
+        "Item Number",
+        "Manufacturer Part Number",
+        "Manufacturer",
+        "Description",
+        "Quantity",
+        "Unit",
+        "Reference Designators",
+        "Parent Item Number",
+        "Line Type",
+        "Footprint",
+        "Lifecycle Status",
+        "Last Time Buy Date",
+        "End of Life Date",
+        "Estimated EOL Years",
+        "PCN Number",
+        "PCN Date",
+        "PCN Status",
+        "PCN Source URL",
+    )
+    output = StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=columns, extrasaction="ignore")
+    writer.writeheader()
+    for source in report.get("parts") or []:
+        if not isinstance(source, dict):
+            continue
+        values = {
+            "Item Number": _first(source, "Item Number", "item_number", "internal_part_number", default=""),
+            "Manufacturer Part Number": _first(source, "Manufacturer Part Number", "MPN", "mpn", "manufacturer_part_number"),
+            "Manufacturer": _first(source, "Manufacturer", "manufacturer"),
+            "Description": _first(source, "Description", "description", "part_description"),
+            "Quantity": _first(source, "Effective Quantity", "effective_quantity", "Quantity", "quantity", "qty"),
+            # Leave UOM blank when the BOM did not specify one. A default
+            # would silently invent a unit and could corrupt a PLM import.
+            "Unit": _first(source, "Unit", "UOM", "unit", "uom", default=""),
+            "Reference Designators": _first(source, "Reference Designators", "reference_designators", "Designator", "designator", "Ref Des", "ref_des"),
+            "Parent Item Number": _first(source, "Parent Item Number", "parent_item_number", "Parent MPN", "parent_mpn"),
+            "Line Type": _first(source, "Line Type", "line_type"),
+            "Footprint": _first(source, "Footprint", "footprint", "Package", "package"),
+            "Lifecycle Status": _first(source, "Lifecycle Status", "Lifecycle", "lifecycle_status"),
+            "Last Time Buy Date": _first(source, "last_time_buy_date", "Last Time Buy Date"),
+            "End of Life Date": _first(source, "end_of_life_date", "eol_date", "End Of Life Date"),
+            "Estimated EOL Years": _first(source, "estimated_eol_years", "Estimated EOL Years"),
+            "PCN Number": _first(source, "pcn_number", "pcn_id", "PCN Number"),
+            "PCN Date": _first(source, "pcn_date", "PCN Date"),
+            "PCN Status": _first(source, "pcn_status", "PCN Status"),
+            "PCN Source URL": _first(source, "pcn_url", "PCN URL"),
+        }
+        writer.writerow({key: _safe_spreadsheet_value(_user_text(value)) for key, value in values.items()})
     return output.getvalue().encode("utf-8-sig")
 
 
@@ -830,6 +917,7 @@ def build_report_export(report: dict[str, Any], file_format: str) -> tuple[bytes
     normalized = file_format.strip().lower()
     builders = {
         "csv": (build_csv, "text/csv; charset=utf-8", "csv"),
+        "plm-csv": (build_interchange_csv, "text/csv; charset=utf-8", "csv"),
         "xlsx": (build_xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"),
         "pdf": (build_pdf, "application/pdf", "pdf"),
     }
