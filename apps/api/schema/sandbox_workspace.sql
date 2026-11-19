@@ -280,6 +280,25 @@ CREATE TABLE IF NOT EXISTS migration_monitoring_refresh_history (
 CREATE INDEX IF NOT EXISTS migration_monitoring_refresh_ws_idx
   ON migration_monitoring_refresh_history (workspace_id, ran_at DESC);
 
+-- Durable status for long-running six-hour supplier polling cycles. The cron
+-- caller receives a run ID quickly and polls this row until the worker ends.
+CREATE TABLE IF NOT EXISTS migration_monitoring_scheduled_runs (
+  id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'completed_with_failures', 'failed')),
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ,
+  result JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS migration_monitoring_scheduled_runs_one_active_uidx
+  ON migration_monitoring_scheduled_runs (status)
+  WHERE status = 'running';
+
+CREATE INDEX IF NOT EXISTS migration_monitoring_scheduled_runs_updated_idx
+  ON migration_monitoring_scheduled_runs (updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS migration_usage_events (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
