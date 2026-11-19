@@ -73,3 +73,40 @@ def request_action(
     except (UnicodeDecodeError, json.JSONDecodeError):
         result = {}
     return (result if isinstance(result, dict) else {}), status
+
+
+def request_public_catalog(*, timeout_seconds: float = 10) -> tuple[dict[str, Any], int]:
+    """Read Stripe's public plan catalog without an account access token."""
+    base = str(os.environ.get("SUPABASE_URL") or "").strip().rstrip("/")
+    public_key = (
+        str(os.environ.get("SUPABASE_ANON_KEY") or "").strip()
+        or str(os.environ.get("SUPABASE_KEY") or "").strip()
+    )
+    if not base or not public_key:
+        raise SubscriptionBillingError("Subscription billing is not configured.")
+
+    request = Request(
+        f"{base}/functions/v1/subscription-checkout",
+        data=b'{"action":"catalog"}',
+        headers={
+            "apikey": public_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            status = int(response.status)
+            raw = response.read(256_000)
+    except HTTPError as exc:
+        status = int(exc.code)
+        raw = exc.read(256_000)
+    except (TimeoutError, URLError, OSError):
+        raise SubscriptionBillingError("Subscription pricing is temporarily unavailable.") from None
+
+    try:
+        result = json.loads(raw.decode("utf-8")) if raw else {}
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        result = {}
+    return (result if isinstance(result, dict) else {}), status
