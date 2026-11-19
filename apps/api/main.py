@@ -3022,6 +3022,7 @@ def _execute_scheduled_monitoring_run(run_id: str) -> None:
     """Run the slow supplier cycle off-request and persist an observable result."""
     try:
         result = monitoring_scheduler.run_scheduled_cycle(
+            dry_run=False,
             progress_callback=lambda: monitoring_store.touch_scheduled_run(run_id)
         )
         if not result.get("ok"):
