@@ -24,11 +24,11 @@ const supabase = createClient(
 
 const LEASE_SECONDS = 120;
 
-function priceIds(): Record<string, string | undefined> {
+function priceIds(): Record<string, string | string[] | undefined> {
   return {
-    Starter: Deno.env.get("STRIPE_STARTER_PRICE_ID"),
-    Professional: Deno.env.get("STRIPE_PRO_PRICE_ID"),
-    Business: Deno.env.get("STRIPE_BUSINESS_PRICE_ID"),
+    Starter: [Deno.env.get("STRIPE_STARTER_PRICE_ID"), Deno.env.get("STRIPE_STARTER_ANNUAL_PRICE_ID")].filter(Boolean) as string[],
+    Professional: [Deno.env.get("STRIPE_PRO_PRICE_ID"), Deno.env.get("STRIPE_PRO_ANNUAL_PRICE_ID")].filter(Boolean) as string[],
+    Business: [Deno.env.get("STRIPE_BUSINESS_PRICE_ID"), Deno.env.get("STRIPE_BUSINESS_ANNUAL_PRICE_ID")].filter(Boolean) as string[],
   };
 }
 

@@ -9,7 +9,10 @@ export type MarketingEvent =
   | "signup_started" | "signup_completed" | "bom_uploaded"
   | "first_analysis_completed" | "trial_started" | "upgrade_clicked"
   | "checkout_started" | "subscription_created" | "demo_requested"
-  | "one_time_report_purchased";
+  | "one_time_report_purchased"
+  | "free_audit_email_requested"
+  | "free_audit_trial_clicked"
+  | "first_blocker_viewed";
 
 export function marketingAnalyticsAllowed(): boolean {
   if (typeof window === "undefined") return false;

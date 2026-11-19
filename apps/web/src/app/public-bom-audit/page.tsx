@@ -5,9 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
 import { TurnstileWidget } from "@/components/TurnstileWidget";
 import { getSession } from "@/lib/api";
-import { marketingAnalyticsAllowed, trackMarketingEvent } from "@/lib/marketingAnalytics";
+import {
+  analyticsSessionId,
+  marketingAnalyticsAllowed,
+  trackMarketingEvent,
+} from "@/lib/marketingAnalytics";
 import {
   fetchPublicBomStatus,
+  createPublicBomSummaryShare,
   requestPublicBomFullReport,
   runPublicBomAudit,
   type PublicBomAuditReport,
@@ -60,6 +65,9 @@ function PublicBomAuditInner() {
   const [leadBusy, setLeadBusy] = useState(false);
   const [leadError, setLeadError] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareError, setShareError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -137,12 +145,37 @@ function PublicBomAuditInner() {
       });
       setPendingEmail(result.email);
       setVerificationSent(result.verification_sent !== false);
+      trackMarketingEvent(
+        "free_audit_email_requested",
+        { flow: "public-bom-audit" },
+        "/public-bom-audit",
+      );
     } catch (err) {
       setLeadError(
         err instanceof Error ? err.message : "Could not send the verification link.",
       );
     } finally {
       setLeadBusy(false);
+    }
+  }
+
+  async function onShareSummary() {
+    if (!report || shareBusy) return;
+    setShareBusy(true);
+    setShareError("");
+    try {
+      const result = await createPublicBomSummaryShare(report.id);
+      const url = `${window.location.origin}/audit-share/${encodeURIComponent(result.token)}`;
+      setShareUrl(url);
+      await navigator.clipboard.writeText(url);
+    } catch (err) {
+      setShareError(
+        err instanceof Error
+          ? err.message
+          : "Could not create or copy the share link.",
+      );
+    } finally {
+      setShareBusy(false);
     }
   }
 
@@ -155,6 +188,8 @@ function PublicBomAuditInner() {
     setLeadError("");
     setEmail("");
     setAcceptedTerms(false);
+    setShareUrl("");
+    setShareError("");
   }
 
   const statusLoading = !statusResolved;
@@ -162,6 +197,16 @@ function PublicBomAuditInner() {
   const shellClass = embedded
     ? "cv-public-stress cv-public-stress-embed"
     : "cv-public-stress";
+  const trialParams = new URLSearchParams({
+    auth: "signup",
+    intent: "trial",
+    source: "free-audit",
+  });
+  if (marketingAnalyticsAllowed()) {
+    const sessionId = analyticsSessionId();
+    if (sessionId) trialParams.set("cadivor_visit_id", sessionId);
+  }
+  const trialSignupHref = `https://app.cadivor.com/?${trialParams.toString()}`;
 
   return (
     <div className={shellClass} data-testid="public-bom-audit">
@@ -290,9 +335,18 @@ function PublicBomAuditInner() {
               audit.
             </p>
             <p className="cv-success-note">
-              Checked {report.row_count} components. Here are the first{" "}
-              {report.preview.length} results.
+              Your BOM contains {report.row_count} components. The preview below shows{" "}
+              {report.preview.length} component results.
             </p>
+            <section className="cv-public-audit-metrics" aria-label="Findings in checked components">
+              <div><strong>{report.checked_summary?.blockers ?? "—"}</strong><span>Blockers</span></div>
+              <div><strong>{report.checked_summary?.lifecycle_alerts ?? "—"}</strong><span>Lifecycle alerts</span></div>
+              <div><strong>{report.checked_summary?.single_source_parts ?? "—"}</strong><span>Single-source parts</span></div>
+              <p>
+                Counts are exact for the supplier-verified components shown below.
+                Components not yet checked are not included in these totals.
+              </p>
+            </section>
             <div className="cv-public-stress-table-wrap">
               <table className="cv-public-stress-table">
                 <thead>
@@ -351,11 +405,13 @@ function PublicBomAuditInner() {
             {report.remaining_count > 0 ? (
               <div className="cv-stress-locked">
                 <strong>
-                  {report.remaining_count} more components are not checked yet
+                  Locked preview · {report.remaining_count} additional components
                 </strong>
-                Supplier lookups for those rows run only after you confirm your
-                email. Then open Reports to finish the audit and download the
-                complete results.
+                <p>
+                  Supplier and lifecycle checks are still pending for these components.
+                  We do not estimate or invent findings before those checks run.
+                  Confirm your email to save the audit and finish checking them.
+                </p>
               </div>
             ) : (
               <p className="cv-small-note">
@@ -363,6 +419,25 @@ function PublicBomAuditInner() {
                 and download this audit.
               </p>
             )}
+
+            <div className="cv-public-audit-share">
+              <div>
+                <strong>Share this audit summary</strong>
+                <p className="cv-small-note">
+                  Read-only, aggregate findings only. The link expires in 30 days and does not show component numbers.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="cv-button"
+                onClick={() => void onShareSummary()}
+                disabled={shareBusy}
+              >
+                {shareBusy ? "Creating link…" : shareUrl ? "Copy link again" : "Create share link"}
+              </button>
+              {shareUrl ? <p className="cv-success-note" role="status">Copied: <a href={shareUrl}>{shareUrl}</a></p> : null}
+              {shareError ? <p className="cv-error" role="alert">{shareError}</p> : null}
+            </div>
 
             {pendingEmail ? (
               <p
@@ -406,6 +481,24 @@ function PublicBomAuditInner() {
                 </p>
               </form>
             )}
+
+            <div className="cv-public-audit-convert">
+              <p><strong>Want to keep working with this BOM?</strong></p>
+              <a
+                className="cv-button primary"
+                href={trialSignupHref}
+                onClick={() => trackMarketingEvent(
+                  "free_audit_trial_clicked",
+                  { flow: "public-bom-audit", cta: "start-trial" },
+                  "/public-bom-audit",
+                )}
+              >
+                Start a 14-day trial
+              </a>
+              <a className="cv-button" href="https://app.cadivor.com/single-bom-report">
+                Get a one-time report
+              </a>
+            </div>
           </>
         ) : null}
       </section>

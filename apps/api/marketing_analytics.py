@@ -17,7 +17,8 @@ EVENTS = frozenset({
     "page_view", "cta_click", "free_audit_started", "free_audit_completed",
     "signup_started", "signup_completed", "bom_uploaded", "first_analysis_completed",
     "trial_started", "upgrade_clicked", "checkout_started", "subscription_created",
-    "demo_requested", "one_time_report_purchased",
+    "demo_requested", "one_time_report_purchased", "free_audit_email_requested",
+    "free_audit_trial_clicked", "first_blocker_viewed",
 })
 UTM_KEYS = ("utm_source", "utm_medium", "utm_campaign", "utm_content")
 _SAFE = re.compile(r"^[\w .:+~/=-]{1,80}$", re.UNICODE)
@@ -171,7 +172,35 @@ class _PostgresStore:
                 GROUP BY event_name, traffic_source
                 ORDER BY traffic_source, event_name
             """, (bounded_days,)).fetchall()
-        return _attach_visit_conversion([dict(row) for row in rows], bounded_days)
+            funnel_rows = conn.execute("""
+                SELECT traffic_source,
+                       COUNT(*) FILTER (WHERE audit_completed) AS audit_sessions,
+                       COUNT(*) FILTER (WHERE audit_completed AND email_requested) AS email_sessions,
+                       COUNT(*) FILTER (WHERE audit_completed AND trial_started) AS trial_sessions,
+                       ROUND(AVG(EXTRACT(EPOCH FROM (blocker_at - analysis_at)))
+                         FILTER (WHERE analysis_at IS NOT NULL
+                           AND blocker_at IS NOT NULL AND blocker_at >= analysis_at))
+                         AS avg_seconds_to_first_blocker
+                FROM (
+                  SELECT COALESCE(NULLIF(utm_source, ''), '(direct)') AS traffic_source,
+                         session_hash,
+                         BOOL_OR(event_name = 'free_audit_completed') AS audit_completed,
+                         BOOL_OR(event_name = 'free_audit_email_requested') AS email_requested,
+                         BOOL_OR(event_name = 'trial_started') AS trial_started,
+                         MIN(created_at) FILTER (WHERE event_name = 'first_analysis_completed') AS analysis_at,
+                         MIN(created_at) FILTER (WHERE event_name = 'first_blocker_viewed') AS blocker_at
+                  FROM migration_marketing_events
+                  WHERE created_at >= NOW() - (%s * INTERVAL '1 day')
+                    AND session_hash IS NOT NULL
+                  GROUP BY traffic_source, session_hash
+                ) AS session_events
+                GROUP BY traffic_source
+                ORDER BY traffic_source
+            """, (bounded_days,)).fetchall()
+        return _attach_visit_conversion(
+            [dict(row) for row in rows], bounded_days,
+            audit_funnel=[dict(row) for row in funnel_rows],
+        )
 
 
 def set_store_for_tests(store: Any | None) -> None:
@@ -212,6 +241,8 @@ def _summary(rows: list[dict[str, Any]], days: int) -> dict[str, Any]:
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
     sessions: dict[tuple[str, str], set[str]] = {}
     origins: dict[tuple[str, str], set[str]] = {}
+    session_events: dict[tuple[str, str], set[str]] = {}
+    event_times: dict[tuple[str, str], dict[str, datetime]] = {}
     for row in rows:
         key = (row.get("event", ""), row.get("utm_source") or "(direct)")
         group = grouped.setdefault(
@@ -228,16 +259,66 @@ def _summary(rows: list[dict[str, Any]], days: int) -> dict[str, Any]:
         session = row.get("session_id")
         if session:
             sessions.setdefault(key, set()).add(session)
+            if row.get("event") in {
+                "free_audit_completed", "free_audit_email_requested", "trial_started"
+            }:
+                session_events.setdefault((key[1], session), set()).add(str(row.get("event")))
+            event = str(row.get("event") or "")
+            if event in {"first_analysis_completed", "first_blocker_viewed"}:
+                try:
+                    stamp = datetime.fromisoformat(
+                        str(row.get("created_at")).replace("Z", "+00:00")
+                    )
+                except (TypeError, ValueError):
+                    stamp = None
+                if stamp is not None:
+                    event_times.setdefault((key[1], session), {})[event] = stamp
         origin = str(row.get("source") or "").strip()
         if origin:
             origins.setdefault(key, set()).add(origin)
     for key, group in grouped.items():
         group["sessions"] = len(sessions.get(key, set()))
         group["origins"] = sorted(origins.get(key, set()))
-    return _attach_visit_conversion(list(grouped.values()), days)
+    funnel: dict[str, dict[str, int]] = {}
+    for (source, _session), events in session_events.items():
+        if "free_audit_completed" not in events:
+            continue
+        counts = funnel.setdefault(
+            source, {"audit_sessions": 0, "email_sessions": 0, "trial_sessions": 0}
+        )
+        counts["audit_sessions"] += 1
+        if "free_audit_email_requested" in events:
+            counts["email_sessions"] += 1
+        if "trial_started" in events:
+            counts["trial_sessions"] += 1
+    first_value_latency: dict[str, list[float]] = {}
+    for (source, _session), timestamps in event_times.items():
+        start = timestamps.get("first_analysis_completed")
+        end = timestamps.get("first_blocker_viewed")
+        if start and end and end >= start:
+            first_value_latency.setdefault(source, []).append((end - start).total_seconds())
+    for source in first_value_latency:
+        funnel.setdefault(source, {"audit_sessions": 0, "email_sessions": 0, "trial_sessions": 0})
+    audit_funnel = [
+        {
+            "traffic_source": source,
+            **counts,
+            "avg_seconds_to_first_blocker": (
+                round(sum(first_value_latency[source]) / len(first_value_latency[source]))
+                if first_value_latency.get(source) else None
+            ),
+        }
+        for source, counts in sorted(funnel.items())
+    ]
+    return _attach_visit_conversion(list(grouped.values()), days, audit_funnel=audit_funnel)
 
 
-def _attach_visit_conversion(rows: list[dict[str, Any]], days: int) -> dict[str, Any]:
+def _attach_visit_conversion(
+    rows: list[dict[str, Any]],
+    days: int,
+    *,
+    audit_funnel: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Add unique page-view session counts and visit conversion rates by source."""
     visits_by_source = {
         str(row.get("traffic_source") or "(direct)"): int(row.get("sessions") or 0)
@@ -259,10 +340,53 @@ def _attach_visit_conversion(rows: list[dict[str, Any]], days: int) -> dict[str,
             ),
         })
     enriched.sort(key=lambda row: (str(row.get("traffic_source") or ""), str(row.get("event") or "")))
+    if audit_funnel is None:
+        session_events: dict[tuple[str, str], set[str]] = {}
+        for row in rows:
+            session = row.get("session_id")
+            if not session:
+                continue
+            source = str(row.get("utm_source") or row.get("traffic_source") or "(direct)")
+            event = str(row.get("event") or "")
+            if event in {"free_audit_completed", "free_audit_email_requested", "trial_started"}:
+                session_events.setdefault((source, session), set()).add(event)
+        sessions_by_source: dict[str, dict[str, Any]] = {}
+        for (source, _session), events in session_events.items():
+            counts = sessions_by_source.setdefault(
+                source, {"audit_sessions": 0, "email_sessions": 0, "trial_sessions": 0}
+            )
+            if "free_audit_completed" in events:
+                counts["audit_sessions"] += 1
+                if "free_audit_email_requested" in events:
+                    counts["email_sessions"] += 1
+                if "trial_started" in events:
+                    counts["trial_sessions"] += 1
+        audit_funnel = [
+            {"traffic_source": source, **counts}
+            for source, counts in sorted(sessions_by_source.items())
+        ]
+    funnel_by_source = []
+    for row in audit_funnel:
+        audit_sessions = int(row.get("audit_sessions") or 0)
+        email_sessions = int(row.get("email_sessions") or 0)
+        trial_sessions = int(row.get("trial_sessions") or 0)
+        funnel_by_source.append({
+            "traffic_source": str(row.get("traffic_source") or "(direct)"),
+            "audit_sessions": audit_sessions,
+            "email_sessions": email_sessions,
+            "trial_sessions": trial_sessions,
+            "audit_to_email_pct": round(email_sessions / audit_sessions * 100, 1) if audit_sessions else None,
+            "audit_to_trial_pct": round(trial_sessions / audit_sessions * 100, 1) if audit_sessions else None,
+            "avg_seconds_to_first_blocker": (
+                int(row["avg_seconds_to_first_blocker"])
+                if row.get("avg_seconds_to_first_blocker") is not None else None
+            ),
+        })
     return {
         "ok": True,
         "days": days,
         "rows": enriched,
+        "audit_funnel_by_source": funnel_by_source,
         "retention_days": 180,
-        "conversion_basis": "unique page-view sessions from the same traffic source",
+        "conversion_basis": "same anonymous session, completed audit as denominator; consented analytics only",
     }

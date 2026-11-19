@@ -178,6 +178,12 @@ def detect_monitor_alerts(
 
     previous_stock = _optional_number(previous_snapshot.get("stock"))
     current_stock = _optional_number(current_snapshot.get("stock"))
+    previous_lead_time = _optional_number(
+        previous_snapshot.get("lead_time_weeks")
+    )
+    current_lead_time = _optional_number(
+        current_snapshot.get("lead_time_weeks")
+    )
 
     evidence_fields = {
         "supplier": current_snapshot.get("supplier"),
@@ -259,6 +265,57 @@ def detect_monitor_alerts(
                 "High",
                 previous_lifecycle,
                 current_lifecycle,
+                workspace_id=workspace_id,
+                **evidence_fields,
+            )
+        )
+
+    # A meaningful schedule spike is at least a 50% increase and at least
+    # two weeks. Both values must come from exact-part supplier evidence.
+    if (
+        previous_lead_time is not None
+        and current_lead_time is not None
+        and previous_lead_time > 0
+        and current_lead_time >= previous_lead_time * 1.5
+        and current_lead_time - previous_lead_time >= 2
+    ):
+        alert_message = (
+            f"Supplier lead time increased from {previous_lead_time:g} to "
+            f"{current_lead_time:g} weeks"
+        )
+        messages.append(f"⚠ {alert_message}")
+        alerts.append(
+            build_alert_record(
+                user_id,
+                analysis_id,
+                part_number,
+                "Lead Time Spike",
+                alert_message,
+                "High" if current_lead_time >= previous_lead_time * 2 else "Medium",
+                previous_lead_time,
+                current_lead_time,
+                workspace_id=workspace_id,
+                **evidence_fields,
+            )
+        )
+
+    previous_risk = str(previous_snapshot.get("risk_level") or "").strip().casefold()
+    current_risk = str(current_snapshot.get("risk_level") or "").strip().casefold()
+    previous_risk = "high" if previous_risk.startswith("high") else previous_risk
+    current_risk = "high" if current_risk.startswith("high") else current_risk
+    if current_risk == "high" and previous_risk != "high":
+        alert_message = "Supplier evidence now places this component in the High risk category"
+        messages.append(f"⚠ {alert_message}")
+        alerts.append(
+            build_alert_record(
+                user_id,
+                analysis_id,
+                part_number,
+                "New Blocker",
+                alert_message,
+                "High",
+                previous_risk or "Not previously assessed as High",
+                "High",
                 workspace_id=workspace_id,
                 **evidence_fields,
             )

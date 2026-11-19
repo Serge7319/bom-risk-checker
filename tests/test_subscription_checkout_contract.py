@@ -15,7 +15,7 @@ class SubscriptionCheckoutContractTests(unittest.TestCase):
         self.assertIn("if (!customerId || !isMissingStripeCustomer(error)) throw error;", source)
         self.assertRegex(
             source,
-            r"checkoutSessionParams\(\s*origin,\s*auth\.user\.id,\s*auth\.user\.email!,\s*token,\s*priceId,\s*undefined,\s*marketingAttribution\(auth\.user\),\s*\)",
+            r"checkoutSessionParams\(\s*origin,\s*auth\.user\.id,\s*auth\.user\.email!,\s*token,\s*priceId,\s*billingInterval,\s*undefined,\s*marketingAttribution\(auth\.user\),\s*\)",
         )
         self.assertIn("{ idempotencyKey: `${idempotencyKey}_fresh_customer` }", source)
 

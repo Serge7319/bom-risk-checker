@@ -31,6 +31,7 @@ import {
 import { analysisModeLabel, cleanUserText, evidenceSourceLabel, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
+import { trackMarketingEventOnce } from "@/lib/marketingAnalytics";
 
 type EditableBomRow = {
   mpn: string;
@@ -116,6 +117,15 @@ export default function ReportPage() {
     fetchReport(params.id, session.access_token)
       .then((data) => {
         setReport(data);
+        const riskCounts = getReportRiskCounts(data);
+        if (riskCounts.high > 0) {
+          trackMarketingEventOnce(
+            "first_blocker_viewed",
+            `first_blocker_viewed:${String(data.analysis_id || data.id || analysisKey)}`,
+            { flow: "saved-bom-analysis" },
+            "/reports",
+          );
+        }
         const id = String(data.analysis_id || data.id || analysisKey);
         markReviewProgress(id, { risksOpenedAt: new Date().toISOString() }, session);
         rememberAnalysis({

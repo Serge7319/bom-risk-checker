@@ -191,6 +191,18 @@ export default function SingleBomReportPage() {
               <EmptyState icon="report" title="No one-time report purchases yet" body="A purchase credit will appear here after Stripe confirms payment." />
             )}
           </section>
+          {orders.some((order) => order.status === "paid") ? (
+            <section className="cv-card pad" style={{ marginTop: 14 }}>
+              <div className="cv-eyebrow">KEEP THIS BOM IN VIEW</div>
+              <h2 className="cv-card-title" style={{ marginTop: 6 }}>Continue with ongoing monitoring</h2>
+              <p className="cv-card-subtitle" style={{ marginTop: 7 }}>
+                A one-time report is a single purchase. Compare subscription plans if you want to keep selected parts under monitoring; available monitoring and refresh depend on plan limits and service readiness.
+              </p>
+              <Link className="cv-button primary" style={{ marginTop: 14 }} href="/settings?tab=billing">
+                Explore subscription plans
+              </Link>
+            </section>
+          ) : null}
         </>
       ) : null}
     </Shell>

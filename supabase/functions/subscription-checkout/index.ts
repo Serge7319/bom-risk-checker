@@ -15,9 +15,9 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 const planPrices = [
-  { name: "Starter", token: "starter", env: "STRIPE_STARTER_PRICE_ID", expected: 2900 },
-  { name: "Professional", token: "professional", env: "STRIPE_PRO_PRICE_ID", expected: 9900 },
-  { name: "Business", token: "business", env: "STRIPE_BUSINESS_PRICE_ID", expected: 29900 },
+  { name: "Starter", token: "starter", env: "STRIPE_STARTER_PRICE_ID", annualEnv: "STRIPE_STARTER_ANNUAL_PRICE_ID", expected: 2900 },
+  { name: "Professional", token: "professional", env: "STRIPE_PRO_PRICE_ID", annualEnv: "STRIPE_PRO_ANNUAL_PRICE_ID", expected: 9900 },
+  { name: "Business", token: "business", env: "STRIPE_BUSINESS_PRICE_ID", annualEnv: "STRIPE_BUSINESS_ANNUAL_PRICE_ID", expected: 29900 },
 ] as const;
 
 function response(body: unknown, status = 200, origin = "") {
@@ -104,10 +104,16 @@ function checkoutSessionParams(
   email: string,
   token: string,
   priceId: string,
+  billingInterval: "month" | "year",
   customerId?: string,
   attribution: Record<string, string> = {},
 ) {
-  const metadata = { user_id: userId, cadivor_plan: token, ...attribution };
+  const metadata = {
+    user_id: userId,
+    cadivor_plan: token,
+    cadivor_billing_interval: billingInterval,
+    ...attribution,
+  };
   return {
     mode: "subscription" as const,
     ...(customerId ? { customer: customerId } : { customer_email: email }),
@@ -195,14 +201,20 @@ function entitlementSnapshot(profile: Record<string, unknown>) {
 }
 
 async function priceCatalog() {
-  const rows = [];
+  const rows: Array<Record<string, unknown>> = [];
   for (const plan of planPrices) {
     const id = String(Deno.env.get(plan.env) || "").trim();
-    if (!id) {
-      rows.push({ name: plan.name, token: plan.token, configured: false, enabled: false });
-      continue;
-    }
+    let monthly: Record<string, unknown> = {
+      configured: Boolean(id),
+      enabled: false,
+      amount: null,
+      currency: null,
+      interval: null,
+      price_matches_catalog: false,
+    };
+    let expectedMonthly: number | null = null;
     try {
+      if (!id) throw new Error("monthly price not configured");
       const price = await stripe.prices.retrieve(id);
       const valid = Boolean(
         price.active &&
@@ -211,19 +223,55 @@ async function priceCatalog() {
           typeof price.unit_amount === "number" &&
           price.unit_amount > 0,
       );
-      rows.push({
-        name: plan.name,
-        token: plan.token,
+      expectedMonthly = valid && price.unit_amount === plan.expected ? price.unit_amount : null;
+      monthly = {
         configured: true,
         enabled: valid && price.unit_amount === plan.expected,
         price_matches_catalog: valid && price.unit_amount === plan.expected,
         amount: valid ? price.unit_amount : null,
         currency: valid ? price.currency : null,
         interval: valid ? price.recurring?.interval : null,
-      });
+      };
     } catch {
-      rows.push({ name: plan.name, token: plan.token, configured: true, enabled: false, price_matches_catalog: false });
+      monthly = { ...monthly, configured: Boolean(id) };
     }
+
+    const annualId = String(Deno.env.get(plan.annualEnv) || "").trim();
+    let annual: Record<string, unknown> = {
+      configured: Boolean(annualId), enabled: false, amount: null,
+      currency: null, interval: null, discount_percent: null,
+    };
+    try {
+      if (!annualId) throw new Error("annual price not configured");
+      const price = await stripe.prices.retrieve(annualId);
+      const valid = Boolean(
+        price.active && price.currency === "usd" &&
+          price.recurring?.interval === "year" &&
+          typeof price.unit_amount === "number" && price.unit_amount > 0,
+      );
+      const discounted = Boolean(
+        valid && expectedMonthly !== null &&
+          price.unit_amount! < expectedMonthly * 12,
+      );
+      annual = {
+        configured: true,
+        enabled: discounted,
+        amount: valid ? price.unit_amount : null,
+        currency: valid ? price.currency : null,
+        interval: valid ? price.recurring?.interval : null,
+        discount_percent: discounted
+          ? Math.round((1 - price.unit_amount! / (expectedMonthly! * 12)) * 1000) / 10
+          : null,
+      };
+    } catch {
+      annual = { ...annual, configured: Boolean(annualId) };
+    }
+    rows.push({
+      name: plan.name,
+      token: plan.token,
+      ...monthly,
+      annual,
+    });
   }
   return rows;
 }
@@ -264,7 +312,12 @@ serve(async (request) => {
 
     if (action === "status") {
       const plans = await priceCatalog();
-      const checkoutEnabled = plans.some((plan) => plan.enabled);
+      const checkoutEnabled = plans.some((plan) =>
+        plan.enabled === true || (
+          Boolean(plan.annual) &&
+          (plan.annual as Record<string, unknown>).enabled === true
+        )
+      );
       const active = ["active", "trialing"].includes(String(profile.stripe_subscription_status || "").toLowerCase());
       return response({
         ok: true,
@@ -290,6 +343,7 @@ serve(async (request) => {
 
     if (action !== "checkout") return response({ ok: false, detail: "Unknown billing action." }, 400, origin);
     const token = String(body.plan || "").trim().toLowerCase();
+    const billingInterval = body.billing_interval === "year" ? "year" : "month";
     planToken = token || "unknown";
     const plan = planPrices.find((item) => item.token === token);
     if (!plan) return response({ ok: false, detail: "Choose Starter, Professional, or Business." }, 400, origin);
@@ -303,10 +357,14 @@ serve(async (request) => {
       }, 409, origin);
     }
 
-    const priceId = String(Deno.env.get(plan.env) || "").trim();
+    const priceEnv = billingInterval === "year" ? plan.annualEnv : plan.env;
+    const priceId = String(Deno.env.get(priceEnv) || "").trim();
     if (!priceId) return response({ ok: false, detail: "This plan is temporarily unavailable for purchase." }, 503, origin);
     const price = await stripe.prices.retrieve(priceId);
-    if (!price.active || price.currency !== "usd" || price.recurring?.interval !== "month" || price.unit_amount !== plan.expected) {
+    const monthlyValid = billingInterval === "month" && price.recurring?.interval === "month" && price.unit_amount === plan.expected;
+    const annualDiscounted = billingInterval === "year" && price.recurring?.interval === "year" &&
+      typeof price.unit_amount === "number" && price.unit_amount > 0 && price.unit_amount < plan.expected * 12;
+    if (!price.active || price.currency !== "usd" || (!monthlyValid && !annualDiscounted)) {
       return response({ ok: false, detail: "This plan's billing details need review. Contact Cadivor support." }, 503, origin);
     }
 
@@ -321,6 +379,7 @@ serve(async (request) => {
           auth.user.email!,
           token,
           priceId,
+          billingInterval,
           customerId || undefined,
           marketingAttribution(auth.user),
         ),
@@ -338,6 +397,7 @@ serve(async (request) => {
           auth.user.email!,
           token,
           priceId,
+          billingInterval,
           undefined,
           marketingAttribution(auth.user),
         ),

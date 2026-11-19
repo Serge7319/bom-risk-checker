@@ -18,11 +18,24 @@ type FunnelRow = {
   conversion_from_visit_pct: number | null;
 };
 
+type AuditFunnelRow = {
+  traffic_source: string;
+  audit_sessions: number;
+  email_sessions: number;
+  trial_sessions: number;
+  audit_to_email_pct: number | null;
+  audit_to_trial_pct: number | null;
+  avg_seconds_to_first_blocker: number | null;
+};
+
 const EVENT_LABELS: Record<string, string> = {
   page_view: "Visits",
   cta_click: "CTA clicks",
   free_audit_started: "Free audits started",
   free_audit_completed: "Free audits completed",
+  free_audit_email_requested: "Audit emails requested",
+  free_audit_trial_clicked: "Audit trial clicks",
+  first_blocker_viewed: "First blocker viewed",
   signup_started: "Signups started",
   signup_completed: "Accounts verified",
   bom_uploaded: "BOM analyses saved",
@@ -41,6 +54,7 @@ export default function MarketingAnalyticsPage() {
   const session = useRequireSession();
   const [days, setDays] = useState(30);
   const [rows, setRows] = useState<FunnelRow[]>([]);
+  const [auditFunnel, setAuditFunnel] = useState<AuditFunnelRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -56,7 +70,14 @@ export default function MarketingAnalyticsPage() {
     }).then(async (response) => {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(payload.detail || "Analytics could not be loaded."));
-      if (!cancelled) setRows(Array.isArray(payload.rows) ? payload.rows as FunnelRow[] : []);
+      if (!cancelled) {
+        setRows(Array.isArray(payload.rows) ? payload.rows as FunnelRow[] : []);
+        setAuditFunnel(
+          Array.isArray(payload.audit_funnel_by_source)
+            ? payload.audit_funnel_by_source as AuditFunnelRow[]
+            : [],
+        );
+      }
     }).catch((err) => {
       if (!cancelled) setError(err instanceof Error ? err.message : "Analytics could not be loaded.");
     }).finally(() => {
@@ -137,6 +158,32 @@ export default function MarketingAnalyticsPage() {
             </div>
           </>
         ) : null}
+      </section>
+      <section className="cv-card pad" style={{ marginBottom: 16 }}>
+        <h2 className="cv-card-title">Audit conversion and time to first blocker</h2>
+        <p className="cv-card-subtitle">
+          Rates use unique opted-in browser sessions that completed the audit as the denominator. Time to first blocker is measured from the first saved analysis to a report view containing at least one high-risk component. Results include only sessions that opted in to analytics.
+        </p>
+        {auditFunnel.length ? (
+          <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+            <table className="cv-table">
+              <thead><tr><th>Traffic source</th><th>Completed audits</th><th>Audit → email</th><th>Audit → trial</th><th>Avg. time to first blocker</th></tr></thead>
+              <tbody>
+                {auditFunnel.map((row) => (
+                  <tr key={row.traffic_source}>
+                    <td>{row.traffic_source}</td>
+                    <td>{Number(row.audit_sessions).toLocaleString()}</td>
+                    <td>{row.audit_to_email_pct == null ? "—" : `${row.audit_to_email_pct.toFixed(1)}%`}</td>
+                    <td>{row.audit_to_trial_pct == null ? "—" : `${row.audit_to_trial_pct.toFixed(1)}%`}</td>
+                    <td>{row.avg_seconds_to_first_blocker == null ? "—" : `${Math.round(row.avg_seconds_to_first_blocker).toLocaleString()} sec`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="cv-small-note" style={{ marginTop: 10 }}>No completed audit conversions or blocker-view timing yet. Events appear after opted-in sessions use the flow.</p>
+        )}
       </section>
     </Shell>
   );

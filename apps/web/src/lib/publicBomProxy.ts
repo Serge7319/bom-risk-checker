@@ -229,3 +229,42 @@ export async function proxyPublicBomLead(
     return NextResponse.json({ detail }, { status: 503 });
   }
 }
+
+/** POST a summary-share request; the API binds it to the edge-signed visitor. */
+export async function proxyPublicBomShareCreate(
+  request: NextRequest,
+): Promise<NextResponse> {
+  try {
+    const body = await request.text();
+    const res = await fetch(`${apiBase()}/public/bom-stress/share`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "X-Cadivor-Visitor": visitorHeader(request),
+      },
+      body,
+      cache: "no-store",
+    });
+    return proxyJson(res);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "Could not create a share link.";
+    return NextResponse.json({ detail }, { status: 503 });
+  }
+}
+
+/** GET a public read-only summary; upstream returns no BOM rows or identifiers. */
+export async function proxyPublicBomSharedSummary(
+  token: string,
+): Promise<NextResponse> {
+  try {
+    const res = await fetch(
+      `${apiBase()}/public/bom-stress/share/${encodeURIComponent(token)}`,
+      { method: "GET", headers: { Accept: "application/json" }, cache: "no-store" },
+    );
+    return proxyJson(res);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "Shared audit summary unavailable.";
+    return NextResponse.json({ detail }, { status: 503 });
+  }
+}

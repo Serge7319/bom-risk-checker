@@ -437,6 +437,61 @@ class PostgresWorkspaceStore:
                 records.append(dict(payload))
         return records
 
+    def create_decision_record_share(
+        self,
+        *,
+        workspace_id: str,
+        decision_record_id: str,
+        token_hash: str,
+        created_by: str,
+        expires_at: str,
+    ) -> None:
+        wid = self._require_workspace(workspace_id)
+        with self._connect() as conn:
+            exists = conn.execute(
+                "SELECT 1 FROM migration_decision_records WHERE workspace_id = %s AND id = %s",
+                (wid, str(decision_record_id or "").strip()),
+            ).fetchone()
+            if not exists:
+                raise WorkspaceAccessError(
+                    f"decision {str(decision_record_id or '').strip()} was not found"
+                )
+            conn.execute(
+                """
+                INSERT INTO migration_decision_record_shares
+                  (token_hash, workspace_id, decision_record_id, created_by, expires_at)
+                VALUES (%s, %s, %s, %s, %s::timestamptz)
+                """,
+                (token_hash, wid, decision_record_id, created_by, expires_at),
+            )
+            conn.commit()
+
+    def get_decision_record_share(self, token_hash: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT decision.payload, share.expires_at
+                  FROM migration_decision_record_shares AS share
+                  JOIN migration_decision_records AS decision
+                    ON decision.id = share.decision_record_id
+                   AND decision.workspace_id = share.workspace_id
+                 WHERE share.token_hash = %s
+                   AND share.revoked_at IS NULL
+                   AND share.expires_at > NOW()
+                """,
+                (str(token_hash or "").strip(),),
+            ).fetchone()
+        if not row:
+            return None
+        record = row["payload"]
+        if isinstance(record, str):
+            record = json.loads(record)
+        expires = row["expires_at"]
+        return {
+            "record": dict(record) if isinstance(record, dict) else {},
+            "expires_at": expires.isoformat() if hasattr(expires, "isoformat") else expires,
+        }
+
     def create_procurement_quote(
         self, quote: dict[str, Any], *, workspace_id: str
     ) -> dict[str, Any]:
