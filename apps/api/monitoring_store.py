@@ -24,6 +24,7 @@ _lock = threading.Lock()
 _EMAIL_SINK: list[dict[str, Any]] = []
 _DEFAULT_PREFS = {
     "email_alerts": False,
+    "weekly_digest": False,
     "lifecycle": True,
     "availability": True,
     "risk": True,
@@ -155,6 +156,7 @@ def reset_monitoring_store_for_tests() -> None:
                 conn.execute("DELETE FROM migration_monitoring_member_preferences")
                 conn.execute("DELETE FROM migration_monitoring_snapshots")
                 conn.execute("DELETE FROM migration_monitoring_email_deliveries")
+                conn.execute("DELETE FROM migration_monitoring_digest_deliveries")
                 conn.execute("DELETE FROM migration_monitoring_refresh_history")
                 conn.execute("DELETE FROM migration_monitoring_scheduled_runs")
                 conn.commit()
@@ -419,11 +421,12 @@ def get_preferences(workspace_id: str) -> dict[str, Any]:
     if _use_postgres():
         with _pg_connect() as conn:
             row = conn.execute(
-                "SELECT email_alerts, lifecycle, availability, risk FROM migration_notification_preferences WHERE workspace_id = %s",
+                "SELECT email_alerts, weekly_digest, lifecycle, availability, risk FROM migration_notification_preferences WHERE workspace_id = %s",
                 (workspace_id,),
             ).fetchone()
         prefs = dict(_DEFAULT_PREFS) if not row else {
             "email_alerts": bool(row["email_alerts"]),
+            "weekly_digest": bool(row["weekly_digest"]),
             "lifecycle": bool(row["lifecycle"]),
             "availability": bool(row["availability"]),
             "risk": bool(row["risk"]),
@@ -440,7 +443,7 @@ def get_preferences(workspace_id: str) -> dict[str, Any]:
 
 
 def update_preferences(workspace_id: str, updates: dict[str, Any]) -> dict[str, Any]:
-    allowed = {"email_alerts", "lifecycle", "availability", "risk"}
+    allowed = {"email_alerts", "weekly_digest", "lifecycle", "availability", "risk"}
     current = get_preferences(workspace_id)
     for key, value in (updates or {}).items():
         if key in allowed:
@@ -450,10 +453,11 @@ def update_preferences(workspace_id: str, updates: dict[str, Any]) -> dict[str, 
             conn.execute(
                 """
                 INSERT INTO migration_notification_preferences
-                  (workspace_id, email_alerts, lifecycle, availability, risk, updated_at)
-                VALUES (%s, %s, %s, %s, %s, NOW())
+                  (workspace_id, email_alerts, weekly_digest, lifecycle, availability, risk, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW())
                 ON CONFLICT (workspace_id) DO UPDATE SET
                   email_alerts = EXCLUDED.email_alerts,
+                  weekly_digest = EXCLUDED.weekly_digest,
                   lifecycle = EXCLUDED.lifecycle,
                   availability = EXCLUDED.availability,
                   risk = EXCLUDED.risk,
@@ -462,6 +466,7 @@ def update_preferences(workspace_id: str, updates: dict[str, Any]) -> dict[str, 
                 (
                     workspace_id,
                     current["email_alerts"],
+                    current["weekly_digest"],
                     current["lifecycle"],
                     current["availability"],
                     current["risk"],
@@ -502,7 +507,7 @@ def get_user_preferences(
         with _pg_connect() as conn:
             row = conn.execute(
                 """
-                SELECT email_alerts, supplier_checks, lifecycle, availability, risk
+                SELECT email_alerts, weekly_digest, supplier_checks, lifecycle, availability, risk
                 FROM migration_monitoring_member_preferences
                 WHERE workspace_id = %s AND user_id = %s
                 """,
@@ -511,6 +516,7 @@ def get_user_preferences(
         if row:
             defaults.update({
                 "email_alerts": bool(row["email_alerts"]),
+                "weekly_digest": bool(row["weekly_digest"]),
                 "supplier_checks": bool(row["supplier_checks"]),
                 "lifecycle": bool(row["lifecycle"]),
                 "availability": bool(row["availability"]),
@@ -521,7 +527,7 @@ def get_user_preferences(
             state = _load_state()
             stored = _ws(state, wid).setdefault("user_preferences", {}).get(uid) or {}
             defaults.update({key: bool(stored.get(key, defaults[key])) for key in (
-                "email_alerts", "supplier_checks", "lifecycle", "availability", "risk"
+                "email_alerts", "weekly_digest", "supplier_checks", "lifecycle", "availability", "risk"
             )})
     defaults["email"] = email
     defaults["email_delivery_enabled"] = email_delivery_enabled()
@@ -541,7 +547,7 @@ def update_user_preferences(
     email = str(verified_email or "").strip().lower()
     if not wid or not uid or not email:
         raise ValueError("workspace, authenticated user, and verified email are required")
-    allowed = {"email_alerts", "supplier_checks", "lifecycle", "availability", "risk"}
+    allowed = {"email_alerts", "weekly_digest", "supplier_checks", "lifecycle", "availability", "risk"}
     current = get_user_preferences(wid, uid, email)
     for key, value in (updates or {}).items():
         if key in allowed:
@@ -551,12 +557,13 @@ def update_user_preferences(
             conn.execute(
                 """
                 INSERT INTO migration_monitoring_member_preferences
-                  (workspace_id, user_id, email, email_alerts, supplier_checks,
+                  (workspace_id, user_id, email, email_alerts, weekly_digest, supplier_checks,
                    lifecycle, availability, risk, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 ON CONFLICT (workspace_id, user_id) DO UPDATE SET
                   email = EXCLUDED.email,
                   email_alerts = EXCLUDED.email_alerts,
+                  weekly_digest = EXCLUDED.weekly_digest,
                   supplier_checks = EXCLUDED.supplier_checks,
                   lifecycle = EXCLUDED.lifecycle,
                   availability = EXCLUDED.availability,
@@ -564,7 +571,7 @@ def update_user_preferences(
                   updated_at = NOW()
                 """,
                 (
-                    wid, uid, email, current["email_alerts"], current["supplier_checks"],
+                    wid, uid, email, current["email_alerts"], current["weekly_digest"], current["supplier_checks"],
                     current["lifecycle"], current["availability"], current["risk"],
                 ),
             )
@@ -586,6 +593,7 @@ def list_user_preferences(
     *,
     supplier_checks: bool | None = None,
     email_alerts: bool | None = None,
+    weekly_digest: bool | None = None,
 ) -> list[dict[str, Any]]:
     """List only opted-in member preferences for a scheduler cycle."""
     filters = []
@@ -599,9 +607,12 @@ def list_user_preferences(
     if email_alerts is not None:
         filters.append("email_alerts = %s")
         params.append(bool(email_alerts))
+    if weekly_digest is not None:
+        filters.append("weekly_digest = %s")
+        params.append(bool(weekly_digest))
     if _use_postgres():
         query = (
-            "SELECT workspace_id, user_id, email, email_alerts, supplier_checks, "
+            "SELECT workspace_id, user_id, email, email_alerts, weekly_digest, supplier_checks, "
             "lifecycle, availability, risk FROM migration_monitoring_member_preferences"
         )
         if filters:
@@ -620,6 +631,8 @@ def list_user_preferences(
                 if supplier_checks is not None and bool(row.get("supplier_checks")) != supplier_checks:
                     continue
                 if email_alerts is not None and bool(row.get("email_alerts")) != email_alerts:
+                    continue
+                if weekly_digest is not None and bool(row.get("weekly_digest")) != weekly_digest:
                     continue
                 rows.append(row)
         return rows
@@ -812,6 +825,107 @@ def finish_scheduled_alert_email(
                 deliveries[key] = prior
         else:
             deliveries.pop(key, None)
+        _save_state(state)
+
+
+def claim_weekly_digest_email(workspace_id: str, user_id: str) -> bool:
+    """Claim a member's weekly digest slot without exposing recipient data."""
+    wid = str(workspace_id or "").strip()
+    uid = str(user_id or "").strip()
+    if not wid or not uid:
+        return False
+    if _use_postgres():
+        with _pg_connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO migration_monitoring_digest_deliveries
+                  (workspace_id, user_id, status, lease_until, updated_at)
+                VALUES (%s, %s, 'sending', NOW() + INTERVAL '5 minutes', NOW())
+                ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+                  status = 'sending',
+                  lease_until = NOW() + INTERVAL '5 minutes',
+                  updated_at = NOW()
+                WHERE (migration_monitoring_digest_deliveries.sent_at IS NULL
+                   OR migration_monitoring_digest_deliveries.sent_at < NOW() - INTERVAL '7 days')
+                  AND (migration_monitoring_digest_deliveries.status <> 'sending'
+                    OR migration_monitoring_digest_deliveries.lease_until IS NULL
+                    OR migration_monitoring_digest_deliveries.lease_until < NOW())
+                RETURNING user_id
+                """,
+                (wid, uid),
+            ).fetchone()
+            conn.commit()
+        return bool(row)
+
+    now = datetime.now(timezone.utc)
+    with _lock:
+        state = _load_state()
+        deliveries = _ws(state, wid).setdefault("digest_deliveries", {})
+        prior = deliveries.get(uid) or {}
+        sent_at = prior.get("sent_at")
+        if sent_at:
+            try:
+                parsed_sent_at = datetime.fromisoformat(str(sent_at).replace("Z", "+00:00"))
+                if parsed_sent_at.tzinfo is None:
+                    parsed_sent_at = parsed_sent_at.replace(tzinfo=timezone.utc)
+                if parsed_sent_at > now - timedelta(days=7):
+                    return False
+            except ValueError:
+                pass
+        if prior.get("status") == "sending":
+            try:
+                lease = datetime.fromisoformat(
+                    str(prior.get("lease_until") or "").replace("Z", "+00:00")
+                )
+            except ValueError:
+                lease = now
+            if lease > now:
+                return False
+        deliveries[uid] = {
+            **prior,
+            "status": "sending",
+            "lease_until": (now + timedelta(minutes=5)).isoformat(),
+            "updated_at": now.isoformat(),
+        }
+        _save_state(state)
+    return True
+
+
+def finish_weekly_digest_email(
+    workspace_id: str, user_id: str, *, delivered: bool
+) -> None:
+    """Record a digest receipt or release its lease for a later retry."""
+    wid = str(workspace_id or "").strip()
+    uid = str(user_id or "").strip()
+    if not wid or not uid:
+        return
+    now = utc_now()
+    if _use_postgres():
+        with _pg_connect() as conn:
+            conn.execute(
+                """
+                UPDATE migration_monitoring_digest_deliveries
+                   SET status = %s,
+                       sent_at = CASE WHEN %s THEN %s::timestamptz ELSE sent_at END,
+                       lease_until = NULL,
+                       updated_at = NOW()
+                 WHERE workspace_id = %s AND user_id = %s
+                """,
+                ("sent" if delivered else "failed", delivered, now, wid, uid),
+            )
+            conn.commit()
+        return
+    with _lock:
+        state = _load_state()
+        deliveries = _ws(state, wid).setdefault("digest_deliveries", {})
+        prior = deliveries.get(uid) or {}
+        deliveries[uid] = {
+            **prior,
+            "status": "sent" if delivered else "failed",
+            "sent_at": now if delivered else prior.get("sent_at"),
+            "lease_until": None,
+            "updated_at": now,
+        }
         _save_state(state)
 
 
@@ -1199,7 +1313,7 @@ def deliver_alert_email(
     alert_type = str(alert.get("alert_type") or "").casefold()
     category = (
         "lifecycle" if "lifecycle" in alert_type else
-        "availability" if any(term in alert_type for term in ("stock", "availability", "inventory")) else
+        "availability" if any(term in alert_type for term in ("stock", "availability", "inventory", "lead time", "lead_time")) else
         "risk"
     )
     if not prefs.get(category, True):

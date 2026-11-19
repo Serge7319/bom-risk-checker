@@ -1,0 +1,6 @@
+MPN,Manufacturer,Quantity,Description
+LM358DR,Texas Instruments,2,Dual operational amplifier
+NE555P,Texas Instruments,1,Timer integrated circuit
+SN74HC595N,Texas Instruments,2,8-bit shift register
+2N3904,onsemi,4,NPN general-purpose transistor
+ATmega328P-PU,Microchip Technology,1,8-bit microcontroller

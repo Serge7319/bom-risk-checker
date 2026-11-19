@@ -59,6 +59,7 @@ def _empty() -> dict[str, Any]:
         "analyses": {},
         "reports": {},
         "decision_records": {},
+        "decision_record_shares": {},
         "procurement_quotes": {},
     }
 
@@ -334,6 +335,59 @@ class WorkspaceStore:
             return sorted(
                 rows, key=lambda row: str(row.get("created_at") or ""), reverse=True
             )
+
+    def create_decision_record_share(
+        self,
+        *,
+        workspace_id: str,
+        decision_record_id: str,
+        token_hash: str,
+        created_by: str,
+        expires_at: str,
+    ) -> None:
+        wid = self._require_workspace(workspace_id)
+        record_id = str(decision_record_id or "").strip()
+        if not any(
+            str(row.get("id") or row.get("decision_id") or "") == record_id
+            for row in self.list_decision_records(workspace_id=wid)
+        ):
+            raise WorkspaceAccessError(f"decision {record_id} was not found")
+        with _LOCK:
+            self._data.setdefault("decision_record_shares", {})[token_hash] = {
+                "token_hash": token_hash,
+                "workspace_id": wid,
+                "decision_record_id": record_id,
+                "created_by": str(created_by or ""),
+                "created_at": _now(),
+                "expires_at": expires_at,
+                "revoked_at": None,
+            }
+            self.save()
+
+    def get_decision_record_share(self, token_hash: str) -> dict[str, Any] | None:
+        candidate = str(token_hash or "").strip()
+        with _LOCK:
+            share = dict(
+                self._data.setdefault("decision_record_shares", {}).get(candidate) or {}
+            )
+            if not share or share.get("revoked_at"):
+                return None
+            try:
+                expires = datetime.fromisoformat(
+                    str(share.get("expires_at") or "").replace("Z", "+00:00")
+                )
+                if expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=timezone.utc)
+                if expires <= datetime.now(timezone.utc):
+                    return None
+            except ValueError:
+                return None
+            record = self._data.setdefault("decision_records", {}).get(
+                str(share.get("decision_record_id") or "")
+            )
+            if not isinstance(record, dict) or str(record.get("workspace_id") or "") != str(share.get("workspace_id") or ""):
+                return None
+            return {"record": dict(record), "expires_at": share.get("expires_at")}
 
     def create_procurement_quote(
         self, quote: dict[str, Any], *, workspace_id: str

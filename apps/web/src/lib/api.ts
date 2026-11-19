@@ -717,6 +717,27 @@ export async function listDecisionRecords(token: string, analysisId?: string) {
   );
 }
 
+export async function createDecisionRecordShare(token: string, decisionRecordId: string) {
+  return apiJson<{ ok: boolean; token: string; expires_at: string }>(
+    "/decision-records/share",
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify({ decision_record_id: decisionRecordId }),
+    },
+  );
+}
+
+export async function fetchSharedDecisionRecord(shareToken: string) {
+  return apiJson<{
+    ok: boolean;
+    record: Partial<DecisionRecord>;
+    expires_at: string;
+  }>(`/decision-records/share/${encodeURIComponent(shareToken)}`, {
+    cache: "no-store",
+  });
+}
+
 export async function recordDecision(
   token: string,
   payload: {
@@ -1053,7 +1074,11 @@ export async function fetchBillingStatus(token: string) {
   return apiJson<Record<string, unknown>>("/billing/status", { token });
 }
 
-export async function beginSubscriptionCheckout(token: string, plan: string) {
+export async function beginSubscriptionCheckout(
+  token: string,
+  plan: string,
+  billingInterval: "month" | "year" = "month",
+) {
   return apiJson<{
     ok: boolean;
     checkout?: { state: string; url?: string };
@@ -1062,7 +1087,7 @@ export async function beginSubscriptionCheckout(token: string, plan: string) {
   }>("/billing/checkout", {
     method: "POST",
     token,
-    body: JSON.stringify({ plan }),
+    body: JSON.stringify({ plan, billing_interval: billingInterval }),
   });
 }
 

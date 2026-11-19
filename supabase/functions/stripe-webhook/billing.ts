@@ -41,12 +41,13 @@ export function priceIdOf(subscription: {
 
 function planForPrice(
   priceId: string | null,
-  priceIds: Record<string, string | undefined>,
+  priceIds: Record<string, string | string[] | undefined>,
 ): string | null {
   if (!priceId) return null;
   for (const planName of Object.values(PLAN_TOKENS)) {
     const configured = priceIds[planName];
-    if (configured && configured.trim() === priceId) return planName;
+    const candidates = Array.isArray(configured) ? configured : [configured];
+    if (candidates.some((candidate) => Boolean(candidate && candidate.trim() === priceId))) return planName;
   }
   return null;
 }
@@ -54,7 +55,7 @@ function planForPrice(
 export function resolvePaidPlan(
   metadata: Record<string, unknown> | null | undefined,
   priceId: string | null,
-  priceIds: Record<string, string | undefined>,
+  priceIds: Record<string, string | string[] | undefined>,
 ): string | null {
   const token = String(metadata?.cadivor_plan || "").trim().toLowerCase();
   const metadataPlan = token ? PLAN_TOKENS[token] ?? null : null;
@@ -80,7 +81,7 @@ export function billingDecision(
     metadata?: Record<string, unknown> | null;
     items?: { data?: Array<{ price?: { id?: string | null } | string | null }> };
   },
-  priceIds: Record<string, string | undefined>,
+  priceIds: Record<string, string | string[] | undefined>,
 ): { setPlan: boolean; plan: string | null; priceId: string | null } {
   const status = String(subscription.status || "").trim().toLowerCase();
   const mapped = resolvePaidPlan(

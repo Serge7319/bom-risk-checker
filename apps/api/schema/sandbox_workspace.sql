@@ -172,6 +172,21 @@ CREATE INDEX IF NOT EXISTS migration_decision_records_ws_created_idx
 CREATE INDEX IF NOT EXISTS migration_decision_records_ws_analysis_idx
   ON migration_decision_records (workspace_id, analysis_id, created_at DESC);
 
+-- A random bearer token is returned once; only its SHA-256 hash is stored.
+-- Shares are read-only and expire automatically after the configured period.
+CREATE TABLE IF NOT EXISTS migration_decision_record_shares (
+  token_hash TEXT PRIMARY KEY CHECK (length(token_hash) = 64 AND token_hash ~ '^[0-9a-f]{64}$'),
+  workspace_id TEXT NOT NULL,
+  decision_record_id TEXT NOT NULL REFERENCES migration_decision_records(id) ON DELETE CASCADE,
+  created_by TEXT NOT NULL REFERENCES migration_users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS migration_decision_record_shares_expiry_idx
+  ON migration_decision_record_shares (expires_at);
+
 -- Immutable supplier quote snapshots tied to the exact saved BOM analysis.
 CREATE TABLE IF NOT EXISTS migration_procurement_quotes (
   id TEXT PRIMARY KEY,
@@ -213,11 +228,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS migration_monitoring_alerts_dedupe_uidx
 CREATE TABLE IF NOT EXISTS migration_notification_preferences (
   workspace_id TEXT PRIMARY KEY,
   email_alerts BOOLEAN NOT NULL DEFAULT FALSE,
+  weekly_digest BOOLEAN NOT NULL DEFAULT FALSE,
   lifecycle BOOLEAN NOT NULL DEFAULT TRUE,
   availability BOOLEAN NOT NULL DEFAULT TRUE,
   risk BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE migration_notification_preferences
+  ADD COLUMN IF NOT EXISTS weekly_digest BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Member-level opt-in: emails always go to the verified account address
 -- established by the authenticated API, never a browser-supplied recipient.
@@ -226,6 +244,7 @@ CREATE TABLE IF NOT EXISTS migration_monitoring_member_preferences (
   user_id TEXT NOT NULL REFERENCES migration_users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   email_alerts BOOLEAN NOT NULL DEFAULT FALSE,
+  weekly_digest BOOLEAN NOT NULL DEFAULT FALSE,
   supplier_checks BOOLEAN NOT NULL DEFAULT FALSE,
   lifecycle BOOLEAN NOT NULL DEFAULT TRUE,
   availability BOOLEAN NOT NULL DEFAULT TRUE,
@@ -233,6 +252,8 @@ CREATE TABLE IF NOT EXISTS migration_monitoring_member_preferences (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (workspace_id, user_id)
 );
+ALTER TABLE migration_monitoring_member_preferences
+  ADD COLUMN IF NOT EXISTS weekly_digest BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS migration_monitoring_member_preferences_schedule_idx
   ON migration_monitoring_member_preferences (workspace_id, supplier_checks, email_alerts);
@@ -266,6 +287,22 @@ CREATE TABLE IF NOT EXISTS migration_monitoring_email_deliveries (
 
 CREATE INDEX IF NOT EXISTS migration_monitoring_email_deliveries_lease_idx
   ON migration_monitoring_email_deliveries (status, lease_until);
+
+-- Per-member claim/receipt for weekly monitoring summaries. The scheduler may
+-- run several times a day, but a successful member digest is sent at most once
+-- every seven days.
+CREATE TABLE IF NOT EXISTS migration_monitoring_digest_deliveries (
+  workspace_id TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES migration_users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('sending', 'sent', 'failed')),
+  lease_until TIMESTAMPTZ,
+  sent_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (workspace_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS migration_monitoring_digest_deliveries_lease_idx
+  ON migration_monitoring_digest_deliveries (status, lease_until, sent_at);
 
 CREATE TABLE IF NOT EXISTS migration_monitoring_refresh_history (
   id TEXT PRIMARY KEY,

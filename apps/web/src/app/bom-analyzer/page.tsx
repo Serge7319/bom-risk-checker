@@ -35,6 +35,15 @@ import { userFacingLabel } from "@/lib/display";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
 import { trackMarketingEventOnce } from "@/lib/marketingAnalytics";
 
+type OnboardingStep = "review" | "ask" | "decision" | "monitor";
+type OnboardingProgress = Record<OnboardingStep, boolean>;
+const EMPTY_ONBOARDING: OnboardingProgress = {
+  review: false,
+  ask: false,
+  decision: false,
+  monitor: false,
+};
+
 function freshIntakeOptions(): BomIntakeOptions {
   return { ...DEFAULT_BOM_INTAKE_OPTIONS, rowCorrections: {} };
 }
@@ -99,6 +108,7 @@ export default function BomAnalyzerPage() {
   const ignoredTestDraftRef = useRef(false);
   const [backgroundNote, setBackgroundNote] = useState("");
   const [draftPersistNotice, setDraftPersistNotice] = useState("");
+  const [onboarding, setOnboarding] = useState<OnboardingProgress>(EMPTY_ONBOARDING);
   const [validatedFileKey, setValidatedFileKey] = useState("");
   const [fileContentKey, setFileContentKey] = useState("");
   const validationRequestIdRef = useRef(0);
@@ -166,6 +176,23 @@ export default function BomAnalyzerPage() {
     if (!session) return;
     refreshRecentReports();
   }, [session, refreshRecentReports]);
+
+  useEffect(() => {
+    if (!session) return;
+    try {
+      const stored = JSON.parse(
+        localStorage.getItem(`cadivor_first_run_checklist_v1:${session.user_id || ""}`) || "{}",
+      ) as Partial<OnboardingProgress>;
+      setOnboarding({
+        review: stored.review === true,
+        ask: stored.ask === true,
+        decision: stored.decision === true,
+        monitor: stored.monitor === true,
+      });
+    } catch {
+      setOnboarding(EMPTY_ONBOARDING);
+    }
+  }, [session]);
 
   useEffect(() => {
     if (!session) return;
@@ -489,6 +516,37 @@ export default function BomAnalyzerPage() {
     await runValidation(workingFile, requestId, nextKey, freshIntakeOptions());
   }
 
+  async function onSampleBom() {
+    if (analyzing || validating) return;
+    try {
+      const response = await fetch("/sample-bom.csv", { cache: "force-cache" });
+      if (!response.ok) throw new Error("The sample BOM is unavailable right now.");
+      const text = await response.text();
+      const sample = new File([text], "Cadivor_sample_BOM.csv", { type: "text/csv" });
+      setProjectName("Sample controller project");
+      await onFileChosen(sample);
+      setBomName("Sample controller BOM");
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : "Could not load the sample BOM.");
+    }
+  }
+
+  function markOnboardingDone(step: OnboardingStep) {
+    if (!session) return;
+    setOnboarding((current) => {
+      const next = { ...current, [step]: true };
+      try {
+        localStorage.setItem(
+          `cadivor_first_run_checklist_v1:${session.user_id || ""}`,
+          JSON.stringify(next),
+        );
+      } catch {
+        // Checklist tracking is best-effort and must not block the workflow.
+      }
+      return next;
+    });
+  }
+
   function onRecheck() {
     if (!session || !file || validating || analyzing || !fileContentKey) return;
     const requestId = ++validationRequestIdRef.current;
@@ -677,6 +735,17 @@ export default function BomAnalyzerPage() {
               />
               <small>{file ? file.name : "CSV or XLSX · up to 10 MB"}</small>
             </label>
+            <button
+              type="button"
+              className="cv-button"
+              onClick={() => void onSampleBom()}
+              disabled={analyzing || validating}
+            >
+              Load the 5-part sample BOM
+            </button>
+            <small className="cv-small-note">
+              Illustrative quantities and project grouping; supplier evidence is fetched live when available.
+            </small>
           </div>
 
           {file ? (
@@ -852,25 +921,16 @@ export default function BomAnalyzerPage() {
         </section>
 
         <aside className="cv-bom-side-cards" aria-label="Analysis guidance and recent activity">
-          <section className="cv-card pad cv-bom-side-card">
-            <h2 className="cv-card-title">Before you analyze</h2>
-            <p className="cv-card-subtitle">
-              Validation preview prevents avoidable report errors. Only Analyze is gated.
-            </p>
-            <ul className="cv-bom-checklist">
-              <li>
-                <span className="cv-bom-check-icon"><Icon name="check" /></span>
-                <span><strong>Confirm required columns</strong><small>Part number and quantity are required; manufacturer is recommended. You can correct column roles and values before analysis.</small></span>
-              </li>
-              <li>
-                <span className="cv-bom-check-icon"><Icon name="shield" /></span>
-                <span><strong>Review evidence coverage</strong><small>After analysis, inspect source labels on the Evidence page.</small></span>
-              </li>
-              <li>
-                <span className="cv-bom-check-icon"><Icon name="report" /></span>
-                <span><strong>Keep reports available</strong><small>Saved analyses remain in your workspace so you can reopen them later.</small></span>
-              </li>
-            </ul>
+          <section className="cv-card pad cv-bom-side-card cv-first-run-checklist">
+            <h2 className="cv-card-title">First-run checklist</h2>
+            <p className="cv-card-subtitle">Work through one BOM review. You can leave this page while analysis runs.</p>
+            <ol>
+              <li className={file ? "is-complete" : ""}><span>1</span><div><strong>Upload a BOM</strong><small>{file ? "File selected and validation is available." : "Choose a file or load the sample BOM."}</small></div></li>
+              <li className={onboarding.review ? "is-complete" : ""}><span>2</span><div><strong>Review the top blocker</strong><small>{savedAnalysisId ? "Open the risk report and inspect the highest-priority finding." : "Complete an analysis to reveal the report."}</small>{savedAnalysisId ? <Link href={`/reports/${encodeURIComponent(savedAnalysisId)}`} onClick={() => markOnboardingDone("review")}>Open risk report</Link> : null}</div></li>
+              <li className={onboarding.ask ? "is-complete" : ""}><span>3</span><div><strong>Ask a question</strong><small>Ask Cadivor about a finding, evidence source, or supply concern.</small><Link href="/engineering-intelligence" onClick={() => markOnboardingDone("ask")}>Open Ask Cadivor</Link></div></li>
+              <li className={onboarding.decision ? "is-complete" : ""}><span>4</span><div><strong>Create a decision record</strong><small>Save the chosen action and its engineering rationale.</small><Link href="/engineering-decisions" onClick={() => markOnboardingDone("decision")}>Open Decision records</Link></div></li>
+              <li className={onboarding.monitor ? "is-complete" : ""}><span>5</span><div><strong>Turn on monitoring</strong><small>Opt in for a BOM after reviewing the current monitoring readiness.</small><Link href={savedAnalysisId ? `/monitoring?analysis_id=${encodeURIComponent(savedAnalysisId)}` : "/monitoring"} onClick={() => markOnboardingDone("monitor")}>Open Monitoring</Link></div></li>
+            </ol>
           </section>
 
           <section className="cv-card pad cv-bom-side-card cv-bom-recent-card">

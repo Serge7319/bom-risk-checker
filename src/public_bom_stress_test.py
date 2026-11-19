@@ -9,6 +9,7 @@ import io
 import ipaddress
 import math
 import re
+import secrets
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -25,6 +26,7 @@ from src.secrets import get_secret
 MAX_BYTES = 1_000_000
 MAX_ROWS = 30
 PREVIEW_ROWS = 5
+PUBLIC_SUMMARY_SHARE_DAYS = 30
 MAX_XLSX_UNCOMPRESSED = 8_000_000
 VISITOR_HEADER = "X-Cadivor-Visitor"
 PUBLIC_BOM_LIMIT_MESSAGE = "This connection has used its two free BOM audits in the last 24 hours."
@@ -555,6 +557,7 @@ def run_audit(
         except Exception:
             pass
     remaining_count = len(stubs)
+    summary = audit_summary_counts(enriched_preview)
     return {
         "id": report_id,
         "row_count": len(rows),
@@ -565,8 +568,159 @@ def run_audit(
         "remaining_unverified": remaining_count,
         "remaining_pending": remaining_count,
         "preview_enriched_count": preview_n,
+        "checked_summary": summary,
         "qa_mode": qa_mode,
         "full_enriched": False,
+    }
+
+
+def audit_summary_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    """Count only findings supported by the checked preview rows.
+
+    A blocker is a verified High risk row. Lifecycle alerts are verified rows
+    with an explicit end-of-life, last-time-buy, not-recommended, obsolete, or
+    discontinued lifecycle label. A single-source part has exactly one
+    matched supplier. Pending or unverified rows are never counted as findings.
+    """
+    lifecycle_alert_terms = (
+        "end of life", "eol", "last time buy", "nrnd",
+        "not recommended", "obsolete", "discontinued",
+    )
+    blockers = 0
+    lifecycle_alerts = 0
+    single_source_parts = 0
+    for row in rows:
+        if not isinstance(row, dict) or row.get("verified") is not True:
+            continue
+        if str(row.get("risk") or "").strip().casefold() == "high":
+            blockers += 1
+        lifecycle = str(row.get("lifecycle") or "").strip().casefold()
+        if lifecycle and any(term in lifecycle for term in lifecycle_alert_terms):
+            lifecycle_alerts += 1
+        try:
+            supplier_count = int(row.get("supplier_count"))
+        except (TypeError, ValueError):
+            supplier_count = 0
+        if supplier_count == 1:
+            single_source_parts += 1
+    return {
+        "checked_components": sum(
+            1 for row in rows if isinstance(row, dict) and row.get("verified") is True
+        ),
+        "blockers": blockers,
+        "lifecycle_alerts": lifecycle_alerts,
+        "single_source_parts": single_source_parts,
+    }
+
+
+def create_summary_share(report_id: str, signed_header: str) -> dict[str, Any]:
+    """Create a time-limited, read-only, aggregate summary share.
+
+    Ownership is established by the trusted edge-signed visitor identity that
+    created the audit. The link contains a random bearer token; only its hash is
+    stored, and the response intentionally excludes filenames and component IDs.
+    """
+    if not enabled():
+        raise StressTestError("The public audit is temporarily unavailable.")
+    normalized_id = normalize_stress_report_id(report_id)
+    if not normalized_id:
+        raise StressTestError("Audit not found.")
+    owner_hash = visitor_hash(signed_header)
+    if not owner_hash:
+        raise StressTestError("Audit not found.")
+    response = (
+        _service_client()
+        .table("cadivor_public_bom_stress_tests")
+        .select("id,ip_hash,row_count,results,status,created_at")
+        .eq("id", normalized_id)
+        .eq("ip_hash", owner_hash)
+        .in_("status", ["ready", "lead_captured"])
+        .maybe_single()
+        .execute()
+    )
+    report = response.data
+    if not isinstance(report, dict):
+        raise StressTestError("Audit not found.")
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=PUBLIC_SUMMARY_SHARE_DAYS)
+    _service_client().table("cadivor_public_bom_audit_shares").insert({
+        "token_hash": token_hash,
+        "report_id": normalized_id,
+        "expires_at": expires_at.isoformat(),
+    }).execute()
+    results = report.get("results")
+    rows = results if isinstance(results, list) else []
+    checked_summary = audit_summary_counts(rows)
+    return {
+        "token": token,
+        "expires_at": expires_at.isoformat(),
+        "summary": {
+            "created_at": report.get("created_at"),
+            "component_count": int(report.get("row_count") or 0),
+            "checked_summary": checked_summary,
+            "checked_components": checked_summary["checked_components"],
+            "status": "preliminary",
+            "scope_note": (
+                "Counts reflect only supplier-verified components in the free preview. "
+                "Unchecked components are not classified."
+            ),
+        },
+    }
+
+
+def get_shared_summary(token: str) -> dict[str, Any] | None:
+    """Resolve a valid shared summary without returning BOM row contents."""
+    if not enabled():
+        return None
+    candidate = str(token or "").strip()
+    if len(candidate) < 40 or len(candidate) > 128:
+        return None
+    token_hash = hashlib.sha256(candidate.encode("utf-8")).hexdigest()
+    share = (
+        _service_client()
+        .table("cadivor_public_bom_audit_shares")
+        .select("report_id,expires_at")
+        .eq("token_hash", token_hash)
+        .is_("revoked_at", "null")
+        .maybe_single()
+        .execute()
+        .data
+    )
+    if not isinstance(share, dict):
+        return None
+    try:
+        expires_at = datetime.fromisoformat(str(share.get("expires_at")).replace("Z", "+00:00"))
+        if expires_at <= datetime.now(timezone.utc):
+            return None
+    except (TypeError, ValueError):
+        return None
+    report = (
+        _service_client()
+        .table("cadivor_public_bom_stress_tests")
+        .select("row_count,results,created_at,status")
+        .eq("id", str(share.get("report_id") or ""))
+        .in_("status", ["ready", "lead_captured"])
+        .maybe_single()
+        .execute()
+        .data
+    )
+    if not isinstance(report, dict):
+        return None
+    results = report.get("results")
+    rows = results if isinstance(results, list) else []
+    checked_summary = audit_summary_counts(rows)
+    return {
+        "created_at": report.get("created_at"),
+        "component_count": int(report.get("row_count") or 0),
+        "checked_components": checked_summary["checked_components"],
+        "checked_summary": checked_summary,
+        "status": "preliminary",
+        "scope_note": (
+            "Counts reflect only supplier-verified components in the free preview. "
+            "Uncompleted supplier checks are not classified."
+        ),
+        "expires_at": expires_at.isoformat(),
     }
 
 

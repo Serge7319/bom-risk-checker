@@ -140,14 +140,111 @@ def _baseline(part: dict[str, Any]) -> dict[str, Any]:
     price = _optional_number(_first_value(part, "Unit Price", "unit_price", "price", "best_price"))
     if price is not None and price <= 0:
         price = None
+    lead_time = _optional_number(
+        _first_value(part, "Lead Time Weeks", "lead_time_weeks", "lead_time")
+    )
     return {
         "stock": stock,
         "unit_price": price,
+        "lead_time_weeks": lead_time,
         "lifecycle_status": str(_first_value(part, "Lifecycle", "lifecycle_status") or "Unknown"),
+        "risk_level": str(_first_value(part, "Risk Level", "risk_level", "Risk", "risk") or ""),
         "supplier": str(_first_value(part, "Best Source", "source") or "Saved analysis"),
         "product_url": str(_first_value(part, "Product URL", "product_detail_url", "product_url") or ""),
         "datasheet_url": str(_first_value(part, "Datasheet URL", "datasheet_url") or ""),
     }
+
+
+def _send_weekly_monitoring_digest(workspace_id: str, member: dict[str, Any]) -> bool:
+    """Send a once-per-seven-days monitoring digest to an opted-in member."""
+    import html
+
+    user_id = str(member.get("user_id") or "").strip()
+    recipient = str(member.get("email") or "").strip()
+    if not user_id or not recipient or not monitoring_store.email_transport_ready():
+        return False
+    try:
+        preferences = monitoring_store.get_user_preferences(
+            workspace_id, user_id, recipient
+        )
+    except Exception:  # noqa: BLE001
+        return False
+    if not preferences.get("email_alerts"):
+        return False
+    if not monitoring_store.claim_weekly_digest_email(workspace_id, user_id):
+        return False
+
+    cutoff = datetime.now(timezone.utc).timestamp() - 7 * 86400
+    digest_alerts: list[dict[str, Any]] = []
+    for alert in monitoring_store.list_alerts(workspace_id):
+        if alert.get("active") is False or str(alert.get("status") or "active").lower() == "inactive":
+            continue
+        try:
+            created = datetime.fromisoformat(
+                str(alert.get("created_at") or "").replace("Z", "+00:00")
+            )
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if created.timestamp() < cutoff:
+            continue
+        alert_type = str(alert.get("alert_type") or "").casefold()
+        category = (
+            "lifecycle" if "lifecycle" in alert_type else
+            "availability" if any(term in alert_type for term in ("stock", "availability", "inventory", "lead time", "lead_time")) else
+            "risk"
+        )
+        if preferences.get(category, True):
+            digest_alerts.append(alert)
+
+    digest_alerts.sort(key=lambda row: str(row.get("created_at") or ""), reverse=True)
+    displayed = digest_alerts[:15]
+    text_lines = ["Cadivor weekly monitoring digest", ""]
+    html_rows = []
+    for alert in displayed:
+        part = str(alert.get("part_number") or "Component")
+        kind = str(alert.get("alert_type") or "Monitoring alert")
+        message = str(alert.get("alert_message") or alert.get("message") or "Review the monitoring alert in Cadivor.")
+        text_lines.append(f"{kind} · {part}: {message}")
+        html_rows.append(
+            "<li><strong>" + html.escape(kind) + " · " + html.escape(part)
+            + "</strong><br>" + html.escape(message) + "</li>"
+        )
+    if not displayed:
+        text_lines.append("No new active monitoring alerts were recorded in the past seven days.")
+        html_body = "<p>No new active monitoring alerts were recorded in the past seven days.</p>"
+    else:
+        omitted = len(digest_alerts) - len(displayed)
+        if omitted:
+            text_lines.extend(["", f"{omitted} additional alert(s) are available in Cadivor Monitoring."])
+        html_body = "<ul>" + "".join(html_rows) + "</ul>"
+        if omitted:
+            html_body += f"<p>{omitted} additional alert(s) are available in Cadivor Monitoring.</p>"
+    html_body = (
+        "<h2>Cadivor weekly monitoring digest</h2>"
+        + html_body
+        + '<p><a href="https://app.cadivor.com/monitoring">Open Monitoring</a></p>'
+        + "<p>Manage alert preferences in Cadivor Settings.</p>"
+    )
+    try:
+        from src.email_delivery import send_transactional_email
+
+        send_transactional_email(
+            to_email=recipient,
+            subject="Cadivor weekly monitoring digest",
+            html_body=html_body,
+            text_body="\n".join(text_lines) + "\n\nOpen Monitoring: https://app.cadivor.com/monitoring",
+        )
+        monitoring_store.finish_weekly_digest_email(
+            workspace_id, user_id, delivered=True
+        )
+        return True
+    except Exception:  # noqa: BLE001
+        monitoring_store.finish_weekly_digest_email(
+            workspace_id, user_id, delivered=False
+        )
+        return False
 
 
 def _supplier_lookup(mpn: str, manufacturer: str = "") -> dict[str, Any]:
@@ -271,6 +368,9 @@ def run_live_analysis_refresh(
             fresh, "total_market_stock", "stock_total", "stock", "Stock", "Stock Available"
         ))
         price = _optional_number(_first_value(fresh, "unit_price", "price", "best_price"))
+        lead_time = _optional_number(
+            _first_value(fresh, "lead_time_weeks", "Lead Time Weeks", "lead_time")
+        )
         if price is not None and price <= 0:
             price = None
         retrieved_at = datetime.now(timezone.utc).isoformat()
@@ -283,6 +383,7 @@ def run_live_analysis_refresh(
             "supplier": str(fresh.get("source") or "").strip(),
             "stock": stock,
             "unit_price": price,
+            "lead_time_weeks": lead_time,
             "currency": str(fresh.get("unit_price_currency") or fresh.get("currency") or "").strip(),
             "lifecycle_status": str(fresh.get("lifecycle_status") or "Unknown").strip(),
             "product_url": str(fresh.get("product_detail_url") or fresh.get("product_url") or "").strip(),
@@ -291,11 +392,22 @@ def run_live_analysis_refresh(
             "evidence_source": "live-authorized-supplier",
             "identity_verified": True,
         }
+        from src.risk_engine import calculate_risk
+
+        assessed_risk = calculate_risk({
+            **fresh,
+            "stock_total": stock,
+            "stock_data_complete": bool(fresh.get("stock_data_complete")),
+            "lead_time_weeks": lead_time,
+            "lifecycle_status": current["lifecycle_status"],
+            "quantity": _optional_number(_first_value(part, "Quantity", "quantity")),
+        })
+        current["risk_level"] = str(assessed_risk.get("risk_level") or "Needs verification")
         previous = monitoring_store.get_live_snapshot(wid, aid, mpn) or _baseline(part)
         observed_fields = []
         field_retrieved_at = dict(previous.get("field_retrieved_at") or {})
         comparison_current = dict(previous)
-        for field in ("stock", "unit_price"):
+        for field in ("stock", "unit_price", "lead_time_weeks"):
             if current[field] is not None:
                 comparison_current[field] = current[field]
                 observed_fields.append(field)
@@ -304,13 +416,18 @@ def run_live_analysis_refresh(
             comparison_current["lifecycle_status"] = current["lifecycle_status"]
             observed_fields.append("lifecycle_status")
             field_retrieved_at["lifecycle_status"] = retrieved_at
+        if current.get("risk_level") in {"High", "Medium", "Low"}:
+            comparison_current["risk_level"] = current["risk_level"]
+            observed_fields.append("risk_level")
         if not observed_fields:
             checked.append({"part_number": mpn, "status": "no_usable_measurements"})
             continue
         current.update({
             "stock": comparison_current.get("stock"),
             "unit_price": comparison_current.get("unit_price"),
+            "lead_time_weeks": comparison_current.get("lead_time_weeks"),
             "lifecycle_status": comparison_current.get("lifecycle_status", "Unknown"),
+            "risk_level": current.get("risk_level"),
             "observed_fields": observed_fields,
             "field_retrieved_at": field_retrieved_at,
         })
@@ -413,7 +530,7 @@ def run_scheduled_cycle(
     if configured_supplier_count() <= 0:
         return {"ok": False, "status": "blocked", "reason": "supplier_credentials_missing", "supplier_calls": 0}
 
-    summary = {"ok": True, "status": "complete", "analysis_count": len(targets), "supplier_calls": 0, "updated_parts": 0, "alert_count": 0, "email_sent": 0, "failures": []}
+    summary = {"ok": True, "status": "complete", "analysis_count": len(targets), "supplier_calls": 0, "updated_parts": 0, "alert_count": 0, "email_sent": 0, "digest_emails_sent": 0, "failures": []}
     email_members: dict[str, list[dict[str, Any]]] = {}
     new_alerts_by_workspace: dict[str, dict[str, dict[str, Any]]] = {}
     for row in monitoring_store.list_user_preferences(email_alerts=True):
@@ -507,6 +624,13 @@ def run_scheduled_cycle(
                         "reason": delivery.get("reason") or "email_delivery_failed",
                     })
                 _report_progress()
+    for member in monitoring_store.list_user_preferences(
+        email_alerts=True, weekly_digest=True
+    ):
+        if _send_weekly_monitoring_digest(
+            str(member.get("workspace_id") or ""), member
+        ):
+            summary["digest_emails_sent"] += 1
     if summary["failures"]:
         summary["status"] = "completed_with_failures"
     return summary

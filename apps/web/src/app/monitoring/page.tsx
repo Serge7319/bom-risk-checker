@@ -267,6 +267,15 @@ function MonitoringPageInner() {
                 />
                 <span><strong>Email me when a new monitoring alert is found</strong><br /><small className="cv-small-note">{emailReady ? "Email delivery is on. You can turn this off at any time." : "Your preference is saved, but email alerts are not being sent yet."}</small></span>
               </label>
+              <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(preferences.weekly_digest)}
+                  disabled={Boolean(savingPreferences) || !Boolean(preferences.email_alerts)}
+                  onChange={(event) => void savePreference("weekly_digest", event.target.checked)}
+                />
+                <span><strong>Send me a weekly monitoring digest</strong><br /><small className="cv-small-note">Sent at most once every seven days to your verified account email. Turn on alert emails first; the digest includes active changes from the prior week.</small></span>
+              </label>
             </div>
           </section>
           <section className="cv-card pad">

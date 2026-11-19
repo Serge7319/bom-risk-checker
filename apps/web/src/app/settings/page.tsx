@@ -182,6 +182,7 @@ export default function Page() {
   const [compliance, setCompliance] = useState<Record<string, unknown> | null>(null);
   const [billingAction, setBillingAction] = useState("");
   const [billingError, setBillingError] = useState("");
+  const [billingInterval, setBillingInterval] = useState<"month" | "year">("month");
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("engineer");
@@ -298,6 +299,10 @@ export default function Page() {
   useEffect(() => {
     if (!session || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
+    const requestedTab = params.get("tab");
+    if (requestedTab && TABS.some((item) => item.id === requestedTab)) {
+      setTab(requestedTab as TabId);
+    }
     if (params.get("billing") !== "success") return;
     let active = true;
     void fetchBillingStatus(session.access_token).then((result) => {
@@ -461,7 +466,7 @@ export default function Page() {
     try {
       const result = canManageBilling
         ? await beginBillingPortal(session.access_token)
-        : await beginSubscriptionCheckout(session.access_token, token);
+        : await beginSubscriptionCheckout(session.access_token, token, billingInterval);
       const url = result.checkout?.url;
       if (!result.ok || !url) {
         throw new Error(result.detail || "Secure billing could not be opened.");
@@ -1172,7 +1177,7 @@ export default function Page() {
                   <div>
                     <h3 className="cv-card-title">Plans and billing</h3>
                     <p className="cv-card-subtitle">
-                      Your plan controls analysis limits, monitoring, and team access. Paid plans bill monthly through Stripe.
+                      Your plan controls analysis limits, monitoring, and team access. Annual checkout appears only when a discounted annual Stripe price is configured.
                     </p>
                   </div>
                   {canManageBilling ? (
@@ -1186,6 +1191,22 @@ export default function Page() {
                     </button>
                   ) : null}
                 </div>
+                {!canManageBilling ? (
+                  <div className="cv-billing-interval-picker" role="group" aria-label="Billing interval">
+                    <button
+                      type="button"
+                      className={billingInterval === "month" ? "active" : ""}
+                      aria-pressed={billingInterval === "month"}
+                      onClick={() => setBillingInterval("month")}
+                    >Monthly</button>
+                    <button
+                      type="button"
+                      className={billingInterval === "year" ? "active" : ""}
+                      aria-pressed={billingInterval === "year"}
+                      onClick={() => setBillingInterval("year")}
+                    >Annual</button>
+                  </div>
+                ) : null}
                 <p className="cv-current-plan" role="status">
                   Current access: <strong>{currentPlanName}</strong>
                   {session.trial_days_remaining != null &&
@@ -1199,7 +1220,18 @@ export default function Page() {
                     const token = String(plan.purchase_token || "");
                     const current = currentPlan === name.toLowerCase();
                     const providerPlan = stripePlans.find((row) => String(row.name || "") === name);
-                    const hasPrice = Boolean(providerPlan?.enabled);
+                    const annualPrice = asRecord(providerPlan?.annual);
+                    const hasPrice = billingInterval === "year"
+                      ? annualPrice.enabled === true
+                      : providerPlan?.enabled === true;
+                    const monthlyPrice = String(plan.price || "Contact us");
+                    const annualAmount = Number(annualPrice.amount);
+                    const displayPrice = billingInterval === "year"
+                      ? annualPrice.enabled === true && Number.isFinite(annualAmount)
+                        ? `$${(annualAmount / 100).toFixed(2)}/year`
+                        : "Annual price unavailable"
+                      : monthlyPrice;
+                    const annualDiscount = Number(annualPrice.discount_percent);
                     const paidPlan = Boolean(token);
                     const enterprise = name === "Enterprise";
                     const limit = (value: unknown) =>
@@ -1234,7 +1266,10 @@ export default function Page() {
                             <span className="cv-plan-popular">Most popular</span>
                           ) : null}
                         </div>
-                        <div className="cv-plan-price">{String(plan.price || "Contact us")}</div>
+                        <div className="cv-plan-price">{displayPrice}</div>
+                        {billingInterval === "year" && annualPrice.enabled === true && annualDiscount > 0 ? (
+                          <p className="cv-plan-annual-savings">Save {annualDiscount}% versus twelve monthly payments</p>
+                        ) : null}
                         <p>{String(plan.description || "")}</p>
                         <ul>
                           {bullets.map((item) => (

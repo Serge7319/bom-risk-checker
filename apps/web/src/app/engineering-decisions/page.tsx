@@ -10,6 +10,7 @@ import { LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import {
+  createDecisionRecordShare,
   listDecisionRecords,
   listReports,
   type AnalyzeSummary,
@@ -29,6 +30,10 @@ function EngineeringDecisionsPageInner() {
   const [error, setError] = useState("");
   const [decisionError, setDecisionError] = useState("");
   const [records, setRecords] = useState<DecisionRecord[]>([]);
+  const [shareBusy, setShareBusy] = useState("");
+  const [shareLinks, setShareLinks] = useState<Record<string, string>>({});
+  const [shareCopied, setShareCopied] = useState("");
+  const [shareError, setShareError] = useState("");
   const [busy, setBusy] = useState(true);
 
   useEffect(() => {
@@ -82,6 +87,37 @@ function EngineeringDecisionsPageInner() {
   }, [session, requestedAnalysisId]);
 
   if (!session) return null;
+
+  async function createShareLink(record: DecisionRecord) {
+    const id = String(record.id || record.decision_id || "");
+    if (!id) return;
+    setShareBusy(id);
+    setShareError("");
+    try {
+      const result = await createDecisionRecordShare(session.access_token, id);
+      setShareLinks((current) => ({
+        ...current,
+        [id]: `${window.location.origin}/decision-share/${encodeURIComponent(result.token)}`,
+      }));
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : "Could not create a share link.");
+    } finally {
+      setShareBusy("");
+    }
+  }
+
+  async function copyShareLink(id: string) {
+    const link = shareLinks[id];
+    if (!link) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable.");
+      await navigator.clipboard.writeText(link);
+      setShareCopied(id);
+      setShareError("");
+    } catch {
+      setShareError("Copy was unavailable. Select the share link field and copy it manually.");
+    }
+  }
 
   return (
     <Shell session={session}>
@@ -197,6 +233,7 @@ function EngineeringDecisionsPageInner() {
             </div>
             <PrimaryLink href="/compare-parts">Compare parts</PrimaryLink>
           </div>
+          {shareError ? <div className="cv-error" role="alert">{shareError}</div> : null}
           {records.length ? (
             <div className="cv-table-wrap" style={{ marginTop: 14 }}>
               <table className="cv-table">
@@ -293,6 +330,34 @@ function EngineeringDecisionsPageInner() {
                         {record.analysis_id ? (
                           <Link className="cv-button small" href={`/reports/${encodeURIComponent(record.analysis_id)}`}>Open report</Link>
                         ) : <span className="cv-small-note">Workspace record</span>}
+                        <div style={{ marginTop: 8 }}>
+                          <button
+                            className="cv-button small"
+                            type="button"
+                            disabled={shareBusy === (record.id || record.decision_id)}
+                            onClick={() => void createShareLink(record)}
+                          >
+                            {shareBusy === (record.id || record.decision_id)
+                              ? "Creating link…"
+                              : shareLinks[record.id || record.decision_id]
+                                ? "Create new link"
+                                : "Share read-only"}
+                          </button>
+                        </div>
+                        {shareLinks[record.id || record.decision_id] ? (
+                          <div className="cv-decision-share-link">
+                            <input
+                              aria-label="Read-only decision share link"
+                              readOnly
+                              value={shareLinks[record.id || record.decision_id]}
+                              onFocus={(event) => event.currentTarget.select()}
+                            />
+                            <button className="cv-button small" type="button" onClick={() => void copyShareLink(record.id || record.decision_id)}>
+                              {shareCopied === (record.id || record.decision_id) ? "Copied" : "Copy link"}
+                            </button>
+                            <span className="cv-small-note">Anyone with this link can view it for 7 days.</span>
+                          </div>
+                        ) : null}
                       </td>
                     </tr>
                   ))}

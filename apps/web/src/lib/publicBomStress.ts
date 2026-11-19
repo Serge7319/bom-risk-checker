@@ -29,10 +29,58 @@ export type PublicBomAuditReport = {
   remaining_high_risk: number;
   remaining_unverified: number;
   remaining_pending?: number;
+  checked_summary?: {
+    checked_components: number;
+    blockers: number;
+    lifecycle_alerts: number;
+    single_source_parts: number;
+  };
   preview_enriched_count?: number;
   qa_mode?: boolean;
   full_enriched?: boolean;
 };
+
+export type PublicBomSharedSummary = {
+  created_at?: string | null;
+  component_count: number;
+  checked_components: number;
+  checked_summary: {
+    checked_components: number;
+    blockers: number;
+    lifecycle_alerts: number;
+    single_source_parts: number;
+  };
+  status: "preliminary";
+  scope_note: string;
+  expires_at?: string;
+};
+
+export async function createPublicBomSummaryShare(reportId: string): Promise<{
+  token: string;
+  expires_at: string;
+}> {
+  const res = await fetch("/api/public/bom-stress/share", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ report_id: reportId }),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  const payload = (await res.json()) as { token?: string; expires_at?: string };
+  if (!payload.token || !payload.expires_at) throw new Error("Share link unavailable.");
+  return { token: payload.token, expires_at: payload.expires_at };
+}
+
+export async function fetchPublicBomSharedSummary(token: string): Promise<PublicBomSharedSummary> {
+  const res = await fetch(`/api/public/bom-stress/share/${encodeURIComponent(token)}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  const payload = (await res.json()) as { summary?: PublicBomSharedSummary };
+  if (!payload.summary) throw new Error("Shared audit summary unavailable.");
+  return payload.summary;
+}
 
 export type PublicBomStatus = {
   ok: boolean;

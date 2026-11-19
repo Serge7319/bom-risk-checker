@@ -7,14 +7,17 @@ subscription billing use Supabase Edge Functions with the existing Stripe setup.
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import math
 import os
 import re
+import secrets
 import sys
 import threading
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -1300,6 +1303,93 @@ async def decision_records_get(request: Request) -> JSONResponse:
     return _json({"ok": True, "records": records})
 
 
+async def decision_record_share_post(request: Request) -> JSONResponse:
+    """Create a short-lived, read-only link for one workspace decision record."""
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid request"}, 400)
+    decision_id = str(body.get("decision_record_id") or "").strip()
+    if not decision_id or len(decision_id) > 100:
+        return _json({"detail": "Decision record id is required."}, 400)
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    try:
+        await run_in_threadpool(
+            get_store().create_decision_record_share,
+            workspace_id=ctx["workspace_id"],
+            decision_record_id=decision_id,
+            token_hash=token_hash,
+            created_by=ctx["user_id"],
+            expires_at=expires_at.isoformat(),
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Decision record not found."}, 404)
+    except Exception:  # noqa: BLE001
+        logging.exception("decision_record_share_create_failed")
+        return _json({"detail": "Could not create a decision share link."}, 503)
+    return JSONResponse(
+        {"ok": True, "token": token, "expires_at": expires_at.isoformat()},
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
+async def decision_record_share_get(request: Request) -> JSONResponse:
+    """Resolve a bearer link into a safe read-only projection of one decision."""
+    token = str(request.path_params.get("token") or "").strip()
+    if len(token) < 40 or len(token) > 128:
+        return _json({"detail": "This decision share link is invalid or expired."}, 404)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    try:
+        shared = await run_in_threadpool(
+            get_store().get_decision_record_share, token_hash
+        )
+    except Exception:  # noqa: BLE001
+        logging.exception("decision_record_share_resolve_failed")
+        return _json({"detail": "Shared decision unavailable."}, 503)
+    if not isinstance(shared, dict) or not isinstance(shared.get("record"), dict):
+        return _json({"detail": "This decision share link is invalid or expired."}, 404)
+    record = shared["record"]
+    allowed = (
+        "created_at", "project_name", "bom_name", "revision", "part_a",
+        "part_b", "manufacturer_a", "manufacturer_b", "decision",
+        "decision_label", "reviewer", "rationale", "validation_checks",
+        "follow_up_action", "follow_up_owner", "follow_up_due_date",
+        "residual_risk", "verified_primary_evidence",
+        "qualification_note",
+    )
+    projection = {key: record[key] for key in allowed if key in record}
+    snapshot = record.get("comparison_snapshot")
+    if isinstance(snapshot, dict):
+        # Share only the small evidence summary that helps explain the decision.
+        # The saved comparison payload can contain wider workspace context.
+        safe_snapshot_keys = {
+            "finding", "engineering_evidence_status", "source_a", "source_b",
+            "comparison_status", "qualification_status",
+        }
+        safe_snapshot = {
+            key: snapshot[key]
+            for key in safe_snapshot_keys
+            if isinstance(snapshot.get(key), (str, int, float, bool))
+        }
+        if safe_snapshot:
+            projection["comparison_snapshot"] = safe_snapshot
+    return JSONResponse(
+        {"ok": True, "record": projection, "expires_at": shared.get("expires_at")},
+        headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Robots-Tag": "noindex, nofollow, noarchive",
+        },
+    )
+
+
 async def decision_records_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -2162,7 +2252,10 @@ async def billing_checkout_post(request: Request) -> JSONResponse:
         result, status = subscription_billing_service.request_action(
             access_token=token,
             action="checkout",
-            payload={"plan": body.get("plan") or body.get("plan_token") or ""},
+            payload={
+                "plan": body.get("plan") or body.get("plan_token") or "",
+                "billing_interval": body.get("billing_interval") or "month",
+            },
             origin=request.headers.get("origin", ""),
         )
     except subscription_billing_service.SubscriptionBillingError as exc:
@@ -2551,6 +2644,52 @@ async def public_bom_stress_lead(request: Request) -> JSONResponse:
         return _json({"detail": "Could not send the verification link. Please try again later."}, 503)
     return _json(
         {"ok": True, "email": address, "verification_sent": bool(verification_sent)}
+    )
+
+
+async def public_bom_stress_share_post(request: Request) -> JSONResponse:
+    """Create a read-only aggregate share after verifying the audit visitor."""
+    from src.public_bom_stress_test import StressTestError, create_summary_share, enabled
+
+    if not enabled():
+        return _json({"detail": "The public audit is temporarily unavailable."}, 503)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid JSON"}, 400)
+    report_id = str(body.get("report_id") or "").strip()
+    if not report_id:
+        return _json({"detail": "Audit id is required."}, 400)
+    try:
+        share = await run_in_threadpool(
+            create_summary_share, report_id, _visitor_header(request)
+        )
+    except StressTestError as exc:
+        return _json({"detail": str(exc)}, 404)
+    except Exception:  # noqa: BLE001
+        logging.exception("public_bom_stress_share_create_failed")
+        return _json({"detail": "Could not create a share link."}, 503)
+    return JSONResponse(
+        {"ok": True, **share}, headers={"Cache-Control": "no-store"}
+    )
+
+
+async def public_bom_stress_share_get(request: Request) -> JSONResponse:
+    """Return a sanitized audit summary for a non-expired share token."""
+    from src.public_bom_stress_test import get_shared_summary
+
+    token = str(request.path_params.get("token") or "").strip()
+    try:
+        summary = await run_in_threadpool(get_shared_summary, token)
+    except Exception:  # noqa: BLE001
+        logging.exception("public_bom_stress_share_resolve_failed")
+        return _json({"detail": "Shared audit summary unavailable."}, 503)
+    if not summary:
+        return _json({"detail": "This audit share link is invalid or expired."}, 404)
+    return JSONResponse(
+        {"ok": True, "summary": summary}, headers={"Cache-Control": "no-store"}
     )
 
 
@@ -3997,6 +4136,8 @@ app = Starlette(
         Route("/tools/compare-parts", compare_parts_post, methods=["POST"]),
         Route("/decision-records", decision_records_get, methods=["GET"]),
         Route("/decision-records", decision_records_post, methods=["POST"]),
+        Route("/decision-records/share", decision_record_share_post, methods=["POST"]),
+        Route("/decision-records/share/{token}", decision_record_share_get, methods=["GET"]),
         Route("/tools/datasheet-qa", datasheet_qa_post, methods=["POST"]),
         Route("/tools/procurement", procurement_get, methods=["GET"]),
         Route("/tools/procurement/quotes", procurement_quotes_get, methods=["GET"]),
@@ -4032,6 +4173,8 @@ app = Starlette(
         Route("/public/bom-stress/status", public_bom_stress_status, methods=["GET"]),
         Route("/public/bom-stress/audit", public_bom_stress_audit, methods=["POST"]),
         Route("/public/bom-stress/lead", public_bom_stress_lead, methods=["POST"]),
+        Route("/public/bom-stress/share", public_bom_stress_share_post, methods=["POST"]),
+        Route("/public/bom-stress/share/{token}", public_bom_stress_share_get, methods=["GET"]),
         Route("/public/contact", public_contact_post, methods=["POST"]),
         Route("/public/analytics", public_marketing_analytics_post, methods=["POST"]),
         Route("/admin/marketing-analytics", marketing_analytics_admin_get, methods=["GET"]),
