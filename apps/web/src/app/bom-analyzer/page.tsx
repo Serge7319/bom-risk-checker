@@ -7,7 +7,10 @@ import { Shell } from "@/components/Shell";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import { BomIntakeReview } from "@/components/BomIntakeReview";
 import {
+  beginUsageOverageCheckout,
   DEFAULT_BOM_INTAKE_OPTIONS,
+  fetchBillingStatus,
+  fetchPlanUsage,
   listReports,
   validateBom,
   type AnalyzeSummary,
@@ -33,7 +36,7 @@ import {
 import { PAGE_META } from "@/lib/routes";
 import { userFacingLabel } from "@/lib/display";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
-import { trackMarketingEventOnce } from "@/lib/marketingAnalytics";
+import { trackMarketingEvent, trackMarketingEventOnce } from "@/lib/marketingAnalytics";
 
 type OnboardingStep = "review" | "ask" | "decision" | "monitor";
 type OnboardingProgress = Record<OnboardingStep, boolean>;
@@ -81,8 +84,26 @@ function formatReportDate(value: unknown): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function formatPriceFromCents(amount: unknown, currency: unknown): string {
+  const cents = Number(amount);
+  if (!Number.isFinite(cents) || cents <= 0) return "";
+  const code = String(currency || "usd").toUpperCase();
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: code }).format(cents / 100);
+  } catch {
+    return `$${(cents / 100).toFixed(2)}`;
+  }
+}
+
 export default function BomAnalyzerPage() {
   const session = useRequireSession();
+  const accessToken = session?.access_token || "";
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [recentReports, setRecentReports] = useState<Array<Record<string, unknown>>>([]);
   const [reportsBusy, setReportsBusy] = useState(true);
@@ -101,6 +122,10 @@ export default function BomAnalyzerPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState("");
   const [oneTimeReportRequired, setOneTimeReportRequired] = useState(false);
+  const [planUsageSnapshot, setPlanUsageSnapshot] = useState<Record<string, unknown> | null>(null);
+  const [billingSnapshot, setBillingSnapshot] = useState<Record<string, unknown> | null>(null);
+  const [analysisPackBusy, setAnalysisPackBusy] = useState(false);
+  const [analysisPackError, setAnalysisPackError] = useState("");
   const [summary, setSummary] = useState<AnalyzeSummary | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);
@@ -172,10 +197,24 @@ export default function BomAnalyzerPage() {
       });
   }, [session]);
 
+  const refreshUsageAndBilling = useCallback(async () => {
+    if (!accessToken) return;
+    const [usageResult, billingResult] = await Promise.allSettled([
+      fetchPlanUsage(accessToken),
+      fetchBillingStatus(accessToken),
+    ]);
+    if (usageResult.status === "fulfilled") setPlanUsageSnapshot(usageResult.value);
+    if (billingResult.status === "fulfilled") setBillingSnapshot(billingResult.value);
+  }, [accessToken]);
+
   useEffect(() => {
-    if (!session) return;
+    if (!accessToken) return;
     refreshRecentReports();
-  }, [session, refreshRecentReports]);
+  }, [accessToken, refreshRecentReports]);
+
+  useEffect(() => {
+    void refreshUsageAndBilling();
+  }, [refreshUsageAndBilling]);
 
   useEffect(() => {
     if (!session) return;
@@ -287,6 +326,7 @@ export default function BomAnalyzerPage() {
           });
           clearFinishedAnalyzeJob(session);
           refreshRecentReports();
+          void refreshUsageAndBilling();
         }
       } else if (job?.status === "failed") {
         setAnalyzeError(job.error || "Analyze failed");
@@ -365,6 +405,7 @@ export default function BomAnalyzerPage() {
         );
         clearFinishedAnalyzeJob(session);
         refreshRecentReports();
+        void refreshUsageAndBilling();
         return;
       }
       if (job.status === "failed") {
@@ -457,6 +498,7 @@ export default function BomAnalyzerPage() {
     setSummary(null);
     setAnalysisId(null);
     setAnalyzeError("");
+    setAnalysisPackError("");
     setOneTimeReportRequired(false);
     setBackgroundNote("");
     setValidating(Boolean(next));
@@ -528,6 +570,33 @@ export default function BomAnalyzerPage() {
       setBomName("Sample controller BOM");
     } catch (err) {
       setValidationError(err instanceof Error ? err.message : "Could not load the sample BOM.");
+    }
+  }
+
+  async function onBuyAnalysisPack(placement: "near_limit" | "limit") {
+    if (!session || analysisPackBusy) return;
+    setAnalysisPackBusy(true);
+    setAnalysisPackError("");
+    trackMarketingEvent("upgrade_clicked", {
+      intent: "bom-analysis-overage",
+      placement,
+      plan: String(billingSnapshot?.current_plan || planUsageSnapshot?.plan || "unknown").toLowerCase(),
+    }, "/bom-analyzer");
+    try {
+      const result = await beginUsageOverageCheckout(session.access_token, "bom_analysis");
+      if (!result.ok || !result.checkout?.url) {
+        throw new Error(result.detail || "Billing could not be started. Please try again or contact support.");
+      }
+      trackMarketingEvent("checkout_started", {
+        intent: "bom-analysis-overage",
+        placement,
+        plan: String(billingSnapshot?.current_plan || planUsageSnapshot?.plan || "unknown").toLowerCase(),
+      }, "/bom-analyzer");
+      window.location.assign(result.checkout.url);
+    } catch (err) {
+      setAnalysisPackError(err instanceof Error ? err.message : "Billing could not be started. Please try again or contact support.");
+    } finally {
+      setAnalysisPackBusy(false);
     }
   }
 
@@ -610,6 +679,24 @@ export default function BomAnalyzerPage() {
   );
 
   const savedAnalysisId = String(analysisId || summary?.analysis_id || "");
+  const usageLimits = asRecord(planUsageSnapshot?.limits);
+  const usage = asRecord(planUsageSnapshot?.usage);
+  const overageCredits = asRecord(usage.overage_credits);
+  const monthlyLimit = Number(usageLimits.monthly_bom_limit);
+  const monthlyUsed = Number(usage.analyses_this_month);
+  const availableAnalysisCredits = Number(overageCredits.bom_analysis || 0);
+  const hasFiniteMonthlyLimit = Number.isFinite(monthlyLimit) && monthlyLimit > 0;
+  const reachedMonthlyLimit = hasFiniteMonthlyLimit && monthlyUsed >= monthlyLimit && availableAnalysisCredits <= 0;
+  const nearMonthlyLimit = hasFiniteMonthlyLimit &&
+    monthlyUsed >= Math.max(1, Math.ceil(monthlyLimit * 0.8)) &&
+    monthlyUsed < monthlyLimit && availableAnalysisCredits <= 0;
+  const analysisPack = asRecord(asRecord(billingSnapshot?.addons).bom_analysis);
+  const analysisPackCredits = Number(analysisPack.credits);
+  const analysisPackPrice = formatPriceFromCents(analysisPack.amount, analysisPack.currency);
+  const canBuyAnalysisPack = billingSnapshot?.has_active_subscription === true && analysisPack.enabled === true;
+  const analysisPackLabel = analysisPackCredits > 0
+    ? `Buy ${analysisPackCredits.toLocaleString()} more analyses${analysisPackPrice ? ` · ${analysisPackPrice} one time` : ""}`
+    : "Buy analysis pack";
   const primary = savedAnalysisId
     ? {
         label: "Open risk review",
@@ -684,6 +771,28 @@ export default function BomAnalyzerPage() {
             <p className="cv-bom-guidance-note" role="status">
               A test-only draft was not loaded. Choose a BOM file to start a new analysis.
             </p>
+          ) : null}
+
+          {nearMonthlyLimit ? (
+            <div className="cv-notice" role="status">
+              <strong>You’ve used {monthlyUsed} of {monthlyLimit} BOM analyses this month.</strong>
+              <p style={{ margin: "5px 0 10px" }}>
+                The next analysis may be blocked when you reach your plan limit.
+              </p>
+              {canBuyAnalysisPack ? (
+                <button
+                  className="cv-button"
+                  type="button"
+                  disabled={analysisPackBusy}
+                  onClick={() => void onBuyAnalysisPack("near_limit")}
+                >
+                  {analysisPackBusy ? "Opening checkout…" : analysisPackLabel}
+                </button>
+              ) : (
+                <Link className="cv-button" href="/settings?tab=billing">Review plan and billing options</Link>
+              )}
+              {analysisPackError ? <p className="cv-error" role="alert" style={{ marginTop: 10 }}>{analysisPackError}</p> : null}
+            </div>
           ) : null}
 
           <div className="cv-bom-fields cv-bom-fields-grid">
@@ -849,19 +958,43 @@ export default function BomAnalyzerPage() {
               <p className="cv-small-note" style={{ marginTop: 8 }}>
                 Your selected file and project details are still available. Fix the issue, then retry analysis.
               </p>
-              {oneTimeReportRequired ? (
+              {oneTimeReportRequired || reachedMonthlyLimit ? (
                 <div style={{ marginTop: 10 }}>
-                  <Link
-                    className="cv-button primary"
-                    href="/single-bom-report"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open one-time report purchase
-                  </Link>
-                  <p className="cv-small-note" style={{ marginTop: 8 }}>
-                    Keep this BOM open. After checkout is confirmed, return here and run the analysis; your selected file will still be ready.
-                  </p>
+                  {canBuyAnalysisPack ? (
+                    <div style={{ marginBottom: 10 }}>
+                      <button
+                        className="cv-button primary"
+                        type="button"
+                        disabled={analysisPackBusy}
+                        onClick={() => void onBuyAnalysisPack("limit")}
+                      >
+                        {analysisPackBusy ? "Opening checkout…" : analysisPackLabel}
+                      </button>
+                      <p className="cv-small-note" style={{ marginTop: 6 }}>
+                        Add analysis capacity to your subscription, then return here and retry this BOM.
+                      </p>
+                    </div>
+                  ) : reachedMonthlyLimit ? (
+                    <p style={{ margin: "0 0 10px" }}>
+                      <Link href="/settings?tab=billing">Review plan and usage options</Link>
+                    </p>
+                  ) : null}
+                  {analysisPackError ? <p role="alert" style={{ margin: "0 0 10px" }}>{analysisPackError}</p> : null}
+                  {oneTimeReportRequired ? (
+                    <>
+                      <Link
+                        className="cv-button"
+                        href="/single-bom-report"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open one-time report purchase
+                      </Link>
+                      <p className="cv-small-note" style={{ marginTop: 8 }}>
+                        Keep this BOM open. After checkout is confirmed, return here and run the analysis; your selected file will still be ready.
+                      </p>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </div>

@@ -1411,11 +1411,6 @@ export default function Page() {
                     );
                   })}
                 </div>
-                {billingError ? (
-                  <div className="cv-error" role="alert" style={{ marginTop: 12 }}>
-                    {billingError}
-                  </div>
-                ) : null}
                 <p className="cv-small-note" style={{ marginTop: 12 }}>
                   Need a single paid BOM report instead of a subscription?{" "}
                   <Link href="/single-bom-report">View the one-time report option</Link>.

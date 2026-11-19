@@ -723,16 +723,35 @@ serve(async (request) => {
         cadivor_credit_kind: kind,
         cadivor_credit_units: String(credits),
       };
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        ...(customerId ? { customer: customerId } : { customer_email: auth.user.email! }),
-        line_items: [{ price: priceId, quantity: 1 }],
-        success_url: origin + "/settings?billing=usage-pack-success",
-        cancel_url: origin + "/settings?billing=usage-pack-cancel",
-        client_reference_id: auth.user.id,
-        metadata,
-        payment_intent_data: { metadata },
-      }, { idempotencyKey: "cadivor_usage_pack_" + auth.user.id + "_" + kind + "_" + supportReference });
+      const idempotencyKey = "cadivor_usage_pack_" + auth.user.id + "_" + kind + "_" + supportReference;
+      let session: Stripe.Checkout.Session;
+      try {
+        session = await stripe.checkout.sessions.create({
+          mode: "payment",
+          ...(customerId ? { customer: customerId } : { customer_email: auth.user.email! }),
+          line_items: [{ price: priceId, quantity: 1 }],
+          success_url: origin + "/settings?billing=usage-pack-success",
+          cancel_url: origin + "/settings?billing=usage-pack-cancel",
+          client_reference_id: auth.user.id,
+          metadata,
+          payment_intent_data: { metadata },
+        }, { idempotencyKey });
+      } catch (error) {
+        if (!customerId || !isMissingStripeCustomer(error)) throw error;
+        // One-time packs can use a fresh email-based Checkout Session when a
+        // stored customer belongs to a retired Stripe mode or account. This
+        // does not create or alter a recurring subscription.
+        session = await stripe.checkout.sessions.create({
+          mode: "payment",
+          customer_email: auth.user.email!,
+          line_items: [{ price: priceId, quantity: 1 }],
+          success_url: origin + "/settings?billing=usage-pack-success",
+          cancel_url: origin + "/settings?billing=usage-pack-cancel",
+          client_reference_id: auth.user.id,
+          metadata,
+          payment_intent_data: { metadata },
+        }, { idempotencyKey: idempotencyKey + "_fresh_customer" });
+      }
       if (!session.url) throw new Error("Stripe did not return a checkout link.");
       return response({ ok: true, checkout: { state: "open", url: session.url } }, 200, origin);
     }
