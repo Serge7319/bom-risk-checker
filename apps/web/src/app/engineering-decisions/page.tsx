@@ -11,6 +11,7 @@ import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import {
   createDecisionRecordShare,
+  inviteDecisionApprover,
   listDecisionRecords,
   listReports,
   type AnalyzeSummary,
@@ -34,6 +35,9 @@ function EngineeringDecisionsPageInner() {
   const [shareLinks, setShareLinks] = useState<Record<string, string>>({});
   const [shareCopied, setShareCopied] = useState("");
   const [shareError, setShareError] = useState("");
+  const [approverEmails, setApproverEmails] = useState<Record<string, string>>({});
+  const [approverBusy, setApproverBusy] = useState("");
+  const [approverNotice, setApproverNotice] = useState("");
   const [busy, setBusy] = useState(true);
 
   useEffect(() => {
@@ -117,6 +121,25 @@ function EngineeringDecisionsPageInner() {
       setShareError("");
     } catch {
       setShareError("Copy was unavailable. Select the share link field and copy it manually.");
+    }
+  }
+
+  async function sendApproverInvite(record: DecisionRecord) {
+    const id = String(record.id || record.decision_id || "");
+    const email = String(approverEmails[id] || "").trim();
+    const accessToken = session?.access_token;
+    if (!id || !email || !accessToken || approverBusy) return;
+    setApproverBusy(id);
+    setApproverNotice("");
+    setShareError("");
+    try {
+      await inviteDecisionApprover(accessToken, id, email);
+      setApproverEmails((current) => ({ ...current, [id]: "" }));
+      setApproverNotice(`Approval invitation sent to ${email}. It grants access to this decision only and expires in seven days.`);
+    } catch (err) {
+      setShareError(err instanceof Error ? err.message : "Could not send the approval invitation.");
+    } finally {
+      setApproverBusy("");
     }
   }
 
@@ -235,6 +258,7 @@ function EngineeringDecisionsPageInner() {
             <PrimaryLink href="/compare-parts">Compare parts</PrimaryLink>
           </div>
           {shareError ? <div className="cv-error" role="alert">{shareError}</div> : null}
+          {approverNotice ? <div className="cv-evidence-context" role="status">{approverNotice}</div> : null}
           {records.length ? (
             <div className="cv-table-wrap" style={{ marginTop: 14 }}>
               <table className="cv-table">
@@ -359,6 +383,28 @@ function EngineeringDecisionsPageInner() {
                             <span className="cv-small-note">Anyone with this link can view it for 7 days.</span>
                           </div>
                         ) : null}
+                        <div className="cv-decision-approver-invite">
+                          <label htmlFor={`approver-email-${record.id || record.decision_id}`}>Invite an approver</label>
+                          <input
+                            id={`approver-email-${record.id || record.decision_id}`}
+                            type="email"
+                            placeholder="approver@company.com"
+                            value={approverEmails[record.id || record.decision_id] || ""}
+                            onChange={(event) => setApproverEmails((current) => ({
+                              ...current,
+                              [record.id || record.decision_id]: event.target.value,
+                            }))}
+                          />
+                          <button
+                            className="cv-button small"
+                            type="button"
+                            disabled={!approverEmails[record.id || record.decision_id]?.trim() || approverBusy === (record.id || record.decision_id)}
+                            onClick={() => void sendApproverInvite(record)}
+                          >
+                            {approverBusy === (record.id || record.decision_id) ? "Sending…" : "Send approval request"}
+                          </button>
+                          <span className="cv-small-note">The recipient can approve or reject this record without joining your workspace.</span>
+                        </div>
                       </td>
                     </tr>
                   ))}

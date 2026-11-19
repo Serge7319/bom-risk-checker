@@ -9,7 +9,9 @@ import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader"
 import {
   ApiError,
   beginBillingPortal,
+  beginProfessionalApiAddonCheckout,
   beginSubscriptionCheckout,
+  beginUsageOverageCheckout,
   cancelWorkspaceInvitation,
   changePassword,
   createWorkspace,
@@ -19,6 +21,10 @@ import {
   fetchConnectors,
   fetchPlanUsage,
   fetchServiceReadiness,
+  fetchDeveloperApiKeys,
+  createDeveloperApiKey,
+  revokeDeveloperApiKey,
+  type DeveloperApiKey,
   type ServiceReadiness,
   fetchPreferences,
   fetchProfile,
@@ -183,6 +189,11 @@ export default function Page() {
   const [billingAction, setBillingAction] = useState("");
   const [billingError, setBillingError] = useState("");
   const [billingInterval, setBillingInterval] = useState<"month" | "year">("month");
+  const [developerApiKeys, setDeveloperApiKeys] = useState<DeveloperApiKey[]>([]);
+  const [developerApiKeyName, setDeveloperApiKeyName] = useState("");
+  const [developerApiKeySecret, setDeveloperApiKeySecret] = useState("");
+  const [developerApiKeyError, setDeveloperApiKeyError] = useState("");
+  const [developerApiKeyNotice, setDeveloperApiKeyNotice] = useState("");
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("engineer");
@@ -266,6 +277,21 @@ export default function Page() {
       ]);
     if (usageRes) setUsage(usageRes);
     if (billingRes) setBilling(billingRes);
+    const usageLimits = asRecord(usageRes?.limits);
+    const apiAccessAvailable = usageLimits.api_access === true || billingRes?.api_access_addon_active === true;
+    if (apiAccessAvailable) {
+      const keysRes = await settledValue(fetchDeveloperApiKeys(token));
+      if (keysRes?.ok) {
+        setDeveloperApiKeys(keysRes.keys);
+        setDeveloperApiKeyError("");
+      } else {
+        setDeveloperApiKeys([]);
+        setDeveloperApiKeyError("API key settings could not be loaded.");
+      }
+    } else {
+      setDeveloperApiKeys([]);
+      setDeveloperApiKeyError("");
+    }
     if (connectorsRes) setConnectors(connectorsRes);
     if (complianceRes) setCompliance(complianceRes);
     if (readinessRes && readinessRes.ok !== false) {
@@ -335,6 +361,14 @@ export default function Page() {
   const currentPlan = currentPlanName.toLowerCase();
   const canManageBilling = billing?.can_manage_billing === true;
   const checkoutEnabled = billing?.checkout_enabled === true;
+  const billingAddons = asRecord(billing?.addons);
+  const analysisOverage = asRecord(billingAddons.bom_analysis);
+  const monitoredOverage = asRecord(billingAddons.monitored_parts);
+  const apiOverage = asRecord(billingAddons.professional_api);
+  const usageCredits = asRecord(billing?.usage_credits);
+  const hasProfessionalApiAddon = billing?.api_access_addon_active === true;
+  const paidSubscription = billing?.has_active_subscription === true &&
+    ["starter", "professional", "business"].includes(currentPlan);
   const connectorRows = asRows(
     readiness?.connectors?.connectors || connectors?.connectors || connectors?.items,
   );
@@ -497,6 +531,80 @@ export default function Page() {
     }
   }
 
+  function addonPriceLabel(addon: Record<string, unknown>, suffix: string) {
+    const amount = Number(addon.amount);
+    if (addon.enabled !== true || !Number.isFinite(amount) || amount <= 0) return "Not configured";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: String(addon.currency || "usd").toUpperCase(),
+    }).format(amount / 100) + suffix;
+  }
+
+  async function openAddonCheckout(kind: "bom_analysis" | "monitored_part" | "professional_api") {
+    if (!session) return;
+    setBillingAction("addon-" + kind);
+    setBillingError("");
+    try {
+      const result = kind === "professional_api"
+        ? await beginProfessionalApiAddonCheckout(session.access_token)
+        : await beginUsageOverageCheckout(session.access_token, kind);
+      if (!result.ok || !result.checkout?.url) {
+        throw new Error(result.detail || "Secure add-on checkout could not be opened.");
+      }
+      window.location.assign(result.checkout.url);
+    } catch (err) {
+      setBillingError(billingErrorMessage(err, "Secure add-on checkout could not be opened."));
+      setBillingAction("");
+    }
+  }
+
+  async function createApiKey(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || !developerApiKeyName.trim()) return;
+    setBillingAction("api-key-create");
+    setDeveloperApiKeyError("");
+    setDeveloperApiKeyNotice("");
+    setDeveloperApiKeySecret("");
+    try {
+      const result = await createDeveloperApiKey(session.access_token, developerApiKeyName.trim());
+      setDeveloperApiKeys((current) => [result.key, ...current]);
+      setDeveloperApiKeyName("");
+      setDeveloperApiKeySecret(result.key.secret);
+      setDeveloperApiKeyNotice("Copy this key now. Cadivor will not show the full value again.");
+    } catch (err) {
+      setDeveloperApiKeyError(settingsErrorMessage(err, "API key could not be created."));
+    } finally {
+      setBillingAction("");
+    }
+  }
+
+  async function revokeApiKey(keyId: string) {
+    if (!session) return;
+    setBillingAction("api-key-revoke:" + keyId);
+    setDeveloperApiKeyError("");
+    setDeveloperApiKeyNotice("");
+    try {
+      await revokeDeveloperApiKey(session.access_token, keyId);
+      setDeveloperApiKeys((current) => current.filter((key) => key.id !== keyId));
+      setDeveloperApiKeyNotice("API key revoked.");
+      if (developerApiKeySecret) setDeveloperApiKeySecret("");
+    } catch (err) {
+      setDeveloperApiKeyError(settingsErrorMessage(err, "API key could not be revoked."));
+    } finally {
+      setBillingAction("");
+    }
+  }
+
+  async function copyDeveloperApiKey() {
+    if (!developerApiKeySecret) return;
+    try {
+      await navigator.clipboard.writeText(developerApiKeySecret);
+      setDeveloperApiKeyNotice("API key copied.");
+    } catch {
+      setDeveloperApiKeyError("Clipboard access is unavailable. Select and copy the key manually.");
+    }
+  }
+
   return (
     <Shell session={session}>
       <PageHeader
@@ -505,6 +613,7 @@ export default function Page() {
           <>
             <PrimaryLink href="/bom-analyzer">BOM Analyzer</PrimaryLink>
             <SecondaryLink href="/single-bom-report">One-time report</SecondaryLink>
+            {session?.platform_role === "admin" ? <SecondaryLink href="/admin/entitlements">Account entitlements</SecondaryLink> : null}
             <SecondaryLink href="/">Home</SecondaryLink>
           </>
         }
@@ -1311,6 +1420,76 @@ export default function Page() {
                   Need a single paid BOM report instead of a subscription?{" "}
                   <Link href="/single-bom-report">View the one-time report option</Link>.
                 </p>
+              </section>
+
+              {asRecord(usage?.limits).api_access === true || hasProfessionalApiAddon ? (
+                <section className="cv-card pad" style={{ marginBottom: 14 }}>
+                  <h3 className="cv-card-title">Developer API keys</h3>
+                  <p className="cv-card-subtitle">Create keys for the read-only v1 Reports API. Keys inherit this workspace’s access and stop working when API access or workspace membership ends. The secret is shown once at creation.</p>
+                  <form className="cv-form-grid" onSubmit={(event) => void createApiKey(event)} style={{ marginTop: 14 }}>
+                    <div className="cv-field">
+                      <label htmlFor="developer-api-key-name">Key name</label>
+                      <input id="developer-api-key-name" value={developerApiKeyName} maxLength={80} onChange={(event) => setDeveloperApiKeyName(event.target.value)} placeholder="e.g. Internal reporting" required />
+                    </div>
+                    <div style={{ alignSelf: "end" }}>
+                      <button className="cv-button primary" type="submit" disabled={Boolean(billingAction)}>{billingAction === "api-key-create" ? "Creating…" : "Create API key"}</button>
+                    </div>
+                  </form>
+                  {developerApiKeySecret ? (
+                    <div className="cv-api-key-secret" role="status">
+                      <strong>Copy your new API key now</strong>
+                      <code>{developerApiKeySecret}</code>
+                      <button className="cv-button small" type="button" onClick={() => void copyDeveloperApiKey()}>Copy key</button>
+                    </div>
+                  ) : null}
+                  {developerApiKeyError ? <div className="cv-error" role="alert" style={{ marginTop: 12 }}>{developerApiKeyError}</div> : null}
+                  {developerApiKeyNotice ? <p className="cv-small-note" role="status" style={{ marginTop: 10 }}>{developerApiKeyNotice}</p> : null}
+                  {developerApiKeys.length ? (
+                    <ul className="cv-api-key-list">
+                      {developerApiKeys.map((key) => (
+                        <li key={String(key.id)}>
+                          <span><strong>{cleanUserText(String(key.name || "API key"))}</strong><small><code>{String(key.key_prefix || "")}…</code> · Created {key.created_at ? new Date(String(key.created_at)).toLocaleDateString() : "—"}{key.last_used_at ? ` · Used ${new Date(String(key.last_used_at)).toLocaleDateString()}` : " · Not used yet"}</small></span>
+                          <button className="cv-button small" type="button" disabled={Boolean(billingAction)} onClick={() => void revokeApiKey(String(key.id))}>{billingAction === `api-key-revoke:${String(key.id)}` ? "Revoking…" : "Revoke"}</button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : !developerApiKeyError ? <p className="cv-small-note" style={{ marginTop: 12 }}>No active API keys for this workspace.</p> : null}
+                </section>
+              ) : null}
+
+              <section className="cv-card pad" style={{ marginBottom: 14 }}>
+                <h3 className="cv-card-title">Usage add-ons</h3>
+                <p className="cv-card-subtitle">
+                  Buy extra BOM analysis or monitoring capacity when you need it. Pack sizes and prices come from the configured Stripe catalog; they are not estimated by Cadivor.
+                </p>
+                <div className="cv-addon-grid">
+                  <article className="cv-addon-card">
+                    <h4>BOM analysis pack</h4>
+                    <p>{Number(analysisOverage.credits || 0).toLocaleString()} additional BOM analyses · {addonPriceLabel(analysisOverage, " one time")}</p>
+                    <p className="cv-small-note">Available analysis credits: {Number(usageCredits.bom_analysis || 0).toLocaleString()}</p>
+                    <button className="cv-button" type="button" disabled={!paidSubscription || analysisOverage.enabled !== true || Boolean(billingAction)} onClick={() => void openAddonCheckout("bom_analysis")}>
+                      {billingAction === "addon-bom_analysis" ? "Opening checkout…" : "Buy analysis pack"}
+                    </button>
+                  </article>
+                  <article className="cv-addon-card">
+                    <h4>Monitored parts pack</h4>
+                    <p>{Number(monitoredOverage.credits || 0).toLocaleString()} additional monitored parts · {addonPriceLabel(monitoredOverage, " one time")}</p>
+                    <p className="cv-small-note">Available monitoring credits: {Number(usageCredits.monitored_part || 0).toLocaleString()}</p>
+                    <button className="cv-button" type="button" disabled={!paidSubscription || monitoredOverage.enabled !== true || Boolean(billingAction)} onClick={() => void openAddonCheckout("monitored_part")}>
+                      {billingAction === "addon-monitored_part" ? "Opening checkout…" : "Buy monitored parts pack"}
+                    </button>
+                  </article>
+                  <article className="cv-addon-card">
+                    <h4>Professional API access</h4>
+                    <p>{addonPriceLabel(apiOverage, " / month")}</p>
+                    <p className="cv-small-note">Requires an active Professional subscription. {hasProfessionalApiAddon ? "API access add-on is active." : "Billed separately from the Professional plan."}</p>
+                    <button className="cv-button" type="button" disabled={!paidSubscription || currentPlan !== "professional" || hasProfessionalApiAddon || apiOverage.enabled !== true || Boolean(billingAction)} onClick={() => void openAddonCheckout("professional_api")}>
+                      {hasProfessionalApiAddon ? "Active" : billingAction === "addon-professional_api" ? "Opening checkout…" : "Add API access"}
+                    </button>
+                  </article>
+                </div>
+                {!paidSubscription ? <p className="cv-small-note" style={{ marginTop: 10 }}>Choose an active paid plan before purchasing add-ons.</p> : null}
+                {billingError ? <div className="cv-error" role="alert" style={{ marginTop: 12 }}>{billingError}</div> : null}
               </section>
 
               <section className="cv-card pad" style={{ marginBottom: 14 }}>

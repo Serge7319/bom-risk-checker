@@ -112,6 +112,88 @@ async function applySnapshot(
   throw new Error("Unexpected billing snapshot result.");
 }
 
+async function applyProfessionalApiAddonSnapshot(
+  event: Stripe.Event,
+  subscription: Stripe.Subscription,
+): Promise<{ userId: string; customerId: string | null; outcome: string }> {
+  const userId = String(subscription.metadata?.user_id || "").trim();
+  const expectedPriceId = String(Deno.env.get("STRIPE_PROFESSIONAL_API_ADDON_PRICE_ID") || "").trim();
+  const currentPriceId = asId(subscription.items?.data?.[0]?.price);
+  if (!userId || !expectedPriceId || currentPriceId !== expectedPriceId) {
+    throw new WebhookConfigurationError("Professional API add-on subscription is not mapped.");
+  }
+  const { data, error } = await supabase.rpc("cadivor_set_professional_api_addon", {
+    p_user_id: userId,
+    p_subscription_id: subscription.id,
+    p_price_id: currentPriceId,
+    p_status: subscription.status,
+  });
+  if (error || data !== "applied") throw new Error("Unable to update Professional API add-on status.");
+  return {
+    userId,
+    customerId: asId(subscription.customer),
+    outcome: ENTITLING_STATUSES.has(String(subscription.status || "").toLowerCase()) ? "applied" : "updated",
+  };
+}
+
+async function usageOverageEvent(event: Stripe.Event): Promise<{
+  userId: string | null; customerId: string | null; outcome: string;
+} | null> {
+  if (![
+    "checkout.session.completed",
+    "checkout.session.async_payment_succeeded",
+    "checkout.session.async_payment_failed",
+    "checkout.session.expired",
+  ].includes(event.type)) return null;
+  const session = event.data.object as Stripe.Checkout.Session;
+  if (session.mode !== "payment" || session.metadata?.cadivor_addon !== "usage_overage") return null;
+  const userId = String(session.metadata?.user_id || "").trim();
+  const kind = String(session.metadata?.cadivor_credit_kind || "").trim();
+  const creditsRaw = String(session.metadata?.cadivor_credit_units || "").trim();
+  const units = /^\d+$/.test(creditsRaw) ? Number(creditsRaw) : 0;
+  const env = kind === "bom_analysis"
+    ? { price: "STRIPE_BOM_ANALYSIS_OVERAGE_PRICE_ID", credits: "CADIVOR_BOM_ANALYSIS_OVERAGE_CREDITS" }
+    : kind === "monitored_part"
+      ? { price: "STRIPE_MONITORED_PARTS_OVERAGE_PRICE_ID", credits: "CADIVOR_MONITORED_PARTS_OVERAGE_CREDITS" }
+      : null;
+  if (!userId || !env || !Number.isSafeInteger(units) || units <= 0 ||
+      units !== Number(Deno.env.get(env.credits) || 0)) {
+    throw new WebhookConfigurationError("Usage overage checkout metadata is invalid.");
+  }
+  const expectedPriceId = String(Deno.env.get(env.price) || "").trim();
+  if (!expectedPriceId) throw new WebhookConfigurationError("Usage overage price is not configured.");
+
+  if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
+    return { userId, customerId: asId(session.customer), outcome: "closed" };
+  }
+  if (session.payment_status !== "paid") {
+    return { userId, customerId: asId(session.customer), outcome: "pending" };
+  }
+  const paymentIntent = asId(session.payment_intent);
+  const items = await stripe.checkout.sessions.listLineItems(session.id, { limit: 2 });
+  const item = items.data[0];
+  const priceId = asId(item?.price);
+  if (!paymentIntent || items.data.length !== 1 || item?.quantity !== 1 || priceId !== expectedPriceId) {
+    throw new WebhookConfigurationError("Usage overage checkout has invalid payment or line items.");
+  }
+  const { data, error } = await supabase.rpc("cadivor_grant_usage_credits", {
+    p_checkout_session_id: session.id,
+    p_user_id: userId,
+    p_payment_intent_id: paymentIntent,
+    p_price_id: priceId,
+    p_credit_kind: kind,
+    p_credits: units,
+  });
+  if (error || (data !== "applied" && data !== "duplicate")) {
+    throw new Error("Unable to grant purchased usage credits.");
+  }
+  return {
+    userId,
+    customerId: asId(session.customer),
+    outcome: data === "applied" ? "applied" : "duplicate",
+  };
+}
+
 async function subscriptionForEvent(event: Stripe.Event): Promise<Stripe.Subscription | null> {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
@@ -213,6 +295,12 @@ serve(async (req) => {
     }
     claimed = true;
 
+    const usageOverage = await usageOverageEvent(event);
+    if (usageOverage) {
+      await completeEvent(event.id, usageOverage.userId, usageOverage.customerId, null, usageOverage.outcome);
+      return Response.json({ received: true, outcome: usageOverage.outcome });
+    }
+
     const oneTime = await oneTimeBOMEvent(event);
     if (oneTime) {
       await completeEvent(event.id, oneTime.userId, oneTime.customerId, null, oneTime.outcome);
@@ -223,6 +311,12 @@ serve(async (req) => {
     if (!subscription) {
       await completeEvent(event.id, null, null, null, "ignored");
       return Response.json({ received: true, outcome: "ignored" });
+    }
+
+    if (String(subscription.metadata?.cadivor_addon || "") === "professional_api") {
+      const addon = await applyProfessionalApiAddonSnapshot(event, subscription);
+      await completeEvent(event.id, addon.userId, addon.customerId, subscription.id, addon.outcome);
+      return Response.json({ received: true, outcome: addon.outcome });
     }
 
     const outcome = await applySnapshot(event, subscription);

@@ -362,16 +362,20 @@ class PostgresWorkspaceStore:
                 out.append(item)
             return out
 
-    def list_monitoring_analyses(self) -> list[dict[str, str]]:
+    def list_monitoring_analyses(self) -> list[dict[str, Any]]:
         """Return saved analysis scopes for the scheduler, without report contents."""
         self.ensure_schema()
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT workspace_id, id AS analysis_id FROM migration_analyses "
+                "SELECT workspace_id, id AS analysis_id, total_parts FROM migration_analyses "
                 "WHERE total_parts > 0 ORDER BY workspace_id, created_at"
             ).fetchall()
         return [
-            {"workspace_id": str(row["workspace_id"]), "analysis_id": str(row["analysis_id"])}
+            {
+                "workspace_id": str(row["workspace_id"]),
+                "analysis_id": str(row["analysis_id"]),
+                "total_parts": int(row.get("total_parts") or 0),
+            }
             for row in rows
         ]
 
@@ -491,6 +495,134 @@ class PostgresWorkspaceStore:
             "record": dict(record) if isinstance(record, dict) else {},
             "expires_at": expires.isoformat() if hasattr(expires, "isoformat") else expires,
         }
+
+    def create_decision_record_approver(
+        self,
+        *,
+        workspace_id: str,
+        decision_record_id: str,
+        token_hash: str,
+        created_by: str,
+        email: str,
+        expires_at: str,
+    ) -> None:
+        wid = self._require_workspace(workspace_id)
+        with self._connect() as conn:
+            exists = conn.execute(
+                "SELECT 1 FROM migration_decision_records WHERE workspace_id = %s AND id = %s",
+                (wid, str(decision_record_id or "").strip()),
+            ).fetchone()
+            if not exists:
+                raise WorkspaceAccessError("Decision record was not found.")
+            conn.execute(
+                """
+                INSERT INTO migration_decision_record_approvers
+                  (token_hash, workspace_id, decision_record_id, created_by, email, expires_at)
+                VALUES (%s, %s, %s, %s, %s, %s::timestamptz)
+                """,
+                (token_hash, wid, decision_record_id, created_by, email, expires_at),
+            )
+            conn.commit()
+
+    def get_decision_record_approver(self, token_hash: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT approver.email, approver.status, approver.expires_at,
+                       approver.response_rationale, approver.responded_at,
+                       decision.payload
+                  FROM migration_decision_record_approvers AS approver
+                  JOIN migration_decision_records AS decision
+                    ON decision.id = approver.decision_record_id
+                   AND decision.workspace_id = approver.workspace_id
+                 WHERE approver.token_hash = %s
+                   AND approver.status <> 'revoked'
+                   AND approver.expires_at > NOW()
+                """,
+                (str(token_hash or "").strip(),),
+            ).fetchone()
+        if not row:
+            return None
+        record = row["payload"]
+        if isinstance(record, str):
+            record = json.loads(record)
+        expires = row["expires_at"]
+        responded = row["responded_at"]
+        return {
+            "email": str(row["email"]),
+            "status": str(row["status"]),
+            "response_rationale": row["response_rationale"],
+            "responded_at": responded.isoformat() if hasattr(responded, "isoformat") else responded,
+            "record": dict(record) if isinstance(record, dict) else {},
+            "expires_at": expires.isoformat() if hasattr(expires, "isoformat") else expires,
+        }
+
+    def respond_to_decision_record_approver(
+        self, token_hash: str, *, decision: str, rationale: str
+    ) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                UPDATE migration_decision_record_approvers
+                   SET status = %s, response_rationale = %s, responded_at = NOW()
+                 WHERE token_hash = %s AND status = 'pending' AND expires_at > NOW()
+                RETURNING token_hash
+                """,
+                (decision, rationale, str(token_hash or "").strip()),
+            ).fetchone()
+            conn.commit()
+        return bool(row)
+
+    def revoke_decision_record_approver(self, token_hash: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE migration_decision_record_approvers SET status = 'revoked' WHERE token_hash = %s AND status = 'pending'",
+                (str(token_hash or "").strip(),),
+            )
+            conn.commit()
+
+    def find_account_by_email(self, email: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id AS user_id, email FROM migration_users
+                 WHERE LOWER(email) = LOWER(%s)
+                 LIMIT 1
+                """,
+                (str(email or "").strip(),),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_account_entitlement_overrides(self, user_id: str) -> dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT feature_overrides FROM migration_account_entitlement_overrides WHERE user_id = %s",
+                (str(user_id or "").strip(),),
+            ).fetchone()
+        if not row:
+            return {}
+        value = row["feature_overrides"]
+        if isinstance(value, str):
+            value = json.loads(value)
+        return value if isinstance(value, dict) else {}
+
+    def set_account_entitlement_overrides(
+        self, *, user_id: str, feature_overrides: dict[str, Any], updated_by: str
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO migration_account_entitlement_overrides
+                  (user_id, feature_overrides, updated_by, updated_at)
+                VALUES (%s, %s::jsonb, %s, NOW())
+                ON CONFLICT (user_id) DO UPDATE SET
+                  feature_overrides = EXCLUDED.feature_overrides,
+                  updated_by = EXCLUDED.updated_by,
+                  updated_at = NOW()
+                """,
+                (str(user_id or "").strip(), json.dumps(feature_overrides), str(updated_by or "").strip()),
+            )
+            conn.commit()
 
     def create_procurement_quote(
         self, quote: dict[str, Any], *, workspace_id: str

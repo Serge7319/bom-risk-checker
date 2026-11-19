@@ -151,3 +151,41 @@ def send_workspace_invitation_email(
         html_body=html_body,
         text_body=text_body,
     )
+
+
+def send_decision_approver_invitation_email(
+    *,
+    to_email: str,
+    inviter_name: str,
+    decision_summary: str,
+    approval_url: str,
+    expires_in_days: int = 7,
+) -> Any:
+    """Send a one-record approval link without inviting workspace membership."""
+    recipient = _clean_recipient(to_email)
+    safe_inviter = html.escape(str(inviter_name or "A Cadivor teammate").strip())
+    safe_summary = html.escape(str(decision_summary or "Engineering decision").strip())
+    safe_url = html.escape(str(approval_url or "").strip(), quote=True)
+    if not safe_url.startswith(("https://", "http://localhost")):
+        raise EmailDeliveryError("An approved Cadivor approval URL is required.")
+    subject = "Cadivor decision approval requested"
+    html_body = f"""
+    <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.55;max-width:620px">
+      <p style="font-size:12px;font-weight:700;letter-spacing:.1em;color:#2563eb">CADIVOR · DECISION REVIEW</p>
+      <h1 style="font-size:25px;margin:0 0 12px">A decision needs your review</h1>
+      <p>{safe_inviter} invited you to review one engineering decision: <strong>{safe_summary}</strong>.</p>
+      <p>This link gives access only to this decision record. It does not add you to the workspace.</p>
+      <p style="margin:26px 0"><a href="{safe_url}" style="background:#2563eb;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Review decision</a></p>
+      <p style="color:#64748b;font-size:13px">The link expires in {int(expires_in_days)} days. If you were not expecting this request, you can ignore this email.</p>
+    </div>
+    """
+    text_body = (
+        f"{inviter_name or 'A Cadivor teammate'} requested your review of {decision_summary or 'an engineering decision'}. "
+        f"The link grants access to this record only and expires in {int(expires_in_days)} days: {approval_url}"
+    )
+    return send_transactional_email(
+        to_email=recipient,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+    )

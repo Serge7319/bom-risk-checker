@@ -192,6 +192,15 @@ def account_entitlements(access_token: str) -> dict[str, Any]:
             ):
                 if field in result:
                     snapshot[field] = result[field]
+            if isinstance(result.get("api_access_addon_active"), bool):
+                snapshot["api_access_addon_active"] = result["api_access_addon_active"]
+            credits = result.get("usage_credits")
+            if isinstance(credits, dict):
+                snapshot["usage_credits"] = {
+                    key: max(0, int(value))
+                    for key, value in credits.items()
+                    if key in {"bom_analysis", "monitored_part"} and isinstance(value, (int, float))
+                }
 
     with _ENTITLEMENT_CACHE_LOCK:
         _ENTITLEMENT_CACHE[cache_key] = (now, dict(snapshot))
@@ -805,6 +814,8 @@ def resolve_bearer(access_token: str) -> AuthContext:
         trial_status=entitlements.get("trial_status"),
         trial_days_remaining=entitlements.get("trial_days_remaining"),
         platform_role=entitlements.get("platform_role"),
+        api_access_addon_active=entitlements.get("api_access_addon_active", False),
+        usage_credits=entitlements.get("usage_credits", {}),
     )
 
 

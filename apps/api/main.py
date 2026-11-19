@@ -78,10 +78,12 @@ from apps.api import bom_validation  # noqa: E402
 from apps.api import legal_acceptance  # noqa: E402
 from apps.api import monitoring_store  # noqa: E402
 from apps.api import monitoring_scheduler  # noqa: E402
+from apps.api import slack_notifications  # noqa: E402
 from apps.api import marketing_leads  # noqa: E402
 from apps.api import marketing_analytics  # noqa: E402
 from apps.api.marketing_attribution import sanitize_marketing_attribution  # noqa: E402
 from apps.api import plan_limits  # noqa: E402
+from apps.api import invitation_email  # noqa: E402
 from apps.api import supplier_lookup  # noqa: E402
 from apps.api import one_time_report_service  # noqa: E402
 from apps.api import subscription_billing_service  # noqa: E402
@@ -168,7 +170,11 @@ def _auth_context(request: Request) -> tuple[dict[str, str] | None, JSONResponse
         return None, _json(payload, 503)
     except AuthError as exc:
         return None, _json({"detail": exc.detail}, exc.status_code)
-    return ctx.as_dict(), None
+    payload = ctx.as_dict()
+    payload["entitlement_overrides"] = plan_limits.account_feature_overrides(
+        str(payload.get("user_id") or "")
+    )
+    return payload, None
 
 
 def _require_smoke_token(request: Request) -> JSONResponse | None:
@@ -736,11 +742,16 @@ async def boms_analyze(request: Request) -> JSONResponse:
 
     analysis_id = str(uuid.uuid4())
     reserved_order_id = ""
+    reserved_usage_credit_id = ""
     try:
-        plan_limits.assert_analysis_allowed(
+        usage_limits = plan_limits.assert_analysis_allowed(
             workspace_id=ctx["workspace_id"],
             ctx=ctx,
             part_count=unique_part_count,
+            analysis_id=analysis_id,
+        )
+        reserved_usage_credit_id = str(
+            (usage_limits.get("usage") or {}).get("overage_credit_reservation_id") or ""
         )
     except plan_limits.PlanLimitError as exc:
         if unique_part_count > 100:
@@ -806,6 +817,8 @@ async def boms_analyze(request: Request) -> JSONResponse:
             **intake_options,
         )
     except PersistenceNotConfiguredError as exc:
+        if reserved_usage_credit_id:
+            plan_limits._finish_overage_credit(ctx, reserved_usage_credit_id, commit=False)
         if reserved_order_id:
             _release_one_time_credit_if_report_was_not_saved(
                 access_token=access_token,
@@ -815,6 +828,8 @@ async def boms_analyze(request: Request) -> JSONResponse:
             )
         return _json({"detail": str(exc), "code": "persistence_not_configured"}, 503)
     except PersistenceVerifyError as exc:
+        if reserved_usage_credit_id:
+            plan_limits._finish_overage_credit(ctx, reserved_usage_credit_id, commit=False)
         if reserved_order_id:
             _release_one_time_credit_if_report_was_not_saved(
                 access_token=access_token,
@@ -831,6 +846,8 @@ async def boms_analyze(request: Request) -> JSONResponse:
             503,
         )
     except Exception as exc:  # noqa: BLE001
+        if reserved_usage_credit_id:
+            plan_limits._finish_overage_credit(ctx, reserved_usage_credit_id, commit=False)
         if reserved_order_id:
             _release_one_time_credit_if_report_was_not_saved(
                 access_token=access_token,
@@ -841,6 +858,8 @@ async def boms_analyze(request: Request) -> JSONResponse:
         return _json({"detail": str(exc)}, 400)
 
     if not report.get("persisted"):
+        if reserved_usage_credit_id:
+            plan_limits._finish_overage_credit(ctx, reserved_usage_credit_id, commit=False)
         if reserved_order_id:
             _release_one_time_credit_if_report_was_not_saved(
                 access_token=access_token,
@@ -857,6 +876,19 @@ async def boms_analyze(request: Request) -> JSONResponse:
                 "code": "persistence_verify_failed",
                 "analysis_id": report.get("id"),
                 "persisted": False,
+            },
+            503,
+        )
+
+    if reserved_usage_credit_id and not plan_limits._finish_overage_credit(
+        ctx, reserved_usage_credit_id, commit=True
+    ):
+        return _json(
+            {
+                "code": "overage_credit_reconciliation_pending",
+                "detail": "Your BOM analysis was saved. Usage credit reconciliation is still processing; open it from Reports.",
+                "analysis_id": report["id"],
+                "persisted": True,
             },
             503,
         )
@@ -1192,6 +1224,11 @@ async def compare_parts_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
+    if not plan_limits.effective_plan(ctx).get("datasheet_comparison"):
+        return _json({
+            "code": "feature_unavailable",
+            "detail": "Datasheet comparison is not included in this account's entitlements.",
+        }, 402)
     datasheet_uploads: dict[str, Any] = {}
     if "multipart/form-data" in str(request.headers.get("content-type") or "").lower():
         try:
@@ -1388,6 +1425,151 @@ async def decision_record_share_get(request: Request) -> JSONResponse:
             "X-Robots-Tag": "noindex, nofollow, noarchive",
         },
     )
+
+
+async def decision_record_approver_post(request: Request) -> JSONResponse:
+    """Email a bearer link that can review exactly one decision record."""
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if _throttled(
+        request,
+        "decision-approver-invite",
+        limit=10,
+        window=3600,
+        identity=str(ctx.get("user_id") or ""),
+    ):
+        return _json({"detail": "Too many approval invitations were sent. Try again later."}, 429)
+    try:
+        team_service.require_admin(ctx)
+    except TeamError as exc:
+        return _team_error(exc)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid request"}, 400)
+    decision_id = str(body.get("decision_record_id") or "").strip()
+    try:
+        recipient = team_service.normalize_email(str(body.get("email") or ""))
+    except TeamError as exc:
+        return _team_error(exc)
+    if not decision_id or len(decision_id) > 100:
+        return _json({"detail": "Decision record id is required."}, 400)
+    if not invitation_email.delivery_ready():
+        return _json({"detail": "Transactional email is not configured."}, 503)
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    store = get_store()
+    try:
+        await run_in_threadpool(
+            store.create_decision_record_approver,
+            workspace_id=ctx["workspace_id"],
+            decision_record_id=decision_id,
+            token_hash=token_hash,
+            created_by=ctx["user_id"],
+            email=recipient,
+            expires_at=expires_at.isoformat(),
+        )
+        records = await run_in_threadpool(
+            store.list_decision_records,
+            workspace_id=ctx["workspace_id"],
+        )
+        record = next((row for row in records if str(row.get("id") or row.get("decision_id") or "") == decision_id), None)
+        if not record:
+            raise WorkspaceAccessError("Decision record was not found.")
+        summary = " → ".join(
+            value for value in (
+                str(record.get("part_a") or "").strip(),
+                str(record.get("part_b") or "").strip(),
+            ) if value
+        ) or "Engineering decision"
+        if record.get("decision_label"):
+            summary = f"{summary} · {str(record['decision_label'])[:80]}"
+        approval_url = f"{_web_origin(request)}/decision-approval/{token}"
+        await run_in_threadpool(
+            invitation_email.send_decision_approver_invitation,
+            to_email=recipient,
+            inviter_name=str(ctx.get("email") or "A Cadivor teammate"),
+            decision_summary=summary,
+            approval_url=approval_url,
+            expires_in_days=7,
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Decision record was not found."}, 404)
+    except Exception:  # noqa: BLE001
+        try:
+            await run_in_threadpool(store.revoke_decision_record_approver, token_hash)
+        except Exception:  # noqa: BLE001
+            pass
+        logging.exception("decision_record_approver_invitation_failed")
+        return _json({"detail": "Could not send the decision approval invitation."}, 503)
+    return _json({"ok": True, "sent": True, "expires_at": expires_at.isoformat()}, 201)
+
+
+async def decision_record_approver_get(request: Request) -> JSONResponse:
+    token = str(request.path_params.get("token") or "").strip()
+    if len(token) < 40 or len(token) > 128:
+        return _json({"detail": "This approval link is invalid or expired."}, 404)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    try:
+        invite = await run_in_threadpool(get_store().get_decision_record_approver, token_hash)
+    except Exception:  # noqa: BLE001
+        logging.exception("decision_record_approver_resolve_failed")
+        return _json({"detail": "This approval link is temporarily unavailable."}, 503)
+    if not isinstance(invite, dict) or not isinstance(invite.get("record"), dict):
+        return _json({"detail": "This approval link is invalid or expired."}, 404)
+    record = invite["record"]
+    allowed = (
+        "created_at", "project_name", "bom_name", "revision", "part_a",
+        "part_b", "manufacturer_a", "manufacturer_b", "decision",
+        "decision_label", "reviewer", "rationale", "validation_checks",
+        "follow_up_action", "follow_up_owner", "follow_up_due_date",
+        "residual_risk", "verified_primary_evidence", "qualification_note",
+    )
+    projection = {key: record[key] for key in allowed if key in record}
+    return JSONResponse(
+        {
+            "ok": True,
+            "record": projection,
+            "status": invite.get("status"),
+            "response_rationale": invite.get("response_rationale"),
+            "expires_at": invite.get("expires_at"),
+        },
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow, noarchive"},
+    )
+
+
+async def decision_record_approver_respond(request: Request) -> JSONResponse:
+    token = str(request.path_params.get("token") or "").strip()
+    if len(token) < 40 or len(token) > 128:
+        return _json({"detail": "This approval link is invalid or expired."}, 404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    decision = str((body or {}).get("decision") or "").strip().lower()
+    rationale = " ".join(str((body or {}).get("rationale") or "").split())
+    if decision not in {"approved", "rejected"}:
+        return _json({"detail": "Choose approve or reject."}, 400)
+    if len(rationale) > 3000:
+        return _json({"detail": "Rationale must be 3,000 characters or fewer."}, 400)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    try:
+        saved = await run_in_threadpool(
+            get_store().respond_to_decision_record_approver,
+            token_hash,
+            decision=decision,
+            rationale=rationale,
+        )
+    except Exception:  # noqa: BLE001
+        logging.exception("decision_record_approver_response_failed")
+        return _json({"detail": "Could not save the approval response."}, 503)
+    if not saved:
+        return _json({"detail": "This link is expired, revoked, or already answered."}, 409)
+    return _json({"ok": True, "status": decision})
 
 
 async def decision_records_post(request: Request) -> JSONResponse:
@@ -1680,6 +1862,11 @@ async def datasheet_qa_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
+    if not plan_limits.effective_plan(ctx).get("datasheet_comparison"):
+        return _json({
+            "code": "feature_unavailable",
+            "detail": "Datasheet tools are not included in this account's entitlements.",
+        }, 402)
     form = await request.form()
     upload = form.get("file")
     question = str(form.get("question") or "").strip()
@@ -2119,6 +2306,55 @@ async def monitoring_preferences_put(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Expected a JSON object."}, 400)
+    if "supplier_checks" in body and not isinstance(body["supplier_checks"], bool):
+        return _json({"detail": "supplier_checks must be true or false."}, 400)
+    if body.get("supplier_checks") is True:
+        plan = plan_limits.effective_plan(ctx)
+        base_limit = plan.get("monitored_parts_limit")
+        desired_parts = sum(
+            max(0, int(row.get("total_parts") or 0))
+            for row in get_store().list_monitoring_analyses()
+            if str(row.get("workspace_id") or "") == str(ctx["workspace_id"])
+        )
+        if base_limit is None:
+            monitoring_store.set_workspace_monitoring_capacity(ctx["workspace_id"], None)
+        else:
+            over_limit = max(0, desired_parts - max(0, int(base_limit)))
+            if over_limit:
+                token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+                try:
+                    allocation, allocation_status = subscription_billing_service.request_action(
+                        access_token=token,
+                        action="allocate_monitored_part_credits",
+                        payload={
+                            "workspace_id": ctx["workspace_id"],
+                            "required_credits": over_limit,
+                        },
+                        origin=request.headers.get("origin", ""),
+                        timeout_seconds=8,
+                        internal_context={
+                            "user_id": str(ctx["user_id"]),
+                            "workspace_id": str(ctx["workspace_id"]),
+                        },
+                    )
+                except subscription_billing_service.SubscriptionBillingError:
+                    return _json({"detail": "Monitoring capacity could not be confirmed. Try again shortly."}, 503)
+                if allocation_status != 200 or allocation.get("allocated") is not True:
+                    return _json({
+                        "code": "monitored_parts_limit",
+                        "detail": (
+                            f"This workspace has {desired_parts:,} component slots to monitor, above the "
+                            f"included limit of {int(base_limit):,}. Buy a monitored parts pack or remove analyses "
+                            "from monitoring before enabling scheduled checks."
+                        ),
+                        "required_overage_credits": over_limit,
+                    }, 402)
+            monitoring_store.set_workspace_monitoring_capacity(
+                ctx["workspace_id"],
+                max(max(0, int(base_limit)), desired_parts),
+            )
     try:
         prefs = monitoring_store.update_user_preferences(
             ctx["workspace_id"],
@@ -2128,7 +2364,74 @@ async def monitoring_preferences_put(request: Request) -> JSONResponse:
         )
     except ValueError as exc:
         return _json({"detail": str(exc)}, 400)
+    if body.get("supplier_checks") is False and not any(
+        row.get("workspace_id") == ctx["workspace_id"]
+        for row in monitoring_store.list_user_preferences(supplier_checks=True)
+    ):
+        monitoring_store.set_workspace_monitoring_capacity(ctx["workspace_id"], 0)
     return _json({"ok": True, "preferences": prefs})
+
+
+async def monitoring_slack_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        team_service.require_admin(ctx)
+        can_manage = True
+    except TeamError:
+        can_manage = False
+    return _json({
+        "ok": True,
+        "integration": {
+            **monitoring_store.get_workspace_slack_integration(ctx["workspace_id"]),
+            "can_manage": can_manage,
+        },
+    })
+
+
+async def monitoring_slack_put(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        team_service.require_admin(ctx)
+    except TeamError as exc:
+        return _team_error(exc)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
+        return _json({"detail": "enabled must be true or false."}, 400)
+    webhook_url = str(body.get("webhook_url") or "").strip()
+    clear = body.get("clear") is True
+    if clear and webhook_url:
+        return _json({"detail": "Clear the saved Slack connection or replace it, not both."}, 400)
+    replace_webhook = bool(webhook_url or clear)
+    encrypted: str | None = None
+    if webhook_url:
+        try:
+            encrypted = slack_notifications.encrypt_webhook_url(webhook_url)
+        except slack_notifications.SlackConfigurationError as exc:
+            return _json({"detail": str(exc)}, 400)
+    current = monitoring_store.get_workspace_slack_integration(ctx["workspace_id"])
+    configured_after = False if clear else (bool(encrypted) or bool(current.get("configured")))
+    if body["enabled"] and not configured_after:
+        return _json({"detail": "Add a Slack incoming webhook URL before enabling Slack alerts."}, 400)
+    if body["enabled"] and not current.get("encryption_ready"):
+        return _json({"detail": "Slack webhook encryption is not configured on Cadivor."}, 503)
+    try:
+        integration = monitoring_store.set_workspace_slack_integration(
+            ctx["workspace_id"],
+            enabled=bool(body["enabled"]) and not clear,
+            webhook_ciphertext=encrypted,
+            replace_webhook=replace_webhook,
+        )
+    except Exception:  # noqa: BLE001
+        logging.exception("monitoring_slack_integration_update_failed")
+        return _json({"detail": "Slack alerts could not be updated."}, 503)
+    return _json({"ok": True, "integration": {**integration, "can_manage": True}})
 
 
 async def monitoring_alerts_get(request: Request) -> JSONResponse:
@@ -2261,6 +2564,246 @@ async def billing_checkout_post(request: Request) -> JSONResponse:
     except subscription_billing_service.SubscriptionBillingError as exc:
         return _json({"ok": False, "detail": str(exc)}, 503)
     return _json(result, status)
+
+
+async def billing_professional_api_addon_checkout_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="professional_api_addon_checkout",
+            origin=request.headers.get("origin", ""),
+        )
+    except subscription_billing_service.SubscriptionBillingError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
+
+
+async def billing_usage_overage_checkout_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid request"}, 400)
+    kind = str(body.get("credit_kind") or "").strip()
+    if kind not in {"bom_analysis", "monitored_part"}:
+        return _json({"detail": "Choose a supported usage pack."}, 400)
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="usage_overage_checkout",
+            payload={"credit_kind": kind},
+            origin=request.headers.get("origin", ""),
+        )
+    except subscription_billing_service.SubscriptionBillingError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
+
+
+def _developer_api_entitled(ctx: dict[str, Any]) -> bool:
+    return bool(plan_limits.effective_plan(ctx).get("api_access"))
+
+
+async def developer_api_keys_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not _developer_api_entitled(ctx):
+        return _json({"detail": "Developer API access is not active for this account."}, 403)
+    try:
+        team_service.require_admin(ctx)
+        result, status = subscription_billing_service.request_action(
+            access_token=ctx["access_token"],
+            action="developer_api_keys_list",
+            payload={"workspace_id": ctx["workspace_id"]},
+            timeout_seconds=8,
+            internal_context={
+                "user_id": str(ctx["user_id"]),
+                "workspace_id": str(ctx["workspace_id"]),
+            },
+        )
+    except TeamError as exc:
+        return _team_error(exc)
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Developer API settings are temporarily unavailable."}, 503)
+    if status != 200:
+        return _json({"detail": result.get("detail") or "Developer API keys could not be loaded."}, status)
+    return JSONResponse(
+        {"ok": True, "keys": result.get("keys") or []},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def developer_api_keys_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not _developer_api_entitled(ctx):
+        return _json({"detail": "Developer API access is not active for this account."}, 403)
+    try:
+        team_service.require_admin(ctx)
+    except TeamError as exc:
+        return _team_error(exc)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON"}, 400)
+    name = " ".join(str(body.get("name") or "").split())
+    if not name or len(name) > 80:
+        return _json({"detail": "Enter an API key name of 1 to 80 characters."}, 400)
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=ctx["access_token"],
+            action="developer_api_key_create",
+            payload={"workspace_id": ctx["workspace_id"], "name": name},
+            origin=request.headers.get("origin", ""),
+            timeout_seconds=8,
+            internal_context={
+                "user_id": str(ctx["user_id"]),
+                "workspace_id": str(ctx["workspace_id"]),
+            },
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Developer API settings are temporarily unavailable."}, 503)
+    if status != 201 or not isinstance(result.get("key"), dict):
+        return _json({"detail": result.get("detail") or "API key could not be created."}, status or 503)
+    return JSONResponse(
+        {"ok": True, "key": result["key"]},
+        status_code=201,
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
+async def developer_api_key_delete(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not _developer_api_entitled(ctx):
+        return _json({"detail": "Developer API access is not active for this account."}, 403)
+    try:
+        team_service.require_admin(ctx)
+    except TeamError as exc:
+        return _team_error(exc)
+    key_id = str(request.path_params.get("key_id") or "").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=ctx["access_token"],
+            action="developer_api_key_revoke",
+            payload={"workspace_id": ctx["workspace_id"], "key_id": key_id},
+            timeout_seconds=8,
+            internal_context={
+                "user_id": str(ctx["user_id"]),
+                "workspace_id": str(ctx["workspace_id"]),
+            },
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Developer API settings are temporarily unavailable."}, 503)
+    if status != 200:
+        return _json({"detail": result.get("detail") or "API key could not be revoked."}, status)
+    return _json({"ok": True, "revoked": True})
+
+
+async def _developer_api_key_context(request: Request) -> tuple[dict[str, str] | None, JSONResponse | None]:
+    authorization = str(request.headers.get("authorization") or "")
+    candidate = authorization.removeprefix("Bearer ").strip() if authorization.startswith("Bearer ") else ""
+    api_key = candidate or str(request.headers.get("x-api-key") or "").strip()
+    if not api_key or not api_key.startswith("cdv_live_"):
+        return None, _json({"detail": "A valid Cadivor API key is required."}, 401)
+    try:
+        result, status = subscription_billing_service.request_public_action(
+            action="developer_api_key_resolve",
+            payload={"api_key": api_key},
+            timeout_seconds=5,
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return None, _json({"detail": "Developer API authentication is temporarily unavailable."}, 503)
+    if status != 200 or result.get("ok") is not True:
+        code = status if status in {401, 403} else 503
+        return None, _json({"detail": result.get("detail") or "API key could not be verified."}, code)
+    user_id = str(result.get("user_id") or "").strip()
+    workspace_id = str(result.get("workspace_id") or "").strip()
+    key_id = str(result.get("key_id") or "").strip()
+    if not user_id or not workspace_id or not key_id:
+        return None, _json({"detail": "API key could not be verified."}, 401)
+    try:
+        membership = get_auth_store().membership_for_user_workspace(user_id, workspace_id)
+    except Exception:  # noqa: BLE001
+        return None, _json({"detail": "Workspace access could not be checked."}, 503)
+    if not membership:
+        return None, _json({"detail": "This API key no longer has active workspace access."}, 403)
+    if _throttled(request, "developer-api", limit=180, window=60, identity=key_id):
+        return None, _json({"detail": "API request rate limit reached. Retry shortly."}, 429)
+    return {"user_id": user_id, "workspace_id": workspace_id, "key_id": key_id}, None
+
+
+async def developer_api_reports_get(request: Request) -> JSONResponse:
+    ctx, denied = await _developer_api_key_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        limit = int(request.query_params.get("limit") or 25)
+    except ValueError:
+        limit = 25
+    if limit < 1 or limit > 100:
+        return _json({"detail": "limit must be between 1 and 100."}, 400)
+    try:
+        offset = int(request.query_params.get("offset") or 0)
+    except ValueError:
+        offset = 0
+    if offset < 0 or offset > 100_000:
+        return _json({"detail": "offset must be between 0 and 100000."}, 400)
+    try:
+        rows = customer_visible_analyses(
+            list_reports(workspace_id=ctx["workspace_id"]),
+            production=is_production_runtime(),
+        )
+    except PersistenceNotConfiguredError:
+        return _json({"detail": "Report storage is unavailable."}, 503)
+    summaries = [
+        {
+            key: row.get(key)
+            for key in (
+                "id", "analysis_id", "created_at", "project_name", "bom_name",
+                "revision", "total_parts", "health_score", "health_status",
+                "high_risk_count", "medium_risk_count", "low_risk_count", "mode",
+            )
+            if key in row
+        }
+        for row in rows[offset : offset + limit]
+    ]
+    next_offset = offset + len(summaries)
+    return _json({
+        "ok": True,
+        "reports": summaries,
+        "limit": limit,
+        "offset": offset,
+        "total": len(rows),
+        "next_offset": next_offset if next_offset < len(rows) else None,
+    })
+
+
+async def developer_api_report_get(request: Request) -> JSONResponse:
+    ctx, denied = await _developer_api_key_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = str(request.path_params.get("analysis_id") or "").strip()
+    try:
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
+    except (WorkspaceAccessError, PersistenceNotConfiguredError):
+        report = None
+    if not report:
+        return _json({"detail": "Report not found."}, 404)
+    return JSONResponse(
+        {"ok": True, "report": annotate_report_parts(report)},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 async def billing_portal_post(request: Request) -> JSONResponse:
@@ -2926,6 +3469,87 @@ async def marketing_analytics_admin_get(request: Request) -> JSONResponse:
     except Exception:  # noqa: BLE001
         logging.exception("marketing_analytics_summary_failed")
         return _json({"detail": "Marketing analytics summary is unavailable."}, 503)
+
+
+async def account_entitlements_admin_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    try:
+        email = team_service.normalize_email(request.query_params.get("email") or "")
+    except TeamError as exc:
+        return _team_error(exc)
+    store = get_store()
+    finder = getattr(store, "find_account_by_email", None)
+    getter = getattr(store, "get_account_entitlement_overrides", None)
+    if not callable(finder) or not callable(getter):
+        return _json({"detail": "Account entitlement storage is unavailable."}, 503)
+    try:
+        account = await run_in_threadpool(finder, email)
+        if not account:
+            return _json({"detail": "Account not found."}, 404)
+        overrides = await run_in_threadpool(getter, str(account["user_id"]))
+    except Exception:  # noqa: BLE001
+        logging.exception("account_entitlements_admin_read_failed")
+        return _json({"detail": "Account entitlements are temporarily unavailable."}, 503)
+    return _json({"ok": True, "account": {"email": account["email"], "feature_overrides": overrides}})
+
+
+async def account_entitlements_admin_put(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Expected a JSON object."}, 400)
+    try:
+        email = team_service.normalize_email(str(body.get("email") or ""))
+        feature_overrides = plan_limits.validated_feature_overrides(body.get("feature_overrides"))
+    except TeamError as exc:
+        return _team_error(exc)
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
+    store = get_store()
+    finder = getattr(store, "find_account_by_email", None)
+    setter = getattr(store, "set_account_entitlement_overrides", None)
+    if not callable(finder) or not callable(setter):
+        return _json({"detail": "Account entitlement storage is unavailable."}, 503)
+    try:
+        account = await run_in_threadpool(finder, email)
+        if not account:
+            return _json({"detail": "Account not found."}, 404)
+        await run_in_threadpool(
+            setter,
+            user_id=str(account["user_id"]),
+            feature_overrides=feature_overrides,
+            updated_by=str(ctx["user_id"]),
+        )
+        if _use_supabase_auth():
+            try:
+                synced, sync_status = subscription_billing_service.request_action(
+                    access_token=ctx["access_token"],
+                    action="developer_api_access_override_sync",
+                    payload={
+                        "target_user_id": str(account["user_id"]),
+                        "enabled": feature_overrides.get("api_access"),
+                    },
+                    timeout_seconds=8,
+                )
+            except subscription_billing_service.SubscriptionBillingError:
+                return _json({"detail": "Feature overrides were saved, but API access could not be synchronized. Retry this save."}, 503)
+            if sync_status != 200 or synced.get("synced") is not True:
+                return _json({"detail": "Feature overrides were saved, but API access could not be synchronized. Retry this save."}, 503)
+    except Exception:  # noqa: BLE001
+        logging.exception("account_entitlements_admin_write_failed")
+        return _json({"detail": "Account entitlements could not be saved."}, 503)
+    return _json({"ok": True, "account": {"email": account["email"], "feature_overrides": feature_overrides}})
 
 
 async def public_bom_stress_verified_get(request: Request) -> JSONResponse:
@@ -4179,6 +4803,9 @@ app = Starlette(
         Route("/decision-records", decision_records_post, methods=["POST"]),
         Route("/decision-records/share", decision_record_share_post, methods=["POST"]),
         Route("/decision-records/share/{token}", decision_record_share_get, methods=["GET"]),
+        Route("/decision-records/approvers", decision_record_approver_post, methods=["POST"]),
+        Route("/decision-approvals/{token}", decision_record_approver_get, methods=["GET"]),
+        Route("/decision-approvals/{token}/respond", decision_record_approver_respond, methods=["POST"]),
         Route("/tools/datasheet-qa", datasheet_qa_post, methods=["POST"]),
         Route("/tools/procurement", procurement_get, methods=["GET"]),
         Route("/tools/procurement/quotes", procurement_quotes_get, methods=["GET"]),
@@ -4193,6 +4820,8 @@ app = Starlette(
         Route("/tools/ask-cadivor", ask_cadivor_post, methods=["POST"]),
         Route("/tools/monitoring/preferences", monitoring_preferences_get, methods=["GET"]),
         Route("/tools/monitoring/preferences", monitoring_preferences_put, methods=["PUT"]),
+        Route("/tools/monitoring/slack", monitoring_slack_get, methods=["GET"]),
+        Route("/tools/monitoring/slack", monitoring_slack_put, methods=["PUT"]),
         Route("/tools/monitoring/alerts", monitoring_alerts_get, methods=["GET"]),
         Route("/tools/monitoring/acknowledge", monitoring_acknowledge_post, methods=["POST"]),
         Route("/tools/monitoring/notify", monitoring_notify_post, methods=["POST"]),
@@ -4202,6 +4831,13 @@ app = Starlette(
         Route("/tools/monitoring/scheduled-run/{run_id}", monitoring_scheduled_get, methods=["GET"]),
         Route("/billing/status", billing_status_get, methods=["GET"]),
         Route("/billing/checkout", billing_checkout_post, methods=["POST"]),
+        Route("/billing/addons/professional-api/checkout", billing_professional_api_addon_checkout_post, methods=["POST"]),
+        Route("/billing/addons/usage-overage/checkout", billing_usage_overage_checkout_post, methods=["POST"]),
+        Route("/developer/api-keys", developer_api_keys_get, methods=["GET"]),
+        Route("/developer/api-keys", developer_api_keys_post, methods=["POST"]),
+        Route("/developer/api-keys/{key_id}", developer_api_key_delete, methods=["DELETE"]),
+        Route("/v1/reports", developer_api_reports_get, methods=["GET"]),
+        Route("/v1/reports/{analysis_id}", developer_api_report_get, methods=["GET"]),
         Route("/billing/portal", billing_portal_post, methods=["POST"]),
         Route("/billing/public-catalog", billing_public_catalog_get, methods=["GET"]),
         Route("/billing/checkout-prep", billing_checkout_prep_post, methods=["POST"]),
@@ -4220,6 +4856,8 @@ app = Starlette(
         Route("/public/contact", public_contact_post, methods=["POST"]),
         Route("/public/analytics", public_marketing_analytics_post, methods=["POST"]),
         Route("/admin/marketing-analytics", marketing_analytics_admin_get, methods=["GET"]),
+        Route("/admin/account-entitlements", account_entitlements_admin_get, methods=["GET"]),
+        Route("/admin/account-entitlements", account_entitlements_admin_put, methods=["PUT"]),
         Route(
             "/public/bom-stress/verified-report",
             public_bom_stress_verified_get,

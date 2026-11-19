@@ -7,3 +7,6 @@ verify_jwt = false
 
 [functions.subscription-checkout]
 verify_jwt = false
+
+[functions.trial-lifecycle-emails]
+verify_jwt = false

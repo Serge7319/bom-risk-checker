@@ -20,6 +20,15 @@ const planPrices = [
   { name: "Business", token: "business", env: "STRIPE_BUSINESS_PRICE_ID", annualEnv: "STRIPE_BUSINESS_ANNUAL_PRICE_ID", expected: 29900 },
 ] as const;
 
+const internalActions = new Set([
+  "developer_api_keys_list",
+  "developer_api_key_create",
+  "developer_api_key_revoke",
+  "reserve_usage_credit",
+  "finish_usage_credit",
+  "allocate_monitored_part_credits",
+]);
+
 function response(body: unknown, status = 200, origin = "") {
   const allowed = new Set([
     "https://app.cadivor.com",
@@ -137,6 +146,46 @@ async function verifiedUser(request: Request) {
   return { user: data.user, status: 200 } as const;
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
+  }
+  const encoded = JSON.stringify(value);
+  if (encoded === undefined) throw new Error("Invalid internal action payload.");
+  return encoded;
+}
+
+async function verifyInternalActionProof(
+  action: string,
+  userId: string,
+  body: Record<string, unknown>,
+): Promise<boolean> {
+  try {
+    const supplied = String(body._cadivor_internal_proof || "").trim();
+    if (!/^[0-9a-f]{64}$/i.test(supplied)) return false;
+    const payload = Object.fromEntries(
+      Object.entries(body).filter(([key]) => key !== "action" && key !== "_cadivor_internal_proof"),
+    );
+    const workspaceId = String(payload.workspace_id || "").trim();
+    if (!workspaceId) return false;
+    const message = `${action}\n${userId}\n${workspaceId}\n${canonicalJson(payload)}`;
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(serviceRoleKey!),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    const signature = Uint8Array.from(supplied.match(/.{2}/g) || [], (pair) => Number.parseInt(pair, 16));
+    return await crypto.subtle.verify("HMAC", key, signature, new TextEncoder().encode(message));
+  } catch {
+    return false;
+  }
+}
+
 async function profileFor(userId: string) {
   const { data, error } = await supabase
     .from("users")
@@ -145,6 +194,142 @@ async function profileFor(userId: string) {
     .maybeSingle();
   if (error) throw new Error("Billing profile could not be loaded.");
   return data || {};
+}
+
+function positiveUnits(name: string): number | null {
+  const raw = String(Deno.env.get(name) || "").trim();
+  if (!/^\d+$/.test(raw)) return null;
+  const units = Number(raw);
+  return Number.isSafeInteger(units) && units > 0 && units <= 100_000 ? units : null;
+}
+
+async function configuredPrice(
+  envName: string,
+  type: "one_time" | "recurring",
+  interval?: "month",
+): Promise<{ configured: boolean; enabled: boolean; amount: number | null; currency: string | null; interval: string | null }> {
+  const id = String(Deno.env.get(envName) || "").trim();
+  const empty = { configured: Boolean(id), enabled: false, amount: null, currency: null, interval: null };
+  if (!id) return empty;
+  try {
+    const price = await stripe.prices.retrieve(id);
+    const valid = price.active && price.currency === "usd" &&
+      typeof price.unit_amount === "number" && price.unit_amount > 0 &&
+      (type === "one_time"
+        ? !price.recurring
+        : Boolean(price.recurring && price.recurring.interval === interval));
+    return {
+      configured: true,
+      enabled: valid,
+      amount: valid ? price.unit_amount : null,
+      currency: valid ? price.currency : null,
+      interval: valid ? (price.recurring?.interval || "one_time") : null,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+async function addonCatalog() {
+  const analysisCredits = positiveUnits("CADIVOR_BOM_ANALYSIS_OVERAGE_CREDITS");
+  const monitoredParts = positiveUnits("CADIVOR_MONITORED_PARTS_OVERAGE_CREDITS");
+  const [analysisPrice, monitoredPrice, apiPrice] = await Promise.all([
+    configuredPrice("STRIPE_BOM_ANALYSIS_OVERAGE_PRICE_ID", "one_time"),
+    configuredPrice("STRIPE_MONITORED_PARTS_OVERAGE_PRICE_ID", "one_time"),
+    configuredPrice("STRIPE_PROFESSIONAL_API_ADDON_PRICE_ID", "recurring", "month"),
+  ]);
+  return {
+    bom_analysis: { ...analysisPrice, enabled: analysisPrice.enabled && analysisCredits !== null, credits: analysisCredits },
+    monitored_parts: { ...monitoredPrice, enabled: monitoredPrice.enabled && monitoredParts !== null, credits: monitoredParts },
+    professional_api: apiPrice,
+  };
+}
+
+async function apiAddonFor(userId: string) {
+  const { data, error } = await supabase
+    .from("cadivor_professional_api_addons")
+    .select("subscription_id,status,price_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error("API add-on status could not be loaded.");
+  const active = ["active", "trialing"].includes(String(data?.status || "").toLowerCase());
+  return { active, subscription_id: active ? data?.subscription_id || null : null };
+}
+
+async function apiAccessEnabled(userId: string, profile: Record<string, unknown>): Promise<boolean> {
+  const { data: override, error } = await supabase
+    .from("cadivor_api_access_overrides")
+    .select("enabled")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error("API access entitlement could not be loaded.");
+  if (typeof override?.enabled === "boolean") return override.enabled;
+  const plan = effectivePlan(profile).plan;
+  if (["Trial", "Business", "Enterprise"].includes(plan)) return true;
+  if (plan === "Professional") return (await apiAddonFor(userId)).active;
+  return false;
+}
+
+function newDeveloperApiKey(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const base64 = btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+  return `cdv_live_${base64}`;
+}
+
+async function hashDeveloperApiKey(apiKey: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function resolveDeveloperApiKey(apiKey: string) {
+  if (!apiKey.startsWith("cdv_live_") || apiKey.length < 48 || apiKey.length > 100) {
+    return response({ ok: false, detail: "API key is invalid or revoked." }, 401);
+  }
+  const keyHash = await hashDeveloperApiKey(apiKey);
+  const { data, error } = await supabase
+    .from("cadivor_developer_api_keys")
+    .select("id,user_id,workspace_id,revoked_at")
+    .eq("key_hash", keyHash)
+    .is("revoked_at", null)
+    .maybeSingle();
+  if (error) throw new Error("Developer API key could not be checked.");
+  if (!data?.user_id || !data?.workspace_id) {
+    return response({ ok: false, detail: "API key is invalid or revoked." }, 401);
+  }
+  const profile = await profileFor(String(data.user_id));
+  if (!(await apiAccessEnabled(String(data.user_id), profile))) {
+    return response({ ok: false, detail: "Developer API access is not active for this account." }, 403);
+  }
+  const { error: touchError } = await supabase
+    .from("cadivor_developer_api_keys")
+    .update({ last_used_at: new Date().toISOString() })
+    .eq("id", data.id)
+    .is("revoked_at", null);
+  if (touchError) throw new Error("Developer API key usage could not be recorded.");
+  return response({
+    ok: true,
+    key_id: data.id,
+    user_id: data.user_id,
+    workspace_id: data.workspace_id,
+  });
+}
+
+async function usageCreditsFor(userId: string) {
+  const { data, error } = await supabase
+    .from("cadivor_usage_credit_balances")
+    .select("credit_kind,credits")
+    .eq("user_id", userId);
+  if (error) throw new Error("Usage credits could not be loaded.");
+  const credits = { bom_analysis: 0, monitored_part: 0 };
+  for (const row of data || []) {
+    if (row.credit_kind === "bom_analysis" || row.credit_kind === "monitored_part") {
+      credits[row.credit_kind] = Math.max(0, Number(row.credits) || 0);
+    }
+  }
+  return credits;
 }
 
 function effectivePlan(profile: Record<string, unknown>, now = new Date()): {
@@ -187,8 +372,12 @@ function effectivePlan(profile: Record<string, unknown>, now = new Date()): {
   return { plan: "Subscription inactive", trial_status: null, trial_days_remaining: null };
 }
 
-function entitlementSnapshot(profile: Record<string, unknown>) {
+async function entitlementSnapshot(userId: string, profile: Record<string, unknown>) {
   const effective = effectivePlan(profile);
+  const [apiAddon, usageCredits] = await Promise.all([
+    apiAddonFor(userId),
+    usageCreditsFor(userId),
+  ]);
   return {
     ok: true,
     plan: effective.plan,
@@ -197,6 +386,8 @@ function entitlementSnapshot(profile: Record<string, unknown>) {
     trial_ends_at: effective.plan === "Trial" ? profile.trial_ends_at || null : null,
     trial_status: effective.trial_status,
     trial_days_remaining: effective.trial_days_remaining,
+    api_access_addon_active: apiAddon.active,
+    usage_credits: usageCredits,
   };
 }
 
@@ -308,9 +499,26 @@ serve(async (request) => {
       return response({ ok: false, detail: "Pricing is temporarily unavailable." }, 503, origin);
     }
   }
+  if (action === "addons_catalog") {
+    try {
+      return response({ ok: true, addons: await addonCatalog() }, 200, origin);
+    } catch {
+      return response({ ok: false, detail: "Add-on pricing is temporarily unavailable." }, 503, origin);
+    }
+  }
+  if (action === "developer_api_key_resolve") {
+    try {
+      return await resolveDeveloperApiKey(String(body.api_key || ""));
+    } catch {
+      return response({ ok: false, detail: "Developer API authentication is temporarily unavailable." }, 503, origin);
+    }
+  }
 
   const auth = await verifiedUser(request);
   if (!auth.user) return response({ ok: false, detail: "Sign in with a verified Cadivor account." }, auth.status, origin);
+  if (internalActions.has(action) && !(await verifyInternalActionProof(action, auth.user.id, body))) {
+    return response({ ok: false, detail: "This billing operation must be requested through Cadivor." }, 403, origin);
+  }
 
   let planToken = "unknown";
   const supportReference = crypto.randomUUID();
@@ -318,7 +526,105 @@ serve(async (request) => {
     const profile = await profileFor(auth.user.id);
 
     if (action === "entitlements") {
-      return response(entitlementSnapshot(profile), 200, origin);
+      return response(await entitlementSnapshot(auth.user.id, profile), 200, origin);
+    }
+
+    if (action === "developer_api_access_override_sync") {
+      if (String(profile.role || "").trim().toLowerCase() !== "admin") {
+        return response({ ok: false, detail: "Platform administrator access is required." }, 403, origin);
+      }
+      const targetUserId = String(body.target_user_id || "").trim();
+      const enabled = body.enabled === null ? null : body.enabled;
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetUserId) ||
+          (enabled !== null && typeof enabled !== "boolean")) {
+        return response({ ok: false, detail: "Invalid API entitlement override." }, 400, origin);
+      }
+      if (enabled === null) {
+        const { error } = await supabase
+          .from("cadivor_api_access_overrides")
+          .delete()
+          .eq("user_id", targetUserId);
+        if (error) throw new Error("API access override could not be updated.");
+      } else {
+        const { error } = await supabase
+          .from("cadivor_api_access_overrides")
+          .upsert({ user_id: targetUserId, enabled, updated_at: new Date().toISOString() });
+        if (error) throw new Error("API access override could not be updated.");
+      }
+      return response({ ok: true, synced: true }, 200, origin);
+    }
+
+    if (action === "developer_api_keys_list") {
+      const workspaceId = String(body.workspace_id || "").trim();
+      if (!workspaceId || workspaceId.length > 180) {
+        return response({ ok: false, detail: "Workspace is required." }, 400, origin);
+      }
+      if (!(await apiAccessEnabled(auth.user.id, profile))) {
+        return response({ ok: false, detail: "Developer API access is not active for this account." }, 403, origin);
+      }
+      const { data, error } = await supabase
+        .from("cadivor_developer_api_keys")
+        .select("id,name,key_prefix,created_at,last_used_at,revoked_at")
+        .eq("user_id", auth.user.id)
+        .eq("workspace_id", workspaceId)
+        .is("revoked_at", null)
+        .order("created_at", { ascending: false });
+      if (error) throw new Error("Developer API keys could not be loaded.");
+      return response({ ok: true, keys: data || [] }, 200, origin);
+    }
+
+    if (action === "developer_api_key_create") {
+      const workspaceId = String(body.workspace_id || "").trim();
+      const name = String(body.name || "").trim().replace(/\s+/g, " ");
+      if (!workspaceId || workspaceId.length > 180 || !name || name.length > 80) {
+        return response({ ok: false, detail: "Enter a key name of 1 to 80 characters." }, 400, origin);
+      }
+      if (!(await apiAccessEnabled(auth.user.id, profile))) {
+        return response({ ok: false, detail: "Developer API access is not active for this account." }, 403, origin);
+      }
+      const { count, error: countError } = await supabase
+        .from("cadivor_developer_api_keys")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", auth.user.id)
+        .eq("workspace_id", workspaceId)
+        .is("revoked_at", null);
+      if (countError) throw new Error("Developer API key limit could not be checked.");
+      if ((count || 0) >= 10) {
+        return response({ ok: false, detail: "This workspace can have up to 10 active API keys." }, 409, origin);
+      }
+      const apiKey = newDeveloperApiKey();
+      const id = crypto.randomUUID();
+      const keyHash = await hashDeveloperApiKey(apiKey);
+      const { error } = await supabase.from("cadivor_developer_api_keys").insert({
+        id,
+        user_id: auth.user.id,
+        workspace_id: workspaceId,
+        name,
+        key_prefix: apiKey.slice(0, 18),
+        key_hash: keyHash,
+      });
+      if (error) throw new Error("Developer API key could not be created.");
+      return response({ ok: true, key: { id, name, key_prefix: apiKey.slice(0, 18), created_at: new Date().toISOString(), secret: apiKey } }, 201, origin);
+    }
+
+    if (action === "developer_api_key_revoke") {
+      const workspaceId = String(body.workspace_id || "").trim();
+      const keyId = String(body.key_id || "").trim();
+      if (!workspaceId || workspaceId.length > 180 || !keyId || keyId.length > 100) {
+        return response({ ok: false, detail: "API key was not found." }, 400, origin);
+      }
+      const { data, error } = await supabase
+        .from("cadivor_developer_api_keys")
+        .update({ revoked_at: new Date().toISOString() })
+        .eq("id", keyId)
+        .eq("user_id", auth.user.id)
+        .eq("workspace_id", workspaceId)
+        .is("revoked_at", null)
+        .select("id")
+        .maybeSingle();
+      if (error) throw new Error("Developer API key could not be revoked.");
+      if (!data) return response({ ok: false, detail: "API key was not found or was already revoked." }, 404, origin);
+      return response({ ok: true, revoked: true }, 200, origin);
     }
 
     if (action === "status") {
@@ -340,6 +646,9 @@ serve(async (request) => {
         has_active_subscription: active,
         can_manage_billing: Boolean(active && profile.stripe_customer_id),
         plans,
+        addons: await addonCatalog(),
+        usage_credits: await usageCreditsFor(auth.user.id),
+        api_access_addon_active: (await apiAddonFor(auth.user.id)).active,
       }, 200, origin);
     }
 
@@ -350,6 +659,127 @@ serve(async (request) => {
     if (action === "portal") {
       const portal = await createPortal(profile, origin);
       return response(portal, portal.ok ? 200 : 409, origin);
+    }
+
+    if (action === "professional_api_addon_checkout") {
+      const currentPlan = effectivePlan(profile).plan;
+      const currentStatus = String(profile.stripe_subscription_status || "").toLowerCase();
+      if (currentPlan !== "Professional" || !["active", "trialing"].includes(currentStatus)) {
+        return response({ ok: false, detail: "The Professional API add-on requires an active Professional subscription." }, 409, origin);
+      }
+      const existing = await apiAddonFor(auth.user.id);
+      if (existing.active) {
+        return response({ ok: false, code: "addon_already_active", detail: "Professional API access is already active." }, 409, origin);
+      }
+      const priceId = String(Deno.env.get("STRIPE_PROFESSIONAL_API_ADDON_PRICE_ID") || "").trim();
+      if (!priceId) return response({ ok: false, detail: "The Professional API add-on is not configured for purchase yet." }, 503, origin);
+      const price = await stripe.prices.retrieve(priceId);
+      if (!price.active || price.currency !== "usd" || !price.recurring ||
+          price.recurring.interval !== "month" || typeof price.unit_amount !== "number" || price.unit_amount <= 0) {
+        return response({ ok: false, detail: "The Professional API add-on billing details need review." }, 503, origin);
+      }
+      const customerId = String(profile.stripe_customer_id || "").trim();
+      const metadata = { user_id: auth.user.id, cadivor_addon: "professional_api" };
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        ...(customerId ? { customer: customerId } : { customer_email: auth.user.email! }),
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: origin + "/settings?billing=api-addon-success",
+        cancel_url: origin + "/settings?billing=api-addon-cancel",
+        client_reference_id: auth.user.id,
+        metadata,
+        subscription_data: { metadata },
+      }, { idempotencyKey: "cadivor_api_addon_" + auth.user.id + "_" + supportReference });
+      if (!session.url) throw new Error("Stripe did not return a checkout link.");
+      return response({ ok: true, checkout: { state: "open", url: session.url } }, 200, origin);
+    }
+
+    if (action === "usage_overage_checkout") {
+      const currentPlan = effectivePlan(profile).plan;
+      const currentStatus = String(profile.stripe_subscription_status || "").toLowerCase();
+      if (!["Starter", "Professional", "Business"].includes(currentPlan) ||
+          !["active", "trialing"].includes(currentStatus)) {
+        return response({ ok: false, detail: "Usage overage packs require an active paid subscription." }, 409, origin);
+      }
+      const kind = String(body.credit_kind || "").trim();
+      const item = kind === "bom_analysis"
+        ? { priceEnv: "STRIPE_BOM_ANALYSIS_OVERAGE_PRICE_ID", unitsEnv: "CADIVOR_BOM_ANALYSIS_OVERAGE_CREDITS" }
+        : kind === "monitored_part"
+          ? { priceEnv: "STRIPE_MONITORED_PARTS_OVERAGE_PRICE_ID", unitsEnv: "CADIVOR_MONITORED_PARTS_OVERAGE_CREDITS" }
+          : null;
+      if (!item) return response({ ok: false, detail: "Choose a supported usage pack." }, 400, origin);
+      const priceId = String(Deno.env.get(item.priceEnv) || "").trim();
+      const credits = positiveUnits(item.unitsEnv);
+      if (!priceId || !credits) return response({ ok: false, detail: "This usage pack is not configured for purchase yet." }, 503, origin);
+      const price = await stripe.prices.retrieve(priceId);
+      if (!price.active || price.currency !== "usd" || price.recurring ||
+          typeof price.unit_amount !== "number" || price.unit_amount <= 0) {
+        return response({ ok: false, detail: "This usage pack billing details need review." }, 503, origin);
+      }
+      const customerId = String(profile.stripe_customer_id || "").trim();
+      const metadata = {
+        user_id: auth.user.id,
+        cadivor_addon: "usage_overage",
+        cadivor_credit_kind: kind,
+        cadivor_credit_units: String(credits),
+      };
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        ...(customerId ? { customer: customerId } : { customer_email: auth.user.email! }),
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: origin + "/settings?billing=usage-pack-success",
+        cancel_url: origin + "/settings?billing=usage-pack-cancel",
+        client_reference_id: auth.user.id,
+        metadata,
+        payment_intent_data: { metadata },
+      }, { idempotencyKey: "cadivor_usage_pack_" + auth.user.id + "_" + kind + "_" + supportReference });
+      if (!session.url) throw new Error("Stripe did not return a checkout link.");
+      return response({ ok: true, checkout: { state: "open", url: session.url } }, 200, origin);
+    }
+
+    if (action === "reserve_usage_credit") {
+      const kind = String(body.credit_kind || "").trim();
+      const reservationId = String(body.reservation_id || "").trim();
+      if (kind !== "bom_analysis" || !reservationId || reservationId.length > 100) {
+        return response({ ok: false, detail: "Invalid usage credit reservation." }, 400, origin);
+      }
+      const { data, error } = await supabase.rpc("cadivor_reserve_bom_analysis_credit", {
+        p_user_id: auth.user.id,
+        p_reservation_id: reservationId,
+      });
+      if (error) throw new Error("Usage credit could not be reserved.");
+      return response({ ok: true, reserved: data === true }, 200, origin);
+    }
+
+    if (action === "finish_usage_credit") {
+      const reservationId = String(body.reservation_id || "").trim();
+      const commit = body.commit === true;
+      if (!reservationId || reservationId.length > 100) {
+        return response({ ok: false, detail: "Invalid usage credit reservation." }, 400, origin);
+      }
+      const { data, error } = await supabase.rpc("cadivor_finish_bom_analysis_credit", {
+        p_user_id: auth.user.id,
+        p_reservation_id: reservationId,
+        p_commit: commit,
+      });
+      if (error) throw new Error("Usage credit could not be reconciled.");
+      return response({ ok: true, finished: data === true }, 200, origin);
+    }
+
+    if (action === "allocate_monitored_part_credits") {
+      const workspaceId = String(body.workspace_id || "").trim();
+      const requiredCredits = Number(body.required_credits);
+      if (!workspaceId || workspaceId.length > 180 ||
+          !Number.isSafeInteger(requiredCredits) || requiredCredits < 0 || requiredCredits > 100_000) {
+        return response({ ok: false, detail: "Invalid monitored part allocation." }, 400, origin);
+      }
+      const { data, error } = await supabase.rpc("cadivor_allocate_monitored_part_credits", {
+        p_user_id: auth.user.id,
+        p_workspace_id: workspaceId,
+        p_required_credits: requiredCredits,
+      });
+      if (error) throw new Error("Monitoring credits could not be allocated.");
+      return response({ ok: true, allocated: data === true }, 200, origin);
     }
 
     if (action !== "checkout") return response({ ok: false, detail: "Unknown billing action." }, 400, origin);

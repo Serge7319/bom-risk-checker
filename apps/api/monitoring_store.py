@@ -130,6 +130,7 @@ def _load_state() -> dict[str, Any]:
         state = getattr(_load_state, "_mem", {"workspaces": {}})  # type: ignore[attr-defined]
     state.setdefault("workspaces", {})
     state.setdefault("scheduled_runs", {})
+    state.setdefault("workspace_monitoring_capacities", {})
     return state
 
 
@@ -156,9 +157,11 @@ def reset_monitoring_store_for_tests() -> None:
                 conn.execute("DELETE FROM migration_monitoring_member_preferences")
                 conn.execute("DELETE FROM migration_monitoring_snapshots")
                 conn.execute("DELETE FROM migration_monitoring_email_deliveries")
+                conn.execute("DELETE FROM migration_monitoring_slack_deliveries")
                 conn.execute("DELETE FROM migration_monitoring_digest_deliveries")
                 conn.execute("DELETE FROM migration_monitoring_refresh_history")
                 conn.execute("DELETE FROM migration_monitoring_scheduled_runs")
+                conn.execute("DELETE FROM migration_workspace_monitoring_capacity")
                 conn.commit()
 
 
@@ -350,6 +353,7 @@ def _ws(state: dict[str, Any], workspace_id: str) -> dict[str, Any]:
             "user_preferences": {},
             "snapshots": {},
             "email_deliveries": {},
+            "slack_deliveries": {},
             "refresh_history": [],
         },
     )
@@ -374,6 +378,10 @@ def delete_analysis_scopes(workspace_id: str, analysis_ids: list[str]) -> None:
             if alert_ids:
                 conn.execute(
                     "DELETE FROM migration_monitoring_email_deliveries WHERE workspace_id = %s AND alert_id = ANY(%s)",
+                    (wid, alert_ids),
+                )
+                conn.execute(
+                    "DELETE FROM migration_monitoring_slack_deliveries WHERE workspace_id = %s AND alert_id = ANY(%s)",
                     (wid, alert_ids),
                 )
                 conn.execute(
@@ -414,6 +422,10 @@ def delete_analysis_scopes(workspace_id: str, analysis_ids: list[str]) -> None:
         for key, row in list(deliveries.items()):
             if str(row.get("alert_id") or "") in removed_alert_ids:
                 deliveries.pop(key, None)
+        slack_deliveries = bucket.setdefault("slack_deliveries", {})
+        for key, row in list(slack_deliveries.items()):
+            if str(row.get("alert_id") or "") in removed_alert_ids:
+                slack_deliveries.pop(key, None)
         _save_state(state)
 
 
@@ -440,6 +452,288 @@ def get_preferences(workspace_id: str) -> dict[str, Any]:
         "mock-record" if not email_delivery_enabled() else "configured-transport"
     )
     return prefs
+
+
+def get_workspace_slack_integration(workspace_id: str) -> dict[str, Any]:
+    """Return connection status without exposing the encrypted or raw URL."""
+    if _use_postgres():
+        with _pg_connect() as conn:
+            row = conn.execute(
+                "SELECT slack_alerts, slack_webhook_ciphertext FROM migration_notification_preferences WHERE workspace_id = %s",
+                (str(workspace_id or "").strip(),),
+            ).fetchone()
+        enabled = bool(row and row["slack_alerts"])
+        configured = bool(row and row["slack_webhook_ciphertext"])
+    else:
+        with _lock:
+            prefs = _ws(_load_state(), str(workspace_id or "").strip())["preferences"]
+            enabled = bool(prefs.get("slack_alerts"))
+            configured = bool(prefs.get("slack_webhook_ciphertext"))
+    try:
+        from apps.api.slack_notifications import encryption_key_configured
+
+        key_ready = encryption_key_configured()
+    except Exception:  # noqa: BLE001
+        key_ready = False
+    return {
+        "enabled": enabled and configured,
+        "configured": configured,
+        "encryption_ready": key_ready,
+    }
+
+
+def set_workspace_slack_integration(
+    workspace_id: str,
+    *,
+    enabled: bool,
+    webhook_ciphertext: str | None,
+    replace_webhook: bool,
+) -> dict[str, Any]:
+    """Update a workspace Slack connection without returning secret material."""
+    wid = str(workspace_id or "").strip()
+    if not wid:
+        raise ValueError("workspace_id is required")
+    if _use_postgres():
+        with _pg_connect() as conn:
+            if replace_webhook:
+                conn.execute(
+                    """
+                    INSERT INTO migration_notification_preferences
+                      (workspace_id, slack_alerts, slack_webhook_ciphertext, updated_at)
+                    VALUES (%s, %s, %s, NOW())
+                    ON CONFLICT (workspace_id) DO UPDATE SET
+                      slack_alerts = EXCLUDED.slack_alerts,
+                      slack_webhook_ciphertext = EXCLUDED.slack_webhook_ciphertext,
+                      updated_at = NOW()
+                    """,
+                    (wid, bool(enabled), webhook_ciphertext),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO migration_notification_preferences
+                      (workspace_id, slack_alerts, updated_at)
+                    VALUES (%s, %s, NOW())
+                    ON CONFLICT (workspace_id) DO UPDATE SET
+                      slack_alerts = EXCLUDED.slack_alerts,
+                      updated_at = NOW()
+                    """,
+                    (wid, bool(enabled)),
+                )
+            conn.commit()
+    else:
+        with _lock:
+            state = _load_state()
+            prefs = _ws(state, wid)["preferences"]
+            prefs["slack_alerts"] = bool(enabled)
+            if replace_webhook:
+                prefs["slack_webhook_ciphertext"] = webhook_ciphertext
+            _save_state(state)
+    return get_workspace_slack_integration(wid)
+
+
+def workspace_slack_ciphertext(workspace_id: str) -> str:
+    if _use_postgres():
+        with _pg_connect() as conn:
+            row = conn.execute(
+                "SELECT slack_webhook_ciphertext FROM migration_notification_preferences WHERE workspace_id = %s AND slack_alerts = TRUE",
+                (str(workspace_id or "").strip(),),
+            ).fetchone()
+        return str(row["slack_webhook_ciphertext"] or "") if row else ""
+    with _lock:
+        prefs = _ws(_load_state(), str(workspace_id or "").strip())["preferences"]
+        return str(prefs.get("slack_webhook_ciphertext") or "") if prefs.get("slack_alerts") else ""
+
+
+def list_retryable_slack_alert_ids(workspace_id: str) -> list[str]:
+    wid = str(workspace_id or "").strip()
+    if not wid:
+        return []
+    if _use_postgres():
+        with _pg_connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT alert_id FROM migration_monitoring_slack_deliveries
+                 WHERE workspace_id = %s AND status = 'sending'
+                   AND (lease_until IS NULL OR lease_until < NOW())
+                """,
+                (wid,),
+            ).fetchall()
+        return [str(row["alert_id"]) for row in rows]
+    now = datetime.now(timezone.utc)
+    with _lock:
+        deliveries = _ws(_load_state(), wid).setdefault("slack_deliveries", {})
+        ids: list[str] = []
+        for row in deliveries.values():
+            if row.get("status") != "sending":
+                continue
+            try:
+                lease = datetime.fromisoformat(str(row.get("lease_until") or "").replace("Z", "+00:00"))
+                if lease.tzinfo is None:
+                    lease = lease.replace(tzinfo=timezone.utc)
+            except ValueError:
+                lease = now
+            if lease <= now:
+                ids.append(str(row.get("alert_id") or ""))
+        return [alert_id for alert_id in ids if alert_id]
+
+
+def claim_scheduled_slack_alert(workspace_id: str, alert_id: str) -> bool:
+    wid = str(workspace_id or "").strip()
+    aid = str(alert_id or "").strip()
+    if not wid or not aid:
+        return False
+    if _use_postgres():
+        with _pg_connect() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO migration_monitoring_slack_deliveries
+                  (workspace_id, alert_id, status, lease_until, updated_at)
+                VALUES (%s, %s, 'sending', NOW() + INTERVAL '5 minutes', NOW())
+                ON CONFLICT (workspace_id, alert_id) DO UPDATE SET
+                  status = 'sending', lease_until = NOW() + INTERVAL '5 minutes',
+                  updated_at = NOW()
+                WHERE migration_monitoring_slack_deliveries.status <> 'sent'
+                  AND (migration_monitoring_slack_deliveries.lease_until IS NULL
+                       OR migration_monitoring_slack_deliveries.lease_until < NOW())
+                RETURNING 1 AS claimed
+                """,
+                (wid, aid),
+            ).fetchone()
+            conn.commit()
+        return bool(row)
+    now = datetime.now(timezone.utc)
+    key = _email_delivery_key(wid, "slack", aid)
+    with _lock:
+        state = _load_state()
+        deliveries = _ws(state, wid).setdefault("slack_deliveries", {})
+        prior = deliveries.get(key) or {}
+        if prior.get("status") == "sent":
+            return False
+        if prior.get("status") == "sending":
+            try:
+                lease = datetime.fromisoformat(str(prior.get("lease_until") or "").replace("Z", "+00:00"))
+                if lease.tzinfo is None:
+                    lease = lease.replace(tzinfo=timezone.utc)
+            except ValueError:
+                lease = now
+            if lease > now:
+                return False
+        deliveries[key] = {
+            "workspace_id": wid,
+            "alert_id": aid,
+            "status": "sending",
+            "lease_until": (now + timedelta(minutes=5)).isoformat(),
+        }
+        _save_state(state)
+    return True
+
+
+def finish_scheduled_slack_alert(
+    workspace_id: str, alert_id: str, *, delivered: bool
+) -> None:
+    wid = str(workspace_id or "").strip()
+    aid = str(alert_id or "").strip()
+    if not wid or not aid:
+        return
+    if _use_postgres():
+        with _pg_connect() as conn:
+            if delivered:
+                conn.execute(
+                    """
+                    UPDATE migration_monitoring_slack_deliveries
+                       SET status = 'sent', lease_until = NULL, updated_at = NOW()
+                     WHERE workspace_id = %s AND alert_id = %s
+                    """,
+                    (wid, aid),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE migration_monitoring_slack_deliveries
+                       SET lease_until = NOW() - INTERVAL '1 second', updated_at = NOW()
+                     WHERE workspace_id = %s AND alert_id = %s AND status = 'sending'
+                    """,
+                    (wid, aid),
+                )
+            conn.commit()
+        return
+    key = _email_delivery_key(wid, "slack", aid)
+    with _lock:
+        state = _load_state()
+        deliveries = _ws(state, wid).setdefault("slack_deliveries", {})
+        prior = deliveries.get(key) or {}
+        if not prior:
+            return
+        if delivered:
+            prior.update({"status": "sent", "lease_until": None, "sent_at": utc_now()})
+        else:
+            prior["lease_until"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+        deliveries[key] = prior
+        _save_state(state)
+
+
+def clear_scheduled_slack_alert_delivery(workspace_id: str, alert_id: str) -> None:
+    wid = str(workspace_id or "").strip()
+    aid = str(alert_id or "").strip()
+    if not wid or not aid:
+        return
+    if _use_postgres():
+        with _pg_connect() as conn:
+            conn.execute(
+                "DELETE FROM migration_monitoring_slack_deliveries WHERE workspace_id = %s AND alert_id = %s",
+                (wid, aid),
+            )
+            conn.commit()
+        return
+    key = _email_delivery_key(wid, "slack", aid)
+    with _lock:
+        state = _load_state()
+        _ws(state, wid).setdefault("slack_deliveries", {}).pop(key, None)
+        _save_state(state)
+
+
+def get_workspace_monitoring_capacity(workspace_id: str) -> int | None:
+    """Return an enforced workspace capacity; None preserves legacy/unlimited behavior."""
+    wid = str(workspace_id or "").strip()
+    if _use_postgres():
+        with _pg_connect() as conn:
+            row = conn.execute(
+                "SELECT max_parts FROM migration_workspace_monitoring_capacity WHERE workspace_id = %s",
+                (wid,),
+            ).fetchone()
+        return None if not row or row["max_parts"] is None else max(0, int(row["max_parts"]))
+    with _lock:
+        caps = _load_state().setdefault("workspace_monitoring_capacities", {})
+        value = caps.get(wid)
+        return None if value is None else max(0, int(value))
+
+
+def set_workspace_monitoring_capacity(workspace_id: str, max_parts: int | None) -> None:
+    wid = str(workspace_id or "").strip()
+    if not wid:
+        raise ValueError("workspace_id is required")
+    if max_parts is not None and int(max_parts) < 0:
+        raise ValueError("max_parts must be non-negative")
+    value = None if max_parts is None else int(max_parts)
+    if _use_postgres():
+        with _pg_connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO migration_workspace_monitoring_capacity (workspace_id, max_parts, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (workspace_id) DO UPDATE SET
+                  max_parts = EXCLUDED.max_parts,
+                  updated_at = NOW()
+                """,
+                (wid, value),
+            )
+            conn.commit()
+        return
+    with _lock:
+        state = _load_state()
+        state.setdefault("workspace_monitoring_capacities", {})[wid] = value
+        _save_state(state)
 
 
 def update_preferences(workspace_id: str, updates: dict[str, Any]) -> dict[str, Any]:
@@ -1044,6 +1338,9 @@ def reconcile_alerts(
         persist_alerts(workspace_id, inactivated)
         for row in inactivated:
             clear_scheduled_alert_email_deliveries(
+                workspace_id, str(row.get("id") or "")
+            )
+            clear_scheduled_slack_alert_delivery(
                 workspace_id, str(row.get("id") or "")
             )
     return [

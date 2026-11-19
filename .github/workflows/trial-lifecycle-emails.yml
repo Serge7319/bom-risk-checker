@@ -1,0 +1,37 @@
+name: Cadivor trial lifecycle emails
+
+on:
+  schedule:
+    - cron: "17 13 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: cadivor-trial-lifecycle-email-sender
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  send-trial-guidance:
+    if: ${{ vars.CADIVOR_TRIAL_EMAIL_SEQUENCE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Send due trial guidance emails
+        env:
+          SUPABASE_URL: ${{ vars.CADIVOR_SUPABASE_URL }}
+          TRIAL_CRON_TOKEN: ${{ secrets.CADIVOR_TRIAL_EMAIL_CRON_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SUPABASE_URL" ] || [ -z "$TRIAL_CRON_TOKEN" ]; then
+            echo "Trial email job is enabled but its endpoint credentials are missing."
+            exit 1
+          fi
+          curl --silent --show-error --fail-with-body \
+            --connect-timeout 10 --max-time 90 \
+            -X POST \
+            -H "x-cadivor-trial-cron-token: $TRIAL_CRON_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{}' \
+            "${SUPABASE_URL%/}/functions/v1/trial-lifecycle-emails"

@@ -8,7 +8,15 @@ import { EmptyState } from "@/components/EmptyState";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
-import { fetchMonitoring, notifyMonitoringAlert, refreshLiveMonitoring, refreshMonitoring, updateMonitoringPreferences } from "@/lib/api";
+import {
+  fetchMonitoring,
+  fetchMonitoringSlack,
+  notifyMonitoringAlert,
+  refreshLiveMonitoring,
+  refreshMonitoring,
+  updateMonitoringPreferences,
+  updateMonitoringSlack,
+} from "@/lib/api";
 import { markReviewProgress, readReviewProgress } from "@/lib/bomDraft";
 import { cleanUserText, evidenceSourceLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
@@ -24,6 +32,12 @@ function MonitoringPageInner() {
   const [refreshing, setRefreshing] = useState<string>("");
   const [notifying, setNotifying] = useState<string>("");
   const [savingPreferences, setSavingPreferences] = useState<string>("");
+  const [slackIntegration, setSlackIntegration] = useState<{
+    enabled: boolean; configured: boolean; encryption_ready: boolean; can_manage: boolean;
+  } | null>(null);
+  const [slackEnabled, setSlackEnabled] = useState(false);
+  const [slackWebhookUrl, setSlackWebhookUrl] = useState("");
+  const [savingSlack, setSavingSlack] = useState(false);
   const [refreshNote, setRefreshNote] = useState("");
   const [reloadTick, setReloadTick] = useState(0);
 
@@ -69,6 +83,15 @@ function MonitoringPageInner() {
       })
       .finally(() => {
         if (active) setBusy(false);
+      });
+    fetchMonitoringSlack(session.access_token)
+      .then((result) => {
+        if (!active) return;
+        setSlackIntegration(result.integration);
+        setSlackEnabled(Boolean(result.integration.enabled));
+      })
+      .catch(() => {
+        if (active) setSlackIntegration(null);
       });
     return () => {
       active = false;
@@ -149,6 +172,27 @@ function MonitoringPageInner() {
       setError(err instanceof Error ? err.message : "Could not save monitoring preference");
     } finally {
       setSavingPreferences("");
+    }
+  }
+
+  async function saveSlackIntegration(clear = false) {
+    if (!session || savingSlack) return;
+    setSavingSlack(true);
+    setError("");
+    try {
+      const result = await updateMonitoringSlack(session.access_token, {
+        enabled: clear ? false : slackEnabled,
+        ...(clear ? { clear: true } : {}),
+        ...(!clear && slackWebhookUrl.trim() ? { webhook_url: slackWebhookUrl.trim() } : {}),
+      });
+      setSlackIntegration(result.integration);
+      setSlackEnabled(Boolean(result.integration.enabled));
+      setSlackWebhookUrl("");
+      setRefreshNote(clear ? "Slack connection removed." : "Slack alert settings saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save Slack alert settings.");
+    } finally {
+      setSavingSlack(false);
     }
   }
 
@@ -277,6 +321,51 @@ function MonitoringPageInner() {
                 <span><strong>Send me a weekly monitoring digest</strong><br /><small className="cv-small-note">Sent at most once every seven days to your verified account email. Turn on alert emails first; the digest includes active changes from the prior week.</small></span>
               </label>
             </div>
+          </section>
+          <section className="cv-card pad" aria-label="Slack alerts">
+            <h3 className="cv-card-title">Slack alerts</h3>
+            <p className="cv-card-subtitle">
+              Send one channel message when a scheduled supplier check finds new alerts. Messages include alert counts and a Cadivor link; part numbers, BOM names, and supplier values stay in Cadivor.
+            </p>
+            {!slackIntegration ? (
+              <p className="cv-small-note" role="status">Slack connection status is unavailable. Reload to try again.</p>
+            ) : slackIntegration.can_manage ? (
+              <div style={{ display: "grid", gap: 10, maxWidth: 620, marginTop: 12 }}>
+                <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={slackEnabled}
+                    disabled={savingSlack || !slackIntegration.encryption_ready}
+                    onChange={(event) => setSlackEnabled(event.target.checked)}
+                  />
+                  <span><strong>Enable Slack alert delivery</strong><br /><small className="cv-small-note">{slackIntegration.configured ? "A workspace webhook is saved." : "No Slack channel is connected."}</small></span>
+                </label>
+                <label className="cv-field" htmlFor="monitoring-slack-webhook">
+                  <span>Slack incoming webhook URL</span>
+                  <input
+                    id="monitoring-slack-webhook"
+                    type="password"
+                    autoComplete="new-password"
+                    value={slackWebhookUrl}
+                    placeholder={slackIntegration.configured ? "Saved securely · enter a new URL to replace" : "https://hooks.slack.com/services/…"}
+                    onChange={(event) => setSlackWebhookUrl(event.target.value)}
+                  />
+                </label>
+                {!slackIntegration.encryption_ready ? <p className="cv-small-note">Cadivor’s Slack webhook encryption key is not configured yet.</p> : null}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button className="cv-button primary" type="button" disabled={savingSlack || !slackIntegration.encryption_ready} onClick={() => void saveSlackIntegration()}>
+                    {savingSlack ? "Saving…" : "Save Slack settings"}
+                  </button>
+                  {slackIntegration.configured ? (
+                    <button className="cv-button" type="button" disabled={savingSlack} onClick={() => void saveSlackIntegration(true)}>Disconnect Slack</button>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              <p className="cv-small-note" style={{ marginTop: 10 }}>
+                {slackIntegration.enabled ? "Slack alerts are enabled for this workspace." : "Ask a workspace owner or admin to connect Slack."}
+              </p>
+            )}
           </section>
           <section className="cv-card pad">
             <h3 className="cv-card-title">Alerts and changes</h3>

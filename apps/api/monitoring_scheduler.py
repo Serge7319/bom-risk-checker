@@ -12,7 +12,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from apps.api import migration_tools, monitoring_store
+from apps.api import migration_tools, monitoring_store, slack_notifications
 from apps.api.workspace_store import get_store
 from src.normalizer import normalize_part_number
 
@@ -509,7 +509,23 @@ def run_scheduled_cycle(
         return {"ok": False, "status": "blocked", "reason": "workspace_store_unavailable", "supplier_calls": 0}
     opted_in = monitoring_store.list_user_preferences(supplier_checks=True)
     workspaces = {str(row.get("workspace_id") or "") for row in opted_in}
-    targets = [row for row in scopes if row.get("workspace_id") in workspaces]
+    scopes_by_workspace: dict[str, list[dict[str, Any]]] = {}
+    for row in scopes:
+        wid = str(row.get("workspace_id") or "")
+        if wid in workspaces:
+            scopes_by_workspace.setdefault(wid, []).append(row)
+    targets: list[dict[str, Any]] = []
+    for wid, workspace_scopes in scopes_by_workspace.items():
+        capacity = monitoring_store.get_workspace_monitoring_capacity(wid)
+        if capacity is None:
+            targets.extend(workspace_scopes)
+            continue
+        included_parts = 0
+        for scope in workspace_scopes:
+            part_count = max(0, int(scope.get("total_parts") or 0))
+            if included_parts + part_count <= capacity:
+                targets.append(scope)
+                included_parts += part_count
     if dry_run:
         return {
             "ok": True,
@@ -530,7 +546,7 @@ def run_scheduled_cycle(
     if configured_supplier_count() <= 0:
         return {"ok": False, "status": "blocked", "reason": "supplier_credentials_missing", "supplier_calls": 0}
 
-    summary = {"ok": True, "status": "complete", "analysis_count": len(targets), "supplier_calls": 0, "updated_parts": 0, "alert_count": 0, "email_sent": 0, "digest_emails_sent": 0, "failures": []}
+    summary = {"ok": True, "status": "complete", "analysis_count": len(targets), "supplier_calls": 0, "updated_parts": 0, "alert_count": 0, "email_sent": 0, "digest_emails_sent": 0, "slack_sent": 0, "failures": []}
     email_members: dict[str, list[dict[str, Any]]] = {}
     new_alerts_by_workspace: dict[str, dict[str, dict[str, Any]]] = {}
     for row in monitoring_store.list_user_preferences(email_alerts=True):
@@ -564,12 +580,63 @@ def run_scheduled_cycle(
                 candidates[alert_id] = alert
         _report_progress()
 
+    # A workspace sends one aggregate Slack message for new and retryable
+    # alerts. Delivery receipts prevent duplicates and retain transient failures.
+    slack_workspaces = set(new_alerts_by_workspace)
+    for row in opted_in:
+        wid = str(row.get("workspace_id") or "")
+        if wid and monitoring_store.list_retryable_slack_alert_ids(wid):
+            slack_workspaces.add(wid)
+    all_workspace_alerts: dict[str, dict[str, dict[str, Any]]] = {}
+    for workspace_id in slack_workspaces:
+        if not workspace_id:
+            continue
+        alerts_by_id = {
+            str(alert.get("id") or ""): alert
+            for alert in monitoring_store.list_alerts(workspace_id)
+            if str(alert.get("id") or "").strip()
+        }
+        alerts_by_id.update(new_alerts_by_workspace.get(workspace_id, {}))
+        all_workspace_alerts[workspace_id] = alerts_by_id
+        ciphertext = monitoring_store.workspace_slack_ciphertext(workspace_id)
+        if not ciphertext:
+            continue
+        retryable_ids = set(monitoring_store.list_retryable_slack_alert_ids(workspace_id))
+        candidate_ids = set(new_alerts_by_workspace.get(workspace_id, {})) | retryable_ids
+        claimed: list[dict[str, Any]] = []
+        for alert_id in sorted(candidate_ids):
+            alert = alerts_by_id.get(alert_id)
+            if not alert or alert.get("evidence_source") != "live-authorized-supplier":
+                continue
+            is_retry = alert_id in retryable_ids
+            if not is_retry and (
+                alert.get("active") is False
+                or str(alert.get("status") or "active").lower() == "inactive"
+            ):
+                continue
+            if monitoring_store.claim_scheduled_slack_alert(workspace_id, alert_id):
+                claimed.append(alert)
+        if not claimed:
+            continue
+        delivered = slack_notifications.deliver_workspace_alert(ciphertext, claimed)
+        for alert in claimed:
+            monitoring_store.finish_scheduled_slack_alert(
+                workspace_id, str(alert.get("id") or ""), delivered=delivered
+            )
+        if delivered:
+            summary["slack_sent"] += 1
+        else:
+            summary["failures"].append({
+                "workspace_id": workspace_id,
+                "reason": "slack_delivery_failed",
+            })
+
     # Retry prior failed mail independently of whether this refresh observed a
     # fresh value change. A later poll must not erase a notification event.
     for workspace_id, members in email_members.items():
         if not workspace_id:
             continue
-        alerts_by_id = {
+        alerts_by_id = all_workspace_alerts.get(workspace_id) or {
             str(alert.get("id") or ""): alert
             for alert in monitoring_store.list_alerts(workspace_id)
             if str(alert.get("id") or "").strip()

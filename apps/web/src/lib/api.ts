@@ -728,6 +728,45 @@ export async function createDecisionRecordShare(token: string, decisionRecordId:
   );
 }
 
+export async function inviteDecisionApprover(
+  token: string,
+  decisionRecordId: string,
+  email: string,
+) {
+  return apiJson<{ ok: boolean; sent: boolean; expires_at: string }>(
+    "/decision-records/approvers",
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify({ decision_record_id: decisionRecordId, email }),
+    },
+  );
+}
+
+export async function fetchDecisionApproval(token: string) {
+  return apiJson<{
+    ok: boolean;
+    record: Partial<DecisionRecord>;
+    status: string;
+    response_rationale?: string | null;
+    expires_at: string;
+  }>(`/decision-approvals/${encodeURIComponent(token)}`, { cache: "no-store" });
+}
+
+export async function respondToDecisionApproval(
+  token: string,
+  decision: "approved" | "rejected",
+  rationale: string,
+) {
+  return apiJson<{ ok: boolean; status: string }>(
+    `/decision-approvals/${encodeURIComponent(token)}/respond`,
+    {
+      method: "POST",
+      body: JSON.stringify({ decision, rationale }),
+    },
+  );
+}
+
 export async function fetchSharedDecisionRecord(shareToken: string) {
   return apiJson<{
     ok: boolean;
@@ -791,6 +830,27 @@ export async function updateMonitoringPreferences(
     "/tools/monitoring/preferences",
     { method: "PUT", token, body: JSON.stringify(preferences) },
   );
+}
+
+export async function fetchMonitoringSlack(token: string) {
+  return apiJson<{
+    ok: boolean;
+    integration: { enabled: boolean; configured: boolean; encryption_ready: boolean; can_manage: boolean };
+  }>("/tools/monitoring/slack", { token });
+}
+
+export async function updateMonitoringSlack(
+  token: string,
+  body: { enabled: boolean; webhook_url?: string; clear?: boolean },
+) {
+  return apiJson<{
+    ok: boolean;
+    integration: { enabled: boolean; configured: boolean; encryption_ready: boolean; can_manage: boolean };
+  }>("/tools/monitoring/slack", {
+    method: "PUT",
+    token,
+    body: JSON.stringify(body),
+  });
 }
 
 export async function refreshLiveMonitoring(
@@ -1091,6 +1151,61 @@ export async function beginSubscriptionCheckout(
   });
 }
 
+export async function beginProfessionalApiAddonCheckout(token: string) {
+  return apiJson<{
+    ok: boolean;
+    checkout?: { state: string; url?: string };
+    detail?: string;
+    code?: string;
+  }>("/billing/addons/professional-api/checkout", {
+    method: "POST",
+    token,
+    body: JSON.stringify({}),
+  });
+}
+
+export async function beginUsageOverageCheckout(
+  token: string,
+  creditKind: "bom_analysis" | "monitored_part",
+) {
+  return apiJson<{
+    ok: boolean;
+    checkout?: { state: string; url?: string };
+    detail?: string;
+  }>("/billing/addons/usage-overage/checkout", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ credit_kind: creditKind }),
+  });
+}
+
+export type DeveloperApiKey = {
+  id: string;
+  name: string;
+  key_prefix: string;
+  created_at: string;
+  last_used_at?: string | null;
+};
+
+export async function fetchDeveloperApiKeys(token: string) {
+  return apiJson<{ ok: boolean; keys: DeveloperApiKey[] }>("/developer/api-keys", { token });
+}
+
+export async function createDeveloperApiKey(token: string, name: string) {
+  return apiJson<{ ok: boolean; key: DeveloperApiKey & { secret: string } }>("/developer/api-keys", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function revokeDeveloperApiKey(token: string, keyId: string) {
+  return apiJson<{ ok: boolean; revoked: boolean }>(
+    `/developer/api-keys/${encodeURIComponent(keyId)}`,
+    { method: "DELETE", token },
+  );
+}
+
 export async function beginBillingPortal(token: string) {
   return apiJson<{
     ok: boolean;
@@ -1297,4 +1412,26 @@ export async function listWorkspaceActivity(token: string, limit = 40) {
     `/workspace/activity?limit=${encodeURIComponent(String(limit))}`,
     { token },
   );
+}
+
+export async function fetchAdminAccountEntitlements(token: string, email: string) {
+  return apiJson<{
+    ok: boolean;
+    account: { email: string; feature_overrides: Record<string, boolean> };
+  }>(`/admin/account-entitlements?email=${encodeURIComponent(email)}`, { token });
+}
+
+export async function updateAdminAccountEntitlements(
+  token: string,
+  email: string,
+  featureOverrides: Record<string, boolean>,
+) {
+  return apiJson<{
+    ok: boolean;
+    account: { email: string; feature_overrides: Record<string, boolean> };
+  }>("/admin/account-entitlements", {
+    method: "PUT",
+    token,
+    body: JSON.stringify({ email, feature_overrides: featureOverrides }),
+  });
 }
