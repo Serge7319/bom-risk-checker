@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 54557)
-Total output lines: 5179
-
 """Cadivor API for the Next.js application.
 
 Production uses Supabase Auth, the established BOM/supplier analysis modules,
@@ -1895,7 +1892,1348 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 datasheet_uploads=datasheet_uploads or None,
             )
             if isinstance(comparison, dict):
-    …14557 tokens truncated…   """Authenticated readiness for Settings: email, scheduler, connectors, billing.
+                comparison["snapshot_reused"] = False
+        if not comparison.get("ok"):
+            return _json({"detail": comparison.get("detail") or "Comparison unavailable."}, 400)
+        analysis_id = str(comparison.get("analysis_id") or "").strip() or None
+        report = (
+            _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
+            if analysis_id
+            else None
+        )
+        # Preserve requested identities even when snapshot reuse omitted them.
+        if isinstance(comparison, dict):
+            if manufacturer_a and not comparison.get("manufacturer_a"):
+                comparison["manufacturer_a"] = manufacturer_a
+            if manufacturer_b and not comparison.get("manufacturer_b"):
+                comparison["manufacturer_b"] = manufacturer_b
+        snapshot = {
+            key: comparison.get(key)
+            for key in (
+                "mode",
+                "finding",
+                "engineering_evidence_summary",
+                "engineering_evidence_status",
+                "counts",
+                "family",
+                "family_mismatch",
+                "rows",
+                "part_cards",
+                "source_a",
+                "source_b",
+                "evidence_sources",
+                "datasheet_identity",
+                "package_dimension_evidence",
+                "review_warnings",
+                "gap",
+                "manufacturer_a",
+                "manufacturer_b",
+                "multi_candidate_mpns",
+                "multi_candidate_manufacturers",
+                "multi_matrix",
+                "multi_source_records",
+                "candidate_snapshots",
+                "snapshot_aggregate_rebuilt",
+            )
+        }
+        # Never trust client-supplied verified_primary_evidence — derive it
+        # only from the server-verified comparison payload above.
+        verified_primary = server_verified_primary_evidence(
+            comparison,
+            validation_checks=validation_checks,
+            required_approval_checks=required_approval_checks,
+        )
+        record = get_store().create_decision_record(
+            {
+                "analysis_id": analysis_id,
+                "project_name": split_project_and_bom(report or {})[0] or None,
+                "bom_name": (report or {}).get("bom_name") or (report or {}).get("filename"),
+                "revision": (report or {}).get("revision"),
+                "part_a": part_a,
+                "part_b": part_b,
+                "manufacturer_a": manufacturer_a or comparison.get("manufacturer_a") or None,
+                "manufacturer_b": manufacturer_b or comparison.get("manufacturer_b") or None,
+                "decision": decision,
+                "decision_label": _DECISION_LABELS[decision],
+                "reviewer": reviewer,
+                "rationale": rationale,
+                "validation_checks": validation_checks,
+                "follow_up_action": follow_up_action,
+                "follow_up_owner": follow_up_owner,
+                "follow_up_due_date": follow_up_due_date or None,
+                "residual_risk": residual_risk,
+                "verified_primary_evidence": verified_primary,
+                "qualification_status": "not-qualified-by-cadivor",
+                "qualification_note": (
+                    "This record captures your decision and did not automatically qualify "
+                    "a drop-in replacement or update the BOM."
+                ),
+                "comparison_snapshot": snapshot,
+                "created_by": ctx.get("user_id"),
+                "created_by_email": ctx.get("email"),
+            },
+            workspace_id=ctx["workspace_id"],
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "record": record}, 201)
+
+
+async def datasheet_qa_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not plan_limits.effective_plan(ctx).get("datasheet_comparison"):
+        return _json({
+            "code": "feature_unavailable",
+            "detail": "Datasheet tools are not included in this account's entitlements.",
+        }, 402)
+    form = await request.form()
+    upload = form.get("file")
+    question = str(form.get("question") or "").strip()
+    if upload is None:
+        return _json({"detail": "Missing datasheet file"}, 400)
+    if not question:
+        return _json({"detail": "Missing question"}, 400)
+    filename = getattr(upload, "filename", None) or "datasheet.pdf"
+    payload = await upload.read()
+    if not payload:
+        return _json({"detail": "Empty file"}, 400)
+    try:
+        result = migration_tools.datasheet_qa_payload(
+            filename=filename,
+            payload=payload,
+            question=question,
+            requested_mpn=str(form.get("mpn") or form.get("requested_mpn") or "").strip(),
+            manufacturer=str(form.get("manufacturer") or "").strip(),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _json({"detail": str(exc)}, 400)
+    status = 200 if result.get("ok") else 400
+    return _json(result, status)
+
+
+async def procurement_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = request.query_params.get("analysis_id") or None
+    try:
+        return _json(
+            migration_tools.procurement_payload(
+                workspace_id=ctx["workspace_id"], analysis_id=analysis_id
+            )
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+
+
+def _quote_report_part(report: dict[str, Any], mpn: str, manufacturer: str) -> dict[str, Any] | None:
+    """Resolve a requested BOM part without allowing client identity substitution."""
+    candidates = []
+    for raw in report.get("parts") or []:
+        if not isinstance(raw, dict):
+            continue
+        row_mpn = str(
+            raw.get("MPN") or raw.get("mpn") or raw.get("Part Number") or raw.get("part_number") or ""
+        ).strip()
+        if row_mpn.casefold() == mpn.casefold():
+            candidates.append(raw)
+    if not candidates:
+        return None
+    makers = {
+        str(row.get("Manufacturer") or row.get("manufacturer") or "").strip().casefold()
+        for row in candidates
+    }
+    makers.discard("")
+    if manufacturer:
+        return next(
+            (
+                row
+                for row in candidates
+                if str(row.get("Manufacturer") or row.get("manufacturer") or "").strip().casefold()
+                == manufacturer.casefold()
+            ),
+            None,
+        )
+    if len(makers) > 1:
+        raise ValueError("This MPN belongs to multiple manufacturers in the saved BOM; select the manufacturer.")
+    return candidates[0]
+
+
+def _quote_number(value: Any, label: str, *, positive: bool = True, integer: bool = False) -> float | int | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a number.") from exc
+    if not math.isfinite(number) or (number <= 0 if positive else number < 0):
+        raise ValueError(f"{label} must be greater than zero." if positive else f"{label} must be zero or greater.")
+    if integer and not number.is_integer():
+        raise ValueError(f"{label} must be a whole number.")
+    return int(number) if integer else number
+
+
+def _normalized_price_breaks(body: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_breaks = body.get("price_breaks")
+    if raw_breaks is None:
+        unit_price = body.get("unit_price")
+        break_quantity = body.get("price_break_quantity")
+        if unit_price in (None, "") and break_quantity in (None, ""):
+            return []
+        raw_breaks = [{"quantity": break_quantity or 1, "unit_price": unit_price}]
+    if not isinstance(raw_breaks, list) or len(raw_breaks) > 20:
+        raise ValueError("Enter no more than 20 price breaks.")
+    result: list[dict[str, Any]] = []
+    seen_quantities: set[int] = set()
+    for index, raw in enumerate(raw_breaks, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"Price break {index} is invalid.")
+        quantity = _quote_number(raw.get("quantity"), f"Price break {index} quantity", integer=True)
+        price = _quote_number(raw.get("unit_price"), f"Price break {index} unit price")
+        if quantity is None or price is None:
+            raise ValueError(f"Enter both quantity and unit price for price break {index}.")
+        if quantity in seen_quantities:
+            raise ValueError("Price break quantities must be unique.")
+        seen_quantities.add(quantity)
+        result.append({"quantity": quantity, "unit_price": price})
+    return sorted(result, key=lambda row: row["quantity"])
+
+
+def _valid_quote_url(value: Any) -> str:
+    url = str(value or "").strip()
+    if not url:
+        return ""
+    if len(url) > 2048:
+        raise ValueError("Source URL must be 2,048 characters or fewer.")
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Source URL must start with http:// or https://.")
+    return url
+
+
+async def procurement_quotes_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = (request.query_params.get("analysis_id") or "").strip()
+    requested_mpn = (request.query_params.get("mpn") or "").strip()
+    requested_manufacturer = (request.query_params.get("manufacturer") or "").strip()
+    if not analysis_id:
+        return _json({"detail": "Select a saved BOM analysis before loading quotes."}, 400)
+    try:
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
+        if not report:
+            return _json({"detail": "Report not found"}, 404)
+        if requested_mpn:
+            try:
+                part = _quote_report_part(report, requested_mpn, requested_manufacturer)
+            except ValueError as exc:
+                return _json({"detail": str(exc)}, 409)
+            if not part:
+                return _json({"detail": "Part not found in the selected saved BOM revision."}, 404)
+        quotes = get_store().list_procurement_quotes(
+            workspace_id=ctx["workspace_id"],
+            analysis_id=analysis_id,
+            requested_mpn=requested_mpn or None,
+            requested_manufacturer=requested_manufacturer or None,
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "analysis_id": analysis_id, "quotes": quotes})
+
+
+async def procurement_quotes_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Quote payload must be an object."}, 400)
+
+    analysis_id = str(body.get("analysis_id") or "").strip()
+    requested_mpn = str(body.get("requested_mpn") or "").strip()
+    requested_manufacturer = str(body.get("requested_manufacturer") or "").strip()
+    supplier = str(body.get("supplier") or "").strip()
+    offered_mpn = str(body.get("offered_mpn") or "").strip()
+    offered_manufacturer = str(body.get("offered_manufacturer") or "").strip()
+    currency = str(body.get("currency") or "").strip().upper()
+    quote_reference = str(body.get("quote_reference") or "").strip()
+    notes = str(body.get("notes") or "").strip()
+    if not analysis_id or not requested_mpn:
+        return _json({"detail": "Select a saved BOM analysis and part."}, 400)
+    if len(requested_mpn) > 160 or len(requested_manufacturer) > 160:
+        return _json({"detail": "Requested part identity is too long."}, 400)
+    if not supplier or len(supplier) > 120:
+        return _json({"detail": "Enter a supplier name (up to 120 characters)."}, 400)
+    if not offered_mpn or len(offered_mpn) > 160 or len(offered_manufacturer) > 160:
+        return _json({"detail": "Enter the quoted MPN and a manufacturer of 160 characters or fewer."}, 400)
+    if len(quote_reference) > 160 or len(notes) > 3000:
+        return _json({"detail": "Quote reference or notes exceed the allowed length."}, 400)
+    if currency and not re.fullmatch(r"[A-Z]{3}", currency):
+        return _json({"detail": "Currency must be a three-letter code such as USD."}, 400)
+
+    try:
+        price_breaks = _normalized_price_breaks(body)
+        if price_breaks and not currency:
+            raise ValueError("Choose a currency for the quoted prices.")
+        minimum_order_quantity = _quote_number(
+            body.get("minimum_order_quantity"), "Minimum order quantity", integer=True
+        )
+        pack_quantity = _quote_number(body.get("pack_quantity"), "Pack quantity", integer=True)
+        stock = _quote_number(body.get("stock"), "Available stock", positive=False, integer=True)
+        lead_time_weeks = _quote_number(body.get("lead_time_weeks"), "Lead time", positive=False)
+        valid_until = str(body.get("valid_until") or "").strip()
+        if valid_until:
+            from datetime import date
+
+            date.fromisoformat(valid_until)
+        source_url = _valid_quote_url(body.get("source_url"))
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
+
+    try:
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
+        if not report:
+            return _json({"detail": "Report not found"}, 404)
+        try:
+            requested_part = _quote_report_part(report, requested_mpn, requested_manufacturer)
+        except ValueError as exc:
+            return _json({"detail": str(exc)}, 409)
+        if not requested_part:
+            return _json({"detail": "Requested part does not match a part in this saved BOM revision."}, 400)
+        canonical_mpn = str(
+            requested_part.get("MPN") or requested_part.get("mpn") or requested_part.get("Part Number") or requested_mpn
+        ).strip()
+        canonical_manufacturer = str(
+            requested_part.get("Manufacturer") or requested_part.get("manufacturer") or ""
+        ).strip()
+        exact_mpn = offered_mpn.casefold() == canonical_mpn.casefold()
+        exact_manufacturer = bool(canonical_manufacturer) and (
+            offered_manufacturer.casefold() == canonical_manufacturer.casefold()
+        )
+        if exact_mpn and exact_manufacturer:
+            identity_status = "exact_part"
+        elif exact_mpn and (not canonical_manufacturer or not offered_manufacturer):
+            identity_status = "manufacturer_unconfirmed"
+        else:
+            identity_status = "alternate_candidate"
+        record = {
+            "analysis_id": analysis_id,
+            "project_name": report.get("project_name"),
+            "bom_name": report.get("bom_name") or report.get("filename"),
+            "revision": report.get("revision"),
+            "requested_mpn": canonical_mpn,
+            "requested_manufacturer": canonical_manufacturer,
+            "supplier": supplier,
+            "quote_reference": quote_reference,
+            "offered_mpn": offered_mpn,
+            "offered_manufacturer": offered_manufacturer,
+            "identity_status": identity_status,
+            "requires_engineering_review": identity_status != "exact_part",
+            "currency": currency,
+            "unit_price": price_breaks[0]["unit_price"] if price_breaks else None,
+            "price_break_quantity": price_breaks[0]["quantity"] if price_breaks else None,
+            "price_breaks": price_breaks,
+            "minimum_order_quantity": minimum_order_quantity,
+            "pack_quantity": pack_quantity,
+            "stock": stock,
+            "lead_time_weeks": lead_time_weeks,
+            "valid_until": valid_until,
+            "source_url": source_url,
+            "notes": notes,
+            "recorded_by": str(ctx.get("user_id") or ""),
+            "evidence_kind": "user_entered_supplier_quote",
+        }
+        saved = get_store().create_procurement_quote(
+            record, workspace_id=ctx["workspace_id"]
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "quote": saved}, 201)
+
+
+async def design_impact_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        return _json(
+            migration_tools.design_impact_payload(
+                workspace_id=ctx["workspace_id"],
+                analysis_id=request.query_params.get("analysis_id") or None,
+                selected_mpn=request.query_params.get("mpn") or "",
+            )
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+
+
+async def cost_optimization_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    qty = request.query_params.get("build_quantity") or "100"
+    try:
+        build_quantity = int(qty)
+    except ValueError:
+        build_quantity = 100
+    try:
+        return _json(
+            migration_tools.cost_optimization_payload(
+                workspace_id=ctx["workspace_id"],
+                analysis_id=request.query_params.get("analysis_id") or None,
+                build_quantity=build_quantity,
+            )
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+
+
+async def supply_risk_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    try:
+        return _json(
+            migration_tools.supply_risk_payload(
+                workspace_id=ctx["workspace_id"],
+                analysis_id=body.get("analysis_id") or None,
+                build_quantity=int(body.get("build_quantity") or 100),
+                stock_reduction_percent=int(body.get("stock_reduction_percent") or 25),
+                supplier_loss=int(body.get("supplier_loss") or 0),
+                demand_growth_percent=int(body.get("demand_growth_percent") or 0),
+                include_lifecycle_event=bool(body.get("include_lifecycle_event")),
+            )
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+
+
+async def portfolio_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    return _json(migration_tools.portfolio_payload(workspace_id=ctx["workspace_id"]))
+
+
+async def detailed_risk_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = request.query_params.get("analysis_id") or None
+    try:
+        return _json(
+            migration_tools.detailed_risk_payload(
+                workspace_id=ctx["workspace_id"], analysis_id=analysis_id
+            )
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+
+
+
+async def supplier_lookup_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    result = supplier_lookup.lookup_exact_part(str(body.get("mpn") or ""))
+    return _json(result)
+
+
+async def find_replacement_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    # Optional analysis_id is soft context only. Stale/inaccessible IDs must not
+    # 404 the search — find_replacement_payload degrades to standalone.
+    result = migration_tools.find_replacement_payload(
+        workspace_id=ctx["workspace_id"],
+        mpn=str(body.get("mpn") or body.get("part_number") or ""),
+        manufacturer=str(body.get("manufacturer") or ""),
+        analysis_id=body.get("analysis_id") or None,
+    )
+    status = 200 if result.get("ok") else 400
+    return _json(result, status)
+
+
+async def ask_cadivor_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    history = body.get("history") if isinstance(body.get("history"), list) else []
+    clean_history: list[dict[str, str]] = []
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip()
+        content = str(item.get("content") or item.get("text") or "").strip()
+        if role and content:
+            clean_history.append({"role": role, "content": content})
+    try:
+        result = migration_tools.ask_cadivor_payload(
+            workspace_id=ctx["workspace_id"],
+            analysis_id=str(body.get("analysis_id") or ""),
+            question=str(body.get("question") or ""),
+            history=clean_history,
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    status = 200 if result.get("ok") else 400
+    return _json(result, status)
+
+
+async def monitoring_preferences_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    return _json({
+        "ok": True,
+        "preferences": monitoring_store.get_user_preferences(
+            ctx["workspace_id"], ctx["user_id"], ctx["email"]
+        ),
+    })
+
+
+async def monitoring_preferences_put(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Expected a JSON object."}, 400)
+    if "supplier_checks" in body and not isinstance(body["supplier_checks"], bool):
+        return _json({"detail": "supplier_checks must be true or false."}, 400)
+    if body.get("supplier_checks") is True:
+        plan = plan_limits.effective_plan(ctx)
+        base_limit = plan.get("monitored_parts_limit")
+        desired_parts = sum(
+            max(0, int(row.get("total_parts") or 0))
+            for row in get_store().list_monitoring_analyses()
+            if str(row.get("workspace_id") or "") == str(ctx["workspace_id"])
+        )
+        if base_limit is None:
+            monitoring_store.set_workspace_monitoring_capacity(ctx["workspace_id"], None)
+        else:
+            over_limit = max(0, desired_parts - max(0, int(base_limit)))
+            if over_limit:
+                token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+                try:
+                    allocation, allocation_status = subscription_billing_service.request_action(
+                        access_token=token,
+                        action="allocate_monitored_part_credits",
+                        payload={
+                            "workspace_id": ctx["workspace_id"],
+                            "required_credits": over_limit,
+                        },
+                        origin=request.headers.get("origin", ""),
+                        timeout_seconds=8,
+                        internal_context={
+                            "user_id": str(ctx["user_id"]),
+                            "workspace_id": str(ctx["workspace_id"]),
+                        },
+                    )
+                except subscription_billing_service.SubscriptionBillingError:
+                    return _json({"detail": "Monitoring capacity could not be confirmed. Try again shortly."}, 503)
+                if allocation_status != 200 or allocation.get("allocated") is not True:
+                    return _json({
+                        "code": "monitored_parts_limit",
+                        "detail": (
+                            f"This workspace has {desired_parts:,} component slots to monitor, above the "
+                            f"included limit of {int(base_limit):,}. Buy a monitored parts pack or remove analyses "
+                            "from monitoring before enabling scheduled checks."
+                        ),
+                        "required_overage_credits": over_limit,
+                    }, 402)
+            monitoring_store.set_workspace_monitoring_capacity(
+                ctx["workspace_id"],
+                max(max(0, int(base_limit)), desired_parts),
+            )
+    try:
+        prefs = monitoring_store.update_user_preferences(
+            ctx["workspace_id"],
+            ctx["user_id"],
+            ctx["email"],
+            body if isinstance(body, dict) else {},
+        )
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
+    if body.get("supplier_checks") is False and not any(
+        row.get("workspace_id") == ctx["workspace_id"]
+        for row in monitoring_store.list_user_preferences(supplier_checks=True)
+    ):
+        monitoring_store.set_workspace_monitoring_capacity(ctx["workspace_id"], 0)
+    return _json({"ok": True, "preferences": prefs})
+
+
+async def monitoring_slack_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        team_service.require_admin(ctx)
+        can_manage = True
+    except TeamError:
+        can_manage = False
+    return _json({
+        "ok": True,
+        "integration": {
+            **monitoring_store.get_workspace_slack_integration(ctx["workspace_id"]),
+            "can_manage": can_manage,
+        },
+    })
+
+
+async def monitoring_slack_put(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        team_service.require_admin(ctx)
+    except TeamError as exc:
+        return _team_error(exc)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
+        return _json({"detail": "enabled must be true or false."}, 400)
+    webhook_url = str(body.get("webhook_url") or "").strip()
+    clear = body.get("clear") is True
+    if clear and webhook_url:
+        return _json({"detail": "Clear the saved Slack connection or replace it, not both."}, 400)
+    replace_webhook = bool(webhook_url or clear)
+    encrypted: str | None = None
+    if webhook_url:
+        try:
+            encrypted = slack_notifications.encrypt_webhook_url(webhook_url)
+        except slack_notifications.SlackConfigurationError as exc:
+            return _json({"detail": str(exc)}, 400)
+    current = monitoring_store.get_workspace_slack_integration(ctx["workspace_id"])
+    configured_after = False if clear else (bool(encrypted) or bool(current.get("configured")))
+    if body["enabled"] and not configured_after:
+        return _json({"detail": "Add a Slack incoming webhook URL before enabling Slack alerts."}, 400)
+    if body["enabled"] and not current.get("encryption_ready"):
+        return _json({"detail": "Slack webhook encryption is not configured on Cadivor."}, 503)
+    try:
+        integration = monitoring_store.set_workspace_slack_integration(
+            ctx["workspace_id"],
+            enabled=bool(body["enabled"]) and not clear,
+            webhook_ciphertext=encrypted,
+            replace_webhook=replace_webhook,
+        )
+    except Exception:  # noqa: BLE001
+        logging.exception("monitoring_slack_integration_update_failed")
+        return _json({"detail": "Slack alerts could not be updated."}, 503)
+    return _json({"ok": True, "integration": {**integration, "can_manage": True}})
+
+
+async def monitoring_alerts_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = (request.query_params.get("analysis_id") or "").strip() or None
+    return _json(
+        {
+            "ok": True,
+            "analysis_id": analysis_id,
+            "alerts": monitoring_store.list_alerts(
+                ctx["workspace_id"], analysis_id=analysis_id
+            ),
+            "refresh_history": monitoring_store.list_refresh_history(ctx["workspace_id"]),
+            "preferences": monitoring_store.get_user_preferences(
+                ctx["workspace_id"], ctx["user_id"], ctx["email"]
+            ),
+        }
+    )
+
+
+async def monitoring_acknowledge_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    alert = monitoring_store.acknowledge_alert(ctx["workspace_id"], str(body.get("alert_id") or ""))
+    if not alert:
+        return _json({"detail": "Alert not found"}, 404)
+    return _json({"ok": True, "alert": alert})
+
+
+async def monitoring_notify_post(request: Request) -> JSONResponse:
+    """Explicit email notification action — never implied by refresh or page GET.
+
+    Requires a specific ``alert_id`` owned by the caller's workspace. Delivery
+    still respects preference and ``CADIVOR_MONITORING_EMAIL_ENABLED`` gates.
+    """
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    alert_id = str((body or {}).get("alert_id") or "").strip()
+    if not alert_id:
+        return _json(
+            {
+                "detail": (
+                    "alert_id is required. Refresh never sends email — "
+                    "Notify is the explicit delivery action."
+                )
+            },
+            400,
+        )
+    alerts = monitoring_store.list_alerts(ctx["workspace_id"])
+    alert = next((a for a in alerts if str(a.get("id") or "") == alert_id), None)
+    if not alert:
+        return _json({"detail": "Alert not found"}, 404)
+    if alert.get("active") is False or str(alert.get("status") or "").lower() == "inactive":
+        return _json({"detail": "Alert is inactive and cannot be notified"}, 409)
+    result = monitoring_store.deliver_alert_email(
+        ctx["workspace_id"],
+        alert,
+        user_id=ctx["user_id"],
+        recipient_email=ctx["email"],
+    )
+    return _json({**result, "explicit_notify": True, "alert_id": alert_id})
+
+
+async def plan_usage_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    return _json({"ok": True, **plan_limits.usage_snapshot(ctx["workspace_id"], ctx)})
+
+
+async def billing_status_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="status",
+            origin=request.headers.get("origin", ""),
+        )
+        if status < 200 or status >= 300:
+            raise subscription_billing_service.SubscriptionBillingError("Billing status unavailable")
+    except subscription_billing_service.SubscriptionBillingError:
+        result = {
+            "ok": False,
+            "checkout_enabled": False,
+            "charges_created": False,
+            "has_active_subscription": False,
+            "can_manage_billing": False,
+            "stripe_mode": "unavailable",
+            "plans": [],
+            "gap": "Plan billing is temporarily unavailable. Please try again or contact support.",
+        }
+    result["plan_catalog"] = billing_prep.plan_catalog()
+    return _json(result)
+
+
+async def billing_checkout_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="checkout",
+            payload={
+                "plan": body.get("plan") or body.get("plan_token") or "",
+                "billing_interval": body.get("billing_interval") or "month",
+            },
+            origin=request.headers.get("origin", ""),
+        )
+    except subscription_billing_service.SubscriptionBillingError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
+
+
+async def billing_professional_api_addon_checkout_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="professional_api_addon_checkout",
+            origin=request.headers.get("origin", ""),
+        )
+    except subscription_billing_service.SubscriptionBillingError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
+
+
+async def billing_usage_overage_checkout_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid request"}, 400)
+    kind = str(body.get("credit_kind") or "").strip()
+    if kind not in {"bom_analysis", "monitored_part"}:
+        return _json({"detail": "Choose a supported usage pack."}, 400)
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="usage_overage_checkout",
+            payload={"credit_kind": kind},
+            origin=request.headers.get("origin", ""),
+        )
+    except subscription_billing_service.SubscriptionBillingError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
+
+
+def _developer_api_entitled(ctx: dict[str, Any]) -> bool:
+    return bool(plan_limits.effective_plan(ctx).get("api_access"))
+
+
+async def developer_api_keys_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not _developer_api_entitled(ctx):
+        return _json({"detail": "Developer API access is not active for this account."}, 403)
+    try:
+        team_service.require_admin(ctx)
+        result, status = subscription_billing_service.request_action(
+            access_token=ctx["access_token"],
+            action="developer_api_keys_list",
+            payload={"workspace_id": ctx["workspace_id"]},
+            timeout_seconds=8,
+            internal_context={
+                "user_id": str(ctx["user_id"]),
+                "workspace_id": str(ctx["workspace_id"]),
+            },
+        )
+    except TeamError as exc:
+        return _team_error(exc)
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Developer API settings are temporarily unavailable."}, 503)
+    if status != 200:
+        return _json({"detail": result.get("detail") or "Developer API keys could not be loaded."}, status)
+    return JSONResponse(
+        {"ok": True, "keys": result.get("keys") or []},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def developer_api_keys_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not _developer_api_entitled(ctx):
+        return _json({"detail": "Developer API access is not active for this account."}, 403)
+    try:
+        team_service.require_admin(ctx)
+    except TeamError as exc:
+        return _team_error(exc)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON"}, 400)
+    name = " ".join(str(body.get("name") or "").split())
+    if not name or len(name) > 80:
+        return _json({"detail": "Enter an API key name of 1 to 80 characters."}, 400)
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=ctx["access_token"],
+            action="developer_api_key_create",
+            payload={"workspace_id": ctx["workspace_id"], "name": name},
+            origin=request.headers.get("origin", ""),
+            timeout_seconds=8,
+            internal_context={
+                "user_id": str(ctx["user_id"]),
+                "workspace_id": str(ctx["workspace_id"]),
+            },
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Developer API settings are temporarily unavailable."}, 503)
+    if status != 201 or not isinstance(result.get("key"), dict):
+        return _json({"detail": result.get("detail") or "API key could not be created."}, status or 503)
+    return JSONResponse(
+        {"ok": True, "key": result["key"]},
+        status_code=201,
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
+async def developer_api_key_delete(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not _developer_api_entitled(ctx):
+        return _json({"detail": "Developer API access is not active for this account."}, 403)
+    try:
+        team_service.require_admin(ctx)
+    except TeamError as exc:
+        return _team_error(exc)
+    key_id = str(request.path_params.get("key_id") or "").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=ctx["access_token"],
+            action="developer_api_key_revoke",
+            payload={"workspace_id": ctx["workspace_id"], "key_id": key_id},
+            timeout_seconds=8,
+            internal_context={
+                "user_id": str(ctx["user_id"]),
+                "workspace_id": str(ctx["workspace_id"]),
+            },
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Developer API settings are temporarily unavailable."}, 503)
+    if status != 200:
+        return _json({"detail": result.get("detail") or "API key could not be revoked."}, status)
+    return _json({"ok": True, "revoked": True})
+
+
+def _developer_webhook_admin_context(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return None, denied or _json({"detail": "Unauthorized"}, 401)
+    if not _developer_api_entitled(ctx):
+        return None, _json({"detail": "Developer API access is not active for this account."}, 403)
+    try:
+        team_service.require_admin(ctx)
+    except TeamError as exc:
+        return None, _team_error(exc)
+    return ctx, None
+
+
+async def developer_webhooks_get(request: Request) -> JSONResponse:
+    ctx, denied = _developer_webhook_admin_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        store = get_store()
+        rows, deliveries = await run_in_threadpool(
+            lambda: (
+                store.list_developer_webhooks(ctx["workspace_id"]),
+                store.list_developer_webhook_deliveries(ctx["workspace_id"], limit=50),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("developer_webhooks_load_failed exception=%s", type(exc).__name__)
+        return _json({"detail": "Webhook settings are temporarily unavailable."}, 503)
+    return JSONResponse(
+        {
+            "ok": True,
+            "encryption_configured": developer_webhooks.encryption_key_configured(),
+            "allowed_event_types": developer_webhooks.allowed_event_types(),
+            "webhooks": [developer_webhooks.public_webhook(row) for row in rows],
+            "deliveries": deliveries,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def developer_webhooks_post(request: Request) -> JSONResponse:
+    ctx, denied = _developer_webhook_admin_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not developer_webhooks.encryption_key_configured():
+        return _json({"detail": "Webhook encryption is not configured on the Cadivor API service."}, 503)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON"}, 400)
+    try:
+        prepared, signing_secret = developer_webhooks.prepare_webhook(
+            workspace_id=ctx["workspace_id"],
+            created_by=ctx["user_id"],
+            name=str(body.get("name") or ""),
+            url=str(body.get("url") or ""),
+            event_types=body.get("event_types"),
+        )
+    except developer_webhooks.DeveloperWebhookError as exc:
+        return _json({"detail": str(exc)}, 400 if "not configured" not in str(exc).lower() else 503)
+    try:
+        saved = await run_in_threadpool(get_store().create_developer_webhook, prepared)
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("developer_webhook_create_failed exception=%s", type(exc).__name__)
+        return _json({"detail": "Webhook could not be saved."}, 503)
+    return JSONResponse(
+        {"ok": True, "webhook": developer_webhooks.public_webhook(saved), "signing_secret": signing_secret},
+        status_code=201,
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
+async def developer_webhook_delete(request: Request) -> JSONResponse:
+    ctx, denied = _developer_webhook_admin_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    webhook_id = str(request.path_params.get("webhook_id") or "").strip()
+    try:
+        removed = await run_in_threadpool(
+            get_store().delete_developer_webhook, ctx["workspace_id"], webhook_id
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("developer_webhook_delete_failed exception=%s", type(exc).__name__)
+        return _json({"detail": "Webhook could not be removed."}, 503)
+    if not removed:
+        return _json({"detail": "Webhook not found."}, 404)
+    return _json({"ok": True, "removed": True})
+
+
+async def developer_webhook_test_post(request: Request) -> JSONResponse:
+    ctx, denied = _developer_webhook_admin_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    webhook_id = str(request.path_params.get("webhook_id") or "").strip()
+    store = get_store()
+    try:
+        hook = await run_in_threadpool(
+            store.get_developer_webhook, ctx["workspace_id"], webhook_id
+        )
+        if not hook or hook.get("active") is not True:
+            return _json({"detail": "Webhook not found."}, 404)
+        queued = await run_in_threadpool(
+            developer_webhooks.queue_event,
+            store,
+            workspace_id=ctx["workspace_id"],
+            webhook_id=webhook_id,
+            event_type="webhook.test",
+            data={"message": "Cadivor webhook test delivery."},
+        )
+        if not queued.get("queued"):
+            return _json({"detail": "The test delivery could not be queued."}, 409)
+        delivery_counts = await run_in_threadpool(
+            developer_webhooks.dispatch_due, store,
+            workspace_id=ctx["workspace_id"], webhook_id=webhook_id, limit=20,
+        )
+        delivery = await run_in_threadpool(
+            store.get_developer_webhook_delivery,
+            ctx["workspace_id"], webhook_id, queued["event_id"],
+        )
+    except developer_webhooks.DeveloperWebhookError as exc:
+        return _json({"detail": str(exc)}, 400)
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("developer_webhook_test_failed exception=%s", type(exc).__name__)
+        return _json({"detail": "Webhook test could not be delivered."}, 503)
+    return _json({
+        "ok": True,
+        "delivery": delivery or {},
+        "dispatch": delivery_counts,
+    })
+
+
+async def _developer_api_key_context(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+    authorization = str(request.headers.get("authorization") or "")
+    candidate = authorization.removeprefix("Bearer ").strip() if authorization.startswith("Bearer ") else ""
+    api_key = candidate or str(request.headers.get("x-api-key") or "").strip()
+    if not api_key or not api_key.startswith("cdv_live_"):
+        return None, _json({"detail": "A valid Cadivor API key is required."}, 401)
+    try:
+        result, status = subscription_billing_service.request_public_action(
+            action="developer_api_key_resolve",
+            payload={"api_key": api_key},
+            timeout_seconds=5,
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return None, _json({"detail": "Developer API authentication is temporarily unavailable."}, 503)
+    if status != 200 or result.get("ok") is not True:
+        code = status if status in {401, 403} else 503
+        return None, _json({"detail": result.get("detail") or "API key could not be verified."}, code)
+    user_id = str(result.get("user_id") or "").strip()
+    workspace_id = str(result.get("workspace_id") or "").strip()
+    key_id = str(result.get("key_id") or "").strip()
+    if not user_id or not workspace_id or not key_id:
+        return None, _json({"detail": "API key could not be verified."}, 401)
+    try:
+        membership = get_auth_store().membership_for_user_workspace(user_id, workspace_id)
+    except Exception:  # noqa: BLE001
+        return None, _json({"detail": "Workspace access could not be checked."}, 503)
+    if not membership:
+        return None, _json({"detail": "This API key no longer has active workspace access."}, 403)
+    if _throttled(request, "developer-api", limit=180, window=60, identity=key_id):
+        return None, _json({"detail": "API request rate limit reached. Retry shortly."}, 429)
+    credits = result.get("usage_credits")
+    ctx: dict[str, Any] = {
+        "user_id": user_id,
+        "workspace_id": workspace_id,
+        "key_id": key_id,
+        "plan": str(result.get("plan") or "Subscription inactive"),
+        "trial_status": result.get("trial_status"),
+        "api_access_addon_active": result.get("api_access_addon_active") is True,
+        "usage_credits": credits if isinstance(credits, dict) else {},
+    }
+    ctx["entitlement_overrides"] = plan_limits.account_feature_overrides(user_id)
+    return ctx, None
+
+
+async def developer_api_reports_get(request: Request) -> JSONResponse:
+    ctx, denied = await _developer_api_key_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        limit = int(request.query_params.get("limit") or 25)
+    except ValueError:
+        limit = 25
+    if limit < 1 or limit > 100:
+        return _json({"detail": "limit must be between 1 and 100."}, 400)
+    try:
+        offset = int(request.query_params.get("offset") or 0)
+    except ValueError:
+        offset = 0
+    if offset < 0 or offset > 100_000:
+        return _json({"detail": "offset must be between 0 and 100000."}, 400)
+    try:
+        rows = customer_visible_analyses(
+            list_reports(workspace_id=ctx["workspace_id"]),
+            production=is_production_runtime(),
+        )
+    except PersistenceNotConfiguredError:
+        return _json({"detail": "Report storage is unavailable."}, 503)
+    summaries = [
+        {
+            key: row.get(key)
+            for key in (
+                "id", "analysis_id", "created_at", "project_name", "bom_name",
+                "revision", "total_parts", "health_score", "health_status",
+                "high_risk_count", "medium_risk_count", "low_risk_count", "mode",
+            )
+            if key in row
+        }
+        for row in rows[offset : offset + limit]
+    ]
+    next_offset = offset + len(summaries)
+    return _json({
+        "ok": True,
+        "reports": summaries,
+        "limit": limit,
+        "offset": offset,
+        "total": len(rows),
+        "next_offset": next_offset if next_offset < len(rows) else None,
+    })
+
+
+async def developer_api_report_get(request: Request) -> JSONResponse:
+    ctx, denied = await _developer_api_key_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = str(request.path_params.get("analysis_id") or "").strip()
+    try:
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
+    except (WorkspaceAccessError, PersistenceNotConfiguredError):
+        report = None
+    if not report:
+        return _json({"detail": "Report not found."}, 404)
+    return JSONResponse(
+        {"ok": True, "report": annotate_report_parts(report)},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def billing_portal_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="portal",
+            origin=request.headers.get("origin", ""),
+        )
+    except subscription_billing_service.SubscriptionBillingError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
+
+
+async def billing_checkout_prep_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    result = billing_prep.prepare_checkout_intent(
+        workspace_id=ctx["workspace_id"],
+        plan_token=str(body.get("plan") or body.get("plan_token") or ""),
+        user_id=ctx["user_id"],
+    )
+    status = 200 if result.get("ok") else 409
+    return _json(result, status)
+
+
+async def billing_public_catalog_get(request: Request) -> JSONResponse:
+    """Expose only public plan prices for the marketing pricing page."""
+    try:
+        result, status = subscription_billing_service.request_public_catalog()
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"ok": False, "detail": "Pricing is temporarily unavailable."}, 503)
+    if status < 200 or status >= 300 or result.get("ok") is not True:
+        return _json({"ok": False, "detail": "Pricing is temporarily unavailable."}, 503)
+
+    raw_plans = result.get("plans")
+    if not isinstance(raw_plans, list):
+        return _json({"ok": False, "detail": "Pricing is temporarily unavailable."}, 503)
+    plans = []
+    for value in raw_plans:
+        if not isinstance(value, dict):
+            continue
+        annual = value.get("annual") if isinstance(value.get("annual"), dict) else {}
+        plans.append(
+            {
+                "name": str(value.get("name") or ""),
+                "token": str(value.get("token") or ""),
+                "enabled": value.get("enabled") is True,
+                "amount": value.get("amount") if isinstance(value.get("amount"), int) else None,
+                "currency": str(value.get("currency") or ""),
+                "interval": str(value.get("interval") or ""),
+                "annual": {
+                    "enabled": annual.get("enabled") is True,
+                    "amount": annual.get("amount") if isinstance(annual.get("amount"), int) else None,
+                    "currency": str(annual.get("currency") or ""),
+                    "interval": str(annual.get("interval") or ""),
+                    "discount_percent": annual.get("discount_percent")
+                    if isinstance(annual.get("discount_percent"), (int, float))
+                    else None,
+                },
+            }
+        )
+    response = _json({"ok": True, "plans": plans}, 200)
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return response
+
+
+async def one_time_report_status_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        result, status = one_time_report_service.request_action(
+            access_token=request.headers.get("authorization", "").removeprefix("Bearer ").strip(),
+            action="status",
+        )
+    except one_time_report_service.OneTimeReportServiceError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
+
+
+async def one_time_report_checkout_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        result, status = one_time_report_service.request_action(
+            access_token=request.headers.get("authorization", "").removeprefix("Bearer ").strip(),
+            action="checkout",
+        )
+    except one_time_report_service.OneTimeReportServiceError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    return _json(result, status)
+
+
+async def connectors_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    return _json(connectors.connector_status_payload())
+
+
+def _subscription_billing_readiness(
+    *, access_token: str, origin: str = ""
+) -> dict[str, Any]:
+    """Report readiness from the Stripe integration the app actually uses.
+
+    ``billing_prep`` only describes the unused migration checkout prototype.
+    Settings plan changes and the billing portal route through the Supabase
+    ``subscription-checkout`` Edge Function, so readiness must probe that path.
+    """
+    try:
+        result, status_code = subscription_billing_service.request_action(
+            access_token=access_token,
+            action="status",
+            origin=origin,
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return {
+            "status": "unknown",
+            "enabled": False,
+            "gap": "Stripe billing status could not be reached.",
+        }
+
+    if status_code < 200 or status_code >= 300 or result.get("ok") is not True:
+        return {
+            "status": "unknown",
+            "enabled": False,
+            "gap": "Stripe billing status could not be verified.",
+        }
+
+    checkout_enabled = result.get("checkout_enabled") is True
+    can_manage_billing = result.get("can_manage_billing") is True
+    status = (
+        "ready"
+        if checkout_enabled
+        else "partial"
+        if can_manage_billing
+        else "not_connected"
+    )
+    enabled_plans = sum(
+        1
+        for plan in (result.get("plans") or [])
+        if isinstance(plan, dict) and plan.get("enabled") is True
+    )
+    return {
+        "status": status,
+        "enabled": checkout_enabled,
+        "stripe_mode": result.get("stripe_mode"),
+        "enabled_plan_count": enabled_plans,
+        "can_manage_billing": can_manage_billing,
+        "gap": None if checkout_enabled else result.get("gap"),
+    }
+
+
+async def service_readiness_get(request: Request) -> JSONResponse:
+    """Authenticated readiness for Settings: email, scheduler, connectors, billing.
 
     Status values reflect operational capability, not enable flags alone.
     Does not infer monitoring-email state from billing or plan-usage payloads.
