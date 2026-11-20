@@ -2488,7 +2488,7 @@ button {
 /* BOM Analyzer: align the upload workflow with the approved two-column mockup. */
 .cv-bom-workspace-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.04fr) minmax(320px, 0.96fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
   align-items: start;
   gap: 16px;
 }
@@ -2561,7 +2561,19 @@ button {
   margin: 0 auto 12px;
 }
 
+.cv-bom-upload-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .cv-bom-clear-button {
+  white-space: nowrap;
+}
+
+.cv-bom-sample-button {
   white-space: nowrap;
 }
 
@@ -2638,8 +2650,7 @@ button {
   font-size: 15px;
 }
 
-.cv-bom-checklist,
-.cv-bom-recent-list {
+.cv-bom-checklist {
   list-style: none;
   padding: 0;
   margin: 14px 0 0;
@@ -2670,6 +2681,12 @@ button {
   height: 17px;
 }
 
+.cv-bom-check-number {
+  color: #356fd1;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .cv-bom-checklist strong,
 .cv-bom-checklist small {
   display: block;
@@ -2677,14 +2694,14 @@ button {
 
 .cv-bom-checklist strong {
   color: #344963;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 760;
 }
 
 .cv-bom-checklist small {
   margin-top: 4px;
-  color: #8491a4;
-  font-size: 10px;
+  color: #73829a;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -2704,53 +2721,88 @@ button {
   text-decoration: underline;
 }
 
-.cv-bom-recent-list li + li {
-  border-top: 1px solid #e8edf5;
+.cv-bom-recent-table-wrap {
+  margin-top: 14px;
+  overflow-x: auto;
+  border: 1px solid #dce5f1;
+  border-radius: 12px;
+  background: #fff;
 }
 
-.cv-bom-recent-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 0;
+.cv-bom-recent-table {
+  width: 100%;
+  min-width: 500px;
+  border-collapse: collapse;
+  table-layout: fixed;
 }
 
-.cv-bom-recent-list li:first-child .cv-bom-recent-link {
-  padding-top: 0;
+.cv-bom-recent-table th {
+  padding: 10px 11px;
+  background: #f6f8fb;
+  color: #5d6f87;
+  font-size: 11px;
+  font-weight: 760;
+  text-align: left;
+  white-space: nowrap;
 }
 
-.cv-bom-recent-list li:last-child .cv-bom-recent-link {
-  padding-bottom: 0;
+.cv-bom-recent-table td {
+  padding: 11px;
+  border-top: 1px solid #e6edf5;
+  color: #344963;
+  font-size: 12px;
+  vertical-align: middle;
 }
 
-.cv-bom-recent-copy {
-  display: block;
-  min-width: 0;
-}
+.cv-bom-recent-table th:nth-child(1) { width: 34%; }
+.cv-bom-recent-table th:nth-child(2) { width: 24%; }
+.cv-bom-recent-table th:nth-child(3) { width: 16%; }
+.cv-bom-recent-table th:nth-child(4) { width: 26%; }
 
-.cv-bom-recent-copy strong,
-.cv-bom-recent-copy small {
+.cv-bom-recent-file,
+.cv-bom-recent-project {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.cv-bom-recent-copy strong {
-  color: #344963;
+.cv-bom-recent-file {
+  color: #172c49;
+  font-weight: 720;
+}
+
+.cv-bom-recent-file:hover {
+  color: #2463df;
+  text-decoration: underline;
+}
+
+.cv-bom-recent-badge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 4px 9px;
+  border-radius: 999px;
   font-size: 11px;
-  font-weight: 760;
+  font-weight: 750;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 
-.cv-bom-recent-copy small {
-  margin-top: 4px;
-  color: #8794a7;
-  font-size: 10px;
+.cv-bom-recent-badge.is-health,
+.cv-bom-recent-badge.is-review {
+  background: #fff5df;
+  color: #a85b00;
 }
 
-.cv-bom-recent-link > .cv-button {
-  flex: none;
+.cv-bom-recent-badge.is-muted {
+  background: #eef2f7;
+  color: #5e6d81;
+}
+
+.cv-bom-recent-badge.is-complete {
+  background: #e6f8f0;
+  color: #07865e;
 }
 
 .cv-bom-recent-state {
@@ -2939,7 +2991,7 @@ button {
   align-items: center;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 960px) {
   .cv-bom-workspace-grid {
     grid-template-columns: minmax(0, 1fr);
   }
