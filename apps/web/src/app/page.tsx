@@ -18,6 +18,7 @@ type HomePayload = {
   projects: Array<Record<string, unknown>>;
   recent_analyses: Array<Record<string, unknown>>;
   priority_risks: Array<Record<string, unknown>>;
+  priority_severity_counts?: Record<string, number>;
   next_actions: Array<Record<string, unknown>>;
 };
 
@@ -43,7 +44,7 @@ export default function HomePage() {
   const metrics = data?.metrics || {};
   const projects = data?.projects || [];
   const priorityRisks = data?.priority_risks || [];
-  const homeListPreviewLimit = 5;
+  const homeListPreviewLimit = 3;
   const visibleProjects = showAllProjects
     ? projects
     : projects.slice(0, homeListPreviewLimit);
@@ -58,6 +59,15 @@ export default function HomePage() {
     latest?.health_score == null
       ? null
       : Math.round(Number(latest.health_score));
+  const priorityTotal = Number(metrics.priority_items ?? priorityRisks.length);
+  const prioritySeverityCounts = data?.priority_severity_counts || {};
+  const severityLegend = [
+    { key: "critical", label: "Critical" },
+    { key: "high", label: "High" },
+    { key: "medium", label: "Medium" },
+    { key: "needs_verification", label: "Needs verification" },
+  ].map((item) => ({ ...item, count: Number(prioritySeverityCounts[item.key] || 0) }));
+  const severityTotal = severityLegend.reduce((sum, item) => sum + item.count, 0);
 
   return (
     <Shell session={session}>
@@ -125,37 +135,51 @@ export default function HomePage() {
             </div> : null}
           </section>
 
-          {hasSaved ? <>
-            <div className="cv-section-heading">
-              <div>
-                <h2>At a glance</h2>
-                <p>Counts from saved projects and analyses in this workspace.</p>
-              </div>
-              <span className="cv-data-note">Current workspace</span>
+          <div className="cv-section-heading">
+            <div>
+              <h2>At a glance</h2>
+              <p>Click a metric to open its related workspace details.</p>
             </div>
-            <div className="cv-kpis">
-            <KpiCard
-              icon="portfolio"
-              tone="blue"
-              label="Active projects"
-              value={hasSaved ? metrics.active_projects ?? 0 : "—"}
-              detail={hasSaved ? "Reopenable after reload" : "Upload a BOM"}
-            />
-            <KpiCard
-              icon="box"
-              label="Saved BOMs"
-              value={hasSaved ? metrics.saved_boms ?? 0 : "—"}
-              detail={hasSaved ? "With revisions" : "Awaiting data"}
-            />
-            <KpiCard
-              icon="risk"
-              tone="amber"
-              label="Priority risk items"
-              value={hasSaved ? metrics.priority_items ?? 0 : "—"}
-              detail={hasSaved ? "High or rolled-up risk signals" : "After your first save"}
-            />
-            </div>
-          </> : null}
+            <span className="cv-data-note">Current workspace</span>
+          </div>
+          <div className="cv-kpis cv-home-kpis">
+            <Link
+              className="cv-home-kpi-link is-red"
+              href="#priority-queue"
+              aria-label={`View ${Number(metrics.open_blockers || 0)} open blockers in the priority queue`}
+            >
+              <KpiCard
+                icon="risk"
+                label="Open blockers"
+                value={metrics.open_blockers ?? 0}
+                detail="Critical and high priority findings"
+              />
+            </Link>
+            <Link
+              className="cv-home-kpi-link"
+              href={hasSaved ? "#home-active-projects-list" : "/bom-analyzer"}
+              aria-label={`View ${Number(metrics.saved_boms || 0)} saved BOMs`}
+            >
+              <KpiCard
+                icon="box"
+                label="Saved BOMs"
+                value={metrics.saved_boms ?? 0}
+                detail={hasSaved ? "Saved in this workspace" : "Analyze a BOM to get started"}
+              />
+            </Link>
+            <Link
+              className="cv-home-kpi-link is-blue"
+              href="/engineering-decisions"
+              aria-label={`Review ${Number(metrics.awaiting_approvals || 0)} approvals awaiting a response`}
+            >
+              <KpiCard
+                icon="check"
+                label="Awaiting approvals"
+                value={metrics.awaiting_approvals ?? 0}
+                detail="Pending approver decisions"
+              />
+            </Link>
+          </div>
 
           <div className="cv-home-grid">
             <section className="cv-card pad">
@@ -242,48 +266,77 @@ export default function HomePage() {
               )}
             </section>
 
-            <section className="cv-card pad">
-              <div className="cv-home-panel-heading">
+            <section className="cv-card pad cv-priority-panel" id="priority-queue">
+              <div className="cv-priority-heading">
                 <div className="cv-home-panel-copy">
                   <h3 className="cv-card-title">Priority queue</h3>
                   <p className="cv-card-subtitle">
-                    Ranked, evidence-linked risks from saved analyses in this
-                    workspace.
+                    Ranked, evidence-linked risks from saved analyses in this workspace.
                   </p>
                 </div>
-                {priorityRisks.length > homeListPreviewLimit ? (
-                  <button
-                    type="button"
-                    className="cv-button small cv-home-view-toggle"
-                    aria-expanded={showAllPriorityRisks}
-                    aria-controls="home-priority-risks-list"
-                    onClick={() => setShowAllPriorityRisks((showAll) => !showAll)}
-                  >
-                    {showAllPriorityRisks ? "Show fewer" : `View all ${priorityRisks.length}`}
-                  </button>
-                ) : null}
+                <div className="cv-priority-actions">
+                  <span className="cv-priority-count">
+                    {priorityTotal} active {priorityTotal === 1 ? "signal" : "signals"}
+                  </span>
+                  {priorityRisks.length > homeListPreviewLimit ? (
+                    <button
+                      type="button"
+                      className="cv-button small cv-home-view-toggle"
+                      aria-expanded={showAllPriorityRisks}
+                      aria-controls="home-priority-risks-list"
+                      onClick={() => setShowAllPriorityRisks((showAll) => !showAll)}
+                    >
+                      {showAllPriorityRisks ? "Show fewer" : `View all ${priorityRisks.length}`}
+                    </button>
+                  ) : null}
+                </div>
               </div>
+              {severityTotal > 0 ? (
+                <div className="cv-priority-summary" aria-label="Priority queue severity breakdown">
+                  <div className="cv-priority-bar" aria-hidden="true">
+                    {severityLegend.map((item) => (
+                      <span
+                        className={`cv-priority-segment ${item.key}`}
+                        key={item.key}
+                        style={{ flexBasis: `${(item.count / severityTotal) * 100}%` }}
+                      />
+                    ))}
+                  </div>
+                  <div className="cv-priority-legend">
+                    {severityLegend.filter((item) => item.count > 0).map((item) => (
+                      <span className={item.key} key={item.key}>
+                        {item.label} <strong>{item.count}</strong>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               {priorityRisks.length ? (
                 <>
                   <div className="cv-priority-list" id="home-priority-risks-list">
                     {visiblePriorityRisks.map((item, index) => {
-                      const high =
-                        String(item.risk_level || "").toLowerCase() === "high";
+                      const level = String(item.risk_level || "Needs verification");
+                      const normalizedLevel = level.toLowerCase();
+                      const severity = normalizedLevel.includes("critical")
+                        ? "critical"
+                        : normalizedLevel.includes("high")
+                          ? "high"
+                          : normalizedLevel.includes("medium")
+                            ? "medium"
+                            : "needs_verification";
                       return (
                         <div className="cv-priority-row" key={index}>
-                          <div
-                            className={`cv-priority-index${high ? "" : " amber"}`}
-                          >
-                            {String(index + 1).padStart(2, "0")}
-                          </div>
+                          <span className={`cv-priority-severity ${severity}`}>
+                            {level}
+                          </span>
                           <div>
                             <div className="cv-priority-title">
-                              {item.mpn
-                                ? String(item.mpn)
+                              {item.why
+                                ? cleanUserText(item.why)
                                 : userFacingLabel(item.bom_name, "BOM")}
-                              {item.why ? ` · ${cleanUserText(item.why)}` : ""}
                             </div>
                             <div className="cv-priority-meta">
+                              {item.mpn ? `${String(item.mpn)} · ` : ""}
                               {userFacingLabel(item.project_name, "")}
                               {item.bom_path ? ` · ${cleanUserText(item.bom_path)}` : ""}
                             </div>

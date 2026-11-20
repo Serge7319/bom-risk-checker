@@ -794,6 +794,30 @@ class WorkspaceStore:
                 for project in projects
                 for bom in project.get("boms") or []
             )
+            pending_approval_records: set[str] = set()
+            now = datetime.now(timezone.utc)
+            for invitation in self._data.setdefault(
+                "decision_record_approvers", {}
+            ).values():
+                if (
+                    invitation.get("workspace_id") != wid
+                    or invitation.get("status") != "pending"
+                ):
+                    continue
+                try:
+                    expires = datetime.fromisoformat(
+                        str(invitation.get("expires_at") or "").replace(
+                            "Z", "+00:00"
+                        )
+                    )
+                except ValueError:
+                    continue
+                if expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=timezone.utc)
+                if expires > now:
+                    record_id = str(invitation.get("decision_record_id") or "")
+                    if record_id:
+                        pending_approval_records.add(record_id)
             priority: list[dict[str, Any]] = []
             for analysis in analyses[:8]:
                 report = self._data["reports"].get(analysis["id"]) or {}
@@ -830,6 +854,27 @@ class WorkspaceStore:
                             "action": "Open report and review high-risk rows",
                         }
                     )
+            priority_severity_counts = {
+                "critical": 0,
+                "high": 0,
+                "medium": 0,
+                "needs_verification": 0,
+            }
+            for item in priority:
+                level = str(item.get("risk_level") or "").strip().casefold()
+                bucket = next(
+                    (
+                        candidate
+                        for candidate in ("critical", "high", "medium")
+                        if candidate in level
+                    ),
+                    "needs_verification",
+                )
+                priority_severity_counts[bucket] += 1
+            open_blockers = (
+                priority_severity_counts["critical"]
+                + priority_severity_counts["high"]
+            )
             next_actions = [
                 {
                     "title": "Reopen an active project BOM",
@@ -871,10 +916,13 @@ class WorkspaceStore:
                     "saved_boms": bom_count,
                     "saved_analyses": len(analyses),
                     "priority_items": len(priority),
+                    "open_blockers": open_blockers,
+                    "awaiting_approvals": len(pending_approval_records),
                 },
                 "projects": projects,
                 "recent_analyses": analyses[:12],
-                "priority_risks": priority[:12],
+                "priority_risks": priority,
+                "priority_severity_counts": priority_severity_counts,
                 "next_actions": next_actions,
             }
 
