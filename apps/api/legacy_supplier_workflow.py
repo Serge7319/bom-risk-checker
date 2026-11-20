@@ -27,11 +27,18 @@ def production_analysis_enabled() -> bool:
 
 def configured_supplier_count() -> int:
     """Count configured provider credentials without returning secret values."""
+    nexar_client_id = (
+        os.environ.get("NEXAR_CLIENT_ID") or os.environ.get("OCTOPART_CLIENT_ID") or ""
+    ).strip()
+    nexar_client_secret = (
+        os.environ.get("NEXAR_CLIENT_SECRET") or os.environ.get("OCTOPART_CLIENT_SECRET") or ""
+    ).strip()
     configured = (
         bool((os.environ.get("MOUSER_API_KEY") or "").strip()),
         bool((os.environ.get("DIGIKEY_CLIENT_ID") or "").strip())
         and bool((os.environ.get("DIGIKEY_CLIENT_SECRET") or "").strip()),
         bool((os.environ.get("NEWARK_API_KEY") or "").strip()),
+        bool(nexar_client_id) and bool(nexar_client_secret),
     )
     return sum(configured)
 

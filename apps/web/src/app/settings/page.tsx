@@ -24,8 +24,14 @@ import {
   fetchDeveloperApiKeys,
   createDeveloperApiKey,
   revokeDeveloperApiKey,
+  fetchDeveloperWebhooks,
+  createDeveloperWebhook,
+  deleteDeveloperWebhook,
+  sendDeveloperWebhookTest,
   downloadWorkspaceActivityExport,
   type DeveloperApiKey,
+  type DeveloperWebhook,
+  type DeveloperWebhookDelivery,
   type ServiceReadiness,
   fetchPreferences,
   fetchProfile,
@@ -197,6 +203,16 @@ export default function Page() {
   const [developerApiKeySecret, setDeveloperApiKeySecret] = useState("");
   const [developerApiKeyError, setDeveloperApiKeyError] = useState("");
   const [developerApiKeyNotice, setDeveloperApiKeyNotice] = useState("");
+  const [developerWebhooks, setDeveloperWebhooks] = useState<DeveloperWebhook[]>([]);
+  const [developerWebhookDeliveries, setDeveloperWebhookDeliveries] = useState<DeveloperWebhookDelivery[]>([]);
+  const [developerWebhookEvents, setDeveloperWebhookEvents] = useState<string[]>([]);
+  const [developerWebhookEncryptionReady, setDeveloperWebhookEncryptionReady] = useState(false);
+  const [developerWebhookName, setDeveloperWebhookName] = useState("");
+  const [developerWebhookUrl, setDeveloperWebhookUrl] = useState("");
+  const [developerWebhookSelectedEvents, setDeveloperWebhookSelectedEvents] = useState<string[]>(["monitoring.alerts.created"]);
+  const [developerWebhookSecret, setDeveloperWebhookSecret] = useState("");
+  const [developerWebhookError, setDeveloperWebhookError] = useState("");
+  const [developerWebhookNotice, setDeveloperWebhookNotice] = useState("");
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("engineer");
@@ -284,7 +300,10 @@ export default function Page() {
     const usageLimits = asRecord(usageRes?.limits);
     const apiAccessAvailable = usageLimits.api_access === true || billingRes?.api_access_addon_active === true;
     if (apiAccessAvailable) {
-      const keysRes = await settledValue(fetchDeveloperApiKeys(token));
+      const [keysRes, webhooksRes] = await Promise.all([
+        settledValue(fetchDeveloperApiKeys(token)),
+        settledValue(fetchDeveloperWebhooks(token)),
+      ]);
       if (keysRes?.ok) {
         setDeveloperApiKeys(keysRes.keys);
         setDeveloperApiKeyError("");
@@ -292,9 +311,25 @@ export default function Page() {
         setDeveloperApiKeys([]);
         setDeveloperApiKeyError("API key settings could not be loaded.");
       }
+      if (webhooksRes?.ok) {
+        setDeveloperWebhooks(webhooksRes.webhooks || []);
+        setDeveloperWebhookDeliveries(webhooksRes.deliveries || []);
+        setDeveloperWebhookEvents(webhooksRes.allowed_event_types || []);
+        setDeveloperWebhookEncryptionReady(webhooksRes.encryption_configured === true);
+        setDeveloperWebhookError("");
+      } else {
+        setDeveloperWebhooks([]);
+        setDeveloperWebhookDeliveries([]);
+        setDeveloperWebhookEncryptionReady(false);
+        setDeveloperWebhookError("Webhook settings could not be loaded.");
+      }
     } else {
       setDeveloperApiKeys([]);
       setDeveloperApiKeyError("");
+      setDeveloperWebhooks([]);
+      setDeveloperWebhookDeliveries([]);
+      setDeveloperWebhookError("");
+      setDeveloperWebhookSecret("");
     }
     if (connectorsRes) setConnectors(connectorsRes);
     if (complianceRes) setCompliance(complianceRes);
@@ -607,6 +642,85 @@ export default function Page() {
     } catch {
       setDeveloperApiKeyError("Clipboard access is unavailable. Select and copy the key manually.");
     }
+  }
+
+  async function createWebhook(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session || !developerWebhookName.trim() || !developerWebhookUrl.trim() || !developerWebhookSelectedEvents.length) return;
+    setBillingAction("webhook-create");
+    setDeveloperWebhookError("");
+    setDeveloperWebhookNotice("");
+    setDeveloperWebhookSecret("");
+    try {
+      const result = await createDeveloperWebhook(session.access_token, {
+        name: developerWebhookName.trim(),
+        url: developerWebhookUrl.trim(),
+        event_types: developerWebhookSelectedEvents,
+      });
+      setDeveloperWebhooks((current) => [result.webhook, ...current]);
+      setDeveloperWebhookSecret(result.signing_secret);
+      setDeveloperWebhookName("");
+      setDeveloperWebhookUrl("");
+      setDeveloperWebhookNotice("Webhook created. Copy the signing secret now; it cannot be shown again.");
+    } catch (err) {
+      setDeveloperWebhookError(settingsErrorMessage(err, "Webhook could not be created."));
+    } finally {
+      setBillingAction("");
+    }
+  }
+
+  async function copyDeveloperWebhookSecret() {
+    if (!developerWebhookSecret) return;
+    try {
+      await navigator.clipboard.writeText(developerWebhookSecret);
+      setDeveloperWebhookNotice("Signing secret copied.");
+    } catch {
+      setDeveloperWebhookError("Clipboard access is unavailable. Select and copy the signing secret manually.");
+    }
+  }
+
+  async function testWebhook(webhookId: string) {
+    if (!session) return;
+    setBillingAction("webhook-test:" + webhookId);
+    setDeveloperWebhookError("");
+    setDeveloperWebhookNotice("");
+    try {
+      const result = await sendDeveloperWebhookTest(session.access_token, webhookId);
+      const state = String(result.delivery?.status || "pending");
+      setDeveloperWebhookNotice(state === "delivered"
+        ? "Test event delivered successfully."
+        : state === "failed"
+          ? "Test delivery failed. Review delivery history and destination settings."
+          : "Test event queued for delivery.");
+      const latest = await fetchDeveloperWebhooks(session.access_token);
+      if (latest.ok) setDeveloperWebhookDeliveries(latest.deliveries || []);
+    } catch (err) {
+      setDeveloperWebhookError(settingsErrorMessage(err, "Test delivery could not be completed."));
+    } finally {
+      setBillingAction("");
+    }
+  }
+
+  async function removeWebhook(webhookId: string) {
+    if (!session) return;
+    setBillingAction("webhook-delete:" + webhookId);
+    setDeveloperWebhookError("");
+    setDeveloperWebhookNotice("");
+    try {
+      await deleteDeveloperWebhook(session.access_token, webhookId);
+      setDeveloperWebhooks((current) => current.filter((hook) => hook.id !== webhookId));
+      setDeveloperWebhookNotice("Webhook disabled.");
+    } catch (err) {
+      setDeveloperWebhookError(settingsErrorMessage(err, "Webhook could not be disabled."));
+    } finally {
+      setBillingAction("");
+    }
+  }
+
+  function toggleWebhookEvent(eventType: string, enabled: boolean) {
+    setDeveloperWebhookSelectedEvents((current) => enabled
+      ? [...new Set([...current, eventType])]
+      : current.filter((item) => item !== eventType));
   }
 
   return (
@@ -1479,6 +1593,82 @@ export default function Page() {
                       ))}
                     </ul>
                   ) : !developerApiKeyError ? <p className="cv-small-note" style={{ marginTop: 12 }}>No active API keys for this workspace.</p> : null}
+
+                  <div style={{ marginTop: 28, paddingTop: 22, borderTop: "1px solid #e3eaf3" }}>
+                    <h4 className="cv-card-title">Outgoing webhooks</h4>
+                    <p className="cv-card-subtitle">
+                      Send signed events to your systems when an API analysis completes or scheduled monitoring finds an alert. Destinations receive the event details you select, including affected part numbers and source evidence.
+                    </p>
+                    {!developerWebhookEncryptionReady ? (
+                      <p className="cv-small-note" role="status" style={{ marginTop: 10 }}>
+                        Webhook encryption is not configured on the Cadivor API service. Set <code>CADIVOR_DEVELOPER_WEBHOOK_ENCRYPTION_KEY</code> or the existing <code>CADIVOR_SLACK_WEBHOOK_ENCRYPTION_KEY</code> in Railway before adding a destination.
+                      </p>
+                    ) : null}
+                    <form className="cv-form-grid" onSubmit={(event) => void createWebhook(event)} style={{ marginTop: 14 }}>
+                      <div className="cv-field">
+                        <label htmlFor="developer-webhook-name">Webhook name</label>
+                        <input id="developer-webhook-name" value={developerWebhookName} maxLength={80} onChange={(event) => setDeveloperWebhookName(event.target.value)} placeholder="e.g. Engineering alerts" required />
+                      </div>
+                      <div className="cv-field">
+                        <label htmlFor="developer-webhook-url">HTTPS destination URL</label>
+                        <input id="developer-webhook-url" type="url" value={developerWebhookUrl} onChange={(event) => setDeveloperWebhookUrl(event.target.value)} placeholder="https://your-service.example/webhooks/cadivor" required />
+                      </div>
+                      <div className="cv-field" style={{ gridColumn: "1 / -1" }}>
+                        <span className="cv-small-note" style={{ display: "block", marginBottom: 7 }}>Events</span>
+                        <div style={{ display: "grid", gap: 4, maxWidth: 620 }}>
+                          {developerWebhookEvents.map((eventType) => (
+                            <label className="cv-settings-toggle" key={eventType}>
+                              <span><strong>{eventType}</strong><small>{eventType === "analysis.completed" ? "A developer API BOM analysis was saved." : eventType === "monitoring.alerts.created" ? "Scheduled monitoring recorded source-backed alert changes." : "A test event sent from this settings page."}</small></span>
+                              <input type="checkbox" checked={developerWebhookSelectedEvents.includes(eventType)} onChange={(event) => toggleWebhookEvent(eventType, event.target.checked)} />
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ alignSelf: "end" }}>
+                        <button className="cv-button primary" type="submit" disabled={!developerWebhookEncryptionReady || !developerWebhookSelectedEvents.length || Boolean(billingAction)}>{billingAction === "webhook-create" ? "Saving…" : "Add webhook"}</button>
+                      </div>
+                    </form>
+                    {developerWebhookSecret ? (
+                      <div className="cv-api-key-secret" role="status" style={{ marginTop: 14 }}>
+                        <strong>Copy your signing secret now</strong>
+                        <code>{developerWebhookSecret}</code>
+                        <button className="cv-button small" type="button" onClick={() => void copyDeveloperWebhookSecret()}>Copy secret</button>
+                      </div>
+                    ) : null}
+                    {developerWebhookError ? <div className="cv-error" role="alert" style={{ marginTop: 12 }}>{developerWebhookError}</div> : null}
+                    {developerWebhookNotice ? <p className="cv-small-note" role="status" style={{ marginTop: 10 }}>{developerWebhookNotice}</p> : null}
+                    {developerWebhooks.length ? (
+                      <ul className="cv-api-key-list">
+                        {developerWebhooks.map((hook) => (
+                          <li key={hook.id}>
+                            <span><strong>{cleanUserText(hook.name)}</strong><small>{cleanUserText(hook.destination_host || "Encrypted destination")} · {hook.event_types.join(", ")}</small></span>
+                            {hook.active ? (
+                              <span style={{ display: "flex", gap: 8 }}>
+                                <button className="cv-button small" type="button" disabled={Boolean(billingAction)} onClick={() => void testWebhook(hook.id)}>{billingAction === `webhook-test:${hook.id}` ? "Sending…" : "Send test"}</button>
+                                <button className="cv-button small" type="button" disabled={Boolean(billingAction)} onClick={() => void removeWebhook(hook.id)}>{billingAction === `webhook-delete:${hook.id}` ? "Disabling…" : "Disable"}</button>
+                              </span>
+                            ) : <small>Disabled</small>}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="cv-small-note" style={{ marginTop: 12 }}>No outgoing webhooks are connected.</p>}
+                    {developerWebhookDeliveries.length ? (
+                      <div style={{ marginTop: 16 }}>
+                        <strong className="cv-small-note">Recent deliveries</strong>
+                        <ul className="cv-api-key-list">
+                          {developerWebhookDeliveries.slice(0, 8).map((delivery) => (
+                            <li key={delivery.id}>
+                              <span><strong>{delivery.event_type}</strong><small>{delivery.status} · attempt {delivery.attempt_count}{delivery.response_status ? ` · HTTP ${delivery.response_status}` : ""}{delivery.failure_code ? ` · ${delivery.failure_code}` : ""}</small></span>
+                              <small>{delivery.created_at ? new Date(delivery.created_at).toLocaleString() : ""}</small>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    <p className="cv-small-note" style={{ marginTop: 12 }}>
+                      Cadivor signs the exact JSON body using HMAC-SHA256. Verify <code>X-Cadivor-Webhook-Signature</code> with your one-time secret and the timestamp header. Failed deliveries retry on later scheduled runs up to five times; redirects and non-public destinations are rejected.
+                    </p>
+                  </div>
                 </section>
               ) : null}
 

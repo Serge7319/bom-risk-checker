@@ -74,6 +74,7 @@ from src.saved_bom_project import split_project_and_bom  # noqa: E402
 from apps.api import billing_prep  # noqa: E402
 from apps.api import compliance_packs  # noqa: E402
 from apps.api import decision_record_exports  # noqa: E402
+from apps.api import developer_webhooks  # noqa: E402
 from apps.api import connectors  # noqa: E402
 from apps.api import bom_validation  # noqa: E402
 from apps.api import legal_acceptance  # noqa: E402
@@ -630,7 +631,35 @@ async def developer_api_analyze_post(request: Request) -> JSONResponse:
             origin = _web_origin(request)
             payload["report_url"] = f"{origin}/reports/{analysis_id}"
             payload["report_endpoint"] = f"/v1/reports/{analysis_id}"
-            return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+            response = JSONResponse(payload, headers={"Cache-Control": "no-store"})
+            try:
+                await run_in_threadpool(
+                    developer_webhooks.queue_event,
+                    get_store(),
+                    workspace_id=ctx["workspace_id"],
+                        event_type="analysis.completed",
+                        event_id=(
+                            "evt_analysis_"
+                            + hashlib.sha256(str(analysis_id).encode("utf-8")).hexdigest()[:32]
+                        ),
+                    data={
+                        "analysis_id": analysis_id,
+                        "report_url": payload["report_url"],
+                        "total_parts": payload.get("total_parts"),
+                        "high_risk_count": payload.get("high_risk_count"),
+                        "medium_risk_count": payload.get("medium_risk_count"),
+                        "low_risk_count": payload.get("low_risk_count"),
+                    },
+                )
+                response.background = BackgroundTask(
+                    developer_webhooks.dispatch_due,
+                    get_store(),
+                    workspace_id=ctx["workspace_id"],
+                    limit=100,
+                )
+            except Exception:  # noqa: BLE001
+                logging.error("developer_webhook_analysis_event_queue_failed")
+            return response
     return result
 
 
@@ -2804,6 +2833,136 @@ async def developer_api_key_delete(request: Request) -> JSONResponse:
     return _json({"ok": True, "revoked": True})
 
 
+def _developer_webhook_admin_context(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return None, denied or _json({"detail": "Unauthorized"}, 401)
+    if not _developer_api_entitled(ctx):
+        return None, _json({"detail": "Developer API access is not active for this account."}, 403)
+    try:
+        team_service.require_admin(ctx)
+    except TeamError as exc:
+        return None, _team_error(exc)
+    return ctx, None
+
+
+async def developer_webhooks_get(request: Request) -> JSONResponse:
+    ctx, denied = _developer_webhook_admin_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        store = get_store()
+        rows, deliveries = await run_in_threadpool(
+            lambda: (
+                store.list_developer_webhooks(ctx["workspace_id"]),
+                store.list_developer_webhook_deliveries(ctx["workspace_id"], limit=50),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("developer_webhooks_load_failed exception=%s", type(exc).__name__)
+        return _json({"detail": "Webhook settings are temporarily unavailable."}, 503)
+    return JSONResponse(
+        {
+            "ok": True,
+            "encryption_configured": developer_webhooks.encryption_key_configured(),
+            "allowed_event_types": developer_webhooks.allowed_event_types(),
+            "webhooks": [developer_webhooks.public_webhook(row) for row in rows],
+            "deliveries": deliveries,
+        },
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def developer_webhooks_post(request: Request) -> JSONResponse:
+    ctx, denied = _developer_webhook_admin_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if not developer_webhooks.encryption_key_configured():
+        return _json({"detail": "Webhook encryption is not configured on the Cadivor API service."}, 503)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON"}, 400)
+    try:
+        prepared, signing_secret = developer_webhooks.prepare_webhook(
+            workspace_id=ctx["workspace_id"],
+            created_by=ctx["user_id"],
+            name=str(body.get("name") or ""),
+            url=str(body.get("url") or ""),
+            event_types=body.get("event_types"),
+        )
+    except developer_webhooks.DeveloperWebhookError as exc:
+        return _json({"detail": str(exc)}, 400 if "not configured" not in str(exc).lower() else 503)
+    try:
+        saved = await run_in_threadpool(get_store().create_developer_webhook, prepared)
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("developer_webhook_create_failed exception=%s", type(exc).__name__)
+        return _json({"detail": "Webhook could not be saved."}, 503)
+    return JSONResponse(
+        {"ok": True, "webhook": developer_webhooks.public_webhook(saved), "signing_secret": signing_secret},
+        status_code=201,
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+    )
+
+
+async def developer_webhook_delete(request: Request) -> JSONResponse:
+    ctx, denied = _developer_webhook_admin_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    webhook_id = str(request.path_params.get("webhook_id") or "").strip()
+    try:
+        removed = await run_in_threadpool(
+            get_store().delete_developer_webhook, ctx["workspace_id"], webhook_id
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("developer_webhook_delete_failed exception=%s", type(exc).__name__)
+        return _json({"detail": "Webhook could not be removed."}, 503)
+    if not removed:
+        return _json({"detail": "Webhook not found."}, 404)
+    return _json({"ok": True, "removed": True})
+
+
+async def developer_webhook_test_post(request: Request) -> JSONResponse:
+    ctx, denied = _developer_webhook_admin_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    webhook_id = str(request.path_params.get("webhook_id") or "").strip()
+    store = get_store()
+    try:
+        hook = await run_in_threadpool(
+            store.get_developer_webhook, ctx["workspace_id"], webhook_id
+        )
+        if not hook or hook.get("active") is not True:
+            return _json({"detail": "Webhook not found."}, 404)
+        queued = await run_in_threadpool(
+            developer_webhooks.queue_event,
+            store,
+            workspace_id=ctx["workspace_id"],
+            webhook_id=webhook_id,
+            event_type="webhook.test",
+            data={"message": "Cadivor webhook test delivery."},
+        )
+        if not queued.get("queued"):
+            return _json({"detail": "The test delivery could not be queued."}, 409)
+        delivery_counts = await run_in_threadpool(
+            developer_webhooks.dispatch_due, store,
+            workspace_id=ctx["workspace_id"], webhook_id=webhook_id, limit=20,
+        )
+        delivery = await run_in_threadpool(
+            store.get_developer_webhook_delivery,
+            ctx["workspace_id"], webhook_id, queued["event_id"],
+        )
+    except developer_webhooks.DeveloperWebhookError as exc:
+        return _json({"detail": str(exc)}, 400)
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("developer_webhook_test_failed exception=%s", type(exc).__name__)
+        return _json({"detail": "Webhook test could not be delivered."}, 503)
+    return _json({
+        "ok": True,
+        "delivery": delivery or {},
+        "dispatch": delivery_counts,
+    })
+
+
 async def _developer_api_key_context(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
     authorization = str(request.headers.get("authorization") or "")
     candidate = authorization.removeprefix("Bearer ").strip() if authorization.startswith("Bearer ") else ""
@@ -4965,6 +5124,10 @@ app = Starlette(
         Route("/developer/api-keys", developer_api_keys_get, methods=["GET"]),
         Route("/developer/api-keys", developer_api_keys_post, methods=["POST"]),
         Route("/developer/api-keys/{key_id}", developer_api_key_delete, methods=["DELETE"]),
+        Route("/developer/webhooks", developer_webhooks_get, methods=["GET"]),
+        Route("/developer/webhooks", developer_webhooks_post, methods=["POST"]),
+        Route("/developer/webhooks/{webhook_id}/test", developer_webhook_test_post, methods=["POST"]),
+        Route("/developer/webhooks/{webhook_id}", developer_webhook_delete, methods=["DELETE"]),
         Route("/v1/analyses", developer_api_analyze_post, methods=["POST"]),
         Route("/v1/reports", developer_api_reports_get, methods=["GET"]),
         Route("/v1/reports/{analysis_id}", developer_api_report_get, methods=["GET"]),

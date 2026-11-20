@@ -2,6 +2,7 @@ import json
 import logging
 import math
 import re
+from datetime import date
 
 from src.saved_bom_cost import json_safe_value
 
@@ -35,6 +36,30 @@ def _display_text(value, default=""):
         return default
     text = str(value).strip()
     return default if text.casefold() in {"", "nan", "none", "nat", "null"} else text
+
+
+def _verified_lifecycle_date(snapshot, field_name):
+    """Return a source-verified ISO date, never a guessed lifecycle date."""
+    if not isinstance(snapshot, dict):
+        return None
+    evidence_class = _display_text(
+        snapshot.get("lifecycle_event_evidence_class")
+        or snapshot.get("pcn_evidence_class"),
+    )
+    source_url = _display_text(
+        snapshot.get("lifecycle_event_source_url")
+        or snapshot.get("pcn_url")
+        or snapshot.get("source_url"),
+    )
+    if evidence_class != "live-authorized-supplier" or not source_url.startswith("https://"):
+        return None
+    raw = _display_text(snapshot.get(field_name))
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw[:10]).isoformat()
+    except ValueError:
+        return None
 
 
 def monitoring_risk_level(part_data):
@@ -321,6 +346,57 @@ def detect_monitor_alerts(
             "source_url": pcn_url,
         })
         alerts.append(alert)
+
+    lifecycle_source_url = _display_text(
+        current_snapshot.get("lifecycle_event_source_url")
+        or current_snapshot.get("pcn_url")
+        or current_snapshot.get("source_url"),
+    )
+    lifecycle_evidence_class = _display_text(
+        current_snapshot.get("lifecycle_event_evidence_class")
+        or current_snapshot.get("pcn_evidence_class"),
+    )
+    if lifecycle_evidence_class == "live-authorized-supplier" and lifecycle_source_url.startswith("https://"):
+        for field_name, label in (
+            ("last_time_buy_date", "Last Time Buy"),
+            ("end_of_life_date", "End of Life"),
+        ):
+            current_date = _verified_lifecycle_date(current_snapshot, field_name)
+            previous_date = _verified_lifecycle_date(previous_snapshot, field_name)
+            if not current_date or current_date == previous_date:
+                continue
+            estimate = _optional_number(current_snapshot.get("estimated_eol_years"))
+            estimate_note = (
+                f" The supplier-reported EOL estimate is {estimate:g} years."
+                if field_name == "end_of_life_date" and estimate is not None
+                else ""
+            )
+            alert_message = (
+                f"Supplier reported a {label.lower()} date of {current_date}."
+                f" Review the linked source before release.{estimate_note}"
+            )
+            messages.append(f"⚠ {alert_message}")
+            alert = build_alert_record(
+                user_id,
+                analysis_id,
+                part_number,
+                f"Lifecycle - {label}",
+                alert_message,
+                "High",
+                previous_date or "Not previously reported with verified evidence",
+                current_date,
+                workspace_id=workspace_id,
+                supplier=current_snapshot.get("supplier"),
+                product_url=lifecycle_source_url,
+                datasheet_url=current_snapshot.get("datasheet_url"),
+            )
+            alert.update({
+                "source_url": lifecycle_source_url,
+                "evidence_source": "live-authorized-supplier",
+                "lifecycle_event_evidence_class": lifecycle_evidence_class,
+                "estimated_eol_years": estimate if field_name == "end_of_life_date" else None,
+            })
+            alerts.append(alert)
 
     # A meaningful schedule spike is at least a 50% increase and at least
     # two weeks. Both values must come from exact-part supplier evidence.
