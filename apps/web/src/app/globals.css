@@ -4581,6 +4581,120 @@ button {
   padding: 10px 12px;
   background: #fff;
 }
+.cv-risk-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.cv-risk-badge--high {
+  background: var(--red-bg);
+  color: #8d3038;
+  box-shadow: inset 3px 0 0 #c45058;
+}
+
+.cv-risk-badge--medium {
+  background: var(--amber-bg);
+  color: #7a5a18;
+  box-shadow: inset 3px 0 0 #c4922a;
+}
+
+.cv-risk-badge--low {
+  background: var(--green-bg);
+  color: #1f6a4d;
+  box-shadow: inset 3px 0 0 #2f9a6a;
+}
+
+.cv-risk-badge--verify {
+  background: #eef1f5;
+  color: #3e4c60;
+  border: 1px dashed #8b98ab;
+}
+
+.cv-risk-legend {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  list-style: none;
+  border: 1px solid #d5deea;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.cv-risk-legend li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #24364d;
+}
+
+.cv-impact-intro p,
+.cv-impact-steps {
+  margin: 0;
+  max-width: 78ch;
+  line-height: 1.5;
+}
+
+.cv-impact-steps {
+  margin-top: 10px;
+  padding-left: 1.2rem;
+}
+
+.cv-impact-select {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 750;
+  text-align: left;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.cv-impact-select:focus-visible,
+.cv-impact-actions a:focus-visible,
+.cv-impact-row-actions a:focus-visible,
+.cv-button:focus-visible {
+  outline: 2px solid #1d4e89;
+  outline-offset: 2px;
+}
+
+.cv-table tr.is-active {
+  background: #eef5ff;
+}
+
+.cv-impact-actions,
+.cv-impact-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.cv-impact-row-actions {
+  margin-top: 0;
+}
+
+@media (max-width: 760px) {
+  .cv-risk-legend li,
+  .cv-impact-actions,
+  .cv-impact-row-actions {
+    align-items: flex-start;
+  }
+}
+
 .cv-public-stress-toolbar {
   display: flex;
   align-items: center;
