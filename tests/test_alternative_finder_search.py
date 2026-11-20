@@ -920,10 +920,9 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
             lambda: setattr(self.aggregator, "_provider_configured", original_configured)
         )
         discovery = self.aggregator.discover_alternative_candidates("C0603C104K5RACTU")
-        self.assertEqual(
-            set(discovery["providers"]),
-            {"DigiKey", "Mouser", "Newark", "Nexar Supply"},
-        )
+        # Nexar participates in exact part lookups but does not expose
+        # alternative-catalog discovery through the current integration.
+        self.assertEqual(set(discovery["providers"]), {"DigiKey", "Mouser", "Newark"})
 
     def test_alternative_discovery_searches_all_configured_distributors(self):
         originals = {
