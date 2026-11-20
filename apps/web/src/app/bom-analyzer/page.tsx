@@ -61,22 +61,6 @@ function intakeSignature(options: BomIntakeOptions): string {
   });
 }
 
-function formatReportDate(value: unknown): string {
-  if (!value) return "recently";
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return "recently";
-  const now = new Date();
-  const isSameDay = (left: Date, right: Date) =>
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate();
-  if (isSameDay(date, now)) return "today";
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (isSameDay(date, yesterday)) return "yesterday";
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -749,7 +733,7 @@ export default function BomAnalyzerPage() {
       />
 
       <div
-        className={`cv-bom-workspace-grid${validation?.columns?.length ? " cv-bom-workspace-grid--review" : ""}`}
+        className={`cv-bom-workspace-grid${file ? " cv-bom-workspace-grid--review" : ""}`}
       >
         <section className="cv-card pad cv-bom-create-card">
           <div>
@@ -847,26 +831,28 @@ export default function BomAnalyzerPage() {
                 />
                 <small>{file ? file.name : "CSV or XLSX · up to 10 MB"}</small>
               </label>
-              {file ? (
+              <div className="cv-bom-upload-actions">
+                {file ? (
+                  <button
+                    type="button"
+                    className="cv-button secondary cv-bom-clear-button"
+                    onClick={() => void onClearBom()}
+                    disabled={analyzing || validating || clearingBom}
+                    aria-label="Clear the selected BOM and return to a new analysis"
+                  >
+                    {clearingBom ? "Clearing…" : "Clear BOM"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  className="cv-button secondary cv-bom-clear-button"
-                  onClick={() => void onClearBom()}
+                  className="cv-button cv-bom-sample-button"
+                  onClick={() => void onSampleBom()}
                   disabled={analyzing || validating || clearingBom}
-                  aria-label="Clear the selected BOM and return to a new analysis"
                 >
-                  {clearingBom ? "Clearing…" : "Clear BOM"}
+                  {file ? "Replace with the 5-part sample BOM" : "Load the 5-part sample BOM"}
                 </button>
-              ) : null}
+              </div>
             </div>
-            <button
-              type="button"
-              className="cv-button"
-              onClick={() => void onSampleBom()}
-              disabled={analyzing || validating || clearingBom}
-            >
-              Load the 5-part sample BOM
-            </button>
             <small className="cv-small-note">
               Illustrative quantities and project grouping; supplier evidence is fetched live when available.
             </small>
@@ -1044,40 +1030,71 @@ export default function BomAnalyzerPage() {
             </div>
           ) : null}
 
-          <div className="cv-bom-analyze-actions cv-bom-primary-cta">
-            {"href" in primary && primary.href ? (
-              <Link className="cv-button primary" href={primary.href}>
-                {primary.label}
-              </Link>
-            ) : (
-              <button
-                type="button"
-                className="cv-button primary"
-                disabled={
-                  ("disabled" in primary && primary.disabled) ||
-                  (("action" in primary) && (primary.action === "analyze" || primary.action === "retry-analyze")
-                    ? !canAnalyze
-                    : false)
-                }
-                onClick={handlePrimary}
-              >
-                {primary.label}
-              </button>
-            )}
-            {canAnalyze && (! ("action" in primary) || primary.action !== "analyze") ? (
-              <button
-                type="button"
-                className="cv-button"
-                disabled={!canAnalyze}
-                onClick={onAnalyze}
-              >
-                Analyze BOM
-              </button>
-            ) : null}
-          </div>
+          {file || savedAnalysisId || analyzing || analyzeError ? (
+            <div className="cv-bom-analyze-actions cv-bom-primary-cta">
+              {"href" in primary && primary.href ? (
+                <Link className="cv-button primary" href={primary.href}>
+                  {primary.label}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className="cv-button primary"
+                  disabled={
+                    ("disabled" in primary && primary.disabled) ||
+                    (("action" in primary) && (primary.action === "analyze" || primary.action === "retry-analyze")
+                      ? !canAnalyze
+                      : false)
+                  }
+                  onClick={handlePrimary}
+                >
+                  {primary.label}
+                </button>
+              )}
+              {canAnalyze && (! ("action" in primary) || primary.action !== "analyze") ? (
+                <button
+                  type="button"
+                  className="cv-button"
+                  disabled={!canAnalyze}
+                  onClick={onAnalyze}
+                >
+                  Analyze BOM
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
-        <aside className="cv-bom-side-cards" aria-label="Recent analyses">
+        <aside className="cv-bom-side-cards" aria-label="First-run guidance and recent analyses">
+          {!file && !savedAnalysisId && !analyzing && !analyzeError ? (
+            <section className="cv-card pad cv-bom-side-card cv-bom-checklist-card" aria-labelledby="cv-bom-first-run-title">
+              <h2 id="cv-bom-first-run-title" className="cv-card-title">First-run checklist</h2>
+              <p className="cv-card-subtitle">A guided path from your first BOM to ongoing follow-up.</p>
+              <ol className="cv-bom-checklist">
+                <li>
+                  <span className="cv-bom-check-icon cv-bom-check-number">1</span>
+                  <div><strong>Upload a BOM</strong><small>Choose a CSV or XLSX file, or load the sample.</small></div>
+                </li>
+                <li>
+                  <span className="cv-bom-check-icon cv-bom-check-number">2</span>
+                  <div><strong>Review the top blocker</strong><small>Inspect its evidence, or review the highest-priority finding if none are blocked.</small></div>
+                </li>
+                <li>
+                  <span className="cv-bom-check-icon cv-bom-check-number">3</span>
+                  <div><strong>Ask Cadivor a question</strong><small>Get context on a part, alert, or evidence source.</small></div>
+                </li>
+                <li>
+                  <span className="cv-bom-check-icon cv-bom-check-number">4</span>
+                  <div><strong>Create a decision record</strong><small>Capture the chosen action and its rationale.</small></div>
+                </li>
+                <li>
+                  <span className="cv-bom-check-icon cv-bom-check-number">5</span>
+                  <div><strong>Turn on monitoring</strong><small>Opt in to scheduled supplier checks for selected parts.</small></div>
+                </li>
+              </ol>
+            </section>
+          ) : null}
+
           <section className="cv-card pad cv-bom-side-card cv-bom-recent-card">
             <div className="cv-bom-recent-heading">
               <div>
@@ -1094,29 +1111,37 @@ export default function BomAnalyzerPage() {
                 Recent analyses could not load. <Link href="/reports">Open Saved analyses</Link>.
               </p>
             ) : visibleReports.length ? (
-              <ul className="cv-bom-recent-list">
-                {visibleReports.map((row) => {
-                  const id = String(row.id || row.analysis_id || "");
-                  const title = userFacingLabel(row.bom_name || row.filename || row.project_name, "BOM analysis");
-                  const revisionLabel = row.revision ? ` · rev ${String(row.revision)}` : "";
-                  const partsLabel = row.total_parts == null ? "Saved report" : `${String(row.total_parts)} parts`;
-                  const dateLabel = formatReportDate(row.created_at);
-                  return (
-                    <li key={id}>
-                      <Link
-                        href={`/reports/${encodeURIComponent(id)}`}
-                        className="cv-bom-recent-link"
-                      >
-                        <span className="cv-bom-recent-copy">
-                          <strong>{title}{revisionLabel}</strong>
-                          <small>{partsLabel} · updated {dateLabel}</small>
-                        </span>
-                        <span className="cv-button small">Resume</span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
+              <div className="cv-bom-recent-table-wrap">
+                <table className="cv-bom-recent-table">
+                  <thead>
+                    <tr><th scope="col">File</th><th scope="col">Project</th><th scope="col">Health</th><th scope="col">Status</th></tr>
+                  </thead>
+                  <tbody>
+                    {visibleReports.map((row) => {
+                      const id = String(row.id || row.analysis_id || "");
+                      const title = userFacingLabel(row.filename || row.bom_name || row.project_name, "BOM analysis");
+                      const revisionLabel = row.revision ? ` · rev ${String(row.revision)}` : "";
+                      const numericHealth = Number(row.health_score);
+                      const hasHealth = row.health_score !== null && row.health_score !== undefined && String(row.health_score).trim() !== "" && Number.isFinite(numericHealth);
+                      const healthLabel = hasHealth ? `${Math.round(numericHealth)}` : "Not scored";
+                      const healthStatus = String(row.health_status || "").trim();
+                      const needsVerification = !hasHealth || /needs verification|unknown|not scored|not reported|no data/i.test(healthStatus);
+                      return (
+                        <tr key={id}>
+                          <td>
+                            <Link href={`/reports/${encodeURIComponent(id)}`} className="cv-bom-recent-file" title={`${title}${revisionLabel}`}>
+                              {title}{revisionLabel}
+                            </Link>
+                          </td>
+                          <td className="cv-bom-recent-project">{userFacingLabel(row.project_name, "—")}</td>
+                          <td><span className={`cv-bom-recent-badge ${hasHealth ? "is-health" : "is-muted"}`}>{healthLabel}</span></td>
+                          <td><span className={`cv-bom-recent-badge ${needsVerification ? "is-review" : "is-complete"}`}>{needsVerification ? "Needs verification" : "Complete"}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             ) : (
               <p className="cv-bom-recent-state">
                 No saved reports yet. Create an analysis, then return here to continue.
