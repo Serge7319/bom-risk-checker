@@ -140,7 +140,7 @@ def test_robots_and_resources_discover_every_standalone_guide():
 
     resources = (MARKETING / "resources" / "index.html").read_text(encoding="utf-8")
     for path in (
-        "/release-readiness.html",
+        "/release-readiness",
         "/guides/alternate-qualification/",
         "/guides/implementation/",
     ):
