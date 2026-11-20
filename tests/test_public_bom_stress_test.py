@@ -252,7 +252,7 @@ class PublicBomStressTest(unittest.TestCase):
         script = (root / "marketing-web/app.js").read_text()
         self.assertIn("Know when your hardware is", homepage)
         self.assertIn("Cadivor — Hardware Release Readiness", script)
-        self.assertIn('href="/release-readiness.html"', homepage)
+        self.assertIn('href="/release-readiness"', homepage)
         self.assertIn("7 BOM Checks", guide)
         self.assertEqual(guide.count('id="check-'), 7)
         self.assertIn("buildPublicStressUrl()", script)
