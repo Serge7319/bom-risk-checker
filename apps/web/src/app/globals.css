@@ -2552,6 +2552,19 @@ button {
   height: 19px;
 }
 
+.cv-bom-upload-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 auto 12px;
+}
+
+.cv-bom-clear-button {
+  white-space: nowrap;
+}
+
 .cv-bom-dropzone h3 {
   overflow-wrap: anywhere;
 }
@@ -2890,6 +2903,32 @@ button {
   border: 1px solid #b7e0cb;
   border-radius: 12px;
   background: #f0fdf6;
+}
+
+.cv-bom-next-step {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid #cfe0fa;
+  border-radius: 12px;
+  background: #f7faff;
+  color: #1d3555;
+}
+
+.cv-bom-next-step .cv-eyebrow {
+  color: #3769b5;
+}
+
+.cv-bom-next-step h3 {
+  margin: 4px 0 3px;
+  color: #183355;
+  font-size: 14px;
+}
+
+.cv-bom-next-step p {
+  margin: 0;
+  color: #5f718a;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .cv-bom-primary-cta {
@@ -4613,59 +4652,6 @@ button {
 }
 .cv-audit-share-panel {
   margin-top: 26px;
-}
-.cv-first-run-checklist ol {
-  display: grid;
-  gap: 11px;
-  margin: 16px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.cv-first-run-checklist li {
-  display: grid;
-  grid-template-columns: 26px minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #e5edf6;
-}
-.cv-first-run-checklist li:last-child {
-  border-bottom: 0;
-  padding-bottom: 0;
-}
-.cv-first-run-checklist li > span {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid #c8d6e8;
-  border-radius: 50%;
-  color: #526783;
-  font-size: 11px;
-  font-weight: 750;
-}
-.cv-first-run-checklist li.is-complete > span {
-  border-color: #4ca889;
-  background: #e7f8f1;
-  color: #187454;
-}
-.cv-first-run-checklist li div {
-  display: grid;
-  gap: 3px;
-}
-.cv-first-run-checklist li strong {
-  font-size: 12px;
-  color: #183355;
-}
-.cv-first-run-checklist li small {
-  color: #73829a;
-  font-size: 10px;
-  line-height: 1.45;
-}
-.cv-first-run-checklist li a {
-  width: fit-content;
-  font-size: 11px;
-  font-weight: 720;
 }
 @media (max-width: 700px) {
   .cv-public-stress {
