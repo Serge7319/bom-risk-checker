@@ -22,6 +22,15 @@ type HomePayload = {
   next_actions: Array<Record<string, unknown>>;
 };
 
+function prioritySeverityClass(value: unknown) {
+  const level = String(value || "").toLowerCase();
+  if (level.includes("critical")) return "critical";
+  if (level.includes("high")) return "high";
+  if (level.includes("medium")) return "medium";
+  if (level.includes("low")) return "low";
+  return "needs_verification";
+}
+
 export default function HomePage() {
   const session = useRequireSession();
   const [data, setData] = useState<HomePayload | null>(null);
@@ -61,10 +70,13 @@ export default function HomePage() {
       : Math.round(Number(latest.health_score));
   const priorityTotal = Number(metrics.priority_items ?? priorityRisks.length);
   const prioritySeverityCounts = data?.priority_severity_counts || {};
+  const openBlockerCount = Number(metrics.open_blockers || 0);
+  const awaitingApprovalCount = Number(metrics.awaiting_approvals || 0);
   const severityLegend = [
     { key: "critical", label: "Critical" },
     { key: "high", label: "High" },
     { key: "medium", label: "Medium" },
+    { key: "low", label: "Low" },
     { key: "needs_verification", label: "Needs verification" },
   ].map((item) => ({ ...item, count: Number(prioritySeverityCounts[item.key] || 0) }));
   const severityTotal = severityLegend.reduce((sum, item) => sum + item.count, 0);
@@ -146,14 +158,22 @@ export default function HomePage() {
             <Link
               className="cv-home-kpi-link is-red"
               href="#priority-queue"
-              aria-label={`View ${Number(metrics.open_blockers || 0)} open blockers in the priority queue`}
+              aria-label={`View ${openBlockerCount} open blockers in the priority queue`}
             >
               <KpiCard
                 icon="risk"
                 label="Open blockers"
-                value={metrics.open_blockers ?? 0}
-                detail="Critical and high priority findings"
+                value={openBlockerCount}
+                detail={
+                  <>
+                    <span className={`cv-home-kpi-chip ${openBlockerCount ? "red" : "green"}`}>
+                      {openBlockerCount ? "Release blocked" : "No blockers"}
+                    </span>
+                    <span>{openBlockerCount ? "Needs review" : "Clear to review"}</span>
+                  </>
+                }
               />
+              <span className="cv-home-kpi-action" aria-hidden="true">View details →</span>
             </Link>
             <Link
               className="cv-home-kpi-link"
@@ -164,20 +184,36 @@ export default function HomePage() {
                 icon="box"
                 label="Saved BOMs"
                 value={metrics.saved_boms ?? 0}
-                detail={hasSaved ? "Saved in this workspace" : "Analyze a BOM to get started"}
+                detail={
+                  <>
+                    <span className="cv-home-kpi-chip blue">Saved</span>
+                    <span>{hasSaved ? "With revisions" : "Analyze a BOM to get started"}</span>
+                  </>
+                }
               />
+              <span className="cv-home-kpi-action" aria-hidden="true">View details →</span>
             </Link>
             <Link
               className="cv-home-kpi-link is-blue"
               href="/engineering-decisions"
-              aria-label={`Review ${Number(metrics.awaiting_approvals || 0)} approvals awaiting a response`}
+              aria-label={`Review ${awaitingApprovalCount} approvals awaiting a response`}
             >
               <KpiCard
                 icon="check"
                 label="Awaiting approvals"
-                value={metrics.awaiting_approvals ?? 0}
-                detail="Pending approver decisions"
+                value={awaitingApprovalCount}
+                detail={
+                  <>
+                    <span
+                      className={`cv-home-kpi-chip ${awaitingApprovalCount ? "blue" : "green"}`}
+                    >
+                      {awaitingApprovalCount ? "Decisions" : "No pending"}
+                    </span>
+                    <span>{awaitingApprovalCount ? "Approver action" : "Requests appear here"}</span>
+                  </>
+                }
               />
+              <span className="cv-home-kpi-action" aria-hidden="true">View details →</span>
             </Link>
           </div>
 
@@ -316,14 +352,7 @@ export default function HomePage() {
                   <div className="cv-priority-list" id="home-priority-risks-list">
                     {visiblePriorityRisks.map((item, index) => {
                       const level = String(item.risk_level || "Needs verification");
-                      const normalizedLevel = level.toLowerCase();
-                      const severity = normalizedLevel.includes("critical")
-                        ? "critical"
-                        : normalizedLevel.includes("high")
-                          ? "high"
-                          : normalizedLevel.includes("medium")
-                            ? "medium"
-                            : "needs_verification";
+                      const severity = prioritySeverityClass(level);
                       return (
                         <div className="cv-priority-row" key={index}>
                           <span className={`cv-priority-severity ${severity}`}>
@@ -379,31 +408,44 @@ export default function HomePage() {
           <div className="cv-section-heading" style={{ marginTop: 28 }}>
             <div>
               <h2>Next actions</h2>
-              <p>Live steps vs staged roadmap items (clearly labeled).</p>
+              <p>Available actions and staged items, with their status clearly labeled.</p>
             </div>
           </div>
-          <div className="cv-home-grid">
+          <div className="cv-next-actions-grid">
             {(data.next_actions || []).map((action, index) => {
               const live = Boolean(action.live);
-              const href =
-                action.href_kind === "report"
-                  ? `/reports/${String(action.href)}`
-                  : String(action.href || "/");
+              const links = (Array.isArray(action.links)
+                ? action.links
+                : action.href
+                  ? [action]
+                  : []) as Array<Record<string, unknown>>;
               return (
-                <section className="cv-card pad" key={index}>
-                  <div className="cv-eyebrow">
+                <section className="cv-card pad cv-next-action-card" key={index}>
+                  <div className={`cv-next-action-state ${live ? "is-live" : "is-staged"}`}>
                     {live ? "Available now" : "Staged — not live"}
                   </div>
-                  <h3 className="cv-card-title" style={{ fontSize: 16 }}>
-                    {String(action.title)}
-                  </h3>
-                  <p className="cv-card-subtitle">{cleanUserText(action.detail)}</p>
+                  <div className="cv-next-action-copy">
+                    <h3 className="cv-card-title" style={{ fontSize: 16 }}>
+                      {String(action.title)}
+                    </h3>
+                    <p className="cv-card-subtitle">{cleanUserText(action.detail)}</p>
+                  </div>
                   {live ? (
-                    <div style={{ marginTop: 12 }}>
-                      <SecondaryLink href={href}>Open</SecondaryLink>
+                    <div className="cv-next-action-links">
+                      {links.map((link, linkIndex) => {
+                        const href =
+                          link.href_kind === "report"
+                            ? `/reports/${String(link.href)}`
+                            : String(link.href || "/");
+                        return (
+                          <SecondaryLink href={href} key={linkIndex}>
+                            {String(link.label || "Open")}
+                          </SecondaryLink>
+                        );
+                      })}
                     </div>
                   ) : (
-                    <p className="cv-small-note" style={{ marginTop: 12 }}>
+                    <p className="cv-small-note cv-next-action-note">
                       Shown for roadmap visibility only.
                     </p>
                   )}

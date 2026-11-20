@@ -858,6 +858,7 @@ class WorkspaceStore:
                 "critical": 0,
                 "high": 0,
                 "medium": 0,
+                "low": 0,
                 "needs_verification": 0,
             }
             for item in priority:
@@ -865,7 +866,7 @@ class WorkspaceStore:
                 bucket = next(
                     (
                         candidate
-                        for candidate in ("critical", "high", "medium")
+                        for candidate in ("critical", "high", "medium", "low")
                         if candidate in level
                     ),
                     "needs_verification",
@@ -877,16 +878,16 @@ class WorkspaceStore:
             )
             next_actions = [
                 {
-                    "title": "Reopen an active project BOM",
-                    "detail": "Workspace-scoped saved analyses in the local preview store.",
-                    "href": "/reports",
-                    "live": True,
-                },
-                {
-                    "title": "Review rolled-up assembly risk",
-                    "detail": "Nested BOMs show assembly risk with part-level drill-down.",
-                    "href": analyses[0]["id"] if analyses else "/bom-analyzer",
-                    "href_kind": "report" if analyses else "route",
+                    "title": "Review saved BOMs and assembly risk",
+                    "detail": "Open saved analyses or inspect the latest nested BOM risk.",
+                    "links": [
+                        {"label": "Open saved BOMs", "href": "/reports"},
+                        {
+                            "label": "Review latest assembly risk",
+                            "href": analyses[0]["id"] if analyses else "/bom-analyzer",
+                            "href_kind": "report" if analyses else "route",
+                        },
+                    ],
                     "live": True,
                 },
                 {
