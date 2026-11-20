@@ -6,13 +6,16 @@ explicit alert refreshes never call vendors or send mail.
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import inspect
+import json
 import os
 from datetime import datetime, timezone
 from typing import Any, Callable
 
 from apps.api import migration_tools, monitoring_store, slack_notifications
+from apps.api import developer_webhooks
 from apps.api.workspace_store import get_store
 from src.normalizer import normalize_part_number
 
@@ -420,6 +423,19 @@ def run_live_analysis_refresh(
             or pcn_evidence.get("source_url")
             or ""
         ).strip()
+        lifecycle_event_source_url = str(
+            _first_value(fresh, "lifecycle_event_source_url", "lifecycle_notice_url")
+            or lifecycle_event.get("source_url")
+            or pcn_evidence.get("source_url")
+            or pcn_url
+            or ""
+        ).strip()
+        lifecycle_event_evidence_class = str(
+            _first_value(fresh, "lifecycle_event_evidence_class")
+            or lifecycle_event.get("evidence_class")
+            or pcn_evidence.get("evidence_class")
+            or ""
+        ).strip()
         current.update({
             "pcn_number": str(
                 _first_value(fresh, "pcn_number", "pcn_id", "PCN Number")
@@ -442,6 +458,8 @@ def run_live_analysis_refresh(
             "last_time_buy_date": str(_first_value(fresh, "last_time_buy_date", "Last Time Buy Date") or "").strip(),
             "end_of_life_date": str(_first_value(fresh, "end_of_life_date", "eol_date", "End Of Life Date") or "").strip(),
             "estimated_eol_years": _optional_number(_first_value(fresh, "estimated_eol_years", "Estimated EOL Years")),
+            "lifecycle_event_source_url": lifecycle_event_source_url,
+            "lifecycle_event_evidence_class": lifecycle_event_evidence_class,
         })
         from src.risk_engine import calculate_risk
 
@@ -482,6 +500,21 @@ def run_live_analysis_refresh(
                 if current.get(field) not in (None, ""):
                     comparison_current[field] = current[field]
             observed_fields.append("pcn_event")
+        lifecycle_event_supported = (
+            lifecycle_event_source_url.startswith("https://")
+            and lifecycle_event_evidence_class == "live-authorized-supplier"
+        )
+        if lifecycle_event_supported and any(
+            current.get(field) not in (None, "")
+            for field in ("last_time_buy_date", "end_of_life_date")
+        ):
+            for field in (
+                "last_time_buy_date", "end_of_life_date", "estimated_eol_years",
+                "lifecycle_event_source_url", "lifecycle_event_evidence_class",
+            ):
+                if current.get(field) not in (None, ""):
+                    comparison_current[field] = current[field]
+            observed_fields.append("lifecycle_event")
         if current.get("risk_level") in {"High", "Medium", "Low"}:
             comparison_current["risk_level"] = current["risk_level"]
             observed_fields.append("risk_level")
@@ -502,6 +535,8 @@ def run_live_analysis_refresh(
             "last_time_buy_date": comparison_current.get("last_time_buy_date", ""),
             "end_of_life_date": comparison_current.get("end_of_life_date", ""),
             "estimated_eol_years": comparison_current.get("estimated_eol_years"),
+            "lifecycle_event_source_url": comparison_current.get("lifecycle_event_source_url", ""),
+            "lifecycle_event_evidence_class": comparison_current.get("lifecycle_event_evidence_class", ""),
             "observed_fields": observed_fields,
             "field_retrieved_at": field_retrieved_at,
         })
@@ -518,7 +553,7 @@ def run_live_analysis_refresh(
                 "evidence_source": "live-authorized-supplier",
                 "retrieved_at": retrieved_at,
                 "supplier": current["supplier"],
-                "product_url": current["product_url"],
+                "product_url": str(alert.get("source_url") or current["product_url"]),
                 "datasheet_url": current["datasheet_url"],
             })
         saved_alerts = monitoring_store.reconcile_alerts(
@@ -772,6 +807,49 @@ def run_scheduled_cycle(
             str(member.get("workspace_id") or ""), member
         ):
             summary["digest_emails_sent"] += 1
+    # Outbound developer events are queued once per distinct alert snapshot,
+    # then delivered from the durable outbox with bounded retries.
+    summary["webhook_deliveries"] = {"attempted": 0, "delivered": 0, "pending": 0, "failed": 0}
+    try:
+        store = get_store()
+        for workspace_id, alerts in new_alerts_by_workspace.items():
+            for alert in alerts.values():
+                data = {
+                    key: alert.get(key)
+                    for key in (
+                        "id", "analysis_id", "part_number", "alert_type", "severity",
+                        "message", "previous_value", "current_value", "source_url",
+                        "created_at",
+                    )
+                    if alert.get(key) not in (None, "")
+                }
+                stable_event = json.dumps(
+                    {"workspace_id": workspace_id, "type": "monitoring.alerts.created", "data": data},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                    default=str,
+                )
+                event_id = "evt_" + hashlib.sha256(stable_event.encode("utf-8")).hexdigest()[:32]
+                developer_webhooks.queue_event(
+                    store,
+                    workspace_id=workspace_id,
+                    event_type="monitoring.alerts.created",
+                    event_id=event_id,
+                    data=data,
+                )
+        summary["webhook_deliveries"] = developer_webhooks.dispatch_due(store, limit=100)
+        if summary["webhook_deliveries"].get("failed"):
+            summary["failures"].append({
+                "reason": "developer_webhook_delivery_failed",
+                "count": summary["webhook_deliveries"]["failed"],
+            })
+    except Exception as exc:  # noqa: BLE001
+        logging.warning(
+            "developer_webhook_scheduled_delivery_failed exception=%s",
+            type(exc).__name__,
+        )
+        summary["failures"].append({"reason": "developer_webhook_delivery_unavailable"})
     if summary["failures"]:
         summary["status"] = "completed_with_failures"
     return summary

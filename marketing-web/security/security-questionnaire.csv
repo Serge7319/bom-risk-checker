@@ -1,6 +1,6 @@
 Question,Current response,Status
 Security certifications,"Cadivor does not claim SOC 2 or ISO 27001 certification.",Current
-Authentication,"Supabase Auth is used for account authentication in the current web application.",Current
+Authentication,"Supabase Auth is used for account authentication in the current web application; SSO is not configured.",Current
 Workspace access,"Application routes scope workspace records to authorized users and roles; customer security review is still recommended.",Current
 Data hosting,"The current deployment uses Railway for application services and Supabase for authentication and database services.",Current
 Marketing site hosting,"The public marketing site is deployed on Cloudflare Pages.",Current
@@ -9,7 +9,7 @@ Transactional email,"Resend is used when the verified sender and delivery creden
 AI processing,"AI-assisted features may send the user-provided prompt and the minimum required context to the configured OpenAI-compatible endpoint.",Current
 Encryption in transit,"Application services use HTTPS endpoints; provider-specific configuration should be reviewed for each deployment.",Current
 Encryption at rest,"Provider-level at-rest encryption configuration has not yet been independently documented in Cadivor's security program.",Needs confirmation
-Data retention,"Optional first-party analytics are retained for up to 180 days. Account and BOM data is retained while the account is active; deletion requests are handled through support.",Current
+Data retention,"Optional first-party analytics are retained for up to 180 days. Account and BOM data is retained while the account is active. Workspace retention periods are not configurable; supported BOM/report records can be deleted by workspace admins and account deletion requests are handled through support.",Gap
 Account deletion,"There is no self-service account deletion control today. Contact legal@cadivor.com to request verified account deletion.",Current
 Incident response,"A formal incident response and customer notification procedure is part of the SOC 2 readiness work and is not yet published.",In progress
 Vulnerability management,"A formal vulnerability management policy and evidence repository are part of the SOC 2 readiness work and are not yet published.",In progress

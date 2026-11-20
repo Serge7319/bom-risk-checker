@@ -73,6 +73,14 @@ except ImportError as newark_import_error:
     ):
         raise RuntimeError("Newark supplier integration could not be loaded.") from _newark_import_error
 
+try:
+    from integrations.octopart_client import search_octopart_by_part_number
+except ImportError as nexar_import_error:
+    _nexar_import_error = nexar_import_error
+
+    def search_octopart_by_part_number(part_number):
+        raise RuntimeError("Nexar Supply integration could not be loaded.") from _nexar_import_error
+
 
 def _empty_supplier_result(source_name: str, *, provider_status: str, error: str = "") -> dict:
     return {
@@ -382,7 +390,7 @@ def _safe_supplier_lookup(
 
         # DigiKey brand constraint: reject a hit that does not match the
         # explicitly requested manufacturer (worker-thread safe).
-        if requested_mfr and str(source_name or "") in {"DigiKey", "Mouser", "Newark"}:
+        if requested_mfr and str(source_name or "") in {"DigiKey", "Mouser", "Newark", "Nexar Supply"}:
             result_mfr = str(result.get("manufacturer") or "").strip()
             brand_ok = False
             try:
@@ -484,6 +492,16 @@ def _supplier_lookup_callable(source_name: str):
         "DigiKey": ("DIGIKEY_CLIENT_ID", search_digikey_by_part_number),
         "Newark": ("NEWARK_API_KEY", search_newark_by_part_number),
     }
+    if source_name == "Nexar Supply":
+        has_client_id = any(
+            _provider_configured(name)
+            for name in ("NEXAR_CLIENT_ID", "OCTOPART_CLIENT_ID")
+        )
+        has_client_secret = any(
+            _provider_configured(name)
+            for name in ("NEXAR_CLIENT_SECRET", "OCTOPART_CLIENT_SECRET")
+        )
+        return search_octopart_by_part_number if has_client_id and has_client_secret else None
     entry = configured.get(source_name)
     if not entry:
         return None
@@ -573,6 +591,7 @@ def get_supplier_results(part_number, request_id: str = "", manufacturer: str = 
         ("Mouser", _supplier_lookup_callable("Mouser")),
         ("DigiKey", _supplier_lookup_callable("DigiKey")),
         ("Newark", _supplier_lookup_callable("Newark")),
+        ("Nexar Supply", _supplier_lookup_callable("Nexar Supply")),
     ]
 
     results = []
@@ -619,6 +638,7 @@ def get_first_exact_supplier_result(part_number: str, request_id: str = "") -> d
         ("Mouser", _supplier_lookup_callable("Mouser")),
         ("DigiKey", _supplier_lookup_callable("DigiKey")),
         ("Newark", _supplier_lookup_callable("Newark")),
+        ("Nexar Supply", _supplier_lookup_callable("Nexar Supply")),
     ]
     executor = ThreadPoolExecutor(max_workers=len(suppliers))
     futures = {
@@ -1061,11 +1081,17 @@ def _provider_discovery_status(source_name: str) -> dict:
         "DigiKey": ("DIGIKEY_CLIENT_ID",),
         "Mouser": ("MOUSER_API_KEY",),
         "Newark": ("NEWARK_API_KEY",),
+        "Nexar Supply": ("NEXAR_CLIENT_ID", "NEXAR_CLIENT_SECRET"),
     }
     secret_names = secret_map.get(source_name, ())
-    configured = bool(secret_names) and any(
+    configured = bool(secret_names) and all(
         _provider_configured(name) for name in secret_names
     )
+    if source_name == "Nexar Supply" and not configured:
+        configured = (
+            any(_provider_configured(name) for name in ("NEXAR_CLIENT_ID", "OCTOPART_CLIENT_ID"))
+            and any(_provider_configured(name) for name in ("NEXAR_CLIENT_SECRET", "OCTOPART_CLIENT_SECRET"))
+        )
     if not configured:
         is_relationship_provider = source_name == "DigiKey"
         return {

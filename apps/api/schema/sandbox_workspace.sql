@@ -206,6 +206,49 @@ CREATE TABLE IF NOT EXISTS migration_decision_record_approvers (
 CREATE INDEX IF NOT EXISTS migration_decision_record_approvers_expiry_idx
   ON migration_decision_record_approvers (expires_at);
 
+-- Workspace-scoped outbound developer webhooks. Endpoint URLs and signing
+-- secrets are encrypted by the API before insertion. Delivery payloads are
+-- retained only as long as needed for bounded retries and status history.
+CREATE TABLE IF NOT EXISTS migration_developer_webhooks (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  endpoint_ciphertext TEXT NOT NULL,
+  signing_secret_ciphertext TEXT NOT NULL,
+  event_types JSONB NOT NULL DEFAULT '[]'::jsonb,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS migration_developer_webhooks_workspace_active_idx
+  ON migration_developer_webhooks (workspace_id, active, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS migration_developer_webhook_deliveries (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  webhook_id TEXT NOT NULL REFERENCES migration_developer_webhooks(id) ON DELETE CASCADE,
+  event_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'delivered', 'failed')),
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  response_status INTEGER,
+  failure_code TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  delivered_at TIMESTAMPTZ,
+  UNIQUE (webhook_id, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS migration_developer_webhook_deliveries_due_idx
+  ON migration_developer_webhook_deliveries (status, next_attempt_at, created_at);
+
+CREATE INDEX IF NOT EXISTS migration_developer_webhook_deliveries_workspace_idx
+  ON migration_developer_webhook_deliveries (workspace_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS migration_account_entitlement_overrides (
   user_id TEXT PRIMARY KEY,
   feature_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,

@@ -496,6 +496,261 @@ class PostgresWorkspaceStore:
             "expires_at": expires.isoformat() if hasattr(expires, "isoformat") else expires,
         }
 
+    def create_developer_webhook(self, row: dict[str, Any]) -> dict[str, Any]:
+        wid = self._require_workspace(str(row.get("workspace_id") or ""))
+        webhook_id = str(row.get("id") or uuid.uuid4())
+        with self._connect() as conn:
+            saved = conn.execute(
+                """
+                INSERT INTO migration_developer_webhooks
+                  (id, workspace_id, name, endpoint_ciphertext,
+                   signing_secret_ciphertext, event_types, active, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, TRUE, %s)
+                RETURNING *
+                """,
+                (
+                    webhook_id, wid, str(row.get("name") or ""),
+                    str(row.get("endpoint_ciphertext") or ""),
+                    str(row.get("signing_secret_ciphertext") or ""),
+                    json.dumps(row.get("event_types") or []),
+                    str(row.get("created_by") or ""),
+                ),
+            ).fetchone()
+            conn.commit()
+        result = dict(saved or {})
+        for key in ("created_at", "updated_at"):
+            if hasattr(result.get(key), "isoformat"):
+                result[key] = result[key].isoformat()
+        return result
+
+    def list_developer_webhooks(self, workspace_id: str) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM migration_developer_webhooks WHERE workspace_id = %s ORDER BY created_at DESC",
+                (wid,),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            for key in ("created_at", "updated_at"):
+                if hasattr(item.get(key), "isoformat"):
+                    item[key] = item[key].isoformat()
+            result.append(item)
+        return result
+
+    def get_developer_webhook(self, workspace_id: str, webhook_id: str) -> dict[str, Any] | None:
+        wid = self._require_workspace(workspace_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM migration_developer_webhooks WHERE workspace_id = %s AND id = %s",
+                (wid, str(webhook_id or "")),
+            ).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        for key in ("created_at", "updated_at"):
+            if hasattr(item.get(key), "isoformat"):
+                item[key] = item[key].isoformat()
+        return item
+
+    def delete_developer_webhook(self, workspace_id: str, webhook_id: str) -> bool:
+        wid = self._require_workspace(workspace_id)
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE migration_developer_webhooks SET active = FALSE, updated_at = NOW() "
+                "WHERE workspace_id = %s AND id = %s AND active = TRUE",
+                (wid, str(webhook_id or "")),
+            )
+            if cursor.rowcount == 1:
+                conn.execute(
+                    "UPDATE migration_developer_webhook_deliveries "
+                    "SET status = 'failed', failure_code = 'webhook_disabled', updated_at = NOW() "
+                    "WHERE workspace_id = %s AND webhook_id = %s AND status IN ('pending', 'processing')",
+                    (wid, str(webhook_id or "")),
+                )
+            conn.commit()
+            return cursor.rowcount == 1
+
+    def queue_developer_webhook_event(
+        self, *, workspace_id: str, event_id: str, event_type: str,
+        payload: dict[str, Any], webhook_id: str | None = None,
+    ) -> int:
+        wid = self._require_workspace(workspace_id)
+        with self._connect() as conn:
+            query = "SELECT id, event_types FROM migration_developer_webhooks WHERE workspace_id = %s AND active = TRUE"
+            params: tuple[Any, ...] = (wid,)
+            if webhook_id:
+                query += " AND id = %s"
+                params += (str(webhook_id),)
+            hooks = conn.execute(query, params).fetchall()
+            created = 0
+            for hook in hooks:
+                events = hook.get("event_types") or []
+                if isinstance(events, str):
+                    try:
+                        events = json.loads(events)
+                    except json.JSONDecodeError:
+                        events = []
+                if event_type not in events and not (
+                    event_type == "webhook.test" and webhook_id and str(hook.get("id") or "") == str(webhook_id)
+                ):
+                    continue
+                inserted = conn.execute(
+                    """
+                    INSERT INTO migration_developer_webhook_deliveries
+                      (id, workspace_id, webhook_id, event_id, event_type, payload)
+                    VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+                    ON CONFLICT (webhook_id, event_id) DO NOTHING
+                    RETURNING id
+                    """,
+                    (
+                        str(uuid.uuid4()), wid, str(hook["id"]), str(event_id),
+                        str(event_type), json.dumps(payload, ensure_ascii=False, default=str),
+                    ),
+                ).fetchone()
+                created += 1 if inserted else 0
+            conn.commit()
+        return created
+
+    def list_due_developer_webhook_deliveries(
+        self, *, workspace_id: str | None = None, webhook_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE migration_developer_webhook_deliveries "
+                "SET status = 'pending', next_attempt_at = NOW(), updated_at = NOW() "
+                "WHERE status = 'processing' AND updated_at < NOW() - INTERVAL '5 minutes'"
+            )
+            rows = conn.execute(
+                """
+                WITH due AS (
+                  SELECT delivery.id
+                    FROM migration_developer_webhook_deliveries AS delivery
+                    JOIN migration_developer_webhooks AS hook
+                      ON hook.id = delivery.webhook_id
+                     AND hook.workspace_id = delivery.workspace_id
+                   WHERE delivery.status = 'pending'
+                     AND delivery.next_attempt_at <= NOW()
+                     AND hook.active = TRUE
+                     AND (%s::text IS NULL OR delivery.workspace_id = %s)
+                     AND (%s::text IS NULL OR delivery.webhook_id = %s)
+                   ORDER BY delivery.created_at
+                   LIMIT %s
+                   FOR UPDATE OF delivery SKIP LOCKED
+                )
+                UPDATE migration_developer_webhook_deliveries AS delivery
+                   SET status = 'processing', updated_at = NOW()
+                  FROM due, migration_developer_webhooks AS hook
+                 WHERE delivery.id = due.id
+                   AND hook.id = delivery.webhook_id
+                   AND hook.workspace_id = delivery.workspace_id
+                RETURNING delivery.*, hook.endpoint_ciphertext, hook.signing_secret_ciphertext
+                """,
+                (
+                    str(workspace_id) if workspace_id else None,
+                    str(workspace_id or ""),
+                    str(webhook_id) if webhook_id else None,
+                    str(webhook_id or ""),
+                    max(1, min(int(limit), 500)),
+                ),
+            ).fetchall()
+            conn.commit()
+        result = []
+        for row in rows:
+            item = dict(row)
+            if isinstance(item.get("payload"), str):
+                try:
+                    item["payload"] = json.loads(item["payload"])
+                except json.JSONDecodeError:
+                    item["payload"] = None
+            for key in ("created_at", "updated_at", "next_attempt_at", "delivered_at"):
+                if hasattr(item.get(key), "isoformat"):
+                    item[key] = item[key].isoformat()
+            result.append(item)
+        return result
+
+    def finish_developer_webhook_delivery(
+        self, delivery_id: str, *, delivered: bool, response_status: int | None,
+        failure_code: str, retry_delay_seconds: int, max_attempts: int,
+    ) -> str:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                UPDATE migration_developer_webhook_deliveries
+                   SET attempt_count = attempt_count + 1,
+                       status = CASE
+                         WHEN %s THEN 'delivered'
+                         WHEN attempt_count + 1 >= %s THEN 'failed'
+                         ELSE 'pending'
+                       END,
+                       next_attempt_at = CASE
+                         WHEN %s OR attempt_count + 1 >= %s THEN next_attempt_at
+                         ELSE NOW() + (%s * INTERVAL '1 second')
+                       END,
+                       response_status = %s,
+                       failure_code = CASE WHEN %s THEN NULL ELSE %s END,
+                       delivered_at = CASE WHEN %s THEN NOW() ELSE NULL END,
+                       updated_at = NOW()
+                 WHERE id = %s AND status = 'processing'
+                 RETURNING status
+                """,
+                (
+                    bool(delivered), max(1, int(max_attempts)), bool(delivered),
+                    max(1, int(max_attempts)), max(1, int(retry_delay_seconds)),
+                    response_status, bool(delivered), str(failure_code or "delivery_error"),
+                    bool(delivered), str(delivery_id or ""),
+                ),
+            ).fetchone()
+            conn.commit()
+        return str(row["status"]) if row else "failed"
+
+    def list_developer_webhook_deliveries(self, workspace_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, webhook_id, event_id, event_type, status, attempt_count,
+                       response_status, failure_code, created_at, updated_at, delivered_at
+                  FROM migration_developer_webhook_deliveries
+                 WHERE workspace_id = %s
+                 ORDER BY created_at DESC
+                 LIMIT %s
+                """,
+                (wid, max(1, min(int(limit), 200))),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            for key in ("created_at", "updated_at", "delivered_at"):
+                if hasattr(item.get(key), "isoformat"):
+                    item[key] = item[key].isoformat()
+            result.append(item)
+        return result
+
+    def get_developer_webhook_delivery(
+        self, workspace_id: str, webhook_id: str, event_id: str
+    ) -> dict[str, Any] | None:
+        wid = self._require_workspace(workspace_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, webhook_id, event_id, event_type, status, attempt_count,
+                       response_status, failure_code, created_at, updated_at, delivered_at
+                  FROM migration_developer_webhook_deliveries
+                 WHERE workspace_id = %s AND webhook_id = %s AND event_id = %s
+                """,
+                (wid, str(webhook_id or ""), str(event_id or "")),
+            ).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        for key in ("created_at", "updated_at", "delivered_at"):
+            if hasattr(item.get(key), "isoformat"):
+                item[key] = item[key].isoformat()
+        return item
+
     def create_decision_record_approver(
         self,
         *,

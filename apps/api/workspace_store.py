@@ -13,7 +13,7 @@ import json
 import os
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +61,8 @@ def _empty() -> dict[str, Any]:
         "decision_records": {},
         "decision_record_shares": {},
         "decision_record_approvers": {},
+        "developer_webhooks": {},
+        "developer_webhook_deliveries": {},
         "procurement_quotes": {},
     }
 
@@ -337,6 +339,186 @@ class WorkspaceStore:
             return sorted(
                 rows, key=lambda row: str(row.get("created_at") or ""), reverse=True
             )
+
+    def create_developer_webhook(self, row: dict[str, Any]) -> dict[str, Any]:
+        wid = self._require_workspace(str(row.get("workspace_id") or ""))
+        webhook_id = str(row.get("id") or uuid.uuid4())
+        saved = dict(json_safe(row))
+        saved.update({"id": webhook_id, "workspace_id": wid, "created_at": _now(), "updated_at": _now()})
+        with _LOCK:
+            self._data.setdefault("developer_webhooks", {})[webhook_id] = saved
+            self.save()
+        return dict(saved)
+
+    def list_developer_webhooks(self, workspace_id: str) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        with _LOCK:
+            rows = [
+                dict(row)
+                for row in self._data.setdefault("developer_webhooks", {}).values()
+                if str(row.get("workspace_id") or "") == wid
+            ]
+        return sorted(rows, key=lambda row: str(row.get("created_at") or ""), reverse=True)
+
+    def get_developer_webhook(self, workspace_id: str, webhook_id: str) -> dict[str, Any] | None:
+        wid = self._require_workspace(workspace_id)
+        with _LOCK:
+            row = dict(self._data.setdefault("developer_webhooks", {}).get(str(webhook_id or "")) or {})
+        return row if row and str(row.get("workspace_id") or "") == wid else None
+
+    def delete_developer_webhook(self, workspace_id: str, webhook_id: str) -> bool:
+        row = self.get_developer_webhook(workspace_id, webhook_id)
+        if not row or row.get("active") is not True:
+            return False
+        with _LOCK:
+            self._data["developer_webhooks"][str(webhook_id)] = {**row, "active": False, "updated_at": _now()}
+            for delivery in self._data.setdefault("developer_webhook_deliveries", {}).values():
+                if str(delivery.get("webhook_id") or "") == str(webhook_id) and delivery.get("status") in {"pending", "processing"}:
+                    delivery.update({"status": "failed", "failure_code": "webhook_disabled", "updated_at": _now()})
+            self.save()
+        return True
+
+    def queue_developer_webhook_event(
+        self, *, workspace_id: str, event_id: str, event_type: str,
+        payload: dict[str, Any], webhook_id: str | None = None,
+    ) -> int:
+        wid = self._require_workspace(workspace_id)
+        candidates = self.list_developer_webhooks(wid)
+        targets = [
+            row for row in candidates
+            if row.get("active") is True
+            and (not webhook_id or str(row.get("id") or "") == str(webhook_id))
+            and (
+                event_type in (row.get("event_types") or [])
+                or (event_type == "webhook.test" and webhook_id and str(row.get("id") or "") == str(webhook_id))
+            )
+        ]
+        created = 0
+        with _LOCK:
+            deliveries = self._data.setdefault("developer_webhook_deliveries", {})
+            for webhook in targets:
+                if any(
+                    str(item.get("webhook_id") or "") == str(webhook.get("id") or "")
+                    and str(item.get("event_id") or "") == str(event_id)
+                    for item in deliveries.values()
+                ):
+                    continue
+                delivery_id = str(uuid.uuid4())
+                deliveries[delivery_id] = {
+                    "id": delivery_id,
+                    "workspace_id": wid,
+                    "webhook_id": str(webhook.get("id") or ""),
+                    "event_id": str(event_id),
+                    "event_type": str(event_type),
+                    "payload": json_safe(payload),
+                    "status": "pending",
+                    "attempt_count": 0,
+                    "next_attempt_at": _now(),
+                    "response_status": None,
+                    "failure_code": "",
+                    "created_at": _now(),
+                    "updated_at": _now(),
+                    "delivered_at": None,
+                }
+                created += 1
+            if created:
+                self.save()
+        return created
+
+    def list_due_developer_webhook_deliveries(
+        self, *, workspace_id: str | None = None, webhook_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        wid = str(workspace_id or "").strip()
+        hook_id = str(webhook_id or "").strip()
+        now = datetime.now(timezone.utc)
+        row_limit = max(1, int(limit))
+        with _LOCK:
+            rows = []
+            all_deliveries = self._data.setdefault("developer_webhook_deliveries", {})
+            for delivery in all_deliveries.values():
+                if len(rows) >= row_limit:
+                    break
+                if delivery.get("status") == "processing":
+                    try:
+                        lease = datetime.fromisoformat(str(delivery.get("updated_at") or "").replace("Z", "+00:00"))
+                        lease = lease.replace(tzinfo=timezone.utc) if lease.tzinfo is None else lease
+                        if lease <= now - timedelta(minutes=5):
+                            delivery.update({"status": "pending", "next_attempt_at": now.isoformat()})
+                    except ValueError:
+                        delivery.update({"status": "pending", "next_attempt_at": now.isoformat()})
+                if (
+                    delivery.get("status") != "pending"
+                    or (wid and str(delivery.get("workspace_id") or "") != wid)
+                    or (hook_id and str(delivery.get("webhook_id") or "") != hook_id)
+                ):
+                    continue
+                try:
+                    due = datetime.fromisoformat(str(delivery.get("next_attempt_at") or "").replace("Z", "+00:00"))
+                    due = due.replace(tzinfo=timezone.utc) if due.tzinfo is None else due
+                except ValueError:
+                    continue
+                if due > now:
+                    continue
+                webhook = self._data.setdefault("developer_webhooks", {}).get(str(delivery.get("webhook_id") or "")) or {}
+                if webhook.get("active") is not True:
+                    continue
+                delivery.update({"status": "processing", "updated_at": now.isoformat()})
+                rows.append({**dict(delivery), "endpoint_ciphertext": webhook.get("endpoint_ciphertext"), "signing_secret_ciphertext": webhook.get("signing_secret_ciphertext")})
+            if rows:
+                self.save()
+        return sorted(rows, key=lambda row: str(row.get("created_at") or ""))
+
+    def finish_developer_webhook_delivery(
+        self, delivery_id: str, *, delivered: bool, response_status: int | None,
+        failure_code: str, retry_delay_seconds: int, max_attempts: int,
+    ) -> str:
+        with _LOCK:
+            row = dict(self._data.setdefault("developer_webhook_deliveries", {}).get(str(delivery_id or "")) or {})
+            if not row:
+                return "failed"
+            if row.get("status") != "processing":
+                return str(row.get("status") or "failed")
+            attempts = int(row.get("attempt_count") or 0) + 1
+            terminal = not delivered and attempts >= max_attempts
+            status = "delivered" if delivered else "failed" if terminal else "pending"
+            next_attempt = datetime.now(timezone.utc) + timedelta(seconds=max(1, int(retry_delay_seconds)))
+            row.update({
+                "status": status,
+                "attempt_count": attempts,
+                "next_attempt_at": next_attempt.isoformat() if status == "pending" else row.get("next_attempt_at"),
+                "response_status": response_status,
+                "failure_code": "" if delivered else str(failure_code or "delivery_error"),
+                "updated_at": _now(),
+                "delivered_at": _now() if delivered else None,
+            })
+            self._data["developer_webhook_deliveries"][str(delivery_id)] = row
+            self.save()
+            return status
+
+    def list_developer_webhook_deliveries(self, workspace_id: str, limit: int = 50) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        with _LOCK:
+            rows = [
+                {key: value for key, value in row.items() if key != "payload"}
+                for row in self._data.setdefault("developer_webhook_deliveries", {}).values()
+                if str(row.get("workspace_id") or "") == wid
+            ]
+        return sorted(rows, key=lambda row: str(row.get("created_at") or ""), reverse=True)[:max(1, min(int(limit), 200))]
+
+    def get_developer_webhook_delivery(
+        self, workspace_id: str, webhook_id: str, event_id: str
+    ) -> dict[str, Any] | None:
+        wid = self._require_workspace(workspace_id)
+        with _LOCK:
+            for row in self._data.setdefault("developer_webhook_deliveries", {}).values():
+                if (
+                    str(row.get("workspace_id") or "") == wid
+                    and str(row.get("webhook_id") or "") == str(webhook_id)
+                    and str(row.get("event_id") or "") == str(event_id)
+                ):
+                    return {key: value for key, value in row.items() if key != "payload"}
+        return None
 
     def create_decision_record_share(
         self,

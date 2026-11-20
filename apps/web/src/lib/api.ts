@@ -1258,6 +1258,67 @@ export async function revokeDeveloperApiKey(token: string, keyId: string) {
   );
 }
 
+export type DeveloperWebhook = {
+  id: string;
+  name: string;
+  destination_host: string;
+  event_types: string[];
+  active: boolean;
+  created_at?: string | null;
+};
+
+export type DeveloperWebhookDelivery = {
+  id: string;
+  webhook_id: string;
+  event_id: string;
+  event_type: string;
+  status: string;
+  attempt_count: number;
+  response_status?: number | null;
+  failure_code?: string | null;
+  created_at?: string | null;
+  delivered_at?: string | null;
+};
+
+export type DeveloperWebhookSettings = {
+  ok: boolean;
+  encryption_configured: boolean;
+  allowed_event_types: string[];
+  webhooks: DeveloperWebhook[];
+  deliveries: DeveloperWebhookDelivery[];
+};
+
+export async function fetchDeveloperWebhooks(token: string) {
+  return apiJson<DeveloperWebhookSettings>("/developer/webhooks", { token, cache: "no-store" });
+}
+
+export async function createDeveloperWebhook(
+  token: string,
+  payload: { name: string; url: string; event_types: string[] },
+) {
+  return apiJson<{ ok: boolean; webhook: DeveloperWebhook; signing_secret: string }>(
+    "/developer/webhooks",
+    { method: "POST", token, body: JSON.stringify(payload) },
+  );
+}
+
+export async function deleteDeveloperWebhook(token: string, webhookId: string) {
+  return apiJson<{ ok: boolean; removed: boolean }>(
+    `/developer/webhooks/${encodeURIComponent(webhookId)}`,
+    { method: "DELETE", token },
+  );
+}
+
+export async function sendDeveloperWebhookTest(token: string, webhookId: string) {
+  return apiJson<{
+    ok: boolean;
+    delivery: DeveloperWebhookDelivery;
+    dispatch: { attempted: number; delivered: number; pending: number; failed: number };
+  }>(`/developer/webhooks/${encodeURIComponent(webhookId)}/test`, {
+    method: "POST", token, body: JSON.stringify({}),
+  });
+}
+
 export async function beginBillingPortal(token: string) {
   return apiJson<{
     ok: boolean;
