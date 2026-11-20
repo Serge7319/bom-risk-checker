@@ -105,3 +105,24 @@
 .seo-pricing-card .seo-annual-note{min-height:0;margin:-7px 0 9px;color:#2e63c6;font-size:12px;font-weight:700;line-height:1.4}
 .seo-pricing-card .seo-annual-note[hidden]{display:none}
 @media(max-width:560px){.seo-pricing-billing{align-items:flex-start;flex-direction:column;gap:8px;padding:12px}.seo-pricing-billing-switch{width:100%}.seo-pricing-billing-switch button{flex:1}}
+
+
+/* Shared marketing header actions and in-hero breadcrumbs. */
+.seo-header-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto}
+.seo-header-actions .seo-button{min-height:40px;padding:8px 12px;font-size:13px;white-space:nowrap}
+.seo-header-actions .seo-button-secondary{border-color:rgba(255,255,255,.26);background:rgba(255,255,255,.05);color:#f8fbff}
+.seo-header-actions .seo-button-secondary:hover{border-color:rgba(255,255,255,.45);background:rgba(255,255,255,.13);color:#fff}
+.seo-header-actions .seo-button-primary{border-color:#2563eb;background:#2563eb;color:#fff}
+.seo-breadcrumb{display:flex;align-items:center;flex-wrap:wrap;gap:0 9px;margin:0 0 24px;color:#bdcde2;font-size:13px;line-height:1.45}
+.seo-breadcrumb a{color:#c7dbfb;text-decoration:none}
+.seo-breadcrumb a:hover{color:#fff;text-decoration:underline}
+.seo-breadcrumb [aria-current="page"]{color:#e4ecf7;font-weight:650}
+@media(max-width:800px){
+  .seo-header-actions{order:2;margin-left:auto;flex-wrap:wrap}
+  .seo-nav{order:3;width:100%;justify-content:flex-start;gap:10px 16px}
+}
+@media(max-width:560px){
+  .seo-header-actions{order:3;flex:1 1 100%;width:100%;margin-left:0;justify-content:flex-start;gap:6px}
+  .seo-header-actions .seo-button{width:auto;min-height:38px;padding:7px 9px;font-size:12px}
+  .seo-nav{order:2}
+}
