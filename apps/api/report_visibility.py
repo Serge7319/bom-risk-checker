@@ -85,7 +85,10 @@ def customer_visible_projects(
                 }
             visible_boms.append(bom)
 
-        if boms and not visible_boms:
+        # Projects without a saved customer-visible BOM are empty shells, not
+        # active portfolio projects. This also keeps a project row from
+        # lingering after its last BOM has been deleted.
+        if not visible_boms:
             continue
         result.append({**project, "boms": visible_boms, "bom_count": len(visible_boms)})
 

@@ -872,7 +872,7 @@ class WorkspaceStore:
                     "saved_analyses": len(analyses),
                     "priority_items": len(priority),
                 },
-                "projects": projects[:12],
+                "projects": projects,
                 "recent_analyses": analyses[:12],
                 "priority_risks": priority[:12],
                 "next_actions": next_actions,
