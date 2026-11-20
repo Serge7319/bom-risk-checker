@@ -26,6 +26,8 @@ export default function HomePage() {
   const [data, setData] = useState<HomePayload | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
+  const [showAllProjects, setShowAllProjects] = useState(false);
+  const [showAllPriorityRisks, setShowAllPriorityRisks] = useState(false);
 
   useEffect(() => {
     if (!session) return;
@@ -39,6 +41,15 @@ export default function HomePage() {
   if (!session) return null;
 
   const metrics = data?.metrics || {};
+  const projects = data?.projects || [];
+  const priorityRisks = data?.priority_risks || [];
+  const homeListPreviewLimit = 5;
+  const visibleProjects = showAllProjects
+    ? projects
+    : projects.slice(0, homeListPreviewLimit);
+  const visiblePriorityRisks = showAllPriorityRisks
+    ? priorityRisks
+    : priorityRisks.slice(0, homeListPreviewLimit);
   const hasSaved = Number(metrics.saved_analyses || 0) > 0;
   const latest = (data?.recent_analyses || [])[0] as
     | Record<string, unknown>
@@ -148,62 +159,80 @@ export default function HomePage() {
 
           <div className="cv-home-grid">
             <section className="cv-card pad">
-              <div style={{ marginBottom: 12 }}>
-                <h3 className="cv-card-title">Active projects</h3>
-                <p className="cv-card-subtitle">
-                  Projects and BOMs saved with the latest analysis link.
-                </p>
-              </div>
-              {(data.projects || []).length ? (
-                <div className="cv-table-wrap cv-table-wrap--actions">
-                  <table className="cv-table cv-table-actions">
-                    <thead>
-                      <tr>
-                        <th>Project</th>
-                        <th>BOMs</th>
-                        <th>Latest health</th>
-                        <th className="cv-table-action">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.projects.map((project) => {
-                        const boms = (project.boms || []) as Array<
-                          Record<string, unknown>
-                        >;
-                        const first = boms[0];
-                        const analysisId = first?.latest_analysis_id;
-                        return (
-                          <tr key={String(project.id)}>
-                            <td>
-                              <strong>{userFacingLabel(project.name, "Project")}</strong>
-                            </td>
-                            <td>{String(project.bom_count ?? boms.length)}</td>
-                            <td>
-                              {first?.health_score == null
-                                ? "—"
-                                : String(first.health_score)}
-                              {first?.top_rolled_risk
-                                ? ` · ${String(first.top_rolled_risk)}`
-                                : ""}
-                            </td>
-                            <td className="cv-table-action">
-                              {analysisId ? (
-                                <Link
-                                  className="cv-table-open"
-                                  href={`/reports/${String(analysisId)}`}
-                                >
-                                  Open
-                                </Link>
-                              ) : (
-                                "—"
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              <div className="cv-home-panel-heading">
+                <div className="cv-home-panel-copy">
+                  <h3 className="cv-card-title">Active projects</h3>
+                  <p className="cv-card-subtitle">
+                    Projects and BOMs saved with the latest analysis link.
+                  </p>
                 </div>
+                {projects.length > homeListPreviewLimit ? (
+                  <button
+                    type="button"
+                    className="cv-button small cv-home-view-toggle"
+                    aria-expanded={showAllProjects}
+                    aria-controls="home-active-projects-list"
+                    onClick={() => setShowAllProjects((showAll) => !showAll)}
+                  >
+                    {showAllProjects ? "Show fewer" : `View all ${projects.length}`}
+                  </button>
+                ) : null}
+              </div>
+              {projects.length ? (
+                <>
+                  <div className="cv-table-wrap cv-table-wrap--actions" id="home-active-projects-list">
+                    <table className="cv-table cv-table-actions">
+                      <thead>
+                        <tr>
+                          <th>Project</th>
+                          <th>BOMs</th>
+                          <th>Latest health</th>
+                          <th className="cv-table-action">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleProjects.map((project) => {
+                          const boms = (project.boms || []) as Array<
+                            Record<string, unknown>
+                          >;
+                          const first = boms[0];
+                          const analysisId = first?.latest_analysis_id;
+                          return (
+                            <tr key={String(project.id)}>
+                              <td>
+                                <strong>{userFacingLabel(project.name, "Project")}</strong>
+                              </td>
+                              <td>{String(project.bom_count ?? boms.length)}</td>
+                              <td>
+                                {first?.health_score == null
+                                  ? "—"
+                                  : String(first.health_score)}
+                                {first?.top_rolled_risk
+                                  ? ` · ${String(first.top_rolled_risk)}`
+                                  : ""}
+                              </td>
+                              <td className="cv-table-action">
+                                {analysisId ? (
+                                  <Link
+                                    className="cv-table-open"
+                                    href={`/reports/${String(analysisId)}`}
+                                  >
+                                    Open
+                                  </Link>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="cv-home-list-summary" aria-live="polite">
+                    Showing {visibleProjects.length} of {projects.length} project{projects.length === 1 ? "" : "s"}
+                  </p>
+                </>
               ) : (
                 <div className="cv-empty" style={{ border: 0, padding: 0 }}>
                   No projects yet.{" "}
@@ -214,59 +243,77 @@ export default function HomePage() {
             </section>
 
             <section className="cv-card pad">
-              <div style={{ marginBottom: 12 }}>
-                <h3 className="cv-card-title">Priority queue</h3>
-                <p className="cv-card-subtitle">
-                  Ranked, evidence-linked risks from saved analyses in this
-                  workspace.
-                </p>
-              </div>
-              {(data.priority_risks || []).length ? (
-                <div className="cv-priority-list">
-                  {data.priority_risks.map((item, index) => {
-                    const high =
-                      String(item.risk_level || "").toLowerCase() === "high";
-                    return (
-                      <div className="cv-priority-row" key={index}>
-                        <div
-                          className={`cv-priority-index${high ? "" : " amber"}`}
-                        >
-                          {String(index + 1).padStart(2, "0")}
-                        </div>
-                        <div>
-                          <div className="cv-priority-title">
-                            {item.mpn
-                              ? String(item.mpn)
-                              : userFacingLabel(item.bom_name, "BOM")}
-                            {item.why ? ` · ${cleanUserText(item.why)}` : ""}
-                          </div>
-                          <div className="cv-priority-meta">
-                            {userFacingLabel(item.project_name, "")}
-                            {item.bom_path ? ` · ${cleanUserText(item.bom_path)}` : ""}
-                          </div>
-                          <div className="cv-evidence-chips">
-                            <span className="cv-evidence-chip">
-                              {evidenceSourceLabel(item.evidence_source)}
-                            </span>
-                            <span className="cv-evidence-chip">
-                              {String(item.risk_level || "—")} priority
-                            </span>
-                          </div>
-                        </div>
-                        {item.analysis_id ? (
-                          <Link
-                            className="cv-button small"
-                            href={`/reports/${String(item.analysis_id)}`}
-                          >
-                            Review evidence
-                          </Link>
-                        ) : (
-                          <span className="cv-badge gray">No report link</span>
-                        )}
-                      </div>
-                    );
-                  })}
+              <div className="cv-home-panel-heading">
+                <div className="cv-home-panel-copy">
+                  <h3 className="cv-card-title">Priority queue</h3>
+                  <p className="cv-card-subtitle">
+                    Ranked, evidence-linked risks from saved analyses in this
+                    workspace.
+                  </p>
                 </div>
+                {priorityRisks.length > homeListPreviewLimit ? (
+                  <button
+                    type="button"
+                    className="cv-button small cv-home-view-toggle"
+                    aria-expanded={showAllPriorityRisks}
+                    aria-controls="home-priority-risks-list"
+                    onClick={() => setShowAllPriorityRisks((showAll) => !showAll)}
+                  >
+                    {showAllPriorityRisks ? "Show fewer" : `View all ${priorityRisks.length}`}
+                  </button>
+                ) : null}
+              </div>
+              {priorityRisks.length ? (
+                <>
+                  <div className="cv-priority-list" id="home-priority-risks-list">
+                    {visiblePriorityRisks.map((item, index) => {
+                      const high =
+                        String(item.risk_level || "").toLowerCase() === "high";
+                      return (
+                        <div className="cv-priority-row" key={index}>
+                          <div
+                            className={`cv-priority-index${high ? "" : " amber"}`}
+                          >
+                            {String(index + 1).padStart(2, "0")}
+                          </div>
+                          <div>
+                            <div className="cv-priority-title">
+                              {item.mpn
+                                ? String(item.mpn)
+                                : userFacingLabel(item.bom_name, "BOM")}
+                              {item.why ? ` · ${cleanUserText(item.why)}` : ""}
+                            </div>
+                            <div className="cv-priority-meta">
+                              {userFacingLabel(item.project_name, "")}
+                              {item.bom_path ? ` · ${cleanUserText(item.bom_path)}` : ""}
+                            </div>
+                            <div className="cv-evidence-chips">
+                              <span className="cv-evidence-chip">
+                                {evidenceSourceLabel(item.evidence_source)}
+                              </span>
+                              <span className="cv-evidence-chip">
+                                {String(item.risk_level || "—")} priority
+                              </span>
+                            </div>
+                          </div>
+                          {item.analysis_id ? (
+                            <Link
+                              className="cv-button small"
+                              href={`/reports/${String(item.analysis_id)}`}
+                            >
+                              Review evidence
+                            </Link>
+                          ) : (
+                            <span className="cv-badge gray">No report link</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="cv-home-list-summary" aria-live="polite">
+                    Showing {visiblePriorityRisks.length} of {priorityRisks.length} priority item{priorityRisks.length === 1 ? "" : "s"}
+                  </p>
+                </>
               ) : (
                 <div className="cv-empty" style={{ border: 0, minHeight: 120, padding: 18 }}>
                   <h3 style={{ fontSize: 14 }}>{hasSaved ? "No priority risks identified" : "No analysis to review yet"}</h3>

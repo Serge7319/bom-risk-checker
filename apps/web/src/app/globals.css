@@ -714,6 +714,31 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
   gap: 15px;
+  align-items: start;
+}
+
+.cv-home-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.cv-home-panel-copy {
+  min-width: 0;
+}
+
+.cv-home-view-toggle {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.cv-home-list-summary {
+  margin: 10px 0 0;
+  color: #77879c;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .cv-priority-item {
