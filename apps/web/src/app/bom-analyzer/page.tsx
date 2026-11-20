@@ -18,6 +18,8 @@ import {
   type BomValidationPreview,
 } from "@/lib/api";
 import {
+  clearDraftFile,
+  clearDraftMeta,
   clearFinishedAnalyzeJob,
   fileIdentityKey,
   getActiveAnalyzeJob,
@@ -37,15 +39,6 @@ import { PAGE_META } from "@/lib/routes";
 import { userFacingLabel } from "@/lib/display";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
 import { trackMarketingEvent, trackMarketingEventOnce } from "@/lib/marketingAnalytics";
-
-type OnboardingStep = "review" | "ask" | "decision" | "monitor";
-type OnboardingProgress = Record<OnboardingStep, boolean>;
-const EMPTY_ONBOARDING: OnboardingProgress = {
-  review: false,
-  ask: false,
-  decision: false,
-  monitor: false,
-};
 
 function freshIntakeOptions(): BomIntakeOptions {
   return { ...DEFAULT_BOM_INTAKE_OPTIONS, rowCorrections: {} };
@@ -105,6 +98,7 @@ export default function BomAnalyzerPage() {
   const session = useRequireSession();
   const accessToken = session?.access_token || "";
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const draftFileWriteRef = useRef<Promise<void> | null>(null);
   const [recentReports, setRecentReports] = useState<Array<Record<string, unknown>>>([]);
   const [reportsBusy, setReportsBusy] = useState(true);
   const [reportsError, setReportsError] = useState("");
@@ -129,11 +123,11 @@ export default function BomAnalyzerPage() {
   const [summary, setSummary] = useState<AnalyzeSummary | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);
+  const [clearingBom, setClearingBom] = useState(false);
   const [ignoredTestDraft, setIgnoredTestDraft] = useState(false);
   const ignoredTestDraftRef = useRef(false);
   const [backgroundNote, setBackgroundNote] = useState("");
   const [draftPersistNotice, setDraftPersistNotice] = useState("");
-  const [onboarding, setOnboarding] = useState<OnboardingProgress>(EMPTY_ONBOARDING);
   const [validatedFileKey, setValidatedFileKey] = useState("");
   const [fileContentKey, setFileContentKey] = useState("");
   const validationRequestIdRef = useRef(0);
@@ -148,10 +142,10 @@ export default function BomAnalyzerPage() {
         projectName,
         bomName,
         revision,
-        fileName: file?.name || current.fileName,
-        fileSize: file?.size || current.fileSize,
-        fileType: file?.type || current.fileType,
-        fileKey: fileContentKey || current.fileKey,
+        fileName: file?.name || "",
+        fileSize: file?.size || 0,
+        fileType: file?.type || "",
+        fileKey: fileContentKey || "",
         // Row detail and column samples are rebuilt from the file after a reload.
         validation: validation ? { ...validation, rows: [] } : null,
         validationError,
@@ -215,23 +209,6 @@ export default function BomAnalyzerPage() {
   useEffect(() => {
     void refreshUsageAndBilling();
   }, [refreshUsageAndBilling]);
-
-  useEffect(() => {
-    if (!session) return;
-    try {
-      const stored = JSON.parse(
-        localStorage.getItem(`cadivor_first_run_checklist_v1:${session.user_id || ""}`) || "{}",
-      ) as Partial<OnboardingProgress>;
-      setOnboarding({
-        review: stored.review === true,
-        ask: stored.ask === true,
-        decision: stored.decision === true,
-        monitor: stored.monitor === true,
-      });
-    } catch {
-      setOnboarding(EMPTY_ONBOARDING);
-    }
-  }, [session]);
 
   useEffect(() => {
     if (!session) return;
@@ -478,11 +455,10 @@ export default function BomAnalyzerPage() {
   );
 
   async function onFileChosen(next: File | null) {
-    if (!session) return;
-    if (next) {
-      ignoredTestDraftRef.current = false;
-      setIgnoredTestDraft(false);
-    }
+    // Cancelling the native file picker should leave the current BOM untouched.
+    if (!session || !next || clearingBom) return;
+    ignoredTestDraftRef.current = false;
+    setIgnoredTestDraft(false);
     // Synchronously clear previous validation before any await.
     const requestId = ++validationRequestIdRef.current;
     selectedFileKeyRef.current = "";
@@ -502,10 +478,6 @@ export default function BomAnalyzerPage() {
     setOneTimeReportRequired(false);
     setBackgroundNote("");
     setValidating(Boolean(next));
-    if (!next) {
-      setValidating(false);
-      return;
-    }
     if (next.size > 10 * 1024 * 1024) {
       setValidating(false);
       setValidationError("BOM file must be 10 MB or smaller.");
@@ -547,7 +519,17 @@ export default function BomAnalyzerPage() {
     setFileContentKey(nextKey);
     // Never gate POST /boms/validate on IndexedDB. Draft save is best-effort and
     // must not leave Validating stuck if open/put stalls.
-    void saveDraftFile(workingFile, session).catch((err) => {
+    const previousDraftWrite = draftFileWriteRef.current || Promise.resolve();
+    const draftWrite = previousDraftWrite
+      .catch(() => undefined)
+      .then(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            void saveDraftFile(workingFile, session).then(resolve, reject);
+          }),
+      );
+    draftFileWriteRef.current = draftWrite;
+    void draftWrite.catch((err) => {
       if (requestId !== validationRequestIdRef.current) return;
       setDraftPersistNotice(
         err instanceof Error
@@ -556,6 +538,42 @@ export default function BomAnalyzerPage() {
       );
     });
     await runValidation(workingFile, requestId, nextKey, freshIntakeOptions());
+  }
+
+  async function onClearBom() {
+    if (!session || analyzing || validating || clearingBom) return;
+    setClearingBom(true);
+    ++validationRequestIdRef.current;
+    selectedFileKeyRef.current = "";
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setFile(null);
+    setProjectName("");
+    setBomName("");
+    setRevision("A");
+    setValidating(false);
+    setValidation(null);
+    setValidationError("");
+    setIntake(freshIntakeOptions());
+    setAppliedIntake(freshIntakeOptions());
+    setValidatedFileKey("");
+    setFileContentKey("");
+    setDraftPersistNotice("");
+    setSummary(null);
+    setAnalysisId(null);
+    setAnalyzeError("");
+    setAnalysisPackError("");
+    setOneTimeReportRequired(false);
+    setBackgroundNote("");
+    ignoredTestDraftRef.current = false;
+    setIgnoredTestDraft(false);
+    clearDraftMeta(session);
+    try {
+      await draftFileWriteRef.current?.catch(() => undefined);
+      await clearDraftFile(session);
+      clearDraftMeta(session);
+    } finally {
+      setClearingBom(false);
+    }
   }
 
   async function onSampleBom() {
@@ -598,22 +616,6 @@ export default function BomAnalyzerPage() {
     } finally {
       setAnalysisPackBusy(false);
     }
-  }
-
-  function markOnboardingDone(step: OnboardingStep) {
-    if (!session) return;
-    setOnboarding((current) => {
-      const next = { ...current, [step]: true };
-      try {
-        localStorage.setItem(
-          `cadivor_first_run_checklist_v1:${session.user_id || ""}`,
-          JSON.stringify(next),
-        );
-      } catch {
-        // Checklist tracking is best-effort and must not block the workflow.
-      }
-      return next;
-    });
   }
 
   function onRecheck() {
@@ -699,7 +701,7 @@ export default function BomAnalyzerPage() {
     : "Buy analysis pack";
   const primary = savedAnalysisId
     ? {
-        label: "Open risk review",
+        label: "Review risk findings",
         href: `/detailed-risk-report?analysis_id=${encodeURIComponent(savedAnalysisId)}`,
       }
     : analyzing
@@ -802,7 +804,7 @@ export default function BomAnalyzerPage() {
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
                 placeholder="e.g. Motor controller"
-                disabled={analyzing}
+                disabled={analyzing || clearingBom}
               />
             </label>
             <label className="cv-field">
@@ -811,7 +813,7 @@ export default function BomAnalyzerPage() {
                 value={bomName}
                 onChange={(e) => setBomName(e.target.value)}
                 placeholder="Defaults to filename"
-                disabled={analyzing}
+                disabled={analyzing || clearingBom}
               />
             </label>
             <label className="cv-field">
@@ -820,7 +822,7 @@ export default function BomAnalyzerPage() {
                 value={revision}
                 onChange={(e) => setRevision(e.target.value)}
                 placeholder="e.g. A"
-                disabled={analyzing}
+                disabled={analyzing || clearingBom}
               />
             </label>
           </div>
@@ -833,22 +835,35 @@ export default function BomAnalyzerPage() {
             <p>
               Upload a CSV or XLSX BOM. Add Parent MPN and Line Type columns when you want to roll component risk up to assemblies.
             </p>
-            <label className="cv-bom-file-picker">
-              <span>{file ? "Choose a different file" : "Choose file"}</span>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,.xlsx"
-                disabled={analyzing}
-                onChange={(e) => void onFileChosen(e.target.files?.[0] || null)}
-              />
-              <small>{file ? file.name : "CSV or XLSX · up to 10 MB"}</small>
-            </label>
+            <div className="cv-bom-upload-controls">
+              <label className="cv-bom-file-picker">
+                <span>{file ? "Choose a different file" : "Choose file"}</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx"
+                  disabled={analyzing || validating || clearingBom}
+                  onChange={(e) => void onFileChosen(e.target.files?.[0] || null)}
+                />
+                <small>{file ? file.name : "CSV or XLSX · up to 10 MB"}</small>
+              </label>
+              {file ? (
+                <button
+                  type="button"
+                  className="cv-button secondary cv-bom-clear-button"
+                  onClick={() => void onClearBom()}
+                  disabled={analyzing || validating || clearingBom}
+                  aria-label="Clear the selected BOM and return to a new analysis"
+                >
+                  {clearingBom ? "Clearing…" : "Clear BOM"}
+                </button>
+              ) : null}
+            </div>
             <button
               type="button"
               className="cv-button"
               onClick={() => void onSampleBom()}
-              disabled={analyzing || validating}
+              disabled={analyzing || validating || clearingBom}
             >
               Load the 5-part sample BOM
             </button>
@@ -1019,8 +1034,13 @@ export default function BomAnalyzerPage() {
                     : "—"}
               </p>
               <p className="cv-small-note">
-                Your analysis is saved. Continue to the risk review whenever you are ready; other workspace pages remain available.
+                Your analysis is saved. Other workspace pages remain available while you review it.
               </p>
+              <section className="cv-bom-next-step" aria-labelledby="cv-bom-next-step-title">
+                <span className="cv-eyebrow">Next step</span>
+                <h3 id="cv-bom-next-step-title">Review the highest-priority finding</h3>
+                <p>Open the risk review to inspect flagged parts and their evidence before deciding what to do next.</p>
+              </section>
             </div>
           ) : null}
 
@@ -1057,19 +1077,7 @@ export default function BomAnalyzerPage() {
           </div>
         </section>
 
-        <aside className="cv-bom-side-cards" aria-label="Analysis guidance and recent activity">
-          <section className="cv-card pad cv-bom-side-card cv-first-run-checklist">
-            <h2 className="cv-card-title">First-run checklist</h2>
-            <p className="cv-card-subtitle">Work through one BOM review. You can leave this page while analysis runs.</p>
-            <ol>
-              <li className={file ? "is-complete" : ""}><span>1</span><div><strong>Upload a BOM</strong><small>{file ? "File selected and validation is available." : "Choose a file or load the sample BOM."}</small></div></li>
-              <li className={onboarding.review ? "is-complete" : ""}><span>2</span><div><strong>Review the top blocker</strong><small>{savedAnalysisId ? "Open the risk report and inspect the highest-priority finding." : "Complete an analysis to reveal the report."}</small>{savedAnalysisId ? <Link href={`/reports/${encodeURIComponent(savedAnalysisId)}`} onClick={() => markOnboardingDone("review")}>Open risk report</Link> : null}</div></li>
-              <li className={onboarding.ask ? "is-complete" : ""}><span>3</span><div><strong>Ask a question</strong><small>Ask Cadivor about a finding, evidence source, or supply concern.</small><Link href="/engineering-intelligence" onClick={() => markOnboardingDone("ask")}>Open Ask Cadivor</Link></div></li>
-              <li className={onboarding.decision ? "is-complete" : ""}><span>4</span><div><strong>Create a decision record</strong><small>Save the chosen action and its engineering rationale.</small><Link href="/engineering-decisions" onClick={() => markOnboardingDone("decision")}>Open Decision records</Link></div></li>
-              <li className={onboarding.monitor ? "is-complete" : ""}><span>5</span><div><strong>Turn on monitoring</strong><small>Opt in for a BOM after reviewing the current monitoring readiness.</small><Link href={savedAnalysisId ? `/monitoring?analysis_id=${encodeURIComponent(savedAnalysisId)}` : "/monitoring"} onClick={() => markOnboardingDone("monitor")}>Open Monitoring</Link></div></li>
-            </ol>
-          </section>
-
+        <aside className="cv-bom-side-cards" aria-label="Recent analyses">
           <section className="cv-card pad cv-bom-side-card cv-bom-recent-card">
             <div className="cv-bom-recent-heading">
               <div>
