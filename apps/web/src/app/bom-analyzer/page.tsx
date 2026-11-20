@@ -522,7 +522,12 @@ export default function BomAnalyzerPage() {
     const previousDraftWrite = draftFileWriteRef.current || Promise.resolve();
     const draftWrite = previousDraftWrite
       .catch(() => undefined)
-      .then(() => saveDraftFile(workingFile, session));
+      .then(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            void saveDraftFile(workingFile, session).then(resolve, reject);
+          }),
+      );
     draftFileWriteRef.current = draftWrite;
     void draftWrite.catch((err) => {
       if (requestId !== validationRequestIdRef.current) return;
