@@ -579,6 +579,7 @@ export async function fetchWorkspaceHome(token: string) {
     projects: Array<Record<string, unknown>>;
     recent_analyses: Array<Record<string, unknown>>;
     priority_risks: Array<Record<string, unknown>>;
+    priority_severity_counts?: Record<string, number>;
     next_actions: Array<Record<string, unknown>>;
   }>("/workspace/home", { token });
 }

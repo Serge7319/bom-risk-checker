@@ -1058,6 +1058,19 @@ class PostgresWorkspaceStore:
                     (wid,),
                 ).fetchone()["c"]
             )
+            awaiting_approvals = int(
+                conn.execute(
+                    """
+                    SELECT COUNT(DISTINCT decision_record_id) AS c
+                      FROM migration_decision_record_approvers
+                     WHERE workspace_id = %s
+                       AND status = 'pending'
+                       AND expires_at > NOW()
+                    """,
+                    (wid,),
+                ).fetchone()["c"]
+                or 0
+            )
         priority: list[dict[str, Any]] = []
         for analysis in analyses[:8]:
             report = self.get_report(analysis["id"], workspace_id=wid) or {}
@@ -1092,6 +1105,27 @@ class PostgresWorkspaceStore:
                         "action": "Open report and review high-risk rows",
                     }
                 )
+        priority_severity_counts = {
+            "critical": 0,
+            "high": 0,
+            "medium": 0,
+            "needs_verification": 0,
+        }
+        for item in priority:
+            level = str(item.get("risk_level") or "").strip().casefold()
+            bucket = next(
+                (
+                    candidate
+                    for candidate in ("critical", "high", "medium")
+                    if candidate in level
+                ),
+                "needs_verification",
+            )
+            priority_severity_counts[bucket] += 1
+        open_blockers = (
+            priority_severity_counts["critical"]
+            + priority_severity_counts["high"]
+        )
         next_actions = [
             {
                 "title": "Reopen an active project BOM",
@@ -1129,10 +1163,13 @@ class PostgresWorkspaceStore:
                 "saved_boms": int(bom_count),
                 "saved_analyses": len(analyses),
                 "priority_items": len(priority),
+                "open_blockers": open_blockers,
+                "awaiting_approvals": awaiting_approvals,
             },
             "projects": projects,
             "recent_analyses": analyses[:12],
-            "priority_risks": priority[:12],
+            "priority_risks": priority,
+            "priority_severity_counts": priority_severity_counts,
             "next_actions": next_actions,
         }
 
