@@ -464,7 +464,7 @@ class OctopartIntegrationTests(unittest.TestCase):
         self.assertEqual(caught.exception.subreason, self.client.SUBREASON_SCHEMA_MISMATCH)
         self.assertEqual(list(caught.exception.rejected_fields), ["shortDescription"])
 
-    def test_supplier_aggregator_does_not_register_octopart(self):
+    def test_supplier_aggregator_registers_nexar_not_octopart(self):
         from pathlib import Path
 
         source = (
