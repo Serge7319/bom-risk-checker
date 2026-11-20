@@ -74,11 +74,11 @@ except ImportError as newark_import_error:
         raise RuntimeError("Newark supplier integration could not be loaded.") from _newark_import_error
 
 try:
-    from integrations.octopart_client import search_octopart_by_part_number
+    from integrations.nexar_client import search_nexar_by_part_number
 except ImportError as nexar_import_error:
     _nexar_import_error = nexar_import_error
 
-    def search_octopart_by_part_number(part_number):
+    def search_nexar_by_part_number(part_number):
         raise RuntimeError("Nexar Supply integration could not be loaded.") from _nexar_import_error
 
 
@@ -501,7 +501,7 @@ def _supplier_lookup_callable(source_name: str):
             _provider_configured(name)
             for name in ("NEXAR_CLIENT_SECRET", "OCTOPART_CLIENT_SECRET")
         )
-        return search_octopart_by_part_number if has_client_id and has_client_secret else None
+        return search_nexar_by_part_number if has_client_id and has_client_secret else None
     entry = configured.get(source_name)
     if not entry:
         return None
