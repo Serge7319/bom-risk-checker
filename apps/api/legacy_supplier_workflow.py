@@ -257,18 +257,49 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
     try:
         configured_source_count = int(provider_health.get("configured_count") or 0)
         successful_source_count = int(provider_health.get("successful_count") or 0)
+        no_match_source_count = int(provider_health.get("no_match_count") or provider_health.get("part_not_found_count") or 0)
+        responded_source_count = int(
+            provider_health.get("responded_count")
+            if provider_health.get("responded_count") is not None
+            else successful_source_count + no_match_source_count
+        )
         failed_source_count = int(provider_health.get("failed_count") or 0)
     except (TypeError, ValueError):
-        configured_source_count = successful_source_count = 0
+        configured_source_count = successful_source_count = no_match_source_count = responded_source_count = 0
         failed_source_count = 1
     supplier_coverage_complete = bool(
         configured_source_count > 0 and failed_source_count == 0
     )
-    checked_source_summary = (
-        f"{successful_source_count}/{configured_source_count} configured supplier sources responded"
-        if configured_source_count
-        else "No supplier sources configured"
-    )
+    checked_source_summary = "No supplier sources configured"
+    if configured_source_count:
+        checked_source_summary = (
+            f"{responded_source_count}/{configured_source_count} supplier queries responded; "
+            f"{successful_source_count} exact match(es), {no_match_source_count} no match(es), "
+            f"{failed_source_count} unavailable"
+        )
+    supplier_query_details = []
+    for provider in part.get("all_supplier_results") or []:
+        if not isinstance(provider, dict):
+            continue
+        source_name = str(provider.get("source") or "Supplier").strip()
+        status = str(provider.get("provider_status") or "UNKNOWN").strip().upper()
+        if status == "AVAILABLE":
+            label = "Exact MPN and manufacturer match"
+        elif status == "PART_NOT_FOUND" and isinstance(provider.get("identity_mismatch"), dict):
+            label = "MPN returned, but manufacturer did not match"
+        elif status == "PART_NOT_FOUND":
+            label = "No exact MPN match returned"
+        elif status == "NOT_CONFIGURED":
+            label = "Not configured"
+        else:
+            label = "Supplier unavailable"
+        detail = str(provider.get("error") or "").strip()
+        supplier_query_details.append({
+            "source": source_name,
+            "status": status,
+            "label": label,
+            "detail": detail,
+        })
     return {
         "MPN": mpn,
         "mpn": mpn,
@@ -319,6 +350,8 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
         "Supplier Coverage": coverage,
         "Supplier Sources Checked": checked_source_summary,
         "supplier_sources_checked": checked_source_summary,
+        "Supplier Query Details": supplier_query_details,
+        "supplier_query_details": supplier_query_details,
         "Supplier Coverage Complete": supplier_coverage_complete,
         "supplier_coverage_complete": supplier_coverage_complete,
         "Total Market Stock": _number(stock),
@@ -404,6 +437,8 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(part.get("lifecycle_event_evidence"), dict) else {},
         "Product URL": str(part.get("product_detail_url") or part.get("product_url") or part.get("source_url") or ""),
         "product_url": str(part.get("product_detail_url") or part.get("product_url") or part.get("source_url") or ""),
+        "Product URL Source": str(part.get("product_detail_url_source") or supplier or ""),
+        "product_url_source": str(part.get("product_detail_url_source") or supplier or ""),
         "Datasheet URL": str(part.get("datasheet_url") or part.get("datasheet") or ""),
         "datasheet_url": str(part.get("datasheet_url") or part.get("datasheet") or ""),
         "Supplier Offers": list(part.get("supplier_offers") or []),

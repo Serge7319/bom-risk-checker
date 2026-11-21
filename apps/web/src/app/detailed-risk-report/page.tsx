@@ -135,7 +135,23 @@ function DetailedRiskPageInner() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.slice(0, 50).map((row, i) => (
+                  {rows.slice(0, 50).map((row, i) => {
+                    const rawLinks = row.supplier_links ?? row["supplier_links"];
+                    const supplierLinks = Array.isArray(rawLinks)
+                      ? (rawLinks as Array<Record<string, unknown>>).filter((link) =>
+                          typeof link.url === "string" && /^https?:\/\//i.test(link.url),
+                        )
+                      : [];
+                    const rawQueries = row.supplier_query_details ?? row["Supplier Query Details"];
+                    const supplierQueries = Array.isArray(rawQueries)
+                      ? rawQueries as Array<Record<string, unknown>>
+                      : [];
+                    const primaryListing = String(row["Supplier product URL"] || "");
+                    const sourcesChecked = row.supplier_sources_checked
+                      ?? row["Supplier Sources Checked"]
+                      ?? row["Supplier sources checked"];
+                    const supplierCoverage = row.supplier_coverage ?? row["Supplier coverage"];
+                    return (
                     <tr key={i}>
                       <td><strong>{cell(row.MPN ?? row.mpn ?? row["Part number"])}</strong></td>
                       <td>{cell(row.Manufacturer ?? row.manufacturer)}</td>
@@ -156,22 +172,47 @@ function DetailedRiskPageInner() {
                         {cell(row["Unit price"] ?? row.unit_price)} {cell(row["Unit price currency"], "")}
                       </td>
                       <td>
-                        {row["Supplier product URL"] && row["Supplier product URL"] !== "—" ? (
-                          <a href={String(row["Supplier product URL"])} target="_blank" rel="noreferrer">Supplier listing</a>
-                        ) : <span className="cv-small-note">No listing link</span>}
+                        {supplierLinks.length ? supplierLinks.slice(0, 4).map((link, linkIndex) => (
+                          <div key={`${String(link.url)}-${linkIndex}`} style={{ marginBottom: 4 }}>
+                            <a href={String(link.url)} target="_blank" rel="noreferrer">
+                              {cell(link.source, "Supplier")} listing
+                            </a>
+                            <div className="cv-small-note">
+                              {cell(link.evidence_types, "Supplier evidence")}
+                              {link.retrieved_at ? ` · checked ${cell(link.retrieved_at)}` : ""}
+                            </div>
+                          </div>
+                        )) : primaryListing && primaryListing !== "—" ? (
+                          <a href={primaryListing} target="_blank" rel="noreferrer">Supplier listing</a>
+                        ) : <span className="cv-small-note">No exact-part listing link was saved</span>}
+                        {supplierLinks.length > 4 ? (
+                          <div className="cv-small-note">+{supplierLinks.length - 4} more source links</div>
+                        ) : null}
                         {row["Datasheet URL"] && row["Datasheet URL"] !== "—" ? (
                           <div><a href={String(row["Datasheet URL"])} target="_blank" rel="noreferrer">Datasheet</a></div>
                         ) : null}
                         <div className="cv-small-note">
-                          {cell(row.supplier_sources_checked, "Supplier query coverage not recorded")}
+                          {cell(sourcesChecked, "Supplier query coverage was not saved for this analysis")}
                         </div>
                         <div className="cv-small-note">
-                          {cell(row.supplier_coverage, "")}
+                          {cell(supplierCoverage, "")}
                         </div>
+                        {supplierQueries.length ? (
+                          <details className="cv-small-note" style={{ marginTop: 4 }}>
+                            <summary>Supplier query results</summary>
+                            {supplierQueries.map((query, queryIndex) => (
+                              <div key={`${String(query.source || "supplier")}-${queryIndex}`}>
+                                {cell(query.source, "Supplier")}: {cell(query.label, "Status not recorded")}
+                                {query.detail ? ` — ${cell(query.detail)}` : ""}
+                              </div>
+                            ))}
+                          </details>
+                        ) : null}
                       </td>
                       <td className="cv-small-note">{cell(row.Why ?? row["Risk reasons"] ?? row.reasons).slice(0, 120)}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

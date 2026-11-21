@@ -31,7 +31,7 @@ import {
   readReviewProgress,
   type BomReviewProgress,
 } from "@/lib/bomDraft";
-import { analysisModeLabel, cleanUserText, evidenceSourceLabel, userFacingLabel } from "@/lib/display";
+import { analysisModeLabel, cleanKiCadFieldText, cleanUserText, evidenceSourceLabel, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
 import { trackMarketingEventOnce } from "@/lib/marketingAnalytics";
@@ -48,11 +48,11 @@ type EditableBomRow = {
 
 function editableRows(parts: Array<Record<string, unknown>>): EditableBomRow[] {
   return parts.map((part) => ({
-    mpn: String(part.MPN || part.mpn || ""),
-    manufacturer: String(part.Manufacturer || part.manufacturer || ""),
-    description: String(part.Description || part.description || ""),
-    parentMpn: String(part["Parent MPN"] || part.parent_mpn || ""),
-    lineType: String(part["Line Type"] || part.line_type || ""),
+    mpn: cleanKiCadFieldText(part.MPN || part.mpn || ""),
+    manufacturer: cleanKiCadFieldText(part.Manufacturer || part.manufacturer || ""),
+    description: cleanKiCadFieldText(part.Description || part.description || ""),
+    parentMpn: cleanKiCadFieldText(part["Parent MPN"] || part.parent_mpn || ""),
+    lineType: cleanKiCadFieldText(part["Line Type"] || part.line_type || ""),
     quantity: String(
       part.quantity_per_parent ?? part["Quantity per Parent"] ?? part.Quantity ?? part.quantity ?? "1",
     ),
@@ -461,10 +461,10 @@ export default function ReportPage() {
           <div className="cv-eyebrow">BOM identity needs correction</div>
           <h2 className="cv-card-title" style={{ marginTop: 4 }}>This report contains KiCad text-object metadata</h2>
           <p className="cv-card-subtitle" style={{ marginTop: 6 }}>
-            {legacyKiCadMetadataCount} component row(s) contain KiCad `BoardText(value=…, position=Vector2(…))` data in the part number or manufacturer. Supplier matching and risk results for those rows are not reliable because Cadivor received object metadata instead of the visible component text. Correct the fields and run a new revision before using this report to make a sourcing decision.
+            {legacyKiCadMetadataCount} component row(s) contain older KiCad text-object data in the part number or manufacturer. Cadivor recovered the visible field text for review, but the supplier checks in this saved analysis used the malformed value. Open “Edit BOM / new revision” to verify the recovered part numbers and rerun supplier checks before using the results.
           </p>
           <button type="button" className="cv-button primary" style={{ marginTop: 12 }} onClick={() => void openBomEditor()}>
-            Correct fields in a new revision
+            Review values and rerun checks
           </button>
         </section>
       ) : null}
@@ -1067,7 +1067,7 @@ export default function ReportPage() {
                 <tbody>
                   {report.parts.map((part, index) => {
                     const risk = String(part["Risk Level"] || "");
-                    const mpn = String(part.MPN || "");
+                    const mpn = cleanKiCadFieldText(part.MPN || part.mpn || "");
                     return (
                       <tr key={`${mpn}-${index}`}>
                         <td>
@@ -1084,9 +1084,7 @@ export default function ReportPage() {
                           </div>
                         </td>
                         <td>
-                          {String(
-                            part.parent_mpn || part["Parent MPN"] || "—",
-                          )}
+                          {cleanKiCadFieldText(part.parent_mpn || part["Parent MPN"] || "—")}
                         </td>
                         <td>
                           {String(
@@ -1108,7 +1106,7 @@ export default function ReportPage() {
                           {mpn ? (
                             <Link
                               className="cv-table-open"
-                              href={`/find-replacement?mpn=${encodeURIComponent(mpn)}&analysis_id=${encodeURIComponent(String(report.analysis_id || report.id))}&manufacturer=${encodeURIComponent(String(part.Manufacturer || ""))}`}
+                              href={`/find-replacement?mpn=${encodeURIComponent(mpn)}&analysis_id=${encodeURIComponent(String(report.analysis_id || report.id))}&manufacturer=${encodeURIComponent(cleanKiCadFieldText(part.Manufacturer || part.manufacturer || ""))}`}
                             >
                               Replace
                             </Link>

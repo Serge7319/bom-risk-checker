@@ -290,6 +290,8 @@ def _compliance_source_details(row: dict[str, Any], kind: str) -> str:
 
 
 def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
+    from src.bom_intake import clean_text
+
     output = []
     for source in report.get("parts") or []:
         if not isinstance(source, dict):
@@ -303,13 +305,13 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
         stock_evidence = row.get("stock_evidence") or row.get("Stock Evidence") or []
         supplier_offers = row.get("supplier_offers") or row.get("Supplier Offers") or []
         component = {
-            "MPN": _first(row, "MPN", "mpn", "manufacturer_part_number", "part_number"),
-            "Manufacturer": _first(row, "Manufacturer", "manufacturer"),
+            "MPN": clean_text(_first(row, "MPN", "mpn", "manufacturer_part_number", "part_number")),
+            "Manufacturer": clean_text(_first(row, "Manufacturer", "manufacturer")),
             "BOM Manufacturer": _first(row, "BOM Manufacturer", "bom_manufacturer", "requested_manufacturer"),
             "Supplier Manufacturer": _first(row, "Supplier Manufacturer", "supplier_manufacturer"),
             "Manufacturer Source": _first(row, "Manufacturer Source", "manufacturer_source", default="Not recorded"),
             "Manufacturer Identity Status": _first(row, "Manufacturer Identity Status", "identity_status", default="Not recorded"),
-            "Description": _first(row, "Description", "description", "part_description"),
+            "Description": clean_text(_first(row, "Description", "description", "part_description")),
             "Parent MPN": _first(row, "Parent MPN", "parent_mpn_display", "parent_mpn"),
             "Line Type": _export_line_type(row),
             "Quantity per Parent": _first(row, "quantity_per_parent", "Quantity per parent", "Quantity", "quantity", "qty"),

@@ -200,6 +200,7 @@ def _resolve_lifecycle(results: list[dict]) -> tuple[str, list[dict], bool]:
                 "status": raw,
                 "normalized_status": canonical,
                 "retrieved_at": result.get("retrieved_at"),
+                "product_url": str(result.get("product_detail_url") or ""),
             })
     statuses = {row["normalized_status"] for row in evidence}
     if len(statuses) > 1:
@@ -995,6 +996,30 @@ def get_best_part_data(part_number: str, manufacturer: str = "") -> dict:
         ),
     )
     best_result = dict(selected_result)
+    # Keep the primary supplier selection driven by stock, but do not lose a
+    # usable exact-part listing URL just because that provider omitted one.
+    # The originating supplier is recorded separately so the UI can label the
+    # link accurately without implying it is the source of the selected price.
+    if not str(best_result.get("product_detail_url") or "").strip():
+        linked_result = next(
+            (
+                result
+                for result in sorted(
+                    valid_results,
+                    key=lambda row: (
+                        stock_by_result[id(row)] is not None,
+                        stock_by_result[id(row)] if stock_by_result[id(row)] is not None else -1,
+                        str(row.get("source") or ""),
+                    ),
+                    reverse=True,
+                )
+                if str(result.get("product_detail_url") or "").startswith(("https://", "http://"))
+            ),
+            None,
+        )
+        if linked_result is not None:
+            best_result["product_detail_url"] = str(linked_result.get("product_detail_url") or "")
+            best_result["product_detail_url_source"] = str(linked_result.get("source") or "")
 
     total_market_stock = (
         sum(int(stock_by_result[id(result)]) for result in stock_known_results)

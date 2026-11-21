@@ -163,6 +163,72 @@ def _safe_http_url(value: Any) -> str:
     return url if url.startswith(("https://", "http://")) else ""
 
 
+def _supplier_listing_links(record: dict[str, Any]) -> list[dict[str, str]]:
+    """Collect the exact-part source links saved with each piece of evidence."""
+    groups = (
+        ("supplier offer", ("Supplier Offers", "supplier_offers")),
+        ("stock", ("Stock Evidence", "stock_evidence")),
+        ("lead time", ("Lead Time Evidence", "lead_time_evidence")),
+        ("lifecycle", ("Lifecycle Evidence", "lifecycle_evidence")),
+    )
+    links: dict[str, dict[str, str]] = {}
+
+    def add(source: Any, url_value: Any, evidence_type: str, retrieved_at: Any = "") -> None:
+        url = _safe_http_url(url_value)
+        if not url:
+            return
+        key = url.casefold()
+        source_name = str(source or "Supplier").strip() or "Supplier"
+        entry = links.setdefault(
+            key,
+            {
+                "source": source_name,
+                "url": url,
+                "evidence_types": evidence_type,
+                "retrieved_at": str(retrieved_at or "").strip(),
+            },
+        )
+        if evidence_type not in entry["evidence_types"].split(", "):
+            entry["evidence_types"] = f"{entry['evidence_types']}, {evidence_type}"
+        if not entry["retrieved_at"] and retrieved_at:
+            entry["retrieved_at"] = str(retrieved_at).strip()
+
+    for evidence_type, keys in groups:
+        values = _json_value(_first(record, *keys, default=[]))
+        if isinstance(values, dict):
+            values = [values]
+        if not isinstance(values, (list, tuple)):
+            continue
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            add(
+                _first(item, "source", "supplier", "distributor", "vendor"),
+                _first(item, "product_url", "product_detail_url", "source_url", "url"),
+                evidence_type,
+                _first(item, "retrieved_at", "checked_at", "updated_at"),
+            )
+
+    # The selected exact-part listing is still useful on older reports where
+    # per-source evidence arrays were not saved.
+    add(
+        _first(
+            record,
+            "Product URL Source",
+            "product_url_source",
+            "primary_supplier",
+            "best_source",
+            "Best Source",
+            "supplier",
+            "distributor",
+        ),
+        _first(record, "product_url", "Product URL", "product_detail_url", "source_url"),
+        "product listing",
+        _first(record, "retrieved_at", "sourcing_updated_at", "updated_at"),
+    )
+    return list(links.values())
+
+
 def _flag(value: Any) -> bool | None:
     if value is None:
         return None
@@ -475,6 +541,7 @@ def component_rows(
     from src.ui.ei_bom_report import _description_text
     from src.approved_alternatives import approved_mpn_map, part_key
     from src.alternate_reference_parser import extract_description_alternates
+    from src.bom_intake import clean_text
     from src.saved_bom_cost import extended_cost
 
     approved_by_part = approved_mpn_map(approved_alternatives)
@@ -502,11 +569,12 @@ def component_rows(
             else "Unavailable"
         )
         price = _number(_first(record, "unit_price", "Unit Price", "price"))
-        mpn = _text(_first(record, "mpn", "MPN", "part_number", "manufacturer_part_number"))
+        mpn = _text(clean_text(_first(record, "mpn", "MPN", "part_number", "manufacturer_part_number", default="")))
         supplier = _text(
             _first(record, "primary_supplier", "best_source", "Best Source", "supplier", "distributor"),
             "",
         )
+        supplier_links = _supplier_listing_links(record)
         quantity = _number(_first(record, "quantity", "Quantity", "qty"))
         extended = extended_cost(price, quantity)
         price_currency = _price_currency(
@@ -529,11 +597,13 @@ def component_rows(
         product_url = _safe_http_url(
             _first(record, "product_url", "Product URL", "product_detail_url", "source_url")
         )
+        if not product_url and supplier_links:
+            product_url = supplier_links[0]["url"]
         datasheet_url = _safe_http_url(
             _first(record, "datasheet_url", "Datasheet URL", "datasheet", "datasheet_link")
         )
         approvals = approved_by_part.get(
-            part_key(_first(record, "mpn", "MPN", "part_number", "manufacturer_part_number")),
+            part_key(mpn),
             [],
         )
         approved_names = [
@@ -559,9 +629,9 @@ def component_rows(
         output.append({
             "MPN": mpn,
             "Description": _text(
-                _description_text(description)
+                _description_text(clean_text(description or ""))
             ),
-            "Manufacturer": _text(_first(record, "manufacturer", "Manufacturer")),
+            "Manufacturer": _text(clean_text(_first(record, "manufacturer", "Manufacturer", default=""))),
             "BOM manufacturer": _text(
                 _first(record, "BOM Manufacturer", "bom_manufacturer", "requested_manufacturer")
             ),
@@ -601,6 +671,10 @@ def component_rows(
                 _first(record, "Supplier Sources Checked", "supplier_sources_checked"),
                 "Not recorded",
             ),
+            "supplier_sources_checked": _text(
+                _first(record, "Supplier Sources Checked", "supplier_sources_checked"),
+                "Not recorded",
+            ),
             "Supplier coverage complete": _text(
                 _first(record, "Supplier Coverage Complete", "supplier_coverage_complete"),
                 "Not recorded",
@@ -608,6 +682,16 @@ def component_rows(
             "Supplier coverage": _text(
                 _first(record, "supplier_coverage", "Supplier Coverage")
             ),
+            "supplier_coverage": _text(
+                _first(record, "supplier_coverage", "Supplier Coverage")
+            ),
+            "Supplier Query Details": _json_value(
+                _first(record, "Supplier Query Details", "supplier_query_details", default=[])
+            ) or [],
+            "supplier_query_details": _json_value(
+                _first(record, "Supplier Query Details", "supplier_query_details", default=[])
+            ) or [],
+            "supplier_links": supplier_links,
             "Risk": risk,
             "Risk score": score if score is not None else ("Not assessed" if risk == "Not assessed" else "Not recorded"),
             "Why": _reasons(record),
