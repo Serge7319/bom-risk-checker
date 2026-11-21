@@ -205,6 +205,39 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertEqual(row["Risk score"], "Not assessed")
         self.assertIn("stock, lifecycle, and lead-time risk remain unknown", row["Why"])
 
+    def test_legacy_kicad_fields_are_cleaned_and_supplier_coverage_and_links_survive(self):
+        row = component_rows([{
+            "mpn": "BoardText(value=2N3904, position=Vector2(27000000, 61000000), layer=BL_F_Fab)",
+            "manufacturer": "BoardText(value=onsemi, position=Vector2(27000000, 61000000), layer=BL_F_Fab)",
+            "risk_level": "Needs verification",
+            "risk_score": 0,
+            "supplier_count": 1,
+            "Supplier Sources Checked": "2/2 supplier queries responded; 1 exact match, 1 no match, 0 unavailable",
+            "Supplier Query Details": [
+                {"source": "Mouser", "status": "AVAILABLE", "label": "Exact MPN and manufacturer match"},
+                {"source": "DigiKey", "status": "PART_NOT_FOUND", "label": "No exact MPN match returned"},
+            ],
+            "stock_evidence": [{
+                "source": "Mouser",
+                "stock": 120,
+                "product_url": "https://supplier.example/2N3904",
+                "retrieved_at": "2026-11-21T12:00:00Z",
+            }],
+            "lifecycle_evidence": [{
+                "source": "Mouser",
+                "status": "Active",
+                "product_url": "https://supplier.example/2N3904",
+            }],
+        }])[0]
+
+        self.assertEqual(row["MPN"], "2N3904")
+        self.assertEqual(row["Manufacturer"], "onsemi")
+        self.assertIn("2/2 supplier queries responded", row["supplier_sources_checked"])
+        self.assertEqual(len(row["supplier_query_details"]), 2)
+        self.assertEqual(row["supplier_links"][0]["source"], "Mouser")
+        self.assertEqual(row["supplier_links"][0]["url"], "https://supplier.example/2N3904")
+        self.assertEqual(row["Supplier product URL"], "https://supplier.example/2N3904")
+
     def test_related_legacy_catalog_lead_is_explained_without_rating_original(self):
         row = component_rows([{
             "mpn": "PCF8574P",
@@ -326,8 +359,12 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertIn("not established", candidate["Approval status"])
         self.assertEqual(sheet.cell(5, headers.index("Supplier product URL") + 1).hyperlink.target,
                          "https://supplier.example/LM317BS-TR")
-        self.assertEqual(workbook["Component Details"].cell(2, 8).hyperlink.target,
-                         "https://supplier.example/LM317DCYR")
+        details_headers = [cell.value for cell in workbook["Component Details"][1]]
+        supplier_url_column = details_headers.index("Supplier product URL") + 1
+        self.assertEqual(
+            workbook["Component Details"].cell(2, supplier_url_column).hyperlink.target,
+            "https://supplier.example/LM317DCYR",
+        )
         summary_text = " ".join(
             str(cell.value) for row in workbook["Summary"] for cell in row if cell.value
         )

@@ -583,6 +583,20 @@ class SupplierHealthTests(unittest.TestCase):
         aggregated = default_aggregated_result("ABC123", results)
         self.assertFalse(aggregated["supplier_data_verified"])
         self.assertIn("provider_health", aggregated)
+        self.assertEqual(aggregated["provider_health"]["responded_count"], 2)
+        self.assertEqual(aggregated["provider_health"]["no_match_count"], 2)
+        self.assertIn("all 2 configured source(s) responded", aggregated["provider_health"]["summary_message"])
+
+    def test_no_match_is_a_response_and_outage_is_not(self):
+        health = summarize_provider_health([
+            {"source": "Mouser", "provider_status": PROVIDER_PART_NOT_FOUND},
+            {"source": "DigiKey", "provider_status": PROVIDER_TIMEOUT},
+            {"source": "Newark", "provider_status": PROVIDER_NOT_CONFIGURED},
+        ])
+        self.assertEqual(health["configured_count"], 2)
+        self.assertEqual(health["responded_count"], 1)
+        self.assertEqual(health["no_match_count"], 1)
+        self.assertEqual(health["failed_count"], 1)
 
 
 if __name__ == "__main__":

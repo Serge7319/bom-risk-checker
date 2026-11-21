@@ -13,6 +13,19 @@ export function cleanUserText(value: unknown): string {
     : "";
 }
 
+/** Recover visible field text from legacy KiCad IPC object stringifications. */
+export function cleanKiCadFieldText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const raw = value.trim();
+  const match = raw.match(/^BoardText\(value=([\s\S]*?),\s*position=Vector2\([^)]*\),\s*layer=.*\)$/);
+  if (!match) return raw;
+  let visible = match[1].trim();
+  if (visible.length >= 2 && visible[0] === visible.at(-1) && (visible[0] === "'" || visible[0] === '"')) {
+    visible = visible.slice(1, -1);
+  }
+  return visible;
+}
+
 /** Use a useful label when a missing name would otherwise expose a database key. */
 export function userFacingLabel(value: unknown, fallback: string): string {
   const raw = typeof value === "string" ? value.trim() : "";

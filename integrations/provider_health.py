@@ -119,6 +119,10 @@ def summarize_provider_health(supplier_results: list[dict[str, Any]]) -> dict[st
 
     configured_count = len(configured)
     successful_count = len(available)
+    # A no-hit is still a completed supplier response. Keep it separate from
+    # an exact match and from a provider outage so the report never says that
+    # a responding API failed to respond.
+    responded_count = successful_count + len(part_not_found)
     has_verified_data = successful_count > 0
 
     failed_sources = sorted(
@@ -144,28 +148,34 @@ def summarize_provider_health(supplier_results: list[dict[str, Any]]) -> dict[st
         summary_message = "No supplier integrations are configured for this analysis."
     elif has_verified_data and failed:
         summary_message = (
-            f"{successful_count} of {configured_count} configured supplier sources "
-            f"responded successfully."
+            f"{successful_count} of {configured_count} configured supplier sources returned an exact part match; "
+            f"{len(part_not_found)} returned no matching part and {len(failed)} were unavailable."
         )
     elif has_verified_data:
         summary_message = (
-            f"{successful_count} of {configured_count} configured supplier sources "
-            f"responded successfully."
+            f"{successful_count} of {configured_count} configured supplier sources returned an exact part match; "
+            f"{len(part_not_found)} returned no matching part."
         )
     elif failed and not part_not_found:
         summary_message = "Supplier data could not be verified during this analysis."
     elif failed and part_not_found:
         summary_message = (
-            "Some supplier data could not be verified during this analysis."
+            f"No exact part match was returned; {len(part_not_found)} supplier sources returned no match "
+            f"and {len(failed)} were unavailable."
         )
     elif part_not_found and not failed:
-        summary_message = "No configured supplier returned a matching part record."
+        summary_message = (
+            f"No configured supplier returned a matching part record; "
+            f"all {responded_count} configured source(s) responded."
+        )
     else:
         summary_message = "Supplier data could not be verified during this analysis."
 
     return {
         "configured_count": configured_count,
         "successful_count": successful_count,
+        "responded_count": responded_count,
+        "no_match_count": len(part_not_found),
         "failed_count": len(failed),
         "part_not_found_count": len(part_not_found),
         "failed_sources": failed_sources,

@@ -12,7 +12,7 @@ import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import { StatusPill } from "@/components/StatusPill";
 import { fetchReport, type Report } from "@/lib/api";
 import { markReviewProgress, readReviewProgress } from "@/lib/bomDraft";
-import { evidenceSourceLabel, userFacingLabel } from "@/lib/display";
+import { cleanKiCadFieldText, evidenceSourceLabel, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
@@ -72,6 +72,11 @@ function EvidenceReviewPageInner() {
   ).length || 0;
   const totalParts = report?.parts.length || 0;
   const unverifiedParts = totalParts - verifiedParts;
+  const legacyKiCadMetadataCount = report?.parts.filter((part) =>
+    [part.MPN, part.mpn, part.Manufacturer, part.manufacturer].some((value) =>
+      /BoardText\(value=[\s\S]*?Vector2\(/.test(String(value || "")),
+    ),
+  ).length || 0;
   const verificationTone = totalParts === 0
     ? "blue"
     : verifiedParts === totalParts ? "green" : verifiedParts > 0 ? "amber" : "blue";
@@ -103,6 +108,13 @@ function EvidenceReviewPageInner() {
         <p className="cv-evidence-context" role="note">
           Evidence for <strong>{userFacingLabel(report.bom_name || report.filename, "Saved analysis")}</strong>. Source labels describe what was recorded with the analysis; missing fields remain unverified.
         </p>
+      ) : null}
+      {report && legacyKiCadMetadataCount > 0 ? (
+        <div className="cv-notice" role="alert" style={{ marginBottom: 14, borderColor: "#f0bb72", background: "#fffaf1", color: "#805000" }}>
+          <strong>{legacyKiCadMetadataCount} row(s) came from an older KiCad plugin format.</strong>
+          {" "}Visible part text is shown here, but supplier checks in this saved report used the malformed field values. Open the saved report and create a new revision to verify the part numbers and rerun the checks.
+          {" "}<Link href={"/reports/" + encodeURIComponent(analysisId)}>Review this report</Link>.
+        </div>
       ) : null}
       {busy ? <LoadingCard label="Loading component evidence…" /> : null}
       {error ? (
@@ -146,7 +158,7 @@ function EvidenceReviewPageInner() {
                 </thead>
                 <tbody>
                   {report.parts.map((part, index) => {
-                    const mpn = String(part.MPN || part.mpn || part.manufacturer_part_number || "—");
+                    const mpn = cleanKiCadFieldText(part.MPN || part.mpn || part.manufacturer_part_number || "—");
                     const rawSource = part.evidence_source ?? part["Evidence Source"] ?? part.source ?? part.source_type;
                     const sourceFallback = /synthetic|preview/i.test(report.mode)
                       ? "Synthetic analysis"
@@ -160,7 +172,7 @@ function EvidenceReviewPageInner() {
                             <strong>{mpn}</strong>
                           </div>
                         </td>
-                        <td>{String(part.Manufacturer || part.manufacturer || "Not recorded")}</td>
+                        <td>{cleanKiCadFieldText(part.Manufacturer || part.manufacturer || "Not recorded")}</td>
                         <td><StatusPill kind="lifecycle" value={part.Lifecycle || part.lifecycle || "Unknown"} /></td>
                         <td><StatusPill kind="risk" value={part["Risk Level"] || part.risk_level || "Unknown"} /></td>
                         <td><span className="cv-source-label">{evidenceSourceLabel(rawSource, sourceFallback)}</span></td>
