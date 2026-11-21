@@ -234,7 +234,7 @@ export default function PortfolioPage() {
                         <td data-label="Health"><HealthCell row={row} note={score === null ? (
                           healthNotes[analysisId]
                           || String(row.summary_message || (row.health_status
-                            ? `${userFacingLabel(row.health_status)}. Calculate health to check the saved evidence.`
+                            ? `${userFacingLabel(row.health_status, "Not scored")}. Calculate health to check the saved evidence.`
                             : "Calculate health to check the saved evidence."))
                         ) : undefined} /></td>
                         <td className="cv-num" data-label="Parts">{displayCount(row.total_parts)}</td>
