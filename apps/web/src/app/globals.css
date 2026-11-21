@@ -981,7 +981,7 @@ button {
   max-height: none;
 }
 
-/* Find Replacement — scoped layouts (do not share home action-table widths). */
+/* Find Replacement â scoped layouts (do not share home action-table widths). */
 .cv-table-wrap--replacement {
   overflow-x: auto;
   max-width: 100%;
@@ -1290,7 +1290,7 @@ button {
 }
 
 .cv-plan-option li::before {
-  content: "✓";
+  content: "â";
   margin-right: 7px;
   color: #31805e;
   font-weight: 800;
@@ -1831,7 +1831,7 @@ button {
   }
   .cv-table.cv-table-replacement td {
     /* Single full-width track: label above value. Never a side-by-side
-       label|value grid — that collapses the value track at ~390px and
+       label|value grid â that collapses the value track at ~390px and
        stacks AMD / Obsolete one glyph per line. */
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
@@ -4221,6 +4221,56 @@ button {
   line-height: 1.25;
 }
 
+.cv-kpi-footnote--status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 20px;
+}
+
+.cv-kpi-status-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.cv-kpi-status-chip--red {
+  background: #fff0ef;
+  color: #c92e36;
+}
+
+.cv-kpi-status-chip--blue {
+  background: #edf4ff;
+  color: #315f9e;
+}
+
+.cv-kpi-status-chip--green {
+  background: #eaf8f1;
+  color: #147b56;
+}
+
+.cv-kpi-status-chip--amber {
+  background: #fff5e8;
+  color: #a65c0b;
+}
+
+.cv-kpi-status-chip--gray {
+  background: #eff3f8;
+  color: #52657d;
+}
+
+.cv-kpi-detail-text {
+  color: #697b94;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .cv-report-export {
   display: flex;
   flex-wrap: wrap;
@@ -4485,7 +4535,7 @@ button {
   }
 }
 
-/* Settings — two-column professional layout */
+/* Settings â two-column professional layout */
 .cv-settings-shell {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);

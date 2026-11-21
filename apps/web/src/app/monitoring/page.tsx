@@ -234,9 +234,9 @@ function MonitoringPageInner() {
       {!busy && data ? (
         <>
           <div className="cv-kpis">
-            <KpiCard icon="monitor" tone="blue" label="Tracked components" value={metrics.monitored_parts ?? 0} detail="Parts in the selected analysis" />
-            <KpiCard icon="bell" tone={Number(metrics.active_alerts ?? 0) > 0 ? "amber" : "green"} label="Alerts to review" value={metrics.active_alerts ?? 0} detail="Signals derived from saved evidence" />
-            <KpiCard icon="clock" tone={Number(metrics.lifecycle_changes ?? 0) > 0 ? "amber" : "green"} label="Lifecycle flags" value={metrics.lifecycle_changes ?? 0} detail="NRND or lifecycle change signals" />
+            <KpiCard icon="monitor" tone="blue" label="Tracked components" value={metrics.monitored_parts ?? 0} status={Number(metrics.monitored_parts ?? 0) > 0 ? { label: "In selected analysis", tone: "blue" } : { label: "No parts tracked", tone: "gray" }} detail="Parts available to monitor" />
+            <KpiCard icon="bell" tone={Number(metrics.active_alerts ?? 0) > 0 ? "amber" : "green"} label="Alerts to review" value={metrics.active_alerts ?? 0} status={Number(metrics.active_alerts ?? 0) > 0 ? { label: "Needs attention", tone: "amber" } : { label: "No active alerts", tone: "green" }} detail="Signals derived from saved evidence" />
+            <KpiCard icon="clock" tone={Number(metrics.lifecycle_changes ?? 0) > 0 ? "amber" : "green"} label="Lifecycle flags" value={metrics.lifecycle_changes ?? 0} status={Number(metrics.lifecycle_changes ?? 0) > 0 ? { label: "Changes detected", tone: "amber" } : { label: "No changes", tone: "green" }} detail="NRND or lifecycle change signals" />
           </div>
           <section className="cv-card pad" aria-label="Monitoring freshness">
             <h3 className="cv-card-title">Data freshness</h3>
