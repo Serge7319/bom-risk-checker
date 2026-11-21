@@ -301,6 +301,53 @@ def get_report(analysis_id: str, *, workspace_id: str) -> dict[str, Any] | None:
     return None
 
 
+def recalculate_report_health(
+    analysis_id: str, *, workspace_id: str
+) -> dict[str, Any] | None:
+    """Re-evaluate a saved report's health from its saved part evidence only."""
+    report = get_report(analysis_id, workspace_id=workspace_id)
+    if not report:
+        return None
+
+    saved_parts = [row for row in (report.get("parts") or []) if isinstance(row, dict)]
+    results = pd.DataFrame(saved_parts)
+    aliases = {
+        "Risk Level": "risk_level",
+        "Risk Score": "risk_score",
+        "Supplier Data Verified": "supplier_data_verified",
+        "Stock Data Complete": "stock_data_complete",
+    }
+    for target, source in aliases.items():
+        if target not in results.columns and source in results.columns:
+            results[target] = results[source]
+
+    calculated = calculate_bom_health_score(results)
+    recalculated_at = datetime.now(timezone.utc).isoformat()
+    health = {
+        "health_score": calculated.get("health_score"),
+        "health_status": calculated.get("health_status") or "Not scored",
+        "summary_message": calculated.get("summary_message") or "Health could not be calculated from saved evidence.",
+        "assessment_coverage": calculated.get("assessment_coverage"),
+        "needs_verification_count": int(calculated.get("needs_verification_count") or 0),
+        "health_recalculated_at": recalculated_at,
+        "health_source": "saved-evidence",
+    }
+    saved = get_store().update_analysis_health(
+        analysis_id,
+        workspace_id=workspace_id,
+        health=health,
+    )
+    if not saved:
+        return None
+    _REPORTS[analysis_id] = dict(saved)
+    return {
+        "ok": True,
+        "analysis_id": analysis_id,
+        **health,
+        "source_label": "Saved evidence; suppliers were not queried.",
+    }
+
+
 def delete_report(analysis_id: str, *, workspace_id: str) -> bool:
     """Delete analysis from durable store and drop any process-local cache."""
     from apps.api.workspace_store import WorkspaceAccessError
@@ -365,93 +412,4 @@ def list_reports(*, workspace_id: str) -> list[dict[str, Any]]:
         )
     return sorted(
         stored.values(),
-        key=lambda row: str(row.get("created_at") or ""),
-        reverse=True,
-    )
-
-
-def analyses_and_parts(
-    *, workspace_id: str, analysis_id: str | None = None
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Shape persisted reports for Cadivor build_* helpers (workspace-scoped)."""
-    from apps.api.workspace_store import WorkspaceAccessError
-
-    store = get_store()
-    try:
-        analyses, parts = store.analyses_and_parts(
-            workspace_id=workspace_id, analysis_id=analysis_id
-        )
-    except WorkspaceAccessError:
-        raise
-    if analyses:
-        return analyses, parts
-    if analysis_id:
-        report = get_report(analysis_id, workspace_id=workspace_id)
-        selected = [report] if report else []
-    else:
-        selected = [
-            report
-            for report in _REPORTS.values()
-            if report.get("workspace_id") == workspace_id
-        ]
-    out_a: list[dict[str, Any]] = []
-    out_p: list[dict[str, Any]] = []
-    for report in selected:
-        if not report:
-            continue
-        out_a.append(
-            {
-                "id": report["id"],
-                "workspace_id": workspace_id,
-                "filename": report.get("filename") or "bom.csv",
-                "name": report.get("project_name") or report.get("filename") or "bom.csv",
-                "project_name": report.get("project_name")
-                or report.get("filename")
-                or "Synthetic BOM",
-                "created_at": report.get("created_at"),
-                "updated_at": report.get("created_at"),
-                "health_score": report.get("health_score"),
-                "high_risk_count": report.get("high_risk_count"),
-                "total_parts": report.get("total_parts"),
-                "mode": report.get("mode"),
-            }
-        )
-        for part in report.get("parts") or []:
-            enriched = dict(part)
-            enriched["analysis_id"] = report["id"]
-            enriched["workspace_id"] = workspace_id
-            enriched.setdefault("filename", report.get("filename") or "bom.csv")
-            out_p.append(enriched)
-    return out_a, out_p
-
-
-def synthetic_compare_part(mpn: str, *, from_report: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Build a compare-ready part record without live distributor lookup."""
-    from apps.api.compare_catalog import enrich_compare_part
-
-    if from_report:
-        record = {
-            "manufacturer_part_number": str(from_report.get("MPN") or mpn),
-            "manufacturer": str(from_report.get("Manufacturer") or ""),
-            "description": str(from_report.get("Description") or ""),
-            "lifecycle_status": str(from_report.get("Lifecycle") or "Unknown"),
-            "stock_available": from_report.get("Stock"),
-            "unit_price": from_report.get("unit_price") or from_report.get("Unit Price"),
-            "found": True,
-            "source": "synthetic-preview-analysis",
-            "supplier_data_verified": False,
-        }
-        return enrich_compare_part(str(record["manufacturer_part_number"] or mpn), record)
-    base = _synthetic_part(mpn, "", "", 1)
-    record = {
-        "manufacturer_part_number": mpn,
-        "manufacturer": base["manufacturer"],
-        "description": base["description"],
-        "lifecycle_status": base["lifecycle_status"],
-        "stock_available": base["stock_available"],
-        "unit_price": base["unit_price"],
-        "found": True,
-        "source": "synthetic-preview",
-        "supplier_data_verified": False,
-    }
-    return enrich_compare_part(mpn, record)
+        key=lambda row: str(row

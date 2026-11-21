@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Icon, type IconName } from "@/components/Icons";
 
 type Tone = "default" | "blue" | "amber" | "red" | "green";
+type ChipTone = "blue" | "amber" | "red" | "green" | "gray";
 
 export function KpiCard({
   label,
@@ -9,12 +10,14 @@ export function KpiCard({
   detail,
   icon,
   tone = "default",
+  status,
 }: {
   label: string;
   value: ReactNode;
   detail?: ReactNode;
   icon: IconName;
   tone?: Tone;
+  status?: { label: string; tone: ChipTone };
 }) {
   const toneClass = tone === "default" ? "" : ` tone-${tone}`;
   return (
@@ -26,7 +29,12 @@ export function KpiCard({
         </span>
       </div>
       <strong>{value}</strong>
-      {detail != null ? <em>{detail}</em> : null}
+      {status ? (
+        <em className="cv-kpi-footnote cv-kpi-footnote--status">
+          <span className={`cv-kpi-status-chip cv-kpi-status-chip--${status.tone}`}>{status.label}</span>
+          {detail != null ? <span className="cv-kpi-detail-text">{detail}</span> : null}
+        </em>
+      ) : detail != null ? <em>{detail}</em> : null}
     </div>
   );
 }

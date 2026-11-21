@@ -1,0 +1,191 @@
+.evidenceCard {
+  display: grid;
+  gap: 16px;
+  margin: 14px 0;
+}
+
+.evidenceIntro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.workflowNote {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #d9e6f8;
+  border-radius: 12px;
+  background: #f5f8fd;
+  color: #536a86;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.workflowNote strong {
+  color: #24436b;
+}
+
+.topicActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topicButton {
+  min-height: 39px;
+}
+
+.topicButton svg {
+  width: 15px;
+  height: 15px;
+}
+
+.exportHint,
+.loadingMessage,
+.unknownNote {
+  margin: 0;
+  color: #6c7f99;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.previewPanel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #d7e2f1;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f7f9fc 100%);
+}
+
+.previewHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.previewHeader h3 {
+  margin: 0;
+  color: #203b60;
+  font-size: 15px;
+  font-weight: 760;
+}
+
+.previewHeader p {
+  margin: 5px 0 0;
+  color: #6b7f99;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.summaryBadges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.totalCount {
+  margin-left: auto;
+  color: #60738d;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.previewTableWrap {
+  background: #fff;
+}
+
+.previewTable {
+  min-width: 780px;
+}
+
+.previewTable th,
+.previewTable td {
+  padding: 10px 12px;
+  vertical-align: top;
+}
+
+.previewTable td:first-child {
+  min-width: 130px;
+  color: #263f62;
+}
+
+.previewTable td:nth-child(2) {
+  min-width: 155px;
+}
+
+.previewTable td:nth-child(3) {
+  min-width: 180px;
+}
+
+.previewTable td:nth-child(4) {
+  min-width: 240px;
+  overflow-wrap: anywhere;
+}
+
+.previewTable a {
+  color: #155cc9;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.previewTable a:hover {
+  text-decoration: underline;
+}
+
+.reportedValue {
+  color: #233f65;
+  font-weight: 680;
+}
+
+.rowDetail {
+  display: block;
+  margin-top: 4px;
+  color: #72839a;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.unknownNote {
+  padding-top: 10px;
+  border-top: 1px solid #e2eaf4;
+}
+
+@media (max-width: 900px) {
+  .evidenceIntro {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .topicActions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .topicButton {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .previewPanel {
+    padding: 12px;
+  }
+
+  .previewHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .previewHeader > button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .totalCount {
+    margin-left: 0;
+  }
+}

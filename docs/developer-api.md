@@ -1,7 +1,7 @@
 # Cadivor developer API v1
 
 Developer keys are workspace-scoped, shown once at creation, stored as SHA-256
-hashes, and can be revoked from Settings → Billing. Each request checks the key,
+hashes, and can be managed from **APIs** in the workspace navigation. Each request checks the key,
 current API entitlement, and the key owner's active workspace membership. A
 revoked key or inactive entitlement stops working immediately.
 

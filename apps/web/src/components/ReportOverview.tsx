@@ -174,6 +174,9 @@ export function ReportOverview({ report }: { report: Report }) {
             <dd>{profile.total - profile.counts.unassessed} of {profile.total} rated</dd>
           </div>
         </dl>
+        <p className="cv-small-note" style={{ margin: "8px 0 0" }}>
+          Health is a screening index: 100 minus the average recorded component risk score. It is not a failure probability or compliance certification.
+        </p>
         <div className="cv-report-summary-note">
           <strong>Evidence coverage</strong>
           <p>{evidenceLine(report)}</p>

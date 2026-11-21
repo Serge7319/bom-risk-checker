@@ -292,7 +292,7 @@ def normalize_mouser_part(part: dict) -> dict:
     if temperature_range:
         parametric.setdefault("temperature_range", temperature_range)
 
-    return {
+    normalized = {
         "lifecycle_status": infer_lifecycle_status(part),
         "stock_total": stock_total,
         "unit_price": extract_mouser_price(part),
@@ -329,6 +329,16 @@ def normalize_mouser_part(part: dict) -> dict:
         "gbw_mhz": gbw_mhz,
         **parametric,
     }
+    from integrations.compliance_evidence import build_supplier_compliance_evidence
+
+    normalized["compliance_evidence"] = build_supplier_compliance_evidence(
+        source="Mouser",
+        product=part,
+        product_url=normalized.get("product_detail_url") or "",
+        manufacturer=str(part.get("Manufacturer") or ""),
+        mpn=str(part.get("ManufacturerPartNumber") or ""),
+    )
+    return normalized
 
 
 def default_part_result() -> dict:
@@ -450,219 +460,4 @@ def infer_lifecycle_status(part: dict) -> str:
         return str(lifecycle).strip()
 
     description = str(part.get("Description", "")).lower()
-    availability = str(part.get("Availability", "")).lower()
-    suggested_replacement = str(part.get("SuggestedReplacement", "")).lower()
-
-    if "obsolete" in description or "obsolete" in availability:
-        return "Obsolete"
-
-    if "not recommended" in description or "nrnd" in description:
-        return "NRND"
-
-    if suggested_replacement:
-        return "Replacement Suggested"
-
-    # Product listing and on-hand stock do not establish manufacturer lifecycle.
-    return "Unknown"
-
-
-
-def infer_architecture_from_description(description: str) -> str:
-    description = str(description).lower()
-
-    if "op amp" in description or "operational amplifier" in description:
-        return "Operational Amplifier"
-
-    if "comparator" in description:
-        return "Comparator"
-
-    if "shift register" in description:
-        return "Shift Register"
-
-    if "inverter" in description:
-        return "Hex Inverter"
-
-    if "voltage regulator" in description:
-        return "Voltage Regulator"
-
-    return ""
-
-
-def infer_channel_count_from_description(description: str) -> int:
-    description = str(description or "").lower()
-
-    if "dual" in description or "2 channels" in description or "2-channel" in description:
-        return 2
-
-    if "quad" in description or "4 channels" in description or "4-channel" in description:
-        return 4
-
-    if "single" in description or "1 channel" in description or "1-channel" in description:
-        return 1
-
-    return 0
-
-def extract_package_from_text(text: str) -> str:
-    text = str(text or "").upper()
-
-    package_patterns = [
-        r"\bPDIP[-\s]?(\d+)\b",
-        r"\bDIP[-\s]?(\d+)\b",
-        r"\bSOIC[-\s]?(\d+)\b",
-        r"\bSOP[-\s]?(\d+)\b",
-        r"\bTSSOP[-\s]?(\d+)\b",
-        r"\bSOT[-\s]?223\b",
-        r"\bTO[-\s]?220\b",
-    ]
-
-    for pattern in package_patterns:
-        match = re.search(pattern, text)
-
-        if match:
-            matched_text = match.group(0)
-
-            if "SOT" in matched_text:
-                return "SOT-223"
-
-            if "TO" in matched_text:
-                return "TO-220"
-
-            number = match.group(1)
-            package_name = re.sub(r"[^A-Z]", "", matched_text)
-
-            if "PDIP" in package_name:
-                return f"PDIP-{number}"
-            if "DIP" in package_name:
-                return f"DIP-{number}"
-            if "SOIC" in package_name:
-                return f"SOIC-{number}"
-            if "SOP" in package_name:
-                return f"SOP-{number}"
-            if "TSSOP" in package_name:
-                return f"TSSOP-{number}"
-
-    return ""
-
-def extract_frequency_mhz(text: str):
-    text = str(text or "")
-
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*MHz",
-        text,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return float(match.group(1))
-
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*kHz",
-        text,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return float(match.group(1)) / 1000
-
-    return None
-
-def extract_slew_rate_v_us(text: str):
-    text = str(text or "")
-
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*V\s*/\s*(?:µ|u)s",
-        text,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return float(match.group(1))
-
-    return None
-
-def extract_voltage_mv(text: str):
-    text = str(text or "")
-
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*mV",
-        text,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return float(match.group(1))
-
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*µV",
-        text,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return float(match.group(1)) / 1000
-
-    return None
-
-def extract_current_na(text: str):
-    text = str(text or "")
-
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*nA",
-        text,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return float(match.group(1))
-
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*(?:µ|u)A",
-        text,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return float(match.group(1)) * 1000
-
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*mA",
-        text,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return float(match.group(1)) * 1_000_000
-
-    return None
-
-def extract_current_ma(text: str):
-    text = str(text or "")
-
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*mA",
-        text,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return float(match.group(1))
-
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*(?:µ|u)A",
-        text,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return float(match.group(1)) / 1000
-
-    match = re.search(
-        r"(\d+(?:\.\d+)?)\s*nA",
-        text,
-        re.IGNORECASE,
-    )
-
-    if match:
-        return float(match.group(1)) / 1_000_000
-
-    return None
+    availability = str(part.get("Availability", ""))

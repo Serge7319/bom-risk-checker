@@ -234,9 +234,9 @@ function MonitoringPageInner() {
       {!busy && data ? (
         <>
           <div className="cv-kpis">
-            <KpiCard icon="monitor" tone="blue" label="Tracked components" value={metrics.monitored_parts ?? 0} detail="Parts in the selected analysis" />
-            <KpiCard icon="bell" tone={Number(metrics.active_alerts ?? 0) > 0 ? "amber" : "green"} label="Alerts to review" value={metrics.active_alerts ?? 0} detail="Signals derived from saved evidence" />
-            <KpiCard icon="clock" tone={Number(metrics.lifecycle_changes ?? 0) > 0 ? "amber" : "green"} label="Lifecycle flags" value={metrics.lifecycle_changes ?? 0} detail="NRND or lifecycle change signals" />
+            <KpiCard icon="monitor" tone="blue" label="Tracked components" value={metrics.monitored_parts ?? 0} status={Number(metrics.monitored_parts ?? 0) > 0 ? { label: "In selected analysis", tone: "blue" } : { label: "No parts tracked", tone: "gray" }} detail="Parts available to monitor" />
+            <KpiCard icon="bell" tone={Number(metrics.active_alerts ?? 0) > 0 ? "amber" : "green"} label="Alerts to review" value={metrics.active_alerts ?? 0} status={Number(metrics.active_alerts ?? 0) > 0 ? { label: "Needs attention", tone: "amber" } : { label: "No active alerts", tone: "green" }} detail="Signals derived from saved evidence" />
+            <KpiCard icon="clock" tone={Number(metrics.lifecycle_changes ?? 0) > 0 ? "amber" : "green"} label="Lifecycle flags" value={metrics.lifecycle_changes ?? 0} status={Number(metrics.lifecycle_changes ?? 0) > 0 ? { label: "Changes detected", tone: "amber" } : { label: "No changes", tone: "green" }} detail="NRND or lifecycle change signals" />
           </div>
           <section className="cv-card pad" aria-label="Monitoring freshness">
             <h3 className="cv-card-title">Data freshness</h3>
@@ -324,125 +324,4 @@ function MonitoringPageInner() {
             </div>
           </section>
           <section className="cv-card pad" aria-label="Slack alerts">
-            <h3 className="cv-card-title">Slack alerts</h3>
-            <p className="cv-card-subtitle">
-              Send one channel message when a scheduled supplier check finds new alerts. Messages include alert counts and a Cadivor link; part numbers, BOM names, and supplier values stay in Cadivor.
-            </p>
-            {!slackIntegration ? (
-              <p className="cv-small-note" role="status">Slack connection status is unavailable. Reload to try again.</p>
-            ) : slackIntegration.can_manage ? (
-              <div style={{ display: "grid", gap: 10, maxWidth: 620, marginTop: 12 }}>
-                <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={slackEnabled}
-                    disabled={savingSlack || !slackIntegration.encryption_ready}
-                    onChange={(event) => setSlackEnabled(event.target.checked)}
-                  />
-                  <span><strong>Enable Slack alert delivery</strong><br /><small className="cv-small-note">{slackIntegration.configured ? "A workspace webhook is saved." : "No Slack channel is connected."}</small></span>
-                </label>
-                <label className="cv-field" htmlFor="monitoring-slack-webhook">
-                  <span>Slack incoming webhook URL</span>
-                  <input
-                    id="monitoring-slack-webhook"
-                    type="password"
-                    autoComplete="new-password"
-                    value={slackWebhookUrl}
-                    placeholder={slackIntegration.configured ? "Saved securely · enter a new URL to replace" : "https://hooks.slack.com/services/…"}
-                    onChange={(event) => setSlackWebhookUrl(event.target.value)}
-                  />
-                </label>
-                {!slackIntegration.encryption_ready ? <p className="cv-small-note">Cadivor’s Slack webhook encryption key is not configured yet.</p> : null}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button className="cv-button primary" type="button" disabled={savingSlack || !slackIntegration.encryption_ready} onClick={() => void saveSlackIntegration()}>
-                    {savingSlack ? "Saving…" : "Save Slack settings"}
-                  </button>
-                  {slackIntegration.configured ? (
-                    <button className="cv-button" type="button" disabled={savingSlack} onClick={() => void saveSlackIntegration(true)}>Disconnect Slack</button>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <p className="cv-small-note" style={{ marginTop: 10 }}>
-                {slackIntegration.enabled ? "Slack alerts are enabled for this workspace." : "Ask a workspace owner or admin to connect Slack."}
-              </p>
-            )}
-          </section>
-          <section className="cv-card pad">
-            <h3 className="cv-card-title">Alerts and changes</h3>
-            <p className="cv-card-subtitle">
-              Active signals for this selection only. Inactive/reconciled alerts are hidden.
-              Supplier checks use live provider data only when configured. Email alerts require your opt-in and the delivery service to be enabled.
-            </p>
-            {alerts.length ? (
-              <div className="cv-table-wrap" style={{ marginTop: 12 }}>
-                <table className="cv-table">
-                  <thead>
-                    <tr>
-                      <th>Severity</th>
-                      <th>Part</th>
-                      <th>Type</th>
-                      <th>Message</th>
-                      <th>Evidence</th>
-                      <th>Saved</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {alerts.map((a, i) => (
-                      <tr key={i}>
-                        <td><StatusPill kind="risk" value={a.severity || "Unknown"} /></td>
-                        <td><strong>{String(a.part_number || "")}</strong></td>
-                        <td>{String(a.alert_type || "")}</td>
-                        <td>{cleanUserText(a.alert_message)}</td>
-                        <td>{evidenceSourceLabel(a.evidence_source)}</td>
-                        <td>{a.persisted === false ? <span className="cv-badge amber">Not saved — refresh</span> : <span className="cv-badge green">Saved</span>}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <button
-                            type="button"
-                            className="cv-button small"
-                            disabled={!activeAnalysisId || Boolean(refreshing)}
-                            onClick={() => void runLiveRefresh(String(a.part_number || ""))}
-                          >
-                            {refreshing === String(a.part_number || "") ? "Checking…" : "Refresh supplier"}
-                          </button>{" "}
-                          <button
-                            type="button"
-                            className="cv-button small"
-                            disabled={!a.id || Boolean(notifying)}
-                            title="Explicit email action — not run by Refresh"
-                            onClick={() => void runNotify(String(a.id || ""))}
-                          >
-                            {a.id && notifying === String(a.id)
-                              ? "Notifying…"
-                              : "Notify"}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <EmptyState
-                icon="monitor"
-                title={Number(metrics.monitored_parts || 0) > 0 ? "No alerts need review" : "No components are being tracked yet"}
-                body={Number(metrics.monitored_parts || 0) > 0 ? "The selected analysis has no derived lifecycle or risk alerts." : "Analyze a BOM to create a component list that can be reviewed here."}
-                action={Number(metrics.monitored_parts || 0) > 0 ? undefined : <PrimaryLink href="/bom-analyzer">Open BOM Analyzer</PrimaryLink>}
-              />
-            )}
-          </section>
-        </>
-      ) : null}
-    </Shell>
-  );
-}
-
-
-export default function MonitoringPage() {
-  return (
-    <Suspense fallback={null}>
-      <MonitoringPageInner />
-    </Suspense>
-  );
-}
+            <h3 c

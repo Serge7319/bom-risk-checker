@@ -189,9 +189,9 @@ function EngineeringDecisionsPageInner() {
 
       {last ? (
         <div className="cv-kpis">
-          <KpiCard icon="risk" tone={last.high_risk_count > 0 ? "red" : "green"} label="High priority" value={last.high_risk_count} detail="Engineering review recommended" />
-          <KpiCard icon="clock" tone={last.medium_risk_count > 0 ? "amber" : "green"} label="Medium priority" value={last.medium_risk_count} detail="Confirm the evidence is current" />
-          <KpiCard icon="check" tone="green" label="Low priority" value={last.low_risk_count} detail="Lower risk signals in this BOM" />
+          <KpiCard icon="risk" tone={last.high_risk_count > 0 ? "red" : "green"} label="High priority" value={last.high_risk_count} status={last.high_risk_count > 0 ? { label: "Action required", tone: "red" } : { label: "No high priority", tone: "green" }} detail="Engineering review recommended" />
+          <KpiCard icon="clock" tone={last.medium_risk_count > 0 ? "amber" : "green"} label="Medium priority" value={last.medium_risk_count} status={last.medium_risk_count > 0 ? { label: "Evidence check", tone: "amber" } : { label: "None pending", tone: "green" }} detail="Confirm the evidence is current" />
+          <KpiCard icon="check" tone="green" label="Low priority" value={last.low_risk_count} status={last.low_risk_count > 0 ? { label: "Lower risk", tone: "green" } : { label: "None found", tone: "gray" }} detail="Lower risk signals in this BOM" />
         </div>
       ) : null}
 
@@ -353,115 +353,4 @@ function EngineeringDecisionsPageInner() {
                         {record.follow_up_action ? (
                           <div className="cv-small-note">
                             Follow-up: {cleanUserText(record.follow_up_action)}
-                            {record.follow_up_owner ? ` · ${cleanUserText(record.follow_up_owner)}` : ""}
-                            {record.follow_up_due_date ? ` · due ${record.follow_up_due_date}` : ""}
-                          </div>
-                        ) : null}
-                        <div className="cv-small-note">Residual risk: {record.residual_risk || "not assessed"}</div>
-                        {(() => {
-                          const snapshot = (record.comparison_snapshot || {}) as Record<string, unknown>;
-                          const finding = snapshot.finding ? String(snapshot.finding) : "";
-                          const evidenceStatus = String(
-                            snapshot.engineering_evidence_status
-                            || (record.verified_primary_evidence ? "verified" : "unverified"),
-                          );
-                          const sourceA = cleanUserText(snapshot.source_a);
-                          const sourceB = cleanUserText(snapshot.source_b);
-                          return (
-                            <>
-                              {finding ? <div className="cv-small-note">Compare finding: {finding}</div> : null}
-                              <div className="cv-small-note">Snapshot evidence: {evidenceStatus}</div>
-                              {sourceA || sourceB ? (
-                                <div className="cv-small-note">
-                                  Sources: {sourceA || "unverified"} → {sourceB || "unverified"}
-                                </div>
-                              ) : null}
-                            </>
-                          );
-                        })()}
-                        <div className="cv-small-note">{record.qualification_note}</div>
-                      </td>
-                      <td>
-                        {record.analysis_id ? (
-                          <Link className="cv-button small" href={`/reports/${encodeURIComponent(record.analysis_id)}`}>Open report</Link>
-                        ) : <span className="cv-small-note">Workspace record</span>}
-                        <div style={{ marginTop: 8 }}>
-                          <button
-                            className="cv-button small"
-                            type="button"
-                            disabled={shareBusy === (record.id || record.decision_id)}
-                            onClick={() => void createShareLink(record)}
-                          >
-                            {shareBusy === (record.id || record.decision_id)
-                              ? "Creating link…"
-                              : shareLinks[record.id || record.decision_id]
-                                ? "Create new link"
-                                : "Share read-only"}
-                          </button>
-                        </div>
-                        {shareLinks[record.id || record.decision_id] ? (
-                          <div className="cv-decision-share-link">
-                            <input
-                              aria-label="Read-only decision share link"
-                              readOnly
-                              value={shareLinks[record.id || record.decision_id]}
-                              onFocus={(event) => event.currentTarget.select()}
-                            />
-                            <button className="cv-button small" type="button" onClick={() => void copyShareLink(record.id || record.decision_id)}>
-                              {shareCopied === (record.id || record.decision_id) ? "Copied" : "Copy link"}
-                            </button>
-                            <span className="cv-small-note">Anyone with this link can view it for 7 days.</span>
-                          </div>
-                        ) : null}
-                        <div className="cv-decision-approver-invite">
-                          <label htmlFor={`approver-email-${record.id || record.decision_id}`}>Invite an approver</label>
-                          <input
-                            id={`approver-email-${record.id || record.decision_id}`}
-                            type="email"
-                            placeholder="approver@company.com"
-                            value={approverEmails[record.id || record.decision_id] || ""}
-                            onChange={(event) => setApproverEmails((current) => ({
-                              ...current,
-                              [record.id || record.decision_id]: event.target.value,
-                            }))}
-                          />
-                          <button
-                            className="cv-button small"
-                            type="button"
-                            disabled={!approverEmails[record.id || record.decision_id]?.trim() || approverBusy === (record.id || record.decision_id)}
-                            onClick={() => void sendApproverInvite(record)}
-                          >
-                            {approverBusy === (record.id || record.decision_id) ? "Sending…" : "Send approval request"}
-                          </button>
-                          <span className="cv-small-note">The recipient can approve or reject this record without joining your workspace.</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            decisionError ? (
-              <div className="cv-error" role="alert">Saved decisions could not load. {decisionError}</div>
-            ) : <EmptyState
-              icon="decisions"
-              title="No decisions recorded yet"
-              body="Compare two parts, choose Record a decision, and save a reviewer, rationale, and evidence snapshot here."
-              action={<PrimaryLink href="/compare-parts">Open Compare Parts</PrimaryLink>}
-            />
-          )}
-        </section>
-      ) : null}
-    </Shell>
-  );
-}
-
-export default function EngineeringDecisionsPage() {
-  return (
-    <Suspense fallback={null}>
-      <EngineeringDecisionsPageInner />
-    </Suspense>
-  );
-}
-
+                            {record.follow_up_owner ? ` · ${cleanUserText(record.follow

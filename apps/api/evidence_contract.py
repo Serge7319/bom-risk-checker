@@ -45,6 +45,19 @@ def _is_live_label(value: object) -> bool:
     return text.startswith("live") or text == EVIDENCE_LIVE
 
 
+def _is_authorized_supplier_source(value: object) -> bool:
+    """Recognize explicit distributor names without treating any URL as proof."""
+    import re
+
+    known = {"digikey", "mouser", "newark", "nexar supply"}
+    labels = {
+        " ".join(item.casefold().split())
+        for item in re.split(r"[,;/|]", _text(value))
+        if item.strip()
+    }
+    return bool(labels & known)
+
+
 def _has_value(value: object) -> bool:
     if value is None:
         return False
@@ -76,6 +89,93 @@ def _price_type_for_row(row: dict[str, Any], *, price_present: bool, price_class
     if price_class == EVIDENCE_LIVE:
         return "distributor-list"
     return "recorded"
+
+
+def classify_compliance_fields(
+    row: dict[str, Any], *, identity_live: bool, requested_mpn: str
+) -> dict[str, dict[str, Any]]:
+    """Classify only declarations tied to the exact live supplier identity."""
+    from src.normalizer import normalize_part_number
+
+    root = row.get("compliance_evidence")
+    root = root if isinstance(root, dict) else {}
+    output: dict[str, dict[str, Any]] = {}
+    requested_key = normalize_part_number(requested_mpn)
+    for kind, label in (("rohs", "RoHS"), ("reach", "REACH"), ("pfas", "PFAS")):
+        node = root.get(kind) if isinstance(root.get(kind), dict) else {}
+        value = _first(
+            node.get("reported_value"),
+            node.get("status"),
+            row.get(f"{kind}_status"),
+            row.get(f"{label} status"),
+        )
+        source = _first(node.get("source"), row.get(f"{kind}_source"))
+        source_url = _first(
+            node.get("source_url"),
+            node.get("url"),
+            row.get(f"{kind}_source_url"),
+            row.get(f"{kind}_evidence_url"),
+        )
+        retrieved_at = _first(
+            node.get("retrieved_at"), row.get(f"{kind}_retrieved_at"),
+        )
+        node_mpn = str(node.get("mpn") or requested_mpn).strip()
+        exact_mpn = bool(
+            requested_key and normalize_part_number(node_mpn) == requested_key
+        )
+        node_class = str(
+            node.get("evidence_class") or row.get(f"{kind}_evidence_class") or ""
+        ).strip()
+        live_declaration = bool(
+            value
+            and identity_live
+            and exact_mpn
+            and node_class == EVIDENCE_LIVE
+            and _is_authorized_supplier_source(source)
+            and source_url.startswith("https://")
+        )
+        if not value:
+            classified = _field_envelope(
+                evidence_class=EVIDENCE_MISSING,
+                source=source,
+                retrieved_at=retrieved_at,
+                gap=f"No {label} declaration was returned by the supplier lookup; status is unknown.",
+            )
+        elif not exact_mpn:
+            classified = _field_envelope(
+                evidence_class=EVIDENCE_MISSING,
+                source=source,
+                retrieved_at=retrieved_at,
+                gap=f"The {label} declaration could not be tied to the exact BOM part number.",
+            )
+        elif live_declaration:
+            classified = _field_envelope(
+                evidence_class=EVIDENCE_LIVE,
+                source=source,
+                retrieved_at=retrieved_at,
+                gap=(
+                    f"Supplier records disagree on {label}; review the linked declarations."
+                    if bool(node.get("conflict")) else None
+                ),
+            )
+        else:
+            classified = _field_envelope(
+                evidence_class=EVIDENCE_SYNTHETIC,
+                source=source or EVIDENCE_SYNTHETIC,
+                retrieved_at=retrieved_at,
+                gap=f"The {label} value is recorded without verified exact-part supplier provenance.",
+            )
+        classified.update({
+            "reported_value": value or None,
+            "source_url": source_url,
+            "manufacturer": str(node.get("manufacturer") or ""),
+            "mpn": node_mpn if value else "",
+            "conflict": bool(node.get("conflict")),
+            "sources": node.get("sources") if isinstance(node.get("sources"), list) else [],
+            "basis": str(node.get("basis") or ""),
+        })
+        output[kind] = classified
+    return output
 
 
 def _field_envelope(
@@ -142,12 +242,24 @@ def classify_commercial_fields(
             retrieved_at=_first(row.get("lifecycle_retrieved_at"), retrieved_fallback),
             gap="Lifecycle is a synthetic/preview estimate, not live supplier verification.",
         )
-    elif identity_live and (_is_live_label(lifecycle_source) or not lifecycle_source or lifecycle_source == identity_source):
+    elif identity_live and (
+        _is_live_label(lifecycle_source)
+        or _is_authorized_supplier_source(lifecycle_source)
+        or not lifecycle_source
+        or lifecycle_source == identity_source
+    ):
         lifecycle = _field_envelope(
             evidence_class=EVIDENCE_LIVE,
             source=lifecycle_source or identity_source,
             retrieved_at=_first(row.get("lifecycle_retrieved_at"), retrieved_fallback),
         )
+        if bool(row.get("lifecycle_conflict")) or lifecycle_value.casefold() in {
+            "conflicting supplier data", "conflict"
+        }:
+            lifecycle["conflict"] = True
+            lifecycle["gap"] = (
+                "Authorized suppliers returned conflicting lifecycle statuses; reconcile the records before relying on the status."
+            )
     else:
         lifecycle = _field_envelope(
             evidence_class=EVIDENCE_SYNTHETIC if lifecycle_source else EVIDENCE_MISSING,
@@ -192,6 +304,7 @@ def classify_commercial_fields(
         )
     elif identity_live and (
         _is_live_label(stock_source)
+        or _is_authorized_supplier_source(stock_source)
         or bool(row.get("stock_data_complete"))
         or (not stock_source and identity_live)
     ):
@@ -281,234 +394,27 @@ def classify_commercial_fields(
         gap=price_gap,
     )
 
-    identity = _field_envelope(
-        evidence_class=EVIDENCE_LIVE if identity_live else (
-            EVIDENCE_SYNTHETIC if _is_synthetic_label(identity_source) or identity_source else EVIDENCE_MISSING
+    lead_time_value = row.get("Lead Time Weeks")
+    if lead_time_value is None:
+        lead_time_value = row.get("lead_time_weeks")
+    lead_time_source = _first(
+        row.get("lead_time_source"), row.get("Lead Time Source")
+    )
+    lead_time_retrieved = _first(
+        row.get("lead_time_retrieved_at"), row.get("Lead Time Retrieved At")
+    )
+    lead_time_rows = row.get("lead_time_evidence") or row.get("Lead Time Evidence") or []
+    if not isinstance(lead_time_rows, list):
+        lead_time_rows = []
+    lead_time_row = next(
+        (
+            item for item in lead_time_rows
+            if isinstance(item, dict)
+            and str(item.get("source") or "").casefold() == lead_time_source.casefold()
+            and str(item.get("weeks") if item.get("weeks") is not None else "")
+            == str(lead_time_value if lead_time_value is not None else "")
         ),
-        source=identity_source,
-        retrieved_at=identity_retrieved_at,
+        {},
     )
-    return {
-        "identity": identity,
-        "lifecycle": lifecycle,
-        "stock": stock,
-        "price": price,
-    }
-
-
-def classify_part_evidence(part: dict[str, Any] | None) -> dict[str, Any]:
-    """Return a normalized evidence envelope for one part row."""
-    row = part if isinstance(part, dict) else {}
-    requested = str(row.get("MPN") or row.get("manufacturer_part_number") or "").strip()
-    source_label = _first(
-        row.get("identity_source"),
-        row.get("evidence_source"),
-        row.get("source"),
-    )
-    # Never use price_source as the identity label — that washes commercial fields.
-    explicit_class = str(row.get("evidence_class") or "").strip().casefold()
-    live_candidate = {
-        "manufacturer_part_number": row.get("manufacturer_part_number") or requested,
-        "manufacturer": row.get("Manufacturer") or row.get("manufacturer") or "",
-        "source": row.get("source") or row.get("Supplier") or "",
-        "lifecycle_status": row.get("Lifecycle") or row.get("lifecycle_status") or "",
-        "product_detail_url": row.get("product_url") or row.get("source_url") or "",
-        "datasheet_url": row.get("datasheet_url") or "",
-        "retrieved_at": row.get("retrieved_at") or "",
-        "supplier_data_verified": row.get("supplier_data_verified"),
-        "provider_status": row.get("provider_status") or "AVAILABLE",
-    }
-    exact = exact_supplier_evidence(requested, live_candidate)
-    identity_retrieved = _first(
-        (exact or {}).get("retrieved_at") if exact else "",
-        row.get("identity_retrieved_at"),
-        row.get("retrieved_at"),
-        row.get("Sourcing Updated At"),
-    )
-
-    if explicit_class == EVIDENCE_MISSING:
-        fields = classify_commercial_fields(
-            row,
-            identity_live=False,
-            identity_source="",
-            identity_retrieved_at=identity_retrieved,
-        )
-        return {
-            "evidence_class": EVIDENCE_MISSING,
-            "requested_mpn": requested,
-            "identity_verified": False,
-            "source": "",
-            "source_url": "",
-            "datasheet_url": "",
-            "retrieved_at": identity_retrieved,
-            "units": {
-                "quantity": row.get("Quantity") or row.get("quantity"),
-                "unit_price": row.get("Unit Price") or row.get("unit_price"),
-                "currency": row.get("unit_price_currency") or row.get("currency") or "",
-            },
-            "fields": fields,
-            "synthetic": False,
-            "gap": "No live supplier evidence was available for this component.",
-        }
-
-    identity_live = bool(exact and source_label.casefold().startswith("live"))
-    if identity_live:
-        identity_source = _first((exact or {}).get("source"), source_label, EVIDENCE_LIVE)
-        identity_retrieved = _first(identity_retrieved, utc_now())
-        fields = classify_commercial_fields(
-            row,
-            identity_live=True,
-            identity_source=identity_source,
-            identity_retrieved_at=identity_retrieved,
-        )
-        return {
-            "evidence_class": EVIDENCE_LIVE,
-            "requested_mpn": requested,
-            "identity_verified": True,
-            "source": identity_source,
-            "source_url": (exact or {}).get("product_detail_url") or "",
-            "datasheet_url": (exact or {}).get("datasheet_url") or "",
-            "retrieved_at": identity_retrieved,
-            "units": {
-                "quantity": row.get("Quantity") or row.get("quantity"),
-                "unit_price": row.get("Unit Price") or row.get("unit_price"),
-                "currency": row.get("unit_price_currency") or row.get("currency") or "",
-            },
-            "fields": fields,
-            "synthetic": False,
-            # Surface price caution when identity is live but price is not.
-            "gap": (fields.get("price") or {}).get("gap")
-            if (fields.get("price") or {}).get("evidence_class") != EVIDENCE_LIVE
-            else None,
-        }
-
-    if requested:
-        identity_source = source_label or EVIDENCE_SYNTHETIC
-        fields = classify_commercial_fields(
-            row,
-            identity_live=False,
-            identity_source=identity_source,
-            identity_retrieved_at=identity_retrieved,
-        )
-        return {
-            "evidence_class": EVIDENCE_SYNTHETIC if (source_label or row) else EVIDENCE_MISSING,
-            "requested_mpn": requested,
-            "identity_verified": False,
-            "source": identity_source,
-            "source_url": "",
-            "datasheet_url": "",
-            "retrieved_at": identity_retrieved,
-            "units": {
-                "quantity": row.get("Quantity") or row.get("quantity"),
-                "unit_price": row.get("Unit Price") or row.get("unit_price"),
-                "currency": row.get("unit_price_currency") or row.get("currency") or "",
-            },
-            "fields": fields,
-            "synthetic": True,
-            "gap": (
-                "Not live authorized-supplier evidence. Treat values as "
-                "synthetic-preview until provider credentials are configured "
-                "on the migration API."
-            ),
-        }
-
-    fields = classify_commercial_fields(
-        row,
-        identity_live=False,
-        identity_source="",
-        identity_retrieved_at="",
-    )
-    return {
-        "evidence_class": EVIDENCE_MISSING,
-        "requested_mpn": "",
-        "identity_verified": False,
-        "fields": fields,
-        "synthetic": True,
-        "gap": "No part identity available for evidence classification.",
-    }
-
-
-def evidence_mode_and_gap(
-    *,
-    live_count: int,
-    synthetic_count: int,
-    missing_count: int,
-    configured_sources: int = 0,
-    analysis_mode: str | None = None,
-) -> tuple[str, str | None]:
-    """Derive a banner mode/gap from row-level evidence counts."""
-    if live_count and (synthetic_count or missing_count):
-        return (
-            "mixed-evidence",
-            "Evidence varies by component. Check each row's identity, lifecycle, stock, and price sources before acting.",
-        )
-    if live_count:
-        return ("live-source-evidence", None)
-    if synthetic_count:
-        gap = (
-            "This saved analysis contains sample estimates, not distributor quotes. "
-            "No supplier credentials are configured on this API service."
-            if configured_sources == 0
-            else "This saved analysis contains sample estimates, not distributor quotes. "
-            "Supplier integrations are configured; run the BOM again to retrieve current supplier evidence."
-        )
-        return ("synthetic-preview", gap)
-    if configured_sources == 0:
-        return (
-            "source-unavailable",
-            "No supplier credentials are configured on this API service, so this analysis has no live distributor quotes.",
-        )
-    if analysis_mode and not _is_synthetic_label(analysis_mode):
-        return (
-            "source-check-complete",
-            "No verified supplier quotes are saved for this analysis. Supplier integrations are configured; run the BOM again to check current availability and pricing.",
-        )
-    return (
-        "synthetic-preview",
-        "Detailed risk rows reflect the saved analysis evidence. Extended costs use recorded unit prices only when present — absent prices stay blank.",
-    )
-
-
-def annotate_report_parts(report: dict[str, Any] | None) -> dict[str, Any]:
-    """Attach evidence envelopes to each part without mutating live claims."""
-    payload = dict(report or {})
-    parts = []
-    for part in payload.get("parts") or []:
-        row = dict(part) if isinstance(part, dict) else {"value": part}
-        row["evidence"] = classify_part_evidence(row)
-        parts.append(row)
-    payload["parts"] = parts
-    live_count = sum(
-        1 for p in parts if (p.get("evidence") or {}).get("evidence_class") == EVIDENCE_LIVE
-    )
-    synthetic_count = sum(
-        1 for p in parts if (p.get("evidence") or {}).get("evidence_class") == EVIDENCE_SYNTHETIC
-    )
-    missing_count = sum(
-        1 for p in parts if (p.get("evidence") or {}).get("evidence_class") == EVIDENCE_MISSING
-    )
-    payload["evidence_summary"] = {
-        "live_count": live_count,
-        "synthetic_count": synthetic_count,
-        "missing_count": missing_count,
-        "live_lookups_enabled": live_count > 0,
-        "live_price_count": sum(
-            1
-            for p in parts
-            if ((p.get("evidence") or {}).get("fields") or {}).get("price", {}).get("evidence_class")
-            == EVIDENCE_LIVE
-        ),
-        "synthetic_price_count": sum(
-            1
-            for p in parts
-            if ((p.get("evidence") or {}).get("fields") or {}).get("price", {}).get("evidence_class")
-            == EVIDENCE_SYNTHETIC
-        ),
-        "missing_price_count": sum(
-            1
-            for p in parts
-            if ((p.get("evidence") or {}).get("fields") or {}).get("price", {}).get("evidence_class")
-            == EVIDENCE_MISSING
-        ),
-    }
-    return payload
+    lead_time_retrieved = _first(
+        lead_time_retrieved

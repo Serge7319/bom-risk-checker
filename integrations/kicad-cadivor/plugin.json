@@ -11,6 +11,16 @@
       "name": "Analyze BOM with Cadivor",
       "description": "Send BOM fields from the open PCB to Cadivor.",
       "show-button": true,
+      "icons-light": [
+        "resources/cadivor-bom-light-24.png",
+        "resources/cadivor-bom-light-48.png",
+        "resources/cadivor-bom-light-96.png"
+      ],
+      "icons-dark": [
+        "resources/cadivor-bom-dark-24.png",
+        "resources/cadivor-bom-dark-48.png",
+        "resources/cadivor-bom-dark-96.png"
+      ],
       "scopes": ["pcb"],
       "entrypoint": "cadivor_action.py"
     }

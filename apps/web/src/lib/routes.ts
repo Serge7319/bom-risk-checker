@@ -41,6 +41,12 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    label: "Developer",
+    items: [
+      { id: "api", href: "/apis", label: "APIs" },
+    ],
+  },
+  {
     label: "Workspace admin",
     items: [
       { id: "reports", href: "/single-bom-report", label: "One-time BOM report" },
@@ -175,6 +181,13 @@ export const PAGE_META: Record<string, PageMeta> = {
     eyebrow: "Workspace settings",
     description:
       "Review account, plan usage, and integration readiness.",
+  },
+  apis: {
+    icon: "api",
+    title: "APIs",
+    eyebrow: "Developer tools",
+    description:
+      "Manage workspace API keys and connect Cadivor to KiCad or your own tools.",
   },
   single_bom_report: {
     icon: "reports",
