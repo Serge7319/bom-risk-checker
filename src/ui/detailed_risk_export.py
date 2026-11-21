@@ -13,10 +13,17 @@ from typing import Any
 
 CSV_COLUMNS = (
     "MPN",
+    "BOM manufacturer",
+    "Supplier manufacturer",
+    "Manufacturer source",
     "Qty",
     "Lifecycle",
     "Stock",
+    "Stock evidence",
     "Lead time (weeks)",
+    "Lead-time source",
+    "Lead-time checked at",
+    "Lead-time evidence",
     "Suppliers",
     "Evidence source",
     "Supplier product URL",
@@ -39,9 +46,14 @@ DETAIL_COLUMNS = (
     "MPN",
     "Description",
     "Manufacturer",
+    "BOM manufacturer",
+    "Supplier manufacturer",
+    "Manufacturer source",
     "Qty",
     "Lifecycle",
     "Stock",
+    "Stock evidence",
+    "Stock aggregation",
     "Evidence source",
     "Supplier product URL",
     "Datasheet URL",
@@ -50,6 +62,8 @@ DETAIL_COLUMNS = (
     "Stock coverage",
     "Lead time (weeks)",
     "Lead-time source",
+    "Lead-time checked at",
+    "Lead-time evidence",
     "Supplier count",
     "Supplier coverage",
     "Risk",
@@ -282,6 +296,31 @@ def _lead_time(record: dict[str, Any]) -> int | float | str:
     return _text(value)
 
 
+def _evidence_readings(value: Any, *, key: str, unit: str = "") -> str:
+    """Format source-specific values and timestamps without losing lineage."""
+    value = _json_value(value)
+    if isinstance(value, dict):
+        items = [value]
+    elif isinstance(value, (list, tuple)):
+        items = [item for item in value if isinstance(item, dict)]
+    else:
+        return _text(value, "")
+    readings = []
+    for item in items:
+        amount = item.get(key)
+        source = _text(
+            _first(item, "source", "distributor", "supplier", "vendor"), ""
+        )
+        if amount in (None, ""):
+            continue
+        label = f"{source}: " if source else ""
+        label += f"{amount}{(' ' + unit) if unit else ''}"
+        if item.get("retrieved_at"):
+            label += f" (retrieved {item['retrieved_at']})"
+        readings.append(label)
+    return "; ".join(readings) or "—"
+
+
 def _supplier_count(record: dict[str, Any]) -> int | float | str:
     value = _number(_first(record, "supplier_count", "Supplier Count", "Suppliers"))
     if value is None:
@@ -502,17 +541,43 @@ def component_rows(
             for item in approvals
             if str(item.get("alternative_part") or "").strip()
         ]
+        stock_evidence = _first(record, "stock_evidence", "Stock Evidence", default=[])
+        lead_time_evidence = _first(record, "lead_time_evidence", "Lead Time Evidence", default=[])
+        stock_aggregation = _text(
+            _first(record, "Stock Aggregation", "stock_aggregation"),
+            "Combined across supplier sources" if "," in stock_sources else "Single source or not reported",
+        )
+        lead_time_rows = _json_value(lead_time_evidence)
+        lead_time_checked_at = _first(record, "lead_time_retrieved_at", "Lead Time Retrieved At")
+        if not lead_time_checked_at and isinstance(lead_time_rows, list):
+            times = [
+                str(item.get("retrieved_at") or "").strip()
+                for item in lead_time_rows
+                if isinstance(item, dict) and str(item.get("retrieved_at") or "").strip()
+            ]
+            lead_time_checked_at = max(times, default="")
         output.append({
             "MPN": mpn,
             "Description": _text(
                 _description_text(description)
             ),
             "Manufacturer": _text(_first(record, "manufacturer", "Manufacturer")),
+            "BOM manufacturer": _text(
+                _first(record, "BOM Manufacturer", "bom_manufacturer", "requested_manufacturer")
+            ),
+            "Supplier manufacturer": _text(
+                _first(record, "Supplier Manufacturer", "supplier_manufacturer")
+            ),
+            "Manufacturer source": _text(
+                _first(record, "Manufacturer Source", "manufacturer_source"), "Not recorded"
+            ),
             "Qty": quantity
             if quantity is not None
             else _text(_first(record, "quantity", "Quantity", "qty")),
             "Lifecycle": lifecycle,
             "Stock": _stock(record),
+            "Stock evidence": _evidence_readings(stock_evidence, key="stock", unit="units"),
+            "Stock aggregation": stock_aggregation,
             "Evidence source": stock_sources,
             "Supplier product URL": product_url or "—",
             "Datasheet URL": datasheet_url or "—",
@@ -529,7 +594,17 @@ def component_rows(
             "Stock coverage": coverage,
             "Lead time (weeks)": _lead_time(record),
             "Lead-time source": _text(_first(record, "lead_time_source", "Lead Time Source")),
+            "Lead-time checked at": _text(lead_time_checked_at),
+            "Lead-time evidence": _evidence_readings(lead_time_evidence, key="weeks", unit="weeks"),
             "Supplier count": _supplier_count(record),
+            "Supplier sources checked": _text(
+                _first(record, "Supplier Sources Checked", "supplier_sources_checked"),
+                "Not recorded",
+            ),
+            "Supplier coverage complete": _text(
+                _first(record, "Supplier Coverage Complete", "supplier_coverage_complete"),
+                "Not recorded",
+            ),
             "Supplier coverage": _text(
                 _first(record, "supplier_coverage", "Supplier Coverage")
             ),
@@ -556,36 +631,15 @@ def detailed_risk_csv_bytes(
     approved_alternatives: list[dict[str, Any]] | None = None,
 ) -> bytes:
     """CSV export with the same user-facing columns as the Stress Free audit."""
-    rows = [
-        {
-            "MPN": row["MPN"],
-            "Qty": row["Qty"],
-            "Lifecycle": row["Lifecycle"],
-            "Stock": row["Stock"],
-            "Lead time (weeks)": row["Lead time (weeks)"],
-            "Suppliers": row["Supplier count"],
-            "Evidence source": row["Evidence source"],
-            "Supplier product URL": row["Supplier product URL"],
-            "Datasheet URL": row["Datasheet URL"],
-            "Sourcing checked at": row["Sourcing checked at"],
-            "Mitigation status": row["Mitigation status"],
-            "Approved alternatives": row["Approved alternatives"],
-            "Alternate search status": row["Alternate search status"],
-            "Candidate MPNs": row["Candidate MPNs"],
-            "Risk": row["Risk"],
-            "Risk score": row["Risk score"],
-            "Why": row["Why"],
-            "Unit price": row["Unit price"],
-            "Unit price currency": row["Unit price currency"],
-            "Extended cost": row["Extended cost"],
-            "Description-mentioned alternatives": row["Description-mentioned alternatives"],
-        }
-        for row in component_rows(parts, approved_alternatives)
-    ]
+    rows = []
+    for component in component_rows(parts, approved_alternatives):
+        row = dict(component)
+        row["Suppliers"] = component["Supplier count"]
+        rows.append(row)
     buffer = StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=CSV_COLUMNS, extrasaction="ignore")
     writer.writeheader()
-    writer.writerows({key: _safe_cell(row[key]) for key in CSV_COLUMNS} for row in rows)
+    writer.writerows({key: _safe_cell(row.get(key, "")) for key in CSV_COLUMNS} for row in rows)
     return buffer.getvalue().encode("utf-8-sig")
 
 
@@ -848,10 +902,14 @@ def detailed_risk_excel_bytes(
         sheet.auto_filter.ref = f"A1:{last_column}{max(1, len(data) + 1)}"
         sheet.print_title_rows = "1:1"
         widths = {
-            "MPN": 24, "Description": 38, "Manufacturer": 24, "Qty": 10,
-            "Lifecycle": 18, "Stock": 14, "Evidence source": 24, "Recorded supplier": 22,
+            "MPN": 24, "Description": 38, "Manufacturer": 24,
+            "BOM manufacturer": 26, "Supplier manufacturer": 26,
+            "Manufacturer source": 24, "Qty": 10,
+            "Lifecycle": 18, "Stock": 14, "Stock evidence": 48,
+            "Stock aggregation": 34, "Evidence source": 24, "Recorded supplier": 22,
             "Supplier product URL": 34, "Datasheet URL": 34, "Sourcing checked at": 24,
             "Stock coverage": 18, "Lead time (weeks)": 17, "Lead-time source": 22,
+            "Lead-time checked at": 24, "Lead-time evidence": 48,
             "Supplier count": 15, "Supplier coverage": 40, "Risk": 14,
             "Risk score": 13, "Mitigation status": 34, "Why": 58, "Lifecycle evidence": 44,
             "Lifecycle conflict": 22, "Alternate search status": 38,

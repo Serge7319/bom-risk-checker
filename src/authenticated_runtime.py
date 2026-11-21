@@ -3071,6 +3071,7 @@ def run_authenticated_app() -> None:
            # when an engineer opens Find a Replacement, not for every BOM row.
            alternative_part_numbers = suggest_alternatives_v2(
                normalized_part_number,
+               original_manufacturer=bom_manufacturer,
                include_family_search=False,
            )
 

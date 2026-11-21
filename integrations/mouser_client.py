@@ -292,7 +292,7 @@ def normalize_mouser_part(part: dict) -> dict:
     if temperature_range:
         parametric.setdefault("temperature_range", temperature_range)
 
-    return {
+    normalized = {
         "lifecycle_status": infer_lifecycle_status(part),
         "stock_total": stock_total,
         "unit_price": extract_mouser_price(part),
@@ -329,6 +329,16 @@ def normalize_mouser_part(part: dict) -> dict:
         "gbw_mhz": gbw_mhz,
         **parametric,
     }
+    from integrations.compliance_evidence import build_supplier_compliance_evidence
+
+    normalized["compliance_evidence"] = build_supplier_compliance_evidence(
+        source="Mouser",
+        product=part,
+        product_url=normalized.get("product_detail_url") or "",
+        manufacturer=str(part.get("Manufacturer") or ""),
+        mpn=str(part.get("ManufacturerPartNumber") or ""),
+    )
+    return normalized
 
 
 def default_part_result() -> dict:

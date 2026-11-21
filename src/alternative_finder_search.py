@@ -984,7 +984,10 @@ def run_alternative_finder_search(
             with search_run.stage(STAGE_CANDIDATE_ENGINE):
                 search_run.operation = "suggest_alternatives_v2"
                 search_run.provider = "digikey"
-                candidates = suggest_alternatives_v2(entered_mpn) or []
+                candidates = suggest_alternatives_v2(
+                    entered_mpn,
+                    original_manufacturer=requested_mfr,
+                ) or []
             discovery = get_alternative_discovery_metadata() or {}
             discovery["source_identity_verified"] = True
             for candidate in candidates:

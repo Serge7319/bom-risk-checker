@@ -412,6 +412,11 @@ def _safe_supplier_lookup(
                     source_name,
                     provider_status=PROVIDER_PART_NOT_FOUND,
                 )
+                result["identity_mismatch"] = {
+                    "requested_manufacturer": requested_mfr,
+                    "supplier_manufacturer": result_mfr,
+                    "mpn": str(part_number or "").strip(),
+                }
                 result.pop("error", None)
                 diagnostic = log_supplier_diagnostic(
                     request_id=resolved_request_id,
@@ -444,6 +449,9 @@ def _safe_supplier_lookup(
             result["unit_price"] = 0.0
         if not str(result.get("retrieved_at") or "").strip():
             result["retrieved_at"] = utc_now_iso()
+        from integrations.compliance_evidence import stamp_supplier_compliance_evidence
+
+        stamp_supplier_compliance_evidence(result, str(result.get("retrieved_at") or ""))
         if started is not None:
             emit_timing(
                 "supplier.lookup",
@@ -715,6 +723,7 @@ def get_best_part_data(part_number: str, manufacturer: str = "") -> dict:
         if result.get("provider_status") == PROVIDER_AVAILABLE
         and result.get("manufacturer_part_number")
     ], key=lambda result: str(result.get("source") or ""))
+    unfiltered_valid_results = list(valid_results)
 
     # When a brand was requested, never aggregate a different manufacturer's hit
     # as the verified original identity.
@@ -739,9 +748,124 @@ def get_best_part_data(part_number: str, manufacturer: str = "") -> dict:
                 matched.append(row)
         valid_results = matched
 
+    if not requested_mfr and valid_results:
+        # A generic MPN can be sold by more than one manufacturer. Do not sum
+        # those manufacturers' stock or borrow price, lifecycle, or datasheet
+        # fields across them. Ask for the BOM manufacturer before scoring it.
+        try:
+            from apps.api.manufacturer_identity import manufacturers_match
+        except Exception:  # noqa: BLE001
+            manufacturers_match = None
+        manufacturer_groups: list[list[dict]] = []
+        for result in valid_results:
+            label = str(result.get("manufacturer") or "").strip()
+            if not label:
+                continue
+            matching_group = next(
+                (
+                    group for group in manufacturer_groups
+                    if manufacturers_match and manufacturers_match(
+                        label,
+                        str(group[0].get("manufacturer") or ""),
+                        mpn=part_number,
+                    )
+                ),
+                None,
+            )
+            if matching_group is None:
+                manufacturer_groups.append([result])
+            else:
+                matching_group.append(result)
+        if len(manufacturer_groups) > 1:
+            aggregated = default_aggregated_result(part_number, supplier_results)
+            provider_health = dict(aggregated.get("provider_health") or {})
+            provider_health["has_verified_data"] = False
+            provider_health["summary_message"] = (
+                f"{part_number} matched multiple manufacturers: "
+                f"{', '.join(str(group[0].get('manufacturer') or '').strip() for group in manufacturer_groups)}. "
+                "Add the manufacturer to the BOM to select the correct source; values were withheld."
+            )
+            aggregated.update({
+                "supplier_data_verified": False,
+                "provider_health": provider_health,
+                "identity_status": "ambiguous",
+                "manufacturer_choices": [
+                    {
+                        "manufacturer": str(group[0].get("manufacturer") or "").strip(),
+                        "suppliers": sorted({
+                            str(row.get("source") or "").strip()
+                            for row in group if str(row.get("source") or "").strip()
+                        }),
+                        "product_urls": sorted({
+                            str(row.get("product_detail_url") or "").strip()
+                            for row in group if str(row.get("product_detail_url") or "").strip()
+                        }),
+                    }
+                    for group in manufacturer_groups
+                ],
+                "supplier_offers": [],
+            })
+            return aggregated
+
     if not valid_results:
         aggregated = default_aggregated_result(part_number, supplier_results)
         aggregated["supplier_offers"] = []
+        # A provider answering is not enough to mark this BOM identity verified.
+        # Manufacturer-filtered lookups must not inherit the provider-health
+        # "has data" flag from an exact MPN under a different brand.
+        provider_health = dict(aggregated.get("provider_health") or {})
+        provider_health["has_verified_data"] = False
+        mismatches = [
+            dict(row.get("identity_mismatch") or {})
+            for row in supplier_results
+            if isinstance(row, dict) and isinstance(row.get("identity_mismatch"), dict)
+        ]
+        if requested_mfr:
+            try:
+                from apps.api.manufacturer_identity import manufacturers_match
+            except Exception:  # noqa: BLE001
+                manufacturers_match = None
+            for row in unfiltered_valid_results:
+                row_mfr = str(row.get("manufacturer") or "").strip()
+                if not row_mfr:
+                    continue
+                matches = bool(
+                    manufacturers_match and manufacturers_match(
+                        requested_mfr, row_mfr, mpn=part_number
+                    )
+                ) if manufacturers_match else row_mfr.casefold() == requested_mfr.casefold()
+                if not matches:
+                    mismatches.append({
+                        "requested_manufacturer": requested_mfr,
+                        "supplier_manufacturer": row_mfr,
+                        "mpn": str(row.get("manufacturer_part_number") or part_number),
+                        "source": str(row.get("source") or ""),
+                        "product_url": str(row.get("product_detail_url") or ""),
+                    })
+        aggregated["supplier_data_verified"] = False
+        aggregated["identity_status"] = "manufacturer_mismatch" if mismatches else "unresolved"
+        aggregated["requested_manufacturer"] = requested_mfr
+        aggregated["manufacturer_mismatches"] = mismatches
+        if mismatches:
+            supplier_brands = sorted({
+                str(row.get("supplier_manufacturer") or "").strip()
+                for row in mismatches
+                if str(row.get("supplier_manufacturer") or "").strip()
+            })
+            provider_health["summary_message"] = (
+                f"Exact MPN results were returned for {', '.join(supplier_brands)}, "
+                f"not the requested manufacturer {requested_mfr}; supplier values were withheld."
+            )
+        elif requested_mfr:
+            provider_health["summary_message"] = (
+                f"No exact supplier result was verified for {part_number} from "
+                f"{requested_mfr}; supplier values were withheld."
+            )
+        else:
+            provider_health["summary_message"] = (
+                f"No exact authorized-supplier result was verified for {part_number}."
+            )
+        aggregated["provider_health"] = provider_health
         from integrations.legacy_mpn_routes import legacy_mpn_route, legacy_route_status
 
         route = legacy_mpn_route(part_number)
@@ -756,10 +880,32 @@ def get_best_part_data(part_number: str, manufacturer: str = "") -> dict:
                 if not isinstance(order_code, dict):
                     continue
                 candidate_mpn = str(order_code.get("mpn") or "").strip()
+                order_code_manufacturer = str(order_code.get("manufacturer") or "").strip()
                 if not candidate_mpn:
                     continue
+                if requested_mfr:
+                    try:
+                        from apps.api.manufacturer_identity import manufacturers_match
+
+                        order_code_matches = bool(
+                            order_code_manufacturer
+                            and manufacturers_match(
+                                requested_mfr, order_code_manufacturer, mpn=part_number
+                            )
+                        )
+                    except Exception:  # noqa: BLE001
+                        order_code_matches = bool(
+                            order_code_manufacturer
+                            and order_code_manufacturer.casefold() == requested_mfr.casefold()
+                        )
+                    if not order_code_matches:
+                        continue
                 try:
-                    candidate_data = get_best_part_data(candidate_mpn)
+                    candidate_data = (
+                        get_best_part_data(candidate_mpn, manufacturer=order_code_manufacturer)
+                        if order_code_manufacturer
+                        else get_best_part_data(candidate_mpn)
+                    )
                 except Exception:
                     candidate_data = {}
                 if not isinstance(candidate_data, dict):
@@ -869,11 +1015,39 @@ def get_best_part_data(part_number: str, manufacturer: str = "") -> dict:
     provider_health = summarize_provider_health(supplier_results)
     best_result["provider_health"] = provider_health
     best_result["supplier_data_verified"] = provider_health["has_verified_data"]
+    compliance_evidence = _aggregate_compliance_evidence(valid_results)
+    best_result["compliance_evidence"] = compliance_evidence
+    for kind, evidence in compliance_evidence.items():
+        reported_value = str(evidence.get("reported_value") or "").strip()
+        best_result[f"{kind}_status"] = reported_value
+        best_result[f"{kind}_source"] = str(evidence.get("source") or "")
+        best_result[f"{kind}_source_url"] = str(evidence.get("source_url") or "")
+        best_result[f"{kind}_evidence_class"] = str(
+            evidence.get("evidence_class") or ""
+        )
+        best_result[f"{kind}_retrieved_at"] = str(evidence.get("retrieved_at") or "")
+    if "rohs" in compliance_evidence:
+        best_result["rohs_source_url"] = str(compliance_evidence["rohs"].get("source_url") or "")
+    if "reach" in compliance_evidence:
+        best_result["reach_source_url"] = str(compliance_evidence["reach"].get("source_url") or "")
+    if "pfas" in compliance_evidence:
+        best_result["pfas_source_url"] = str(compliance_evidence["pfas"].get("source_url") or "")
     best_result["stock_data_sources"] = sorted({
         str(result.get("source") or "") for result in stock_known_results
         if result.get("source")
     })
     best_result["stock_data_complete"] = len(stock_known_results) == len(valid_results)
+    best_result["stock_evidence"] = [
+        {
+            "source": str(result.get("source") or "Supplier"),
+            "manufacturer": str(result.get("manufacturer") or ""),
+            "mpn": str(result.get("manufacturer_part_number") or part_number),
+            "stock": stock_by_result[id(result)],
+            "retrieved_at": result.get("retrieved_at"),
+            "product_url": str(result.get("product_detail_url") or ""),
+        }
+        for result in stock_known_results
+    ]
     lifecycle_status, lifecycle_evidence, lifecycle_conflict = _resolve_lifecycle(valid_results)
     best_result["lifecycle_status"] = lifecycle_status
     best_result["lifecycle_evidence"] = lifecycle_evidence
@@ -886,8 +1060,11 @@ def get_best_part_data(part_number: str, manufacturer: str = "") -> dict:
     best_result["lead_time_evidence"] = [
         {
             "source": str(result.get("source") or "Supplier"),
+            "manufacturer": str(result.get("manufacturer") or ""),
+            "mpn": str(result.get("manufacturer_part_number") or part_number),
             "weeks": result.get("lead_time_weeks"),
             "retrieved_at": result.get("retrieved_at"),
+            "product_url": str(result.get("product_detail_url") or ""),
         }
         for result in lead_time_rows
     ]
@@ -896,6 +1073,17 @@ def get_best_part_data(part_number: str, manufacturer: str = "") -> dict:
         best_result["lead_time_source"] = lead_time_rows[0].get("source")
     elif best_result.get("lead_time_weeks") not in (None, ""):
         best_result["lead_time_source"] = best_result.get("source")
+    selected_lead_time = next(
+        (
+            evidence for evidence in best_result["lead_time_evidence"]
+            if str(evidence.get("source") or "").casefold()
+            == str(best_result.get("lead_time_source") or "").casefold()
+            and str(evidence.get("weeks") if evidence.get("weeks") is not None else "")
+            == str(best_result.get("lead_time_weeks") if best_result.get("lead_time_weeks") is not None else "")
+        ),
+        {},
+    )
+    best_result["lead_time_retrieved_at"] = selected_lead_time.get("retrieved_at")
 
     # Borrow missing package / pin-count / mounting-style data
     # from any other supplier that has it.
@@ -1664,6 +1852,7 @@ def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
         "lifecycle_evidence": [],
         "lifecycle_conflict": False,
         "lead_time_evidence": [],
+        "compliance_evidence": {},
         "sources_available": "",
         "all_supplier_results": supplier_results,
         "provider_health": provider_health,
@@ -1676,3 +1865,66 @@ def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
         "bandwidth_mhz": None,
         "slew_rate_v_us": None,
     }
+
+
+def _aggregate_compliance_evidence(results: list[dict]) -> dict[str, dict]:
+    """Preserve per-supplier declarations and expose disagreements explicitly."""
+    output: dict[str, dict] = {}
+    for kind in ("rohs", "reach", "pfas"):
+        readings = []
+        for result in results:
+            root = result.get("compliance_evidence")
+            node = root.get(kind) if isinstance(root, dict) else None
+            if not isinstance(node, dict):
+                continue
+            value = str(node.get("reported_value") or node.get("status") or "").strip()
+            if not value:
+                continue
+            evidence = dict(node)
+            evidence.setdefault("source", str(result.get("source") or ""))
+            evidence.setdefault("manufacturer", str(result.get("manufacturer") or ""))
+            evidence.setdefault(
+                "mpn", str(result.get("manufacturer_part_number") or "")
+            )
+            evidence.setdefault("retrieved_at", str(result.get("retrieved_at") or ""))
+            evidence.setdefault(
+                "source_url", str(result.get("product_detail_url") or "")
+            )
+            readings.append(evidence)
+        if not readings:
+            continue
+        values_by_key: dict[str, str] = {}
+        for reading in readings:
+            value = str(reading.get("reported_value") or reading.get("status") or "").strip()
+            values_by_key.setdefault(" ".join(value.casefold().split()), value)
+        sources = list(dict.fromkeys(
+            str(reading.get("source") or "").strip()
+            for reading in readings
+            if str(reading.get("source") or "").strip()
+        ))
+        retrieved_at = max(
+            (str(reading.get("retrieved_at") or "").strip() for reading in readings),
+            default="",
+        )
+        primary = readings[0]
+        if len(values_by_key) > 1:
+            output[kind] = {
+                **primary,
+                "reported_value": "Conflicting supplier data",
+                "conflict": True,
+                "reported_values": readings,
+                "sources": readings,
+                "source": ", ".join(sources),
+                "retrieved_at": retrieved_at,
+                "evidence_class": "live-authorized-supplier",
+            }
+        else:
+            output[kind] = {
+                **primary,
+                "reported_value": next(iter(values_by_key.values())),
+                "sources": readings,
+                "source": ", ".join(sources) or str(primary.get("source") or ""),
+                "retrieved_at": retrieved_at,
+                "evidence_class": "live-authorized-supplier",
+            }
+    return output

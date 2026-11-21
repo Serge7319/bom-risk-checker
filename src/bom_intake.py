@@ -260,6 +260,10 @@ _PLACEHOLDERS = {
 }
 
 _ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\ufeff\u2060"), None)
+_KICAD_BOARDTEXT_WRAPPER = re.compile(
+    r"^BoardText\(value=(?P<value>.*?),\s*position=Vector2\([^)]*\),\s*layer=.*\)$",
+    re.DOTALL,
+)
 
 _DIGIKEY_SKU = re.compile(r"-ND$", re.IGNORECASE)
 _SCI_NOTATION = re.compile(r"^\d+(\.\d+)?[eE][+-]?\d+$")
@@ -285,6 +289,8 @@ class BomIntakeError(ValueError):
 
 # Short, value-free labels used when many rows share one issue.
 _CODE_LABELS = {
+    "kicad_mpn_unwrapped": "Legacy KiCad part-number wrappers were removed",
+    "kicad_manufacturer_unwrapped": "Legacy KiCad manufacturer wrappers were removed",
     "missing_mpn": "Part number is blank",
     "placeholder_mpn": "Part number is a placeholder",
     "mpn_supplier_sku": "Part number looks like a Digi-Key order code",
@@ -311,10 +317,18 @@ _CODE_LABELS = {
 # Small helpers
 # ---------------------------------------------------------------------------
 def clean_text(value: Any) -> str:
-    """Remove invisible characters and normalise non-breaking spaces."""
+    """Remove invisible characters and unwrap legacy KiCad text reprs."""
     if value is None:
         return ""
     text = str(value).replace("\xa0", " ").translate(_ZERO_WIDTH)
+    # Older versions of the KiCad plugin uploaded the repr() of IPC BoardText
+    # objects. Recover only this exact, recognizable wrapper; arbitrary values
+    # remain untouched and the intake preview records that an unwrap occurred.
+    match = _KICAD_BOARDTEXT_WRAPPER.fullmatch(text.strip())
+    if match:
+        text = match.group("value").strip()
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
+            text = text[1:-1]
     return text.strip()
 
 
@@ -762,9 +776,19 @@ def parse_quantity(raw: str) -> tuple[int | None, list[dict[str, Any]]]:
 
 
 def _normalise_mpn(raw: str) -> tuple[str, list[dict[str, Any]]]:
+    legacy_kicad_text = bool(_KICAD_BOARDTEXT_WRAPPER.fullmatch(str(raw or "").strip()))
     text = clean_text(raw)
     collapsed = re.sub(r"\s+", " ", text)
     issues: list[dict[str, Any]] = []
+    if legacy_kicad_text:
+        issues.append(
+            _issue(
+                "kicad_mpn_unwrapped",
+                "info",
+                "A legacy KiCad text-object wrapper was removed; the visible component text was used as the part number.",
+                "mpn",
+            )
+        )
     if not collapsed:
         return "", [_issue("missing_mpn", "error", "Part number is blank.", "mpn")]
     if collapsed.casefold() in _PLACEHOLDERS:
@@ -1405,7 +1429,19 @@ def _build_rows(result: IntakeResult, data_rows: list[tuple[int, list[str]]], he
             issues.extend(found)
         # manufacturer
         if "manufacturer" in values:
+            legacy_kicad_manufacturer = bool(
+                _KICAD_BOARDTEXT_WRAPPER.fullmatch(str(values["manufacturer"] or "").strip())
+            )
             manufacturer = re.sub(r"\s+", " ", clean_text(values["manufacturer"]))
+            if legacy_kicad_manufacturer:
+                issues.append(
+                    _issue(
+                        "kicad_manufacturer_unwrapped",
+                        "info",
+                        "A legacy KiCad text-object wrapper was removed; the visible component text was used as the manufacturer.",
+                        "manufacturer",
+                    )
+                )
             if manufacturer.casefold() in _PLACEHOLDERS:
                 normalized["manufacturer"] = ""
                 issues.append(

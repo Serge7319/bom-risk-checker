@@ -101,7 +101,7 @@ function DetailedRiskPageInner() {
       {!busy && data ? (
         rows.length ? <>
           <div className="cv-kpis">
-            <KpiCard icon="shield" tone={healthTone} label="Health score" value={healthScore == null ? "Not scored" : `${String(healthScore)}/100`} status={{ label: healthStatusLabel, tone: healthTone === "blue" ? "gray" : healthTone }} detail="Overall report rating" />
+            <KpiCard icon="shield" tone={healthTone} label="Health score" value={healthScore == null ? "Not scored" : `${String(healthScore)}/100`} status={{ label: healthStatusLabel, tone: healthTone === "blue" ? "gray" : healthTone }} detail="100 minus average risk score; screening index" />
             <KpiCard icon="box" tone="blue" label="Components assessed" value={rows.length} status={{ label: "In this report", tone: "blue" }} detail="Rows assessed" />
             <KpiCard
               icon="risk"
@@ -116,6 +116,9 @@ function DetailedRiskPageInner() {
           </div>
           <section className="cv-card pad">
             <h3 className="cv-card-title">Component risk detail</h3>
+            <p className="cv-small-note" style={{ marginTop: 6 }}>
+              Lead time is shown with its supplier and retrieval time. Stock may be summed across the listed matched suppliers; open the source listing to confirm current availability. “Not reported” means the connected source did not return that field.
+            </p>
             <div className="cv-table-wrap" style={{ marginTop: 12 }}>
               <table className="cv-table">
                 <thead>
@@ -123,9 +126,11 @@ function DetailedRiskPageInner() {
                     <th>MPN</th>
                     <th>Manufacturer</th>
                     <th>Lifecycle</th>
+                    <th>Lead time</th>
                     <th>Risk</th>
                     <th>Stock</th>
                     <th>Unit price</th>
+                    <th>Sources</th>
                     <th>Reasons</th>
                   </tr>
                 </thead>
@@ -135,9 +140,35 @@ function DetailedRiskPageInner() {
                       <td><strong>{cell(row.MPN ?? row.mpn ?? row["Part number"])}</strong></td>
                       <td>{cell(row.Manufacturer ?? row.manufacturer)}</td>
                       <td><StatusPill kind="lifecycle" value={cell(row.Lifecycle ?? row.lifecycle ?? row["Lifecycle status"], "Unknown")} /></td>
+                      <td>
+                        <strong>{cell(row["Lead time (weeks)"], "Not reported")}</strong>
+                        <div className="cv-small-note">
+                          {cell(row["Lead-time source"], "Source not recorded")}
+                          {row["Lead-time checked at"] ? ` · ${cell(row["Lead-time checked at"])}` : ""}
+                        </div>
+                      </td>
                       <td><StatusPill kind="risk" value={cell(row.Risk ?? row["Risk level"] ?? row["Risk Level"] ?? row.risk_level, "Unknown")} /></td>
-                      <td>{cell(row.Stock ?? row.stock)}</td>
-                      <td>{cell(row["Unit price"] ?? row.unit_price)}</td>
+                      <td>
+                        {cell(row.Stock ?? row.stock)}
+                        <div className="cv-small-note">{cell(row["Stock evidence"], "No per-supplier stock detail")}</div>
+                      </td>
+                      <td>
+                        {cell(row["Unit price"] ?? row.unit_price)} {cell(row["Unit price currency"], "")}
+                      </td>
+                      <td>
+                        {row["Supplier product URL"] && row["Supplier product URL"] !== "—" ? (
+                          <a href={String(row["Supplier product URL"])} target="_blank" rel="noreferrer">Supplier listing</a>
+                        ) : <span className="cv-small-note">No listing link</span>}
+                        {row["Datasheet URL"] && row["Datasheet URL"] !== "—" ? (
+                          <div><a href={String(row["Datasheet URL"])} target="_blank" rel="noreferrer">Datasheet</a></div>
+                        ) : null}
+                        <div className="cv-small-note">
+                          {cell(row.supplier_sources_checked, "Supplier query coverage not recorded")}
+                        </div>
+                        <div className="cv-small-note">
+                          {cell(row.supplier_coverage, "")}
+                        </div>
+                      </td>
                       <td className="cv-small-note">{cell(row.Why ?? row["Risk reasons"] ?? row.reasons).slice(0, 120)}</td>
                     </tr>
                   ))}

@@ -610,6 +610,7 @@ function FindReplacementInner() {
                           <th>Candidate</th>
                           <th>Manufacturer</th>
                           <th>Lifecycle</th>
+                          <th>Supplier listing data</th>
                           <th>Fit status</th>
                           <th>Evidence to verify</th>
                           <th></th>
@@ -620,6 +621,9 @@ function FindReplacementInner() {
                           const cand = String(row.mpn || "");
                           const missingBits = ((row.missing_evidence || []) as string[]).filter(Boolean);
                           const lifecycleConflict = Boolean(row.lifecycle_conflict);
+                          const supplierOffers = Array.isArray(row.supplier_offers)
+                            ? row.supplier_offers as Array<Record<string, unknown>>
+                            : [];
                           const lifecycleLabel = lifecycleConflict
                             ? `${String(row.lifecycle_status || "Unknown")} · conflict`
                             : String(row.lifecycle_status || "Unknown");
@@ -656,6 +660,28 @@ function FindReplacementInner() {
                                 <span className={`cv-table-value cv-badge ${lifecycleConflict ? "amber" : "gray"}`}>
                                   {lifecycleLabel}
                                 </span>
+                              </td>
+                              <td data-label="Supplier listing data">
+                                {supplierOffers.length ? supplierOffers.slice(0, 3).map((offer, offerIndex) => {
+                                  const stock = offer.stock == null ? "Stock not returned" : `${String(offer.stock)} in stock`;
+                                  const price = offer.unit_price == null
+                                    ? "Price not returned"
+                                    : `${offer.currency ? `${String(offer.currency)} ` : ""}${Number(offer.unit_price).toFixed(4)} / unit`;
+                                  const leadTime = offer.lead_time_weeks == null
+                                    ? "Lead time not returned"
+                                    : `${String(offer.lead_time_weeks)} weeks`;
+                                  return (
+                                    <div key={`${String(offer.source || "supplier")}-${offerIndex}`} style={{ marginBottom: 6 }}>
+                                      <strong>{String(offer.source || "Supplier")}</strong>
+                                      <div className="cv-small-note">{stock} · {price} · {leadTime}</div>
+                                      <div className="cv-small-note">
+                                        {offer.retrieved_at ? `Checked ${String(offer.retrieved_at)}` : "Check time not recorded"}
+                                        {offer.product_url ? <> · <a href={String(offer.product_url)} target="_blank" rel="noreferrer">Open listing</a></> : " · Listing link unavailable"}
+                                      </div>
+                                    </div>
+                                  );
+                                }) : <span className="cv-small-note">No per-supplier data was saved for this candidate.</span>}
+                                {supplierOffers.length > 3 ? <span className="cv-small-note">+{supplierOffers.length - 3} more supplier listings</span> : null}
                               </td>
                               <td className="cv-fit-cell" data-label="Fit status">
                                 <span className="cv-table-value cv-badge gray">

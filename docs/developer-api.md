@@ -1,7 +1,7 @@
 # Cadivor developer API v1
 
 Developer keys are workspace-scoped, shown once at creation, stored as SHA-256
-hashes, and can be revoked from Settings → Billing. Each request checks the key,
+hashes, and can be managed from **APIs** in the workspace navigation. Each request checks the key,
 current API entitlement, and the key owner's active workspace membership. A
 revoked key or inactive entitlement stops working immediately.
 
@@ -56,7 +56,7 @@ KiCad project.
 ## Outgoing webhooks
 
 Workspace owners and admins with API access can add HTTPS destinations under
-**Settings → Billing → Developer API keys → Outgoing webhooks**. Cadivor
+**Settings → Billing → Developer integrations → Outgoing webhooks**. Cadivor
 encrypts the destination and signing secret at rest. The signing secret is
 shown once when the endpoint is created. The API service must have
 `CADIVOR_DEVELOPER_WEBHOOK_ENCRYPTION_KEY` or the existing

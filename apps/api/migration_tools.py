@@ -1960,6 +1960,15 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
                 "missing_sourcing_data": recommendation.get("Missing Sourcing Data") or "",
                 "supplier": supplier,
                 "supplier_count": supplier_count,
+                "supplier_sources_checked": first_value(
+                    part, "Supplier Sources Checked", "supplier_sources_checked", default="Not recorded"
+                ),
+                "supplier_coverage": first_value(
+                    part, "Supplier Coverage", "supplier_coverage", default="Not recorded"
+                ),
+                "supplier_coverage_complete": first_value(
+                    part, "Supplier Coverage Complete", "supplier_coverage_complete", default=False
+                ),
                 "stock": display_stock,
                 "unit_price": display_price,
                 "currency": recommendation.get("Currency")

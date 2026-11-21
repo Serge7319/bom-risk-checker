@@ -54,15 +54,48 @@ def _part_evidence(part: dict[str, Any], kind: str) -> dict[str, Any]:
         _first(node.get("evidence_class"), part.get(f"{kind}_evidence_class")) or ""
     ).strip()
     retrieved_at = _first(node.get("retrieved_at"), part.get(f"{kind}_retrieved_at"))
-    evidence_linked = bool(
-        value is not None and source_url and evidence_class == EVIDENCE_LIVE
+    from src.normalizer import normalize_part_number
+
+    part_mpn = str(
+        part.get("MPN") or part.get("mpn") or part.get("manufacturer_part_number") or ""
+    ).strip()
+    evidence_mpn = str(node.get("mpn") or part_mpn).strip()
+    identity_matches = bool(
+        part_mpn
+        and evidence_mpn
+        and normalize_part_number(part_mpn) == normalize_part_number(evidence_mpn)
     )
-    if evidence_linked:
+    conflict = bool(node.get("conflict"))
+    normalized_value = str(value or "").strip().casefold()
+    source_reports_unknown = normalized_value in {
+        "unknown", "not stated", "not reported", "not provided", "not available",
+        "reach unknown", "rohs unknown", "pfas unknown",
+    }
+    evidence_linked = bool(
+        value is not None
+        and source_url
+        and evidence_class == EVIDENCE_LIVE
+        and identity_matches
+    )
+    if conflict:
+        status = "conflicting_evidence"
+        reason = f"Supplier records disagree on {kind.upper()}; review each source before relying on the declaration."
+    elif evidence_linked and source_reports_unknown:
+        status = "supplier_reports_unknown"
+        reason = f"The supplier source returned “{value}”; no {kind.upper()} compliance conclusion is available."
+    elif evidence_linked:
         status = "evidence_linked"
+        reason = "Supplier catalog declaration linked to this exact part."
     elif value is not None:
         status = "reported_unverified"
+        reason = (
+            "The declaration could not be tied to the exact BOM part number."
+            if not identity_matches
+            else "A value was recorded, but its source is not verified."
+        )
     else:
         status = "missing_evidence"
+        reason = f"No {kind.upper()} declaration was returned by the supplier lookup; status is unknown."
     return {
         "status": status,
         "reported_value": str(value) if value is not None else None,
@@ -70,6 +103,9 @@ def _part_evidence(part: dict[str, Any], kind: str) -> dict[str, Any]:
         "source_url": str(source_url or "") if source_url is not None else "",
         "evidence_class": evidence_class or "missing",
         "retrieved_at": str(retrieved_at or "") if retrieved_at is not None else "",
+        "reason": reason,
+        "conflict": conflict,
+        "sources": node.get("sources") if isinstance(node.get("sources"), list) else [],
     }
 
 
