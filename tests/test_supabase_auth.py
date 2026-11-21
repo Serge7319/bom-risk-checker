@@ -336,7 +336,9 @@ def test_supabase_login_membership_reload_logout_and_isolation(
     assert exported.status_code == 200
     assert exported.headers["content-type"].startswith("text/csv")
     assert exported.content.startswith(b"\xef\xbb\xbf")
-    assert "MPN,Qty,Lifecycle" in exported.content.decode("utf-8-sig")
+    assert exported.content.decode("utf-8-sig").startswith(
+        "MPN,BOM manufacturer,Supplier manufacturer,Manufacturer source,Qty,Lifecycle"
+    )
 
     if nested.exists():
         nested_res = supabase_client.post(
