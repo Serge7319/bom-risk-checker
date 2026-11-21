@@ -352,7 +352,7 @@ class AlternativeFinderSearchTests(unittest.TestCase):
             "supplier_data_verified": True,
             "all_supplier_results": [],
         }
-        self.engine.suggest_alternatives_v2 = lambda _part: [
+        self.engine.suggest_alternatives_v2 = lambda _part, **_kwargs: [
             {
                 "Alternative Part": "MC7805ACTG",
                 "Manufacturer": "onsemi",
