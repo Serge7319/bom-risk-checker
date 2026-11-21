@@ -66,6 +66,12 @@ function DetailedRiskPageInner() {
   const highRiskTone = highRiskValue == null || !Number.isFinite(highRiskNumber)
     ? "blue"
     : highRiskNumber > 0 ? "red" : "green";
+  const healthStatusLabel = userFacingLabel(data?.health_status, healthScore == null ? "Not scored" : "Health reported");
+  const highRiskStatus = highRiskValue == null || !Number.isFinite(highRiskNumber)
+    ? { label: "Not reported", tone: "gray" as const }
+    : highRiskNumber > 0
+      ? { label: "Needs review", tone: "red" as const }
+      : { label: "None found", tone: "green" as const };
 
   return (
     <Shell session={session}>
@@ -95,8 +101,8 @@ function DetailedRiskPageInner() {
       {!busy && data ? (
         rows.length ? <>
           <div className="cv-kpis">
-            <KpiCard icon="shield" tone={healthTone} label="Health score" value={healthScore == null ? "Not scored" : `${String(healthScore)}/100`} detail={userFacingLabel(data.health_status, "Overall report rating")} />
-            <KpiCard icon="box" label="Components assessed" value={rows.length} detail="Rows in this report" />
+            <KpiCard icon="shield" tone={healthTone} label="Health score" value={healthScore == null ? "Not scored" : `${String(healthScore)}/100`} status={{ label: healthStatusLabel, tone: healthTone === "blue" ? "gray" : healthTone }} detail="Overall report rating" />
+            <KpiCard icon="box" tone="blue" label="Components assessed" value={rows.length} status={{ label: "In this report", tone: "blue" }} detail="Rows assessed" />
             <KpiCard
               icon="risk"
               tone={highRiskTone}
@@ -104,7 +110,8 @@ function DetailedRiskPageInner() {
               value={String(
                 highRiskValue ?? "Not reported",
               )}
-              detail="Same Risk Level = High count as the report and decision queue"
+              status={highRiskStatus}
+              detail="Priority findings to review"
             />
           </div>
           <section className="cv-card pad">

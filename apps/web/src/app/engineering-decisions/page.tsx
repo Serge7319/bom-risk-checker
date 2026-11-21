@@ -189,9 +189,9 @@ function EngineeringDecisionsPageInner() {
 
       {last ? (
         <div className="cv-kpis">
-          <KpiCard icon="risk" tone={last.high_risk_count > 0 ? "red" : "green"} label="High priority" value={last.high_risk_count} detail="Engineering review recommended" />
-          <KpiCard icon="clock" tone={last.medium_risk_count > 0 ? "amber" : "green"} label="Medium priority" value={last.medium_risk_count} detail="Confirm the evidence is current" />
-          <KpiCard icon="check" tone="green" label="Low priority" value={last.low_risk_count} detail="Lower risk signals in this BOM" />
+          <KpiCard icon="risk" tone={last.high_risk_count > 0 ? "red" : "green"} label="High priority" value={last.high_risk_count} status={last.high_risk_count > 0 ? { label: "Action required", tone: "red" } : { label: "No high priority", tone: "green" }} detail="Engineering review recommended" />
+          <KpiCard icon="clock" tone={last.medium_risk_count > 0 ? "amber" : "green"} label="Medium priority" value={last.medium_risk_count} status={last.medium_risk_count > 0 ? { label: "Evidence check", tone: "amber" } : { label: "None pending", tone: "green" }} detail="Confirm the evidence is current" />
+          <KpiCard icon="check" tone="green" label="Low priority" value={last.low_risk_count} status={last.low_risk_count > 0 ? { label: "Lower risk", tone: "green" } : { label: "None found", tone: "gray" }} detail="Lower risk signals in this BOM" />
         </div>
       ) : null}
 

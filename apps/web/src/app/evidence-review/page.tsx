@@ -72,6 +72,16 @@ function EvidenceReviewPageInner() {
   ).length || 0;
   const totalParts = report?.parts.length || 0;
   const unverifiedParts = totalParts - verifiedParts;
+  const verificationTone = totalParts === 0
+    ? "blue"
+    : verifiedParts === totalParts ? "green" : verifiedParts > 0 ? "amber" : "blue";
+  const verificationStatus = totalParts === 0
+    ? { label: "No parts", tone: "gray" as const }
+    : verifiedParts === totalParts
+      ? { label: "All matched", tone: "green" as const }
+      : verifiedParts > 0
+        ? { label: "Partially verified", tone: "amber" as const }
+        : { label: "No matches", tone: "gray" as const };
 
   return (
     <Shell session={session}>
@@ -104,9 +114,9 @@ function EvidenceReviewPageInner() {
       {!busy && report ? (
         <>
           <div className="cv-kpis" aria-label="Evidence summary">
-            <KpiCard icon="box" tone="blue" label="Components assessed" value={totalParts} detail="Parts in this saved report" />
-            <KpiCard icon="check" tone={unverifiedParts === 0 ? "green" : "blue"} label="Verified supplier data" value={verifiedParts} detail="Exact supplier matches recorded" />
-            <KpiCard icon="shield" tone={unverifiedParts > 0 ? "amber" : "green"} label="Needs verification" value={unverifiedParts} detail="Supplier records to review" />
+            <KpiCard icon="box" tone="blue" label="Components assessed" value={totalParts} status={{ label: "In this report", tone: totalParts > 0 ? "blue" : "gray" }} detail="Parts available for review" />
+            <KpiCard icon="check" tone={verificationTone} label="Verified supplier data" value={verifiedParts} status={verificationStatus} detail="Exact supplier matches recorded" />
+            <KpiCard icon="shield" tone={unverifiedParts > 0 ? "amber" : "green"} label="Needs verification" value={unverifiedParts} status={unverifiedParts > 0 ? { label: "Review needed", tone: "amber" } : { label: "All verified", tone: "green" }} detail="Supplier records to review" />
           </div>
           <section className="cv-card pad" aria-labelledby="evidence-review-title">
             <div className="cv-section-heading cv-section-heading--card">
