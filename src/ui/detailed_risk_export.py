@@ -631,36 +631,15 @@ def detailed_risk_csv_bytes(
     approved_alternatives: list[dict[str, Any]] | None = None,
 ) -> bytes:
     """CSV export with the same user-facing columns as the Stress Free audit."""
-    rows = [
-        {
-            "MPN": row["MPN"],
-            "Qty": row["Qty"],
-            "Lifecycle": row["Lifecycle"],
-            "Stock": row["Stock"],
-            "Lead time (weeks)": row["Lead time (weeks)"],
-            "Suppliers": row["Supplier count"],
-            "Evidence source": row["Evidence source"],
-            "Supplier product URL": row["Supplier product URL"],
-            "Datasheet URL": row["Datasheet URL"],
-            "Sourcing checked at": row["Sourcing checked at"],
-            "Mitigation status": row["Mitigation status"],
-            "Approved alternatives": row["Approved alternatives"],
-            "Alternate search status": row["Alternate search status"],
-            "Candidate MPNs": row["Candidate MPNs"],
-            "Risk": row["Risk"],
-            "Risk score": row["Risk score"],
-            "Why": row["Why"],
-            "Unit price": row["Unit price"],
-            "Unit price currency": row["Unit price currency"],
-            "Extended cost": row["Extended cost"],
-            "Description-mentioned alternatives": row["Description-mentioned alternatives"],
-        }
-        for row in component_rows(parts, approved_alternatives)
-    ]
+    rows = []
+    for component in component_rows(parts, approved_alternatives):
+        row = dict(component)
+        row["Suppliers"] = component["Supplier count"]
+        rows.append(row)
     buffer = StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=CSV_COLUMNS, extrasaction="ignore")
     writer.writeheader()
-    writer.writerows({key: _safe_cell(row[key]) for key in CSV_COLUMNS} for row in rows)
+    writer.writerows({key: _safe_cell(row.get(key, "")) for key in CSV_COLUMNS} for row in rows)
     return buffer.getvalue().encode("utf-8-sig")
 
 
