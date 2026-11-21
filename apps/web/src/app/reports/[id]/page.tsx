@@ -135,6 +135,8 @@ function complianceStatus(status: unknown): { label: string; tone: string } {
   switch (String(status || "")) {
     case "evidence_linked": return { label: "Source attached", tone: "green" };
     case "reported_unverified": return { label: "Reported · verify", tone: "amber" };
+    case "conflicting_evidence": return { label: "Conflicting · review", tone: "red" };
+    case "supplier_reports_unknown": return { label: "Supplier reports unknown", tone: "gray" };
     default: return { label: "Unknown · no evidence", tone: "gray" };
   }
 }
@@ -411,6 +413,11 @@ export default function ReportPage() {
     ? compliancePreview.records.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object" && !Array.isArray(row))
     : [];
   const compliancePreviewTitle = COMPLIANCE_REVIEW_TYPES.find((item) => item.type === compliancePreviewType)?.title || "Evidence records";
+  const legacyKiCadMetadataCount = (report?.parts || []).filter((part) =>
+    [part.MPN, part.mpn, part.Manufacturer, part.manufacturer].some((value) =>
+      /BoardText\(value=[\s\S]*?Vector2\(/.test(String(value || "")),
+    ),
+  ).length;
 
   return (
     <Shell session={session}>
@@ -448,6 +455,19 @@ export default function ReportPage() {
         analysisId={String(report?.analysis_id || report?.id || params.id)}
         current="risks"
       />
+
+      {legacyKiCadMetadataCount > 0 ? (
+        <section className="cv-card pad" role="alert" data-testid="legacy-kicad-bom-warning" style={{ borderColor: "#f0bb72", background: "#fffaf1", marginBottom: 14 }}>
+          <div className="cv-eyebrow">BOM identity needs correction</div>
+          <h2 className="cv-card-title" style={{ marginTop: 4 }}>This report contains KiCad text-object metadata</h2>
+          <p className="cv-card-subtitle" style={{ marginTop: 6 }}>
+            {legacyKiCadMetadataCount} component row(s) contain KiCad `BoardText(value=…, position=Vector2(…))` data in the part number or manufacturer. Supplier matching and risk results for those rows are not reliable because Cadivor received object metadata instead of the visible component text. Correct the fields and run a new revision before using this report to make a sourcing decision.
+          </p>
+          <button type="button" className="cv-button primary" style={{ marginTop: 12 }} onClick={() => void openBomEditor()}>
+            Correct fields in a new revision
+          </button>
+        </section>
+      ) : null}
 
       {bomEditorOpen ? (
         <div
@@ -701,8 +721,12 @@ export default function ReportPage() {
                           <tbody>
                             {compliancePreviewRecords.map((row, index) => {
                               const state = complianceStatus(row.status);
-                              const sourceUrl = String(row.source_url || "").trim();
-                              const safeSourceUrl = /^https?:\/\//i.test(sourceUrl) ? sourceUrl : "";
+                              const sourceRows = Array.isArray(row.sources)
+                                ? row.sources.filter((source): source is Record<string, unknown> => Boolean(source) && typeof source === "object" && !Array.isArray(source))
+                                : [];
+                              const sourcesToShow = sourceRows.length
+                                ? sourceRows
+                                : [{ source: row.source, source_url: row.source_url }];
                               const lifecycleSummary = complianceLifecycleSummary(row.lifecycle_events);
                               const reported = row.reported_value == null || String(row.reported_value).trim() === ""
                                 ? "No value reported"
@@ -718,7 +742,20 @@ export default function ReportPage() {
                                     {row.retrieved_at ? <small className={complianceStyles.rowDetail}>Recorded {String(row.retrieved_at)}</small> : null}
                                   </td>
                                   <td>
-                                    {safeSourceUrl ? <a href={safeSourceUrl} target="_blank" rel="noreferrer">{String(row.source || "Open source record")}</a> : <span>{String(row.source || "No source attached")}</span>}
+                                    <div style={{ display: "grid", gap: 4 }}>
+                                      {sourcesToShow.map((source, sourceIndex) => {
+                                        const sourceUrl = String(source.source_url || source.url || "").trim();
+                                        const safeSourceUrl = /^https:\/\//i.test(sourceUrl) ? sourceUrl : "";
+                                        const sourceName = String(source.source || row.source || "Supplier source");
+                                        const sourceValue = String(source.reported_value || source.status || "").trim();
+                                        return (
+                                          <span key={`${sourceName}-${sourceIndex}`}>
+                                            {safeSourceUrl ? <a href={safeSourceUrl} target="_blank" rel="noreferrer">{sourceName}</a> : sourceName}
+                                            {sourceValue ? ` · ${sourceValue}` : ""}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
                                     <small className={complianceStyles.rowDetail}>{reviewNote}</small>
                                   </td>
                                 </tr>

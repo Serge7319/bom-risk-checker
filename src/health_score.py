@@ -42,6 +42,14 @@ def calculate_bom_health_score(results_df: pd.DataFrame) -> dict:
     if "Stock Data Complete" in results_df.columns:
         stock_complete = results_df["Stock Data Complete"].fillna(False).astype(bool)
         needs_verification = needs_verification | ~stock_complete
+    if "Supplier Coverage Complete" in results_df.columns:
+        source_coverage = results_df["Supplier Coverage Complete"].map(
+            lambda value: (
+                value is True
+                or str(value or "").strip().casefold() in {"1", "true", "yes"}
+            )
+        )
+        needs_verification = needs_verification | ~source_coverage
     needs_verification_count = int(needs_verification.sum())
     coverage = (len(results_df) - needs_verification_count) / max(1, len(results_df))
     if needs_verification_count:
@@ -49,8 +57,9 @@ def calculate_bom_health_score(results_df: pd.DataFrame) -> dict:
             "health_score": None,
             "health_status": "Needs verification",
             "summary_message": (
-                f"An overall health score is withheld because supplier evidence is missing "
-                f"for {needs_verification_count} of {len(results_df)} component(s)."
+                f"An overall health score is withheld because exact-part supplier evidence, "
+                f"inventory coverage, or configured-source checks are incomplete for "
+                f"{needs_verification_count} of {len(results_df)} component(s)."
             ),
             "assessment_coverage": coverage,
             "needs_verification_count": needs_verification_count,

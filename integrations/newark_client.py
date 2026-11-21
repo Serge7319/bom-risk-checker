@@ -508,7 +508,7 @@ def normalize_newark_product(product: dict) -> dict:
 
     currency = NEWARK_STORE_CURRENCY.get(NEWARK_STORE_ID, "")
     listing = resolve_newark_listing(product)
-    return {
+    normalized = {
         **listing,
         "lifecycle_status": infer_newark_lifecycle(product),
         "stock_total": stock_total,
@@ -547,6 +547,20 @@ def normalize_newark_product(product: dict) -> dict:
         "input_bias_na": input_bias_na,
         "gbw_mhz": gbw_mhz,
     }
+    from integrations.compliance_evidence import build_supplier_compliance_evidence
+
+    normalized["compliance_evidence"] = build_supplier_compliance_evidence(
+        source="Newark",
+        product=product,
+        product_url=normalized.get("product_detail_url") or "",
+        manufacturer=manufacturer,
+        mpn=(
+            product.get("translatedManufacturerPartNumber")
+            or product.get("manufacturerPartNumber")
+            or ""
+        ),
+    )
+    return normalized
 
 
 def extract_newark_price(product: dict) -> float | None:

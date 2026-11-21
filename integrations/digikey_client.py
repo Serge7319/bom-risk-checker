@@ -877,6 +877,7 @@ def normalize_digikey_product(product: dict) -> dict:
             provider="DigiKey",
         ),
         "datasheet_url": product.get("DatasheetUrl", ""),
+        "compliance_evidence": {},
 
         "package": package,
         "pin_count": pin_count,
@@ -893,6 +894,15 @@ def normalize_digikey_product(product: dict) -> dict:
         "quiescent_current_ma": quiescent_current_ma,
         "gbw_mhz": gbw_mhz,
     }
+    from integrations.compliance_evidence import build_supplier_compliance_evidence
+
+    normalized["compliance_evidence"] = build_supplier_compliance_evidence(
+        source="DigiKey",
+        product=product,
+        product_url=normalized.get("product_detail_url") or "",
+        manufacturer=manufacturer_name,
+        mpn=normalized.get("manufacturer_part_number") or "",
+    )
     # Fill gaps only — never overwrite trusted parsed electrics / packaging.
     for key, value in parametric.items():
         existing = normalized.get(key)

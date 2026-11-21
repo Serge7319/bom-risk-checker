@@ -68,6 +68,11 @@ def normalize_candidate_evidence(value: Any, *, original_mpn: str = "") -> list[
         if pin_count is not None and pin_count <= 0:
             pin_count = None
         risk_score = _number(_first(candidate, "Estimated Risk Score", "risk_score"))
+        unit_price = _number(_first(candidate, "Unit Price", "unit_price", "price"))
+        if unit_price is not None and unit_price <= 0:
+            unit_price = None
+        stock = _number(_first(candidate, "Stock", "stock_total", "stock_available"))
+        lead_time = _number(_first(candidate, "Lead Time Weeks", "lead_time_weeks"))
         reasons = _first(candidate, "Risk Reasons", "risk_reasons")
         if isinstance(reasons, (list, tuple, set)):
             reasons = "; ".join(str(item).strip() for item in reasons if str(item).strip())
@@ -89,6 +94,18 @@ def normalize_candidate_evidence(value: Any, *, original_mpn: str = "") -> list[
             "risk_level": str(_first(candidate, "Estimated Risk", "risk_level") or "Needs verification").strip(),
             "risk_score": risk_score,
             "risk_reasons": str(reasons or "").strip(),
+            "stock": stock,
+            "unit_price": unit_price,
+            "currency": str(_first(candidate, "Currency", "unit_price_currency", "currency") or "").strip(),
+            "lead_time_weeks": lead_time,
+            "lead_time_source": str(_first(candidate, "lead_time_source", "Supplier", "Evidence Source") or "").strip(),
+            "retrieved_at": str(_first(candidate, "Retrieved At", "retrieved_at", "checked_at") or "").strip(),
+            "field_sources": dict(_first(candidate, "field_sources") or {})
+            if isinstance(_first(candidate, "field_sources"), dict) else {},
+            "supplier_offers": [dict(item) for item in candidate.get("supplier_offers", []) if isinstance(item, dict)]
+            if isinstance(candidate.get("supplier_offers"), list) else [],
+            "compliance_evidence": dict(_first(candidate, "compliance_evidence") or {})
+            if isinstance(_first(candidate, "compliance_evidence"), dict) else {},
             "product_url": _url(_first(candidate, "Product URL", "product_detail_url", "Source URL", "source_url")),
             "datasheet_url": _url(_first(candidate, "Datasheet URL", "datasheet_url", "datasheet")),
             "retrieved_at": str(_first(candidate, "Retrieved At", "retrieved_at", "checked_at") or "").strip(),

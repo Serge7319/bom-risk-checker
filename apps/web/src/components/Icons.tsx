@@ -25,7 +25,8 @@ export type IconName =
   | "check"
   | "box"
   | "bell"
-  | "menu";
+  | "menu"
+  | "api";
 
 const glyph: Record<IconName, ReactNode> = {
   home: (
@@ -149,6 +150,11 @@ const glyph: Record<IconName, ReactNode> = {
     </>
   ),
   menu: <path d="M4 6h16M4 12h16M4 18h16" />,
+  api: (
+    <>
+      <path d="m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16" />
+    </>
+  ),
 };
 
 export function Icon({
@@ -190,6 +196,7 @@ export const NAV_ICONS: Record<string, IconName> = {
   risk: "risk",
   ei: "insight",
   settings: "settings",
+  api: "api",
 };
 
 export const PAGE_ICONS = NAV_ICONS;

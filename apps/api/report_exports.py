@@ -11,6 +11,10 @@ from xml.sax.saxutils import escape
 COMPONENT_COLUMNS = (
     "MPN",
     "Manufacturer",
+    "BOM Manufacturer",
+    "Supplier Manufacturer",
+    "Manufacturer Source",
+    "Manufacturer Identity Status",
     "Description",
     "Parent MPN",
     "Line Type",
@@ -25,6 +29,9 @@ COMPONENT_COLUMNS = (
     "Currency",
     "Evidence Class",
     "Evidence Source",
+    "Supplier Sources Checked",
+    "Supplier Coverage Complete",
+    "Supplier Coverage",
     "Identity Source",
     "Identity Retrieved At",
     "Lifecycle Source",
@@ -37,16 +44,29 @@ COMPONENT_COLUMNS = (
     "PCN Status",
     "PCN Source URL",
     "RoHS Status",
+    "RoHS Evidence Source",
     "RoHS Source URL",
+    "RoHS Evidence Details",
     "REACH Status",
+    "REACH Evidence Source",
     "REACH Source URL",
+    "REACH Evidence Details",
     "PFAS Status",
+    "PFAS Evidence Source",
     "PFAS Source URL",
+    "PFAS Evidence Details",
     "Stock Source",
     "Stock Retrieved At",
+    "Stock Aggregation",
+    "Stock Evidence",
     "Price Source",
     "Price Type",
     "Price Retrieved At",
+    "Lead Time Weeks",
+    "Lead Time Source",
+    "Lead Time Retrieved At",
+    "Lead Time Evidence",
+    "Supplier Offers",
     "Supplier Product URL",
     "Datasheet URL",
 )
@@ -116,6 +136,7 @@ _XLSX_NUMERIC_FIELDS = {
     "Estimated EOL Years",
     "Stock",
     "Unit Price",
+    "Lead Time Weeks",
     "Leaf Count",
     "High-Risk Leaves",
     "Medium-Risk Leaves",
@@ -136,6 +157,7 @@ _XLSX_NUMBER_FORMATS = {
     "Estimated EOL Years": "0.0",
     "Stock": "#,##0",
     "Unit Price": "#,##0.00##",
+    "Lead Time Weeks": "0.##",
     "Leaf Count": "#,##0",
     "High-Risk Leaves": "#,##0",
     "Medium-Risk Leaves": "#,##0",
@@ -202,6 +224,71 @@ def _field_from_evidence(evidence: dict[str, Any], field: str, key: str, default
     return envelope.get(key, default)
 
 
+def _evidence_summary(value: Any, *, value_key: str, unit: str = "") -> str:
+    """Render per-source readings as compact, auditable export text."""
+    if isinstance(value, dict):
+        items = [value]
+    elif isinstance(value, (list, tuple)):
+        items = [item for item in value if isinstance(item, dict)]
+    else:
+        return _text(value)
+    lines = []
+    for item in items:
+        source = _text(item.get("source") or item.get("distributor") or item.get("supplier"))
+        reading = item.get(value_key)
+        if reading in (None, ""):
+            continue
+        label = f"{source}: " if source else ""
+        label += f"{reading}{(' ' + unit) if unit else ''}"
+        if item.get("currency") and value_key == "unit_price":
+            label += f" {item['currency']}"
+        if item.get("price_break_quantity") not in (None, ""):
+            label += f" at qty {item['price_break_quantity']}"
+        if item.get("retrieved_at"):
+            label += f" (retrieved {item['retrieved_at']})"
+        lines.append(label)
+    return "; ".join(lines)
+
+
+def _compliance_value(row: dict[str, Any], kind: str) -> tuple[str, str]:
+    root = row.get("compliance_evidence") if isinstance(row.get("compliance_evidence"), dict) else {}
+    node = root.get(kind) if isinstance(root.get(kind), dict) else {}
+    value = _first(
+        node,
+        "reported_value",
+        "status",
+        default=_first(row, f"{kind}_status", f"{kind.upper()} status", default=""),
+    )
+    source = _first(
+        node,
+        "source",
+        default=_first(row, f"{kind}_source", f"{kind}_evidence_source", default=""),
+    )
+    return (_text(value) or "Not retrieved", _text(source) or "Not recorded")
+
+
+def _compliance_source_details(row: dict[str, Any], kind: str) -> str:
+    root = row.get("compliance_evidence") if isinstance(row.get("compliance_evidence"), dict) else {}
+    node = root.get(kind) if isinstance(root.get(kind), dict) else {}
+    readings = node.get("sources") if isinstance(node.get("sources"), list) else []
+    if not readings and node:
+        readings = [node]
+    details = []
+    for item in readings:
+        if not isinstance(item, dict):
+            continue
+        pieces = [
+            _text(item.get("source")) or "Supplier",
+            _text(item.get("reported_value") or item.get("status")) or "No value",
+        ]
+        if item.get("retrieved_at"):
+            pieces.append(f"retrieved {item['retrieved_at']}")
+        if item.get("source_url") or item.get("url"):
+            pieces.append(_text(item.get("source_url") or item.get("url")))
+        details.append(" · ".join(pieces))
+    return "; ".join(details)
+
+
 def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
     output = []
     for source in report.get("parts") or []:
@@ -209,9 +296,19 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         row = dict(source)
         evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}
+        rohs_value, rohs_source = _compliance_value(row, "rohs")
+        reach_value, reach_source = _compliance_value(row, "reach")
+        pfas_value, pfas_source = _compliance_value(row, "pfas")
+        lead_time_evidence = row.get("lead_time_evidence") or row.get("Lead Time Evidence") or []
+        stock_evidence = row.get("stock_evidence") or row.get("Stock Evidence") or []
+        supplier_offers = row.get("supplier_offers") or row.get("Supplier Offers") or []
         component = {
             "MPN": _first(row, "MPN", "mpn", "manufacturer_part_number", "part_number"),
             "Manufacturer": _first(row, "Manufacturer", "manufacturer"),
+            "BOM Manufacturer": _first(row, "BOM Manufacturer", "bom_manufacturer", "requested_manufacturer"),
+            "Supplier Manufacturer": _first(row, "Supplier Manufacturer", "supplier_manufacturer"),
+            "Manufacturer Source": _first(row, "Manufacturer Source", "manufacturer_source", default="Not recorded"),
+            "Manufacturer Identity Status": _first(row, "Manufacturer Identity Status", "identity_status", default="Not recorded"),
             "Description": _first(row, "Description", "description", "part_description"),
             "Parent MPN": _first(row, "Parent MPN", "parent_mpn_display", "parent_mpn"),
             "Line Type": _export_line_type(row),
@@ -226,6 +323,15 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             "Currency": _first(row, "unit_price_currency", "currency"),
             "Evidence Class": _first(evidence, "evidence_class", default=_first(row, "evidence_source", "source", default="not recorded")),
             "Evidence Source": _first(evidence, "source", default=_first(row, "identity_source", "evidence_source", "source")),
+            "Supplier Sources Checked": _first(
+                row, "Supplier Sources Checked", "supplier_sources_checked", default="Not recorded"
+            ),
+            "Supplier Coverage Complete": _first(
+                row, "Supplier Coverage Complete", "supplier_coverage_complete", default="Not recorded"
+            ),
+            "Supplier Coverage": _first(
+                row, "Supplier Coverage", "supplier_coverage", default="Not recorded"
+            ),
             "Identity Source": (
                 _field_from_evidence(evidence, "identity", "source")
                 or _first(row, "identity_source", "evidence_source", "source")
@@ -247,14 +353,20 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             "Estimated EOL Years": _first(row, "estimated_eol_years", "Estimated EOL Years"),
             "PCN Number": _first(row, "pcn_number", "pcn_id", "PCN Number"),
             "PCN Date": _first(row, "pcn_date", "PCN Date"),
-            "PCN Status": _first(row, "pcn_status", "PCN Status"),
+            "PCN Status": _first(row, "pcn_status", "PCN Status", default="Not retrieved"),
             "PCN Source URL": _first(row, "pcn_url", "PCN URL"),
-            "RoHS Status": _first(row, "rohs_status", "RoHS status"),
+            "RoHS Status": rohs_value,
+            "RoHS Evidence Source": rohs_source,
             "RoHS Source URL": _first(row, "rohs_source_url", "rohs_evidence_url"),
-            "REACH Status": _first(row, "reach_status", "REACH status"),
+            "RoHS Evidence Details": _compliance_source_details(row, "rohs"),
+            "REACH Status": reach_value,
+            "REACH Evidence Source": reach_source,
             "REACH Source URL": _first(row, "reach_source_url", "reach_evidence_url"),
-            "PFAS Status": _first(row, "pfas_status", "PFAS status"),
+            "REACH Evidence Details": _compliance_source_details(row, "reach"),
+            "PFAS Status": pfas_value,
+            "PFAS Evidence Source": pfas_source,
             "PFAS Source URL": _first(row, "pfas_source_url", "pfas_evidence_url"),
+            "PFAS Evidence Details": _compliance_source_details(row, "pfas"),
             "Stock Source": (
                 _field_from_evidence(evidence, "stock", "source")
                 or _first(row, "stock_source")
@@ -263,6 +375,8 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
                 _field_from_evidence(evidence, "stock", "retrieved_at")
                 or _first(row, "stock_retrieved_at")
             ),
+            "Stock Aggregation": _first(row, "Stock Aggregation", "stock_aggregation", default="Not reported"),
+            "Stock Evidence": _evidence_summary(stock_evidence, value_key="stock", unit="units"),
             "Price Source": (
                 _field_from_evidence(evidence, "price", "source")
                 or _first(row, "price_source")
@@ -275,6 +389,17 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
                 _field_from_evidence(evidence, "price", "retrieved_at")
                 or _first(row, "price_retrieved_at")
             ),
+            "Lead Time Weeks": _first(row, "Lead Time Weeks", "lead_time_weeks", "Lead Time (Weeks)", default="Not reported"),
+            "Lead Time Source": (
+                _field_from_evidence(evidence, "lead_time", "source")
+                or _first(row, "Lead Time Source", "lead_time_source", default="Not recorded")
+            ),
+            "Lead Time Retrieved At": (
+                _field_from_evidence(evidence, "lead_time", "retrieved_at")
+                or _first(row, "Lead Time Retrieved At", "lead_time_retrieved_at")
+            ),
+            "Lead Time Evidence": _evidence_summary(lead_time_evidence, value_key="weeks", unit="weeks"),
+            "Supplier Offers": _evidence_summary(supplier_offers, value_key="unit_price"),
             "Supplier Product URL": _first(row, "product_url", "source_url", "Supplier Product URL"),
             "Datasheet URL": _first(row, "datasheet_url", "Datasheet URL"),
         }
@@ -543,6 +668,10 @@ def _add_xlsx_sheet(
         "MPN": 24,
         "Assembly MPN": 24,
         "Manufacturer": 26,
+        "BOM Manufacturer": 26,
+        "Supplier Manufacturer": 26,
+        "Manufacturer Source": 24,
+        "Manufacturer Identity Status": 23,
         "Description": 44,
         "Parent MPN": 22,
         "Line Type": 16,
@@ -563,9 +692,16 @@ def _add_xlsx_sheet(
         "Lifecycle Retrieved At": 26,
         "Stock Source": 22,
         "Stock Retrieved At": 26,
+        "Stock Aggregation": 48,
+        "Stock Evidence": 52,
         "Price Source": 22,
         "Price Type": 22,
         "Price Retrieved At": 26,
+        "Lead Time Weeks": 18,
+        "Lead Time Source": 22,
+        "Lead Time Retrieved At": 26,
+        "Lead Time Evidence": 52,
+        "Supplier Offers": 58,
         "Supplier Product URL": 52,
         "Datasheet URL": 52,
         "Rolled Risk": 18,
@@ -667,6 +803,10 @@ def build_xlsx(report: dict[str, Any]) -> bytes:
         "MPN",
         "Description",
         "Manufacturer",
+        "BOM Manufacturer",
+        "Supplier Manufacturer",
+        "Manufacturer Source",
+        "Manufacturer Identity Status",
         "Effective Quantity",
         "Lifecycle",
         "Risk Level",
@@ -675,8 +815,21 @@ def build_xlsx(report: dict[str, Any]) -> bytes:
         "Evidence Class",
         "Evidence Source",
         "Stock",
+        "Stock Source",
+        "Stock Aggregation",
+        "Stock Evidence",
         "Unit Price",
         "Currency",
+        "Price Source",
+        "Lead Time Weeks",
+        "Lead Time Source",
+        "Lead Time Retrieved At",
+        "Lead Time Evidence",
+        "Supplier Offers",
+        "RoHS Status",
+        "REACH Status",
+        "PFAS Status",
+        "PCN Status",
         "Supplier Product URL",
         "Datasheet URL",
         "Parent MPN",

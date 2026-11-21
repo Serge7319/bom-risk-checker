@@ -121,6 +121,8 @@ def build_salvage_candidates_from_discovery(
                 "temperature_range": result.get("temperature_range") or "",
                 "channel_count": result.get("channel_count") or 0,
                 "lead_time_weeks": result.get("lead_time_weeks"),
+                "lead_time_source": result.get("source") or "",
+                "lead_time_retrieved_at": result.get("retrieved_at") or "",
                 "bandwidth_mhz": result.get("bandwidth_mhz"),
                 "slew_rate_v_us": result.get("slew_rate_v_us"),
                 "input_offset_mv": result.get("input_offset_mv"),
@@ -128,6 +130,10 @@ def build_salvage_candidates_from_discovery(
                 "quiescent_current_ma": result.get("quiescent_current_ma"),
                 "gbw_mhz": result.get("gbw_mhz"),
                 "unit_price": result.get("unit_price", 0.0),
+                "unit_price_currency": result.get("unit_price_currency") or result.get("currency") or "",
+                "retrieved_at": result.get("retrieved_at") or "",
+                "compliance_evidence": dict(result.get("compliance_evidence") or {})
+                if isinstance(result.get("compliance_evidence"), dict) else {},
                 "product_detail_url": result.get("product_detail_url") or "",
                 "field_sources": dict(result.get("field_sources") or {}),
                 "image_url": str(result.get("image_url") or result.get("photo_url") or "").strip(),
@@ -1610,6 +1616,7 @@ def apply_supplier_enrichment_to_candidate(
 def suggest_alternatives_v2(
     original_part_number: str,
     *,
+    original_manufacturer: str = "",
     include_family_search: bool = True,
 ) -> list:
     """
@@ -1628,7 +1635,14 @@ def suggest_alternatives_v2(
     ).strip()
 
     try:
-        original_data = _enrich_part_data_from_suppliers(get_best_part_data(original_part_number))
+        original_data = _enrich_part_data_from_suppliers(
+            get_best_part_data(
+                original_part_number,
+                manufacturer=str(original_manufacturer or "").strip(),
+            )
+            if str(original_manufacturer or "").strip()
+            else get_best_part_data(original_part_number)
+        )
     except Exception:
         original_data = {
             "manufacturer_part_number": canonical_part_number,
@@ -1694,6 +1708,8 @@ def suggest_alternatives_v2(
                 "temperature_range": result.get("temperature_range") or "",
                 "channel_count": result.get("channel_count") or 0,
                 "lead_time_weeks": result.get("lead_time_weeks"),
+                "lead_time_source": result.get("source") or "",
+                "lead_time_retrieved_at": result.get("retrieved_at") or "",
                 "bandwidth_mhz": result.get("bandwidth_mhz"),
                 "slew_rate_v_us": result.get("slew_rate_v_us"),
                 "input_offset_mv": result.get("input_offset_mv"),
@@ -1701,6 +1717,10 @@ def suggest_alternatives_v2(
                 "quiescent_current_ma": result.get("quiescent_current_ma"),
                 "gbw_mhz": result.get("gbw_mhz"),
                 "unit_price": result.get("unit_price", 0.0),
+                "unit_price_currency": result.get("unit_price_currency") or result.get("currency") or "",
+                "retrieved_at": result.get("retrieved_at") or "",
+                "compliance_evidence": dict(result.get("compliance_evidence") or {})
+                if isinstance(result.get("compliance_evidence"), dict) else {},
                 "product_detail_url": result.get("product_detail_url") or "",
                 "field_sources": dict(result.get("field_sources") or {}),
                 "image_url": str(result.get("image_url") or result.get("photo_url") or "").strip(),

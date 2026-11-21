@@ -21,15 +21,11 @@ import {
   fetchConnectors,
   fetchPlanUsage,
   fetchServiceReadiness,
-  fetchDeveloperApiKeys,
-  createDeveloperApiKey,
-  revokeDeveloperApiKey,
   fetchDeveloperWebhooks,
   createDeveloperWebhook,
   deleteDeveloperWebhook,
   sendDeveloperWebhookTest,
   downloadWorkspaceActivityExport,
-  type DeveloperApiKey,
   type DeveloperWebhook,
   type DeveloperWebhookDelivery,
   type ServiceReadiness,
@@ -198,11 +194,6 @@ export default function Page() {
   const [billingAction, setBillingAction] = useState("");
   const [billingError, setBillingError] = useState("");
   const [billingInterval, setBillingInterval] = useState<"month" | "year">("month");
-  const [developerApiKeys, setDeveloperApiKeys] = useState<DeveloperApiKey[]>([]);
-  const [developerApiKeyName, setDeveloperApiKeyName] = useState("");
-  const [developerApiKeySecret, setDeveloperApiKeySecret] = useState("");
-  const [developerApiKeyError, setDeveloperApiKeyError] = useState("");
-  const [developerApiKeyNotice, setDeveloperApiKeyNotice] = useState("");
   const [developerWebhooks, setDeveloperWebhooks] = useState<DeveloperWebhook[]>([]);
   const [developerWebhookDeliveries, setDeveloperWebhookDeliveries] = useState<DeveloperWebhookDelivery[]>([]);
   const [developerWebhookEvents, setDeveloperWebhookEvents] = useState<string[]>([]);
@@ -300,17 +291,7 @@ export default function Page() {
     const usageLimits = asRecord(usageRes?.limits);
     const apiAccessAvailable = usageLimits.api_access === true || billingRes?.api_access_addon_active === true;
     if (apiAccessAvailable) {
-      const [keysRes, webhooksRes] = await Promise.all([
-        settledValue(fetchDeveloperApiKeys(token)),
-        settledValue(fetchDeveloperWebhooks(token)),
-      ]);
-      if (keysRes?.ok) {
-        setDeveloperApiKeys(keysRes.keys);
-        setDeveloperApiKeyError("");
-      } else {
-        setDeveloperApiKeys([]);
-        setDeveloperApiKeyError("API key settings could not be loaded.");
-      }
+      const webhooksRes = await settledValue(fetchDeveloperWebhooks(token));
       if (webhooksRes?.ok) {
         setDeveloperWebhooks(webhooksRes.webhooks || []);
         setDeveloperWebhookDeliveries(webhooksRes.deliveries || []);
@@ -324,8 +305,6 @@ export default function Page() {
         setDeveloperWebhookError("Webhook settings could not be loaded.");
       }
     } else {
-      setDeveloperApiKeys([]);
-      setDeveloperApiKeyError("");
       setDeveloperWebhooks([]);
       setDeveloperWebhookDeliveries([]);
       setDeveloperWebhookError("");
@@ -594,53 +573,6 @@ export default function Page() {
     } catch (err) {
       setBillingError(billingErrorMessage(err, "Secure add-on checkout could not be opened."));
       setBillingAction("");
-    }
-  }
-
-  async function createApiKey(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!session || !developerApiKeyName.trim()) return;
-    setBillingAction("api-key-create");
-    setDeveloperApiKeyError("");
-    setDeveloperApiKeyNotice("");
-    setDeveloperApiKeySecret("");
-    try {
-      const result = await createDeveloperApiKey(session.access_token, developerApiKeyName.trim());
-      setDeveloperApiKeys((current) => [result.key, ...current]);
-      setDeveloperApiKeyName("");
-      setDeveloperApiKeySecret(result.key.secret);
-      setDeveloperApiKeyNotice("Copy this key now. Cadivor will not show the full value again.");
-    } catch (err) {
-      setDeveloperApiKeyError(settingsErrorMessage(err, "API key could not be created."));
-    } finally {
-      setBillingAction("");
-    }
-  }
-
-  async function revokeApiKey(keyId: string) {
-    if (!session) return;
-    setBillingAction("api-key-revoke:" + keyId);
-    setDeveloperApiKeyError("");
-    setDeveloperApiKeyNotice("");
-    try {
-      await revokeDeveloperApiKey(session.access_token, keyId);
-      setDeveloperApiKeys((current) => current.filter((key) => key.id !== keyId));
-      setDeveloperApiKeyNotice("API key revoked.");
-      if (developerApiKeySecret) setDeveloperApiKeySecret("");
-    } catch (err) {
-      setDeveloperApiKeyError(settingsErrorMessage(err, "API key could not be revoked."));
-    } finally {
-      setBillingAction("");
-    }
-  }
-
-  async function copyDeveloperApiKey() {
-    if (!developerApiKeySecret) return;
-    try {
-      await navigator.clipboard.writeText(developerApiKeySecret);
-      setDeveloperApiKeyNotice("API key copied.");
-    } catch {
-      setDeveloperApiKeyError("Clipboard access is unavailable. Select and copy the key manually.");
     }
   }
 
@@ -1563,47 +1495,11 @@ export default function Page() {
 
               {asRecord(usage?.limits).api_access === true || hasProfessionalApiAddon ? (
                 <section className="cv-card pad" style={{ marginBottom: 14 }}>
-                  <h3 className="cv-card-title">Developer API keys</h3>
-                  <p className="cv-card-subtitle">Create keys to submit BOM analyses and read reports through the v1 API. Keys inherit this workspace’s access and stop working when API access or workspace membership ends. The secret is shown once at creation. <a href="https://www.cadivor.com/developers/" target="_blank" rel="noreferrer">Read the API guide</a></p>
-                  <div style={{ marginTop: 14, padding: 15, border: "1px solid #d7e4f6", borderRadius: 12, background: "#f6f9fe" }}>
-                    <strong style={{ display: "block", color: "#213e66", fontSize: 13 }}>Want to analyze a BOM from KiCad?</strong>
-                    <p className="cv-small-note" style={{ margin: "6px 0 12px", maxWidth: 760 }}>
-                      Install the KiCad 9 IPC plugin, then create a key below. On first use, paste the key into the plugin; it stores it in your computer’s credential manager. The PCB Editor action reads BOM fields from the open board, submits those rows to Cadivor, and opens the saved report. It does not upload board layout or routing. Your workspace API limits apply.
-                    </p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      <a className="cv-button primary" href="https://www.cadivor.com/downloads/cadivor-kicad-plugin.zip">Download KiCad plugin</a>
-                      <a className="cv-button secondary" href="https://www.cadivor.com/developers/#kicad" target="_blank" rel="noreferrer">View setup steps</a>
-                    </div>
-                  </div>
-                  <form className="cv-form-grid" onSubmit={(event) => void createApiKey(event)} style={{ marginTop: 14 }}>
-                    <div className="cv-field">
-                      <label htmlFor="developer-api-key-name">Key name</label>
-                      <input id="developer-api-key-name" value={developerApiKeyName} maxLength={80} onChange={(event) => setDeveloperApiKeyName(event.target.value)} placeholder="e.g. Internal reporting" required />
-                    </div>
-                    <div style={{ alignSelf: "end" }}>
-                      <button className="cv-button primary" type="submit" disabled={Boolean(billingAction)}>{billingAction === "api-key-create" ? "Creating…" : "Create API key"}</button>
-                    </div>
-                  </form>
-                  {developerApiKeySecret ? (
-                    <div className="cv-api-key-secret" role="status">
-                      <strong>Copy your new API key now</strong>
-                      <code>{developerApiKeySecret}</code>
-                      <button className="cv-button small" type="button" onClick={() => void copyDeveloperApiKey()}>Copy key</button>
-                    </div>
-                  ) : null}
-                  {developerApiKeyError ? <div className="cv-error" role="alert" style={{ marginTop: 12 }}>{developerApiKeyError}</div> : null}
-                  {developerApiKeyNotice ? <p className="cv-small-note" role="status" style={{ marginTop: 10 }}>{developerApiKeyNotice}</p> : null}
-                  {developerApiKeys.length ? (
-                    <ul className="cv-api-key-list">
-                      {developerApiKeys.map((key) => (
-                        <li key={String(key.id)}>
-                          <span><strong>{cleanUserText(String(key.name || "API key"))}</strong><small><code>{String(key.key_prefix || "")}…</code> · Created {key.created_at ? new Date(String(key.created_at)).toLocaleDateString() : "—"}{key.last_used_at ? ` · Used ${new Date(String(key.last_used_at)).toLocaleDateString()}` : " · Not used yet"}</small></span>
-                          <button className="cv-button small" type="button" disabled={Boolean(billingAction)} onClick={() => void revokeApiKey(String(key.id))}>{billingAction === `api-key-revoke:${String(key.id)}` ? "Revoking…" : "Revoke"}</button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : !developerApiKeyError ? <p className="cv-small-note" style={{ marginTop: 12 }}>No active API keys for this workspace.</p> : null}
-
+                  <h3 className="cv-card-title">Developer integrations</h3>
+                  <p className="cv-card-subtitle">
+                    Manage API keys from the new <Link href="/apis">APIs page</Link> in the main workspace menu.
+                    Webhook destinations and delivery history remain here.
+                  </p>
                   <div style={{ marginTop: 28, paddingTop: 22, borderTop: "1px solid #e3eaf3" }}>
                     <h4 className="cv-card-title">Outgoing webhooks</h4>
                     <p className="cv-card-subtitle">
