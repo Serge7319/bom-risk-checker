@@ -15,6 +15,7 @@ import {
   analyzeBom,
   downloadCompliancePack,
   downloadReportExport,
+  fetchCompliancePack,
   fetchReport,
   listProjects,
   listReports,
@@ -34,6 +35,7 @@ import { analysisModeLabel, cleanUserText, evidenceSourceLabel, userFacingLabel 
 import { PAGE_META } from "@/lib/routes";
 import { rememberAnalysis, useRequireSession } from "@/lib/session";
 import { trackMarketingEventOnce } from "@/lib/marketingAnalytics";
+import complianceStyles from "./complianceEvidence.module.css";
 
 type EditableBomRow = {
   mpn: string;
@@ -91,6 +93,63 @@ function riskBadge(level: string) {
   return "gray";
 }
 
+const COMPLIANCE_REVIEW_TYPES: Array<{
+  type: Exclude<CompliancePackType, "audit">;
+  title: string;
+  description: string;
+}> = [
+  {
+    type: "rohs",
+    title: "RoHS",
+    description: "Review reported hazardous-substance declarations for each part.",
+  },
+  {
+    type: "reach",
+    title: "REACH",
+    description: "Review reported substances of very high concern information.",
+  },
+  {
+    type: "pfas",
+    title: "PFAS",
+    description: "Review reported PFAS declarations and identify evidence gaps.",
+  },
+  {
+    type: "conflict_minerals",
+    title: "Conflict minerals",
+    description: "Review reported conflict-minerals information and supporting sources.",
+  },
+  {
+    type: "pcn",
+    title: "PCN and lifecycle",
+    description: "Review change notices and any reported last-time-buy or end-of-life dates.",
+  },
+];
+
+function asComplianceRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function complianceStatus(status: unknown): { label: string; tone: string } {
+  switch (String(status || "")) {
+    case "evidence_linked": return { label: "Source attached", tone: "green" };
+    case "reported_unverified": return { label: "Reported · verify", tone: "amber" };
+    default: return { label: "Unknown · no evidence", tone: "gray" };
+  }
+}
+
+function complianceLifecycleSummary(value: unknown): string {
+  const event = asComplianceRecord(value);
+  return [
+    event.pcn_number ? `PCN ${String(event.pcn_number)}` : "",
+    event.pcn_date ? `dated ${String(event.pcn_date)}` : "",
+    event.last_time_buy_date ? `last-time-buy ${String(event.last_time_buy_date)}` : "",
+    event.end_of_life_date ? `end of life ${String(event.end_of_life_date)}` : "",
+    event.estimated_eol_years != null ? `estimated ${String(event.estimated_eol_years)} years to EOL` : "",
+  ].filter(Boolean).join(" · ");
+}
+
 export default function ReportPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -103,6 +162,10 @@ export default function ReportPage() {
   const [exporting, setExporting] = useState<ReportExportFormat | null>(null);
   const [complianceExporting, setComplianceExporting] = useState<CompliancePackType | null>(null);
   const [complianceExportError, setComplianceExportError] = useState("");
+  const [compliancePreviewType, setCompliancePreviewType] = useState<CompliancePackType | null>(null);
+  const [compliancePreview, setCompliancePreview] = useState<Record<string, unknown> | null>(null);
+  const [compliancePreviewLoading, setCompliancePreviewLoading] = useState<CompliancePackType | null>(null);
+  const [compliancePreviewError, setCompliancePreviewError] = useState("");
   const [review, setReview] = useState<BomReviewProgress | null>(null);
   const [bomEditorOpen, setBomEditorOpen] = useState(false);
   const [bomEditorRows, setBomEditorRows] = useState<EditableBomRow[]>([]);
@@ -185,6 +248,26 @@ export default function ReportPage() {
       setComplianceExportError(err instanceof Error ? err.message : "The evidence pack could not be downloaded.");
     } finally {
       setComplianceExporting(null);
+    }
+  }
+
+  async function onReviewCompliance(packType: Exclude<CompliancePackType, "audit">) {
+    if (!session || !report) return;
+    setCompliancePreviewType(packType);
+    setCompliancePreview(null);
+    setCompliancePreviewError("");
+    setCompliancePreviewLoading(packType);
+    try {
+      const pack = await fetchCompliancePack(
+        session.access_token,
+        packType,
+        String(report.analysis_id || report.id),
+      );
+      setCompliancePreview(pack);
+    } catch (err) {
+      setCompliancePreviewError(err instanceof Error ? err.message : "Evidence records could not be loaded.");
+    } finally {
+      setCompliancePreviewLoading(null);
     }
   }
 
@@ -323,6 +406,11 @@ export default function ReportPage() {
   const syntheticSupplierRows = Number(evidenceSummary.synthetic_count ?? 0);
   const missingSupplierRows = Number(evidenceSummary.missing_count ?? 0);
   const reportRiskCounts = report ? getReportRiskCounts(report) : null;
+  const compliancePreviewSummary = asComplianceRecord(compliancePreview?.summary);
+  const compliancePreviewRecords = Array.isArray(compliancePreview?.records)
+    ? compliancePreview.records.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object" && !Array.isArray(row))
+    : [];
+  const compliancePreviewTitle = COMPLIANCE_REVIEW_TYPES.find((item) => item.type === compliancePreviewType)?.title || "Evidence records";
 
   return (
     <Shell session={session}>
@@ -529,29 +617,126 @@ export default function ReportPage() {
             ) : null}
           </section>
 
-          <section className="cv-card pad cv-report-export" aria-labelledby="compliance-export-title">
-            <div>
-              <h2 id="compliance-export-title" className="cv-card-title">Compliance and lifecycle evidence</h2>
-              <p className="cv-card-subtitle">
-                Download component-level RoHS, REACH, PFAS, PCN, or combined evidence data for this BOM. Missing or unverified fields remain unknown; Cadivor does not assert compliance.
+          <section className={`cv-card pad ${complianceStyles.evidenceCard}`} aria-labelledby="compliance-export-title">
+            <div className={complianceStyles.evidenceIntro}>
+              <div>
+                <h2 id="compliance-export-title" className="cv-card-title">Review compliance and lifecycle evidence</h2>
+                <p className="cv-card-subtitle">
+                  These records summarize evidence already attached to this analysis. Review them here first; export JSON only when you need to hand the working papers to Quality/Compliance or archive them with your controlled records.
+                </p>
+              </div>
+              <p className={complianceStyles.workflowNote}>
+                <strong>What to do:</strong> open a source declaration or notice, follow up on missing evidence, then record your disposition in your internal QMS/PLM. Cadivor does not certify compliance, and the export does not sync directly to another system.
               </p>
             </div>
-            <div className="cv-report-export-controls">
-              {(["rohs", "reach", "pfas", "pcn", "audit"] as CompliancePackType[]).map((packType) => (
+
+            <div className={complianceStyles.topicActions} role="group" aria-label="Review evidence by topic">
+              {COMPLIANCE_REVIEW_TYPES.map((item) => (
                 <button
-                  key={packType}
+                  key={item.type}
                   type="button"
-                  className="cv-button"
-                  onClick={() => void onDownloadCompliance(packType)}
-                  disabled={complianceExporting !== null}
+                  className={`cv-button ${compliancePreviewType === item.type ? "primary" : "secondary"} ${complianceStyles.topicButton}`}
+                  aria-pressed={compliancePreviewType === item.type}
+                  onClick={() => void onReviewCompliance(item.type)}
+                  disabled={compliancePreviewLoading !== null || complianceExporting !== null}
                 >
-                  {complianceExporting === packType
-                    ? "Preparing JSON…"
-                    : packType === "audit" ? "Evidence bundle" : `${packType.toUpperCase()} pack`}
+                  {compliancePreviewLoading === item.type ? "Loading records…" : `Review ${item.title}`}
                 </button>
               ))}
+              <button
+                type="button"
+                className={`cv-button secondary ${complianceStyles.topicButton}`}
+                onClick={() => void onDownloadCompliance("audit")}
+                disabled={complianceExporting !== null || compliancePreviewLoading !== null}
+              >
+                <Icon name="download" />
+                {complianceExporting === "audit" ? "Preparing JSON…" : "Export full evidence bundle"}
+              </button>
             </div>
+            <p className={complianceStyles.exportHint}>
+              The full bundle contains all available compliance topic records plus lifecycle fields in one JSON file. Use it for a manual handoff or archive; it is not a compliance certificate.
+            </p>
+
             {complianceExportError ? <div className="cv-error" role="alert">{complianceExportError}</div> : null}
+            {compliancePreviewError ? <div className="cv-error" role="alert">{compliancePreviewError}</div> : null}
+
+            {compliancePreviewType ? (
+              <div className={complianceStyles.previewPanel} aria-live="polite">
+                <div className={complianceStyles.previewHeader}>
+                  <div>
+                    <h3>{compliancePreviewTitle} records</h3>
+                    <p>{COMPLIANCE_REVIEW_TYPES.find((item) => item.type === compliancePreviewType)?.description}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="cv-button secondary"
+                    onClick={() => void onDownloadCompliance(compliancePreviewType)}
+                    disabled={complianceExporting !== null || compliancePreviewLoading !== null}
+                  >
+                    <Icon name="download" />
+                    {complianceExporting === compliancePreviewType ? "Preparing JSON…" : `Export ${compliancePreviewTitle} JSON`}
+                  </button>
+                </div>
+                {compliancePreviewLoading === compliancePreviewType ? (
+                  <p className={complianceStyles.loadingMessage}>Loading component records…</p>
+                ) : compliancePreview ? (
+                  <>
+                    <div className={complianceStyles.summaryBadges}>
+                      <span className="cv-badge green">{Number(compliancePreviewSummary.evidence_linked || 0)} source attached</span>
+                      <span className="cv-badge amber">{Number(compliancePreviewSummary.reported_unverified || 0)} reported, verify</span>
+                      <span className="cv-badge gray">{Number(compliancePreviewSummary.missing_evidence || 0)} unknown</span>
+                      <span className={complianceStyles.totalCount}>{Number(compliancePreviewSummary.total || 0)} components</span>
+                    </div>
+                    {compliancePreviewRecords.length ? (
+                      <div className={`cv-table-wrap ${complianceStyles.previewTableWrap}`}>
+                        <table className={`cv-table ${complianceStyles.previewTable}`}>
+                          <thead>
+                            <tr>
+                              <th>Component</th>
+                              <th>Evidence status</th>
+                              <th>Reported information</th>
+                              <th>Source / review note</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {compliancePreviewRecords.map((row, index) => {
+                              const state = complianceStatus(row.status);
+                              const sourceUrl = String(row.source_url || "").trim();
+                              const safeSourceUrl = /^https?:\/\//i.test(sourceUrl) ? sourceUrl : "";
+                              const lifecycleSummary = complianceLifecycleSummary(row.lifecycle_events);
+                              const reported = row.reported_value == null || String(row.reported_value).trim() === ""
+                                ? "No value reported"
+                                : String(row.reported_value);
+                              const reviewNote = String(row.gap || "Open the source and confirm that it supports the reported value.");
+                              return (
+                                <tr key={`${String(row.mpn || "part")}-${index}`}>
+                                  <td><strong>{String(row.mpn || "Part not identified")}</strong></td>
+                                  <td><span className={`cv-badge ${state.tone}`}>{state.label}</span></td>
+                                  <td>
+                                    <span className={complianceStyles.reportedValue}>{reported}</span>
+                                    {lifecycleSummary ? <small className={complianceStyles.rowDetail}>{lifecycleSummary}</small> : null}
+                                    {row.retrieved_at ? <small className={complianceStyles.rowDetail}>Recorded {String(row.retrieved_at)}</small> : null}
+                                  </td>
+                                  <td>
+                                    {safeSourceUrl ? <a href={safeSourceUrl} target="_blank" rel="noreferrer">{String(row.source || "Open source record")}</a> : <span>{String(row.source || "No source attached")}</span>}
+                                    <small className={complianceStyles.rowDetail}>{reviewNote}</small>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className={complianceStyles.loadingMessage}>No component records were returned for this topic.</p>
+                    )}
+                    <p className={complianceStyles.unknownNote}>
+                      “Unknown” means this analysis has no source-backed record for that component. It does not mean compliant, noncompliant, or that no change notice exists.
+                    </p>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           <div className="cv-kpis">
