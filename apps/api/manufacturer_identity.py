@@ -51,6 +51,14 @@ _MANUFACTURER_ALIASES: dict[str, set[str]] = {
     "murata": {"murata", "murata manufacturing", "murata manufacturing co"},
     "yageo": {"yageo", "yageo corporation"},
     "tdk": {"tdk", "tdk corporation"},
+    # Distributor catalogs label legacy FCI parts as either Amphenol ICC (FCI)
+    # or Amphenol FCI. Keep the broader "Amphenol" label unaliased because it
+    # is not specific enough to establish the same manufacturer identity.
+    "amphenol icc": {
+        "amphenol icc",
+        "amphenol icc (fci)",
+        "amphenol fci",
+    },
     "bourns": {"bourns", "bourns inc"},
     "ohmite": {"ohmite", "ohmite manufacturing"},
 }
@@ -97,7 +105,7 @@ def manufacturer_canonical(value: object) -> str:
         if folded == canonical or folded in aliases:
             return canonical
         # Allow substring containment for longer supplier labels.
-        if any(alias in folded or folded in alias for alias in aliases if len(alias) >= 3):
+        if any(alias in folded for alias in aliases if len(alias) >= 3):
             return canonical
     return folded
 
