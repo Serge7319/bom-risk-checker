@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
+import { StatusPill } from "@/components/StatusPill";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { fetchDetailedRisk } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
@@ -55,6 +56,16 @@ function DetailedRiskPageInner() {
   if (!session) return null;
   const rows = (data?.rows || []) as Array<Record<string, unknown>>;
   const summary = (data?.summary || {}) as Record<string, unknown>;
+  const healthScore = data?.health_score;
+  const healthScoreNumber = Number(healthScore);
+  const healthTone = healthScore == null || !Number.isFinite(healthScoreNumber)
+    ? "blue"
+    : healthScoreNumber >= 80 ? "green" : healthScoreNumber >= 60 ? "amber" : "red";
+  const highRiskValue = data?.high_risk_count ?? summary.high_risk_component_count;
+  const highRiskNumber = Number(highRiskValue);
+  const highRiskTone = highRiskValue == null || !Number.isFinite(highRiskNumber)
+    ? "blue"
+    : highRiskNumber > 0 ? "red" : "green";
 
   return (
     <Shell session={session}>
@@ -84,16 +95,14 @@ function DetailedRiskPageInner() {
       {!busy && data ? (
         rows.length ? <>
           <div className="cv-kpis">
-            <KpiCard icon="shield" tone="blue" label="Health score" value={data.health_score == null ? "Not scored" : `${String(data.health_score)}/100`} detail={userFacingLabel(data.health_status, "Overall report rating")} />
+            <KpiCard icon="shield" tone={healthTone} label="Health score" value={healthScore == null ? "Not scored" : `${String(healthScore)}/100`} detail={userFacingLabel(data.health_status, "Overall report rating")} />
             <KpiCard icon="box" label="Components assessed" value={rows.length} detail="Rows in this report" />
             <KpiCard
               icon="risk"
-              tone="amber"
+              tone={highRiskTone}
               label="High-risk components"
               value={String(
-                data.high_risk_count
-                  ?? summary.high_risk_component_count
-                  ?? "Not reported",
+                highRiskValue ?? "Not reported",
               )}
               detail="Same Risk Level = High count as the report and decision queue"
             />
@@ -118,8 +127,8 @@ function DetailedRiskPageInner() {
                     <tr key={i}>
                       <td><strong>{cell(row.MPN ?? row.mpn ?? row["Part number"])}</strong></td>
                       <td>{cell(row.Manufacturer ?? row.manufacturer)}</td>
-                      <td>{cell(row.Lifecycle ?? row.lifecycle ?? row["Lifecycle status"])}</td>
-                      <td>{cell(row.Risk ?? row["Risk level"] ?? row["Risk Level"] ?? row.risk_level)}</td>
+                      <td><StatusPill kind="lifecycle" value={cell(row.Lifecycle ?? row.lifecycle ?? row["Lifecycle status"], "Unknown")} /></td>
+                      <td><StatusPill kind="risk" value={cell(row.Risk ?? row["Risk level"] ?? row["Risk Level"] ?? row.risk_level, "Unknown")} /></td>
                       <td>{cell(row.Stock ?? row.stock)}</td>
                       <td>{cell(row["Unit price"] ?? row.unit_price)}</td>
                       <td className="cv-small-note">{cell(row.Why ?? row["Risk reasons"] ?? row.reasons).slice(0, 120)}</td>

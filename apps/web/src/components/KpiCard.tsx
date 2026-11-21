@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "@/components/Icons";
 
-type Tone = "default" | "blue" | "amber";
+type Tone = "default" | "blue" | "amber" | "red" | "green";
 
 export function KpiCard({
   label,
@@ -16,8 +16,7 @@ export function KpiCard({
   icon: IconName;
   tone?: Tone;
 }) {
-  const toneClass =
-    tone === "blue" ? " tone-blue" : tone === "amber" ? " tone-amber" : "";
+  const toneClass = tone === "default" ? "" : ` tone-${tone}`;
   return (
     <div className={`cv-kpi${toneClass}`}>
       <div className="cv-kpi-head">

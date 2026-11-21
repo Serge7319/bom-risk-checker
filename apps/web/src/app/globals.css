@@ -4113,6 +4113,114 @@ button {
   }
 }
 
+/* Premium summary cards and readable risk states across report workflows. */
+.cv-kpi {
+  min-height: 140px;
+  padding: 18px 19px;
+  border: 1px solid #d6e1ef;
+  border-radius: 16px;
+  background: linear-gradient(155deg, #fff 0%, #fbfcff 100%);
+  box-shadow: 0 5px 16px rgba(25, 48, 78, 0.045);
+}
+
+.cv-kpi.tone-blue {
+  border-color: #c8d9f0;
+  background: linear-gradient(155deg, #f5f9ff 0%, #fff 100%);
+}
+
+.cv-kpi.tone-amber {
+  border-color: #ecd9b4;
+  background: linear-gradient(155deg, #fffaf0 0%, #fff 100%);
+}
+
+.cv-kpi.tone-red {
+  border-color: #f0cfcd;
+  background: linear-gradient(155deg, #fff6f5 0%, #fff 100%);
+}
+
+.cv-kpi.tone-green {
+  border-color: #cbe7d8;
+  background: linear-gradient(155deg, #f3fbf7 0%, #fff 100%);
+}
+
+.cv-kpi.tone-red .cv-kpi-icon {
+  border-color: #f2cdca;
+  background: #fff0ef;
+  color: #bd3439;
+}
+
+.cv-kpi.tone-green .cv-kpi-icon {
+  border-color: #c9e8d7;
+  background: #eaf8f0;
+  color: #168457;
+}
+
+.cv-kpi.tone-blue .cv-kpi-icon {
+  border-color: #c8d9f0;
+  background: #eaf2ff;
+  color: #2869e8;
+}
+
+.cv-kpi.tone-amber .cv-kpi-icon {
+  border-color: #ecd9b4;
+  background: #fff3db;
+  color: #a56400;
+}
+
+.cv-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 760;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.cv-status-pill--red {
+  color: #bf2020;
+  background: #fff0ef;
+  border-color: #ffe0dd;
+}
+
+.cv-status-pill--amber {
+  color: #b44b00;
+  background: #fff7e6;
+  border-color: #ffebc2;
+}
+
+.cv-status-pill--green {
+  color: #00825c;
+  background: #eaf9f2;
+  border-color: #d3f1e3;
+}
+
+.cv-status-pill--blue {
+  color: #245db1;
+  background: #edf4ff;
+  border-color: #dbe9ff;
+}
+
+.cv-status-pill--gray {
+  color: #526176;
+  background: #eff3f7;
+  border-color: #e3eaf2;
+}
+
+.cv-source-label {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 7px;
+  color: #536983;
+  background: #f3f6fa;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
 .cv-report-export {
   display: flex;
   flex-wrap: wrap;
