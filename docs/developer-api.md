@@ -56,7 +56,7 @@ KiCad project.
 ## Outgoing webhooks
 
 Workspace owners and admins with API access can add HTTPS destinations under
-**Settings → Billing → Developer API keys → Outgoing webhooks**. Cadivor
+**Settings → Billing → Developer integrations → Outgoing webhooks**. Cadivor
 encrypts the destination and signing secret at rest. The signing secret is
 shown once when the endpoint is created. The API service must have
 `CADIVOR_DEVELOPER_WEBHOOK_ENCRYPTION_KEY` or the existing
