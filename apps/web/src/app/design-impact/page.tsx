@@ -40,7 +40,9 @@ export default function DesignImpactPage() {
   }
 
   useEffect(() => {
-    load("");
+    const requestedMpn = new URLSearchParams(window.location.search).get("mpn")?.trim() || "";
+    setMpn(requestedMpn);
+    load(requestedMpn);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 

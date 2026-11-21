@@ -335,19 +335,67 @@ class PostgresWorkspaceStore:
                 payload = json.loads(payload)
             return dict(payload)
 
+    def update_analysis_health(
+        self,
+        analysis_id: str,
+        *,
+        workspace_id: str,
+        health: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Persist recalculated health metadata for an existing workspace report."""
+        wid = self._require_workspace(workspace_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT workspace_id, payload FROM migration_reports WHERE id = %s",
+                (analysis_id,),
+            ).fetchone()
+            if not row:
+                return None
+            if row["workspace_id"] != wid:
+                raise WorkspaceAccessError(
+                    f"analysis {analysis_id} is not in workspace {wid}"
+                )
+            payload = row["payload"]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            updated_report = dict(payload)
+            updated_report.update(health)
+            safe_report = json_safe(updated_report)
+            conn.execute(
+                "UPDATE migration_reports SET payload = %s::jsonb, updated_at = NOW() WHERE id = %s AND workspace_id = %s",
+                (json.dumps(safe_report, allow_nan=False), analysis_id, wid),
+            )
+            conn.execute(
+                "UPDATE migration_analyses SET health_score = %s, health_status = %s WHERE id = %s AND workspace_id = %s",
+                (
+                    health.get("health_score"),
+                    health.get("health_status"),
+                    analysis_id,
+                    wid,
+                ),
+            )
+            conn.commit()
+            return dict(safe_report)
+
     def list_reports(self, *, workspace_id: str) -> list[dict[str, Any]]:
         wid = self._require_workspace(workspace_id)
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, workspace_id, project_id, bom_id, revision_id,
-                       project_name, bom_name, revision, filename, created_at,
-                       updated_at, health_score, health_status, high_risk_count,
-                       medium_risk_count, low_risk_count, total_parts, mode,
-                       has_hierarchy, top_rolled_risk
-                FROM migration_analyses
-                WHERE workspace_id = %s
-                ORDER BY created_at DESC
+                SELECT a.id, a.workspace_id, a.project_id, a.bom_id, a.revision_id,
+                       a.project_name, a.bom_name, a.revision, a.filename, a.created_at,
+                       a.updated_at, a.health_score, a.health_status, a.high_risk_count,
+                       a.medium_risk_count, a.low_risk_count, a.total_parts, a.mode,
+                       a.has_hierarchy, a.top_rolled_risk, p.name AS project_label,
+                       r.payload->>'summary_message' AS summary_message,
+                       r.payload->>'needs_verification_count' AS needs_verification_count
+                FROM migration_analyses AS a
+                LEFT JOIN migration_projects AS p
+                  ON p.id = a.project_id AND p.workspace_id = a.workspace_id
+                LEFT JOIN migration_reports AS r
+                  ON r.id = a.id AND r.workspace_id = a.workspace_id
+                WHERE a.workspace_id = %s
+                ORDER BY a.created_at DESC
                 """,
                 (wid,),
             ).fetchall()

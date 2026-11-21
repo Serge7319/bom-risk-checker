@@ -181,6 +181,8 @@ class WorkspaceStore:
                 "updated_at": _now(),
                 "health_score": report.get("health_score"),
                 "health_status": report.get("health_status"),
+                "summary_message": report.get("summary_message"),
+                "needs_verification_count": report.get("needs_verification_count"),
                 "high_risk_count": report.get("high_risk_count"),
                 "medium_risk_count": report.get("medium_risk_count"),
                 "low_risk_count": report.get("low_risk_count"),
@@ -276,15 +278,51 @@ class WorkspaceStore:
                 )
             return dict(report)
 
+    def update_analysis_health(
+        self,
+        analysis_id: str,
+        *,
+        workspace_id: str,
+        health: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Persist a recalculated health summary without rewriting BOM identity."""
+        wid = self._require_workspace(workspace_id)
+        with _LOCK:
+            self.load()
+            report = self._data["reports"].get(analysis_id)
+            analysis = self._data["analyses"].get(analysis_id)
+            record = report or analysis
+            if not record:
+                return None
+            if record.get("workspace_id") != wid:
+                raise WorkspaceAccessError(
+                    f"analysis {analysis_id} is not in workspace {wid}"
+                )
+            for field, value in health.items():
+                if report is not None:
+                    report[field] = value
+                if analysis is not None:
+                    analysis[field] = value
+            self.save()
+            return dict(report or analysis or {})
+
     def list_reports(self, *, workspace_id: str) -> list[dict[str, Any]]:
         wid = self._require_workspace(workspace_id)
         with _LOCK:
             self.load()
-            rows = [
-                dict(row)
-                for row in self._data["analyses"].values()
-                if row.get("workspace_id") == wid
-            ]
+            rows = []
+            for row in self._data["analyses"].values():
+                if row.get("workspace_id") != wid:
+                    continue
+                item = dict(row)
+                project = self._data["projects"].get(str(row.get("project_id") or "")) or {}
+                item["project_label"] = project.get("name") or row.get("project_name")
+                saved_report = self._data["reports"].get(str(row.get("id") or "")) or {}
+                item["summary_message"] = saved_report.get("summary_message") or row.get("summary_message")
+                item["needs_verification_count"] = saved_report.get(
+                    "needs_verification_count", row.get("needs_verification_count")
+                )
+                rows.append(item)
             return sorted(
                 rows, key=lambda row: str(row.get("created_at") or ""), reverse=True
             )
