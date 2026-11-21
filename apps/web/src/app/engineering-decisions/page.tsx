@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
+import { StatusPill } from "@/components/StatusPill";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import {
   createDecisionRecordShare,
@@ -188,9 +189,9 @@ function EngineeringDecisionsPageInner() {
 
       {last ? (
         <div className="cv-kpis">
-          <KpiCard icon="risk" tone="amber" label="High priority" value={last.high_risk_count} detail="Engineering review recommended" />
-          <KpiCard icon="clock" tone="blue" label="Medium priority" value={last.medium_risk_count} detail="Confirm the evidence is current" />
-          <KpiCard icon="check" label="Low priority" value={last.low_risk_count} detail="Lower risk signals in this BOM" />
+          <KpiCard icon="risk" tone={last.high_risk_count > 0 ? "red" : "green"} label="High priority" value={last.high_risk_count} detail="Engineering review recommended" />
+          <KpiCard icon="clock" tone={last.medium_risk_count > 0 ? "amber" : "green"} label="Medium priority" value={last.medium_risk_count} detail="Confirm the evidence is current" />
+          <KpiCard icon="check" tone="green" label="Low priority" value={last.low_risk_count} detail="Lower risk signals in this BOM" />
         </div>
       ) : null}
 
@@ -217,7 +218,7 @@ function EngineeringDecisionsPageInner() {
               <tbody>
                 <tr>
                   <td>
-                    <span className="cv-badge red">High</span>
+                    <StatusPill kind="risk" value="High" />
                   </td>
                   <td>
                     <strong>High-risk components</strong>
@@ -235,7 +236,7 @@ function EngineeringDecisionsPageInner() {
                 </tr>
                 <tr>
                   <td>
-                    <span className="cv-badge amber">Medium</span>
+                    <StatusPill kind="risk" value="Medium" />
                   </td>
                   <td>
                     <strong>Medium-risk follow-ups</strong>

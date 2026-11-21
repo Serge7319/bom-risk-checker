@@ -7,6 +7,7 @@ import { Shell } from "@/components/Shell";
 import { EmptyState } from "@/components/EmptyState";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
+import { StatusPill } from "@/components/StatusPill";
 import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import {
   fetchMonitoring,
@@ -234,8 +235,8 @@ function MonitoringPageInner() {
         <>
           <div className="cv-kpis">
             <KpiCard icon="monitor" tone="blue" label="Tracked components" value={metrics.monitored_parts ?? 0} detail="Parts in the selected analysis" />
-            <KpiCard icon="bell" tone="amber" label="Alerts to review" value={metrics.active_alerts ?? 0} detail="Signals derived from saved evidence" />
-            <KpiCard icon="clock" label="Lifecycle flags" value={metrics.lifecycle_changes ?? 0} detail="NRND or lifecycle change signals" />
+            <KpiCard icon="bell" tone={Number(metrics.active_alerts ?? 0) > 0 ? "amber" : "green"} label="Alerts to review" value={metrics.active_alerts ?? 0} detail="Signals derived from saved evidence" />
+            <KpiCard icon="clock" tone={Number(metrics.lifecycle_changes ?? 0) > 0 ? "amber" : "green"} label="Lifecycle flags" value={metrics.lifecycle_changes ?? 0} detail="NRND or lifecycle change signals" />
           </div>
           <section className="cv-card pad" aria-label="Monitoring freshness">
             <h3 className="cv-card-title">Data freshness</h3>
@@ -390,7 +391,7 @@ function MonitoringPageInner() {
                   <tbody>
                     {alerts.map((a, i) => (
                       <tr key={i}>
-                        <td><span className={`cv-badge ${String(a.severity).toLowerCase() === "high" ? "red" : "amber"}`}>{String(a.severity)}</span></td>
+                        <td><StatusPill kind="risk" value={a.severity || "Unknown"} /></td>
                         <td><strong>{String(a.part_number || "")}</strong></td>
                         <td>{String(a.alert_type || "")}</td>
                         <td>{cleanUserText(a.alert_message)}</td>

@@ -7,7 +7,9 @@ import { AnalysisStageNavigation } from "@/components/AnalysisStageNavigation";
 import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
 import { PartThumbnail } from "@/components/PartThumbnail";
+import { KpiCard } from "@/components/KpiCard";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
+import { StatusPill } from "@/components/StatusPill";
 import { fetchReport, type Report } from "@/lib/api";
 import { markReviewProgress, readReviewProgress } from "@/lib/bomDraft";
 import { evidenceSourceLabel, userFacingLabel } from "@/lib/display";
@@ -65,6 +67,12 @@ function EvidenceReviewPageInner() {
     setReviewed(true);
   };
 
+  const verifiedParts = report?.parts.filter((part) =>
+    part.supplier_data_verified === true || part["Supplier Data Verified"] === true,
+  ).length || 0;
+  const totalParts = report?.parts.length || 0;
+  const unverifiedParts = totalParts - verifiedParts;
+
   return (
     <Shell session={session}>
       <PageHeader
@@ -94,64 +102,67 @@ function EvidenceReviewPageInner() {
       ) : null}
 
       {!busy && report ? (
-        <section className="cv-card pad" aria-labelledby="evidence-review-title">
-          <div className="cv-section-heading cv-section-heading--card">
-            <div>
-              <h2 id="evidence-review-title">Component evidence</h2>
-              <p>Review the recorded source and verification status for each BOM line.</p>
+        <>
+          <div className="cv-kpis" aria-label="Evidence summary">
+            <KpiCard icon="box" tone="blue" label="Components assessed" value={totalParts} detail="Parts in this saved report" />
+            <KpiCard icon="check" tone={unverifiedParts === 0 ? "green" : "blue"} label="Verified supplier data" value={verifiedParts} detail="Exact supplier matches recorded" />
+            <KpiCard icon="shield" tone={unverifiedParts > 0 ? "amber" : "green"} label="Needs verification" value={unverifiedParts} detail="Supplier records to review" />
+          </div>
+          <section className="cv-card pad" aria-labelledby="evidence-review-title">
+            <div className="cv-section-heading cv-section-heading--card">
+              <div>
+                <h2 id="evidence-review-title">Component evidence</h2>
+                <p>Review the recorded source and verification status for each BOM line.</p>
+              </div>
+              {reviewed ? (
+                <span className="cv-badge green">Reviewed</span>
+              ) : (
+                <button type="button" className="cv-button primary" onClick={markReviewed}>
+                  Mark evidence reviewed
+                </button>
+              )}
             </div>
-            {reviewed ? (
-              <span className="cv-badge green">Reviewed</span>
-            ) : (
-              <button type="button" className="cv-button primary" onClick={markReviewed}>
-                Mark evidence reviewed
-              </button>
-            )}
-          </div>
-          <div className="cv-table-wrap">
-            <table className="cv-table">
-              <thead>
-                <tr>
-                  <th>Part</th>
-                  <th>Manufacturer</th>
-                  <th>Lifecycle</th>
-                  <th>Risk</th>
-                  <th>Evidence source</th>
-                  <th>Supplier verification</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.parts.map((part, index) => {
-                  const mpn = String(part.MPN || part.mpn || part.manufacturer_part_number || "—");
-                  const rawSource = part.evidence_source ?? part["Evidence Source"] ?? part.source ?? part.source_type;
-                  const sourceFallback = /synthetic|preview/i.test(report.mode)
-                    ? "Synthetic analysis"
-                    : "Not recorded";
-                  const verified = part.supplier_data_verified === true || part["Supplier Data Verified"] === true;
-                  return (
-                    <tr key={`${mpn}-${index}`}>
-                      <td>
-                        <div className="cv-part-cell">
-                          <PartThumbnail part={part} />
-                          <strong>{mpn}</strong>
-                        </div>
-                      </td>
-                      <td>{String(part.Manufacturer || part.manufacturer || "Not recorded")}</td>
-                      <td>{String(part.Lifecycle || part.lifecycle || "Not recorded")}</td>
-                      <td>{String(part["Risk Level"] || part.risk_level || "Not recorded")}</td>
-                      <td>{evidenceSourceLabel(rawSource, sourceFallback)}</td>
-                      <td>
-                        <span className={`cv-badge ${verified ? "green" : "amber"}`}>
-                          {verified ? "Verified supplier data" : "Not verified"}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+            <div className="cv-table-wrap">
+              <table className="cv-table">
+                <thead>
+                  <tr>
+                    <th>Part</th>
+                    <th>Manufacturer</th>
+                    <th>Lifecycle</th>
+                    <th>Risk</th>
+                    <th>Evidence source</th>
+                    <th>Supplier verification</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.parts.map((part, index) => {
+                    const mpn = String(part.MPN || part.mpn || part.manufacturer_part_number || "—");
+                    const rawSource = part.evidence_source ?? part["Evidence Source"] ?? part.source ?? part.source_type;
+                    const sourceFallback = /synthetic|preview/i.test(report.mode)
+                      ? "Synthetic analysis"
+                      : "Not recorded";
+                    const verified = part.supplier_data_verified === true || part["Supplier Data Verified"] === true;
+                    return (
+                      <tr key={`${mpn}-${index}`}>
+                        <td>
+                          <div className="cv-part-cell">
+                            <PartThumbnail part={part} />
+                            <strong>{mpn}</strong>
+                          </div>
+                        </td>
+                        <td>{String(part.Manufacturer || part.manufacturer || "Not recorded")}</td>
+                        <td><StatusPill kind="lifecycle" value={part.Lifecycle || part.lifecycle || "Unknown"} /></td>
+                        <td><StatusPill kind="risk" value={part["Risk Level"] || part.risk_level || "Unknown"} /></td>
+                        <td><span className="cv-source-label">{evidenceSourceLabel(rawSource, sourceFallback)}</span></td>
+                        <td><StatusPill kind="verification" value={verified ? "Verified" : "Not verified"} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
       ) : null}
     </Shell>
   );
