@@ -79,10 +79,10 @@ function projectRowsFromReports(reports: Array<Record<string, unknown>>) {
       bomCount: boms.length,
       components: partCounts.some((count) => count === null)
         ? null
-        : partCounts.reduce((sum, count) => sum + (count || 0), 0),
+        : partCounts.reduce<number>((sum, count) => sum + (count || 0), 0),
       highRisk: highCounts.some((count) => count === null)
         ? null
-        : highCounts.reduce((sum, count) => sum + (count || 0), 0),
+        : highCounts.reduce<number>((sum, count) => sum + (count || 0), 0),
       health: weightedHealth,
       scoredBomCount: scored.length,
       analysisId: String(latest.analysis_id || latest.id || ""),
