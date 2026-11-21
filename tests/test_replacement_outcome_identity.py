@@ -103,6 +103,18 @@ class SearchOutcomeAggregationTests(unittest.TestCase):
 
 
 class ManufacturerIdentityAliasTests(unittest.TestCase):
+    def test_amphenol_icc_and_fci_catalog_labels_share_identity_without_broad_match(self):
+        self.assertEqual(
+            manufacturer_canonical("Amphenol ICC (FCI)"), "amphenol icc"
+        )
+        self.assertEqual(manufacturer_canonical("Amphenol FCI"), "amphenol icc")
+        self.assertTrue(
+            manufacturers_match(
+                "Amphenol ICC", "AMPHENOL COMMUNICATIONS SOLUTIONS, Amphenol FCI"
+            )
+        )
+        self.assertFalse(manufacturers_match("Amphenol ICC", "Amphenol"))
+
     def test_amd_and_advanced_micro_devices_alias(self):
         self.assertEqual(manufacturer_canonical("AMD"), "advanced micro devices")
         self.assertEqual(
