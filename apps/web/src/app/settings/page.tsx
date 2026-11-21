@@ -1565,6 +1565,16 @@ export default function Page() {
                 <section className="cv-card pad" style={{ marginBottom: 14 }}>
                   <h3 className="cv-card-title">Developer API keys</h3>
                   <p className="cv-card-subtitle">Create keys to submit BOM analyses and read reports through the v1 API. Keys inherit this workspace’s access and stop working when API access or workspace membership ends. The secret is shown once at creation. <a href="https://www.cadivor.com/developers/" target="_blank" rel="noreferrer">Read the API guide</a></p>
+                  <div style={{ marginTop: 14, padding: 15, border: "1px solid #d7e4f6", borderRadius: 12, background: "#f6f9fe" }}>
+                    <strong style={{ display: "block", color: "#213e66", fontSize: 13 }}>Want to analyze a BOM from KiCad?</strong>
+                    <p className="cv-small-note" style={{ margin: "6px 0 12px", maxWidth: 760 }}>
+                      Install the KiCad 9 IPC plugin, then create a key below. On first use, paste the key into the plugin; it stores it in your computer’s credential manager. The PCB Editor action reads BOM fields from the open board, submits those rows to Cadivor, and opens the saved report. It does not upload board layout or routing. Your workspace API limits apply.
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      <a className="cv-button primary" href="https://www.cadivor.com/downloads/cadivor-kicad-plugin.zip">Download KiCad plugin</a>
+                      <a className="cv-button secondary" href="https://www.cadivor.com/developers/#kicad" target="_blank" rel="noreferrer">View setup steps</a>
+                    </div>
+                  </div>
                   <form className="cv-form-grid" onSubmit={(event) => void createApiKey(event)} style={{ marginTop: 14 }}>
                     <div className="cv-field">
                       <label htmlFor="developer-api-key-name">Key name</label>
@@ -1783,7 +1793,7 @@ export default function Page() {
               <section className="cv-card pad" style={{ marginBottom: 14 }}>
                 <h3 className="cv-card-title">Connectors and file workflows</h3>
                 <p className="cv-card-subtitle">
-                  Generic CSV paths are file workflows. Supplier rows show credential presence only; direct PLM, ERP, and CAD integrations still need a provider choice and sandbox access.
+                  Generic CSV paths are file workflows. The KiCad 9 IPC plugin is distributed separately and authenticates with a Developer API key; it does not appear as a server-side connector here. Direct PLM and ERP integrations still need a provider choice and sandbox access.
                 </p>
                 {connectorRows.length ? (
                   <div className="cv-table-wrap" style={{ marginTop: 12 }}>
