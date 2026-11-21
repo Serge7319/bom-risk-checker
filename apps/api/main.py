@@ -56,6 +56,7 @@ from apps.api.sandbox_auth import (  # noqa: E402
     AuthNotConfiguredError,
     auth_configured as sandbox_auth_configured,
     describe_auth as describe_sandbox_auth,
+    get_auth_store,
     is_production_runtime,
     login as sandbox_login,
     logout as sandbox_logout,
