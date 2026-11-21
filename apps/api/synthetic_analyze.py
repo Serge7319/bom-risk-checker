@@ -301,6 +301,53 @@ def get_report(analysis_id: str, *, workspace_id: str) -> dict[str, Any] | None:
     return None
 
 
+def recalculate_report_health(
+    analysis_id: str, *, workspace_id: str
+) -> dict[str, Any] | None:
+    """Re-evaluate a saved report's health from its saved part evidence only."""
+    report = get_report(analysis_id, workspace_id=workspace_id)
+    if not report:
+        return None
+
+    saved_parts = [row for row in (report.get("parts") or []) if isinstance(row, dict)]
+    results = pd.DataFrame(saved_parts)
+    aliases = {
+        "Risk Level": "risk_level",
+        "Risk Score": "risk_score",
+        "Supplier Data Verified": "supplier_data_verified",
+        "Stock Data Complete": "stock_data_complete",
+    }
+    for target, source in aliases.items():
+        if target not in results.columns and source in results.columns:
+            results[target] = results[source]
+
+    calculated = calculate_bom_health_score(results)
+    recalculated_at = datetime.now(timezone.utc).isoformat()
+    health = {
+        "health_score": calculated.get("health_score"),
+        "health_status": calculated.get("health_status") or "Not scored",
+        "summary_message": calculated.get("summary_message") or "Health could not be calculated from saved evidence.",
+        "assessment_coverage": calculated.get("assessment_coverage"),
+        "needs_verification_count": int(calculated.get("needs_verification_count") or 0),
+        "health_recalculated_at": recalculated_at,
+        "health_source": "saved-evidence",
+    }
+    saved = get_store().update_analysis_health(
+        analysis_id,
+        workspace_id=workspace_id,
+        health=health,
+    )
+    if not saved:
+        return None
+    _REPORTS[analysis_id] = dict(saved)
+    return {
+        "ok": True,
+        "analysis_id": analysis_id,
+        **health,
+        "source_label": "Saved evidence; suppliers were not queried.",
+    }
+
+
 def delete_report(analysis_id: str, *, workspace_id: str) -> bool:
     """Delete analysis from durable store and drop any process-local cache."""
     from apps.api.workspace_store import WorkspaceAccessError

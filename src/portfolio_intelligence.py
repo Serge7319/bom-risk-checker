@@ -352,6 +352,7 @@ def build_portfolio_intelligence(
         )
 
     mpn_projects: Dict[str, set] = defaultdict(set)
+    mpn_analyses: Dict[str, set] = defaultdict(set)
     mpn_rows: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     manufacturer_counts = Counter()
     for row in normalized:
@@ -359,14 +360,17 @@ def build_portfolio_intelligence(
         if key.strip() in {"", "UNKNOWN", "N/A", "NAN"}:
             continue
         mpn_projects[key].add(row["Project"])
+        if row["Analysis ID"]:
+            mpn_analyses[key].add(row["Analysis ID"])
         mpn_rows[key].append(row)
         manufacturer_counts[row["Manufacturer"]] += 1
 
     shared_components = []
-    for key, projects in mpn_projects.items():
+    for key, analyses_using_part in mpn_analyses.items():
         rows = mpn_rows[key]
-        if len(projects) < 2:
+        if len(analyses_using_part) < 2:
             continue
+        projects = mpn_projects[key]
         scored_rows = [row for row in rows if row["Risk Score"] is not None]
         stock_rows = [row for row in rows if row["Stock Recorded"]]
         source_rows = [row for row in rows if row["Supplier Sources Recorded"]]
@@ -375,6 +379,7 @@ def build_portfolio_intelligence(
             {
                 "Part Number": worst["Part Number"],
                 "Manufacturer": worst["Manufacturer"],
+                "BOMs Using Part": len(analyses_using_part),
                 "Projects Using Part": len(projects),
                 "Highest Risk Score": max(
                     (row["Risk Score"] for row in scored_rows), default=None

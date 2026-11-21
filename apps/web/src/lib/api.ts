@@ -1148,6 +1148,14 @@ export async function fetchPortfolio(token: string) {
   return apiJson<Record<string, unknown>>("/tools/portfolio", { token });
 }
 
+export async function recalculatePortfolioHealth(token: string, analysisId: string) {
+  return apiJson<Record<string, unknown>>("/tools/portfolio/recalculate-health", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ analysis_id: analysisId }),
+  });
+}
+
 export async function fetchDetailedRisk(token: string, analysisId?: string) {
   const q = analysisId ? `?analysis_id=${encodeURIComponent(analysisId)}` : "";
   return apiJson<Record<string, unknown>>(`/tools/detailed-risk${q}`, { token });

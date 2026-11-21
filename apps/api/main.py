@@ -49,6 +49,7 @@ from apps.api.synthetic_analyze import (  # noqa: E402
     get_report,
     list_reports,
     parse_bom_bytes,
+    recalculate_report_health,
 )
 from apps.api.sandbox_auth import (  # noqa: E402
     AuthError,
@@ -2329,6 +2330,29 @@ async def portfolio_get(request: Request) -> JSONResponse:
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     return _json(migration_tools.portfolio_payload(workspace_id=ctx["workspace_id"]))
+
+
+async def portfolio_health_recalculate_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    analysis_id = str(body.get("analysis_id") or "").strip() if isinstance(body, dict) else ""
+    if not analysis_id:
+        return _json({"detail": "analysis_id is required"}, 400)
+    try:
+        result = recalculate_report_health(
+            analysis_id,
+            workspace_id=ctx["workspace_id"],
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    if not result:
+        return _json({"detail": "Report not found"}, 404)
+    return _json(result)
 
 
 async def detailed_risk_get(request: Request) -> JSONResponse:
@@ -5102,6 +5126,7 @@ app = Starlette(
         Route("/tools/cost-optimization", cost_optimization_get, methods=["GET"]),
         Route("/tools/supply-risk", supply_risk_post, methods=["POST"]),
         Route("/tools/portfolio", portfolio_get, methods=["GET"]),
+        Route("/tools/portfolio/recalculate-health", portfolio_health_recalculate_post, methods=["POST"]),
         Route("/tools/detailed-risk", detailed_risk_get, methods=["GET"]),
         Route("/tools/supplier-lookup", supplier_lookup_post, methods=["POST"]),
         Route("/tools/find-replacement", find_replacement_post, methods=["POST"]),
