@@ -11,11 +11,11 @@ from xml.sax.saxutils import escape
 COMPONENT_COLUMNS = (
     "MPN",
     "Manufacturer",
+    "Description",
     "BOM Manufacturer",
     "Supplier Manufacturer",
     "Manufacturer Source",
     "Manufacturer Identity Status",
-    "Description",
     "Parent MPN",
     "Line Type",
     "Quantity per Parent",

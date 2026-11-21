@@ -923,7 +923,9 @@ def detailed_risk_excel_bytes(
         sheet.auto_filter.ref = f"A1:{last_column}{max(1, len(data) + 1)}"
         sheet.print_title_rows = "1:1"
         widths = {
-            "MPN": 24, "Description": 38, "Manufacturer": 24, "Qty": 10,
+            "MPN": 24, "Description": 38, "Manufacturer": 24,
+            "BOM manufacturer": 26, "Supplier manufacturer": 26,
+            "Manufacturer source": 24, "Qty": 10,
             "Lifecycle": 18, "Stock": 14, "Evidence source": 24, "Recorded supplier": 22,
             "Supplier product URL": 34, "Datasheet URL": 34, "Sourcing checked at": 24,
             "Stock coverage": 18, "Lead time (weeks)": 17, "Lead-time source": 22,
