@@ -164,7 +164,7 @@ export default function PortfolioPage() {
   const reportHighCounts = reports.map((row) => numeric(row.high_risk_count));
   const highRiskTotal = reportHighCounts.some((count) => count === null)
     ? null
-    : reportHighCounts.reduce((sum, count) => sum + (count || 0), 0);
+    : reportHighCounts.reduce<number>((sum, count) => sum + (count || 0), 0);
 
   return (
     <Shell session={session}>
