@@ -260,6 +260,31 @@ def _evidence_summary(value: Any, *, value_key: str, unit: str = "") -> str:
     return "; ".join(lines)
 
 
+def _verified_supplier_offer_rows(row: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return only current exact-MPN distributor offers suitable for export."""
+    from src.saved_bom_cost import normalize_saved_offers, select_supplier_offer
+
+    mpn = _first(row, "MPN", "mpn", "manufacturer_part_number", "part_number")
+    quantity = _first(row, "Effective Quantity", "effective_quantity", "Quantity", "quantity", "qty")
+    normalized = normalize_saved_offers(
+        row.get("supplier_offers") or row.get("Supplier Offers") or [], mpn=str(mpn or "")
+    )
+    verified = []
+    for offer in normalized:
+        selected = select_supplier_offer(
+            [offer],
+            mpn=str(mpn or ""),
+            supplier=str(offer.get("distributor") or ""),
+            unit_price=offer.get("unit_price"),
+            currency=offer.get("currency"),
+            quantity=quantity,
+            require_current=True,
+        )
+        if selected and selected.get("quantity_break_applies") is True:
+            verified.append(selected)
+    return verified
+
+
 def _compliance_value(row: dict[str, Any], kind: str) -> tuple[str, str]:
     root = row.get("compliance_evidence") if isinstance(row.get("compliance_evidence"), dict) else {}
     node = root.get(kind) if isinstance(root.get(kind), dict) else {}
@@ -277,7 +302,11 @@ def _compliance_value(row: dict[str, Any], kind: str) -> tuple[str, str]:
     return (_text(value) or "Not retrieved", _text(source) or "Not recorded")
 
 
-def _compliance_source_details(row: dict[str, Any], kind: str) -> str:
+def _compliance_source_details(
+    row: dict[str, Any], kind: str, *, evidence_class: str = ""
+) -> str:
+    if evidence_class not in {"live-authorized-supplier", "synthetic-preview"}:
+        return ""
     root = row.get("compliance_evidence") if isinstance(row.get("compliance_evidence"), dict) else {}
     node = root.get(kind) if isinstance(root.get(kind), dict) else {}
     readings = node.get("sources") if isinstance(node.get("sources"), list) else []
@@ -287,6 +316,24 @@ def _compliance_source_details(row: dict[str, Any], kind: str) -> str:
     for item in readings:
         if not isinstance(item, dict):
             continue
+        if evidence_class == "live-authorized-supplier":
+            from src.normalizer import normalize_part_number
+            from src.supplier_source_identity import supplier_listing_url_is_valid
+            from apps.api.evidence_contract import is_current_supplier_snapshot
+
+            requested_mpn = normalize_part_number(
+                _first(row, "MPN", "mpn", "manufacturer_part_number", default="")
+            )
+            reading_mpn = normalize_part_number(item.get("mpn") or "")
+            source = item.get("source") or item.get("supplier") or ""
+            source_url = item.get("source_url") or item.get("url") or ""
+            if (
+                not requested_mpn
+                or reading_mpn != requested_mpn
+                or not supplier_listing_url_is_valid(source, source_url)
+                or not is_current_supplier_snapshot("lifecycle", item.get("retrieved_at"))
+            ):
+                continue
         pieces = [
             _text(item.get("source")) or "Supplier",
             _text(item.get("reported_value") or item.get("status")) or "No value",
@@ -304,22 +351,54 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
     from apps.api.evidence_contract import classify_part_evidence
 
     output = []
+    report_is_synthetic = str(report.get("mode") or "").strip().casefold() == "synthetic-preview"
     for source in report.get("parts") or []:
         if not isinstance(source, dict):
             continue
         row = dict(source)
+        if report_is_synthetic:
+            # A report-level preview mode is authoritative. This labels the row
+            # synthetic without trusting a saved envelope to prove live data.
+            row["evidence_class"] = "synthetic-preview"
+            row["identity_source"] = "synthetic-preview"
+            row["evidence_source"] = "synthetic-preview"
         # Rebuild from the saved raw supplier records. Older evidence envelopes
         # may have been created before exact-MPN/provenance checks were strict.
         evidence = classify_part_evidence(row)
-        rohs_value, rohs_source = _compliance_value(row, "rohs")
-        reach_value, reach_source = _compliance_value(row, "reach")
-        pfas_value, pfas_source = _compliance_value(row, "pfas")
+        lifecycle_field = (evidence.get("fields") or {}).get("lifecycle") or {}
+        stock_field = (evidence.get("fields") or {}).get("stock") or {}
+        price_field = (evidence.get("fields") or {}).get("price") or {}
+        compliance_fields = (evidence.get("fields") or {}).get("compliance") or {}
+        allowed_field_classes = {"live-authorized-supplier", "synthetic-preview"}
+        def compliance_export(kind: str) -> tuple[str, str, str]:
+            field = compliance_fields.get(kind) or {}
+            saved_value, saved_source = _compliance_value(row, kind)
+            field_class = field.get("evidence_class", "missing")
+            if field_class in allowed_field_classes:
+                return (
+                    _text(field.get("reported_value")) or saved_value,
+                    _text(field.get("source")) or saved_source,
+                    field_class,
+                )
+            return (
+                "Not verified" if saved_value != "Not retrieved" else "Not retrieved",
+                "Not recorded",
+                field_class,
+            )
+
+        rohs_value, rohs_source, rohs_class = compliance_export("rohs")
+        reach_value, reach_source, reach_class = compliance_export("reach")
+        pfas_value, pfas_source, pfas_class = compliance_export("pfas")
         lead_time_evidence = row.get("lead_time_evidence") or row.get("Lead Time Evidence") or []
         stock_evidence = row.get("stock_evidence") or row.get("Stock Evidence") or []
         stock_evidence = _field_from_evidence(
             evidence, "stock", "sources", default=stock_evidence
         ) or stock_evidence
-        supplier_offers = row.get("supplier_offers") or row.get("Supplier Offers") or []
+        supplier_offers = (
+            row.get("supplier_offers") or row.get("Supplier Offers") or []
+            if report_is_synthetic
+            else _verified_supplier_offer_rows(row)
+        )
         component = {
             "MPN": clean_text(_first(row, "MPN", "mpn", "manufacturer_part_number", "part_number")),
             "Manufacturer": clean_text(_first(row, "Manufacturer", "manufacturer")),
@@ -332,20 +411,36 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             "Line Type": _export_line_type(row),
             "Quantity per Parent": _first(row, "quantity_per_parent", "Quantity per parent", "Quantity", "quantity", "qty"),
             "Effective Quantity": _first(row, "effective_quantity", "Effective Quantity", "Quantity", "quantity", "qty"),
-            "Lifecycle": _first(row, "Lifecycle", "lifecycle_status", "Lifecycle Status"),
-            "Lifecycle Evidence Status": _field_from_evidence(evidence, "lifecycle", "evidence_class", default="missing"),
-            "Lifecycle Evidence Note": _field_from_evidence(evidence, "lifecycle", "gap", default=""),
+            "Lifecycle": (
+                _first(row, "Lifecycle", "lifecycle_status", "Lifecycle Status")
+                if lifecycle_field.get("evidence_class") in allowed_field_classes
+                else "Not verified"
+            ),
+            "Lifecycle Evidence Status": lifecycle_field.get("evidence_class", "missing"),
+            "Lifecycle Evidence Note": lifecycle_field.get("gap", ""),
             "Risk Level": _export_risk_level(row),
             "Risk Score": _export_risk_score(row),
             "Risk Reasons": _export_risk_reasons(row),
-            "Stock": _first(row, "Stock", "stock_available", "stock"),
-            "Stock Evidence Status": _field_from_evidence(evidence, "stock", "evidence_class", default="missing"),
-            "Stock Evidence Note": _field_from_evidence(evidence, "stock", "gap", default=""),
-            "Unit Price": _first(row, "Unit Price", "unit_price"),
-            "Currency": _first(row, "unit_price_currency", "currency"),
-            "Price Evidence Status": _field_from_evidence(evidence, "price", "evidence_class", default="missing"),
-            "Price Evidence Note": _field_from_evidence(evidence, "price", "gap", default=""),
-            "Price Break Quantity": _field_from_evidence(evidence, "price", "price_break_quantity", default=""),
+            "Stock": (
+                _first(row, "Stock", "stock_available", "stock")
+                if stock_field.get("evidence_class") in allowed_field_classes
+                else "Not verified"
+            ),
+            "Stock Evidence Status": stock_field.get("evidence_class", "missing"),
+            "Stock Evidence Note": stock_field.get("gap", ""),
+            "Unit Price": (
+                _first(row, "Unit Price", "unit_price")
+                if price_field.get("evidence_class") in allowed_field_classes
+                else "Not verified"
+            ),
+            "Currency": (
+                _first(row, "unit_price_currency", "currency")
+                if price_field.get("evidence_class") in allowed_field_classes
+                else ""
+            ),
+            "Price Evidence Status": price_field.get("evidence_class", "missing"),
+            "Price Evidence Note": price_field.get("gap", ""),
+            "Price Break Quantity": price_field.get("price_break_quantity", ""),
             "Price Quantity Applicability": (
                 "Applies"
                 if _field_from_evidence(evidence, "price", "quantity_break_applies") is True
@@ -387,16 +482,16 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             "PCN Source URL": _first(row, "pcn_url", "PCN URL"),
             "RoHS Status": rohs_value,
             "RoHS Evidence Source": rohs_source,
-            "RoHS Source URL": _first(row, "rohs_source_url", "rohs_evidence_url"),
-            "RoHS Evidence Details": _compliance_source_details(row, "rohs"),
+            "RoHS Source URL": _first(row, "rohs_source_url", "rohs_evidence_url") if rohs_class in allowed_field_classes else "",
+            "RoHS Evidence Details": _compliance_source_details(row, "rohs", evidence_class=rohs_class),
             "REACH Status": reach_value,
             "REACH Evidence Source": reach_source,
-            "REACH Source URL": _first(row, "reach_source_url", "reach_evidence_url"),
-            "REACH Evidence Details": _compliance_source_details(row, "reach"),
+            "REACH Source URL": _first(row, "reach_source_url", "reach_evidence_url") if reach_class in allowed_field_classes else "",
+            "REACH Evidence Details": _compliance_source_details(row, "reach", evidence_class=reach_class),
             "PFAS Status": pfas_value,
             "PFAS Evidence Source": pfas_source,
-            "PFAS Source URL": _first(row, "pfas_source_url", "pfas_evidence_url"),
-            "PFAS Evidence Details": _compliance_source_details(row, "pfas"),
+            "PFAS Source URL": _first(row, "pfas_source_url", "pfas_evidence_url") if pfas_class in allowed_field_classes else "",
+            "PFAS Evidence Details": _compliance_source_details(row, "pfas", evidence_class=pfas_class),
             "Stock Source": (
                 _field_from_evidence(evidence, "stock", "source")
                 or _first(row, "stock_source")
@@ -549,9 +644,6 @@ def _risk_summary_counts(
 
 
 def _executive_summary(report: dict[str, Any], rows: list[dict[str, Any]]) -> str:
-    saved_summary = _user_text(report.get("summary_message"))
-    if saved_summary:
-        return saved_summary
     counts = _risk_distribution(rows)
     total = len(rows)
     if not total:
@@ -564,6 +656,38 @@ def _executive_summary(report: dict[str, Any], rows: list[dict[str, Any]]) -> st
     if counts["unassessed"]:
         summary += " Unassessed components are not evidence of low risk."
     return summary
+
+
+def _recalculated_health(report: dict[str, Any]) -> tuple[Any, str]:
+    """Recompute aggregate health from raw component evidence, never saved totals."""
+    parts = [
+        dict(part)
+        for part in (report.get("parts") or [])
+        if isinstance(part, dict)
+        and _export_line_type(part).casefold() not in {"assembly", "subassembly"}
+    ]
+    if not parts:
+        return "Not scored", "Not reported"
+    if str(report.get("mode") or "").strip().casefold() == "synthetic-preview":
+        parts = [
+            {
+                **part,
+                "evidence_class": "synthetic-preview",
+                "identity_source": "synthetic-preview",
+                "evidence_source": "synthetic-preview",
+            }
+            for part in parts
+        ]
+    try:
+        import pandas as pd
+        from src.health_score import calculate_bom_health_score
+
+        result = calculate_bom_health_score(pd.DataFrame(parts))
+    except Exception:  # noqa: BLE001 - exports should remain available if scoring fails
+        return "Not scored", "Needs verification"
+    score = result.get("health_score")
+    status = _text(result.get("health_status")) or "Needs verification"
+    return (score if score is not None else "Not scored"), status
 
 
 def build_csv(report: dict[str, Any]) -> bytes:
@@ -789,10 +913,11 @@ def build_xlsx(report: dict[str, Any]) -> bytes:
 
     meta = _metadata(report)
     assessed = len(rows) - len(not_assessed)
+    health_score, health_status = _recalculated_health(report)
     facts = [
         *meta.items(),
-        ("Health score", report.get("health_score", "Not scored")),
-        ("Health status", _user_label(report.get("health_status"), "Not reported")),
+        ("Health score", health_score),
+        ("Health status", health_status),
         ("Total components", len(rows)),
         ("Risk assessed", assessed),
         ("Risk not assessed", len(not_assessed)),
@@ -942,7 +1067,7 @@ def build_pdf(report: dict[str, Any]) -> bytes:
         return Paragraph(text if markup else escape(text), style)
 
     metadata = _metadata(report)
-    health_score = report.get("health_score")
+    health_score, health_status = _recalculated_health(report)
     health_label = (
         "Not scored"
         if health_score is None or str(health_score).strip().casefold() in {"", "not scored", "unknown", "none"}
@@ -961,7 +1086,7 @@ def build_pdf(report: dict[str, Any]) -> bytes:
         paragraph(
             "<b>Health:</b> " + escape(health_label) +
             (" / 100" if health_label not in {"Not scored"} else "") +
-            " &nbsp;&nbsp; <b>Status:</b> " + escape(_user_label(report.get("health_status"), "Not reported")) +
+            " &nbsp;&nbsp; <b>Status:</b> " + escape(_user_label(health_status, "Not reported")) +
             " &nbsp;&nbsp; <b>Components:</b> " + str(len(rows)) +
             " &nbsp;&nbsp; <b>High / medium / low:</b> " +
             " / ".join(str(risk_counts[key]) for key in ("high", "medium", "low")),

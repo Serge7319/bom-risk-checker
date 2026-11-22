@@ -936,6 +936,14 @@ def classify_part_evidence(
     )
     # Never use price_source as the identity label — that washes commercial fields.
     explicit_class = str(row.get("evidence_class") or "").strip().casefold()
+    # Preserve a previously classified synthetic marker. Never accept a saved
+    # "live" envelope as proof: live status is rebuilt from the raw supplier
+    # identity and field provenance below.
+    saved_envelope = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}
+    if not _is_synthetic_label(explicit_class) and _is_synthetic_label(
+        saved_envelope.get("evidence_class")
+    ):
+        explicit_class = EVIDENCE_SYNTHETIC
     bom_manufacturer = _first(
         row.get("BOM Manufacturer"), row.get("bom_manufacturer"),
         row.get("requested_manufacturer"),
@@ -1045,13 +1053,19 @@ def classify_part_evidence(
         explicitly_synthetic = any(
             _is_synthetic_label(candidate)
             for candidate in (
+                explicit_class,
                 source_label,
                 row.get("evidence_source"),
                 row.get("evidence_class"),
                 row.get("identity_source"),
             )
         )
-        has_recorded_supplier_source = bool(source_label)
+        has_recorded_supplier_source = bool(
+            source_label
+            and str(source_label).strip().casefold()
+            not in {"missing", "not recorded", "not reported", "unknown"}
+            and explicit_class != EVIDENCE_MISSING
+        )
         unverified = has_recorded_supplier_source and not explicitly_synthetic
         identity_source = (
             EVIDENCE_SYNTHETIC
@@ -1166,8 +1180,13 @@ def annotate_report_parts(report: dict[str, Any] | None) -> dict[str, Any]:
     """Attach evidence envelopes to each part without mutating live claims."""
     payload = dict(report or {})
     parts = []
+    report_is_synthetic = _is_synthetic_label(payload.get("mode"))
     for part in payload.get("parts") or []:
         row = dict(part) if isinstance(part, dict) else {"value": part}
+        if report_is_synthetic:
+            row["evidence_class"] = EVIDENCE_SYNTHETIC
+            row["identity_source"] = EVIDENCE_SYNTHETIC
+            row["evidence_source"] = EVIDENCE_SYNTHETIC
         row["evidence"] = classify_part_evidence(row)
         parts.append(row)
     payload["parts"] = parts

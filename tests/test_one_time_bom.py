@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from openpyxl import load_workbook
+from tests.evidence_fixtures import live_supplier_part
 from src import one_time_bom
 from src.report_generator import save_results_to_excel
 
@@ -272,22 +273,24 @@ class OneTimeBOMTests(unittest.TestCase):
 
     def test_full_bom_excel_is_generated_in_memory_per_request(self):
         report = BytesIO()
+        verified_part = live_supplier_part(
+            "BC547B",
+            lifecycle="Active",
+            stock=800,
+            quantity=150,
+            unit_price=0.13,
+            sources=("Mouser", "DigiKey"),
+        )
+        verified_part.update({
+            "Stock Available": 800,
+            "Stock Data Sources": ["Mouser", "DigiKey"],
+            "Stock Data Complete": True,
+            "Best Source": "Mouser",
+            "Unit Price Currency": "USD",
+        })
         save_results_to_excel(
             [
-                {
-                    "MPN": "BC547B",
-                    "Risk Score": 90,
-                    "Risk Level": "High",
-                    "Lifecycle Status": "Active",
-                    "Stock Available": 800,
-                    "Stock Data Sources": ["Mouser"],
-                    "Stock Data Complete": True,
-                    "Supplier Count": 1,
-                    "Best Source": "Mouser",
-                    "Unit Price": 0.13,
-                    "Unit Price Currency": "USD",
-                    "Quantity": 150,
-                },
+                verified_part,
                 {
                     "MPN": "PCF8574P",
                     "Risk Score": None,
