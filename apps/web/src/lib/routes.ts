@@ -89,7 +89,7 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Monitoring",
     eyebrow: "Alerts & monitoring",
     description:
-      "Review lifecycle and risk signals derived from a saved analysis. Refresh is explicit and does not query suppliers for live data.",
+      "Review lifecycle and risk signals from saved BOM analyses. Use Refresh supplier data to query configured sources for exact MPNs; opening this page does not refresh supplier data or send email.",
   },
   evidence: {
     icon: "shield",
