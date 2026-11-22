@@ -857,7 +857,7 @@ function FindReplacementInner() {
               </h3>
               <p className="cv-card-subtitle">
                 {providerRows.some((row) => providerHasRawCatalogMatches(row.outcome))
-                  ? "Providers returned raw catalog matches, but fewer (or none) were retained after manufacturer, lineage, product-type, family, and duplicate filters. Provider coverage does not imply compatibility. Review provider outcomes above and manufacturer documentation before changing the design."
+                  ? "Providers returned raw catalog matches, but fewer (or none) were retained after manufacturer, lineage, product type, family, and duplicate filters. Provider coverage does not imply compatibility. Review provider outcomes above and manufacturer documentation before changing the design."
                   : "No qualified alternatives or catalog leads were returned in this search. That is not proof that no substitute exists — check manufacturer documentation and authorized distributors before changing the design."}
               </p>
               <div style={{ marginTop: 12 }}>
