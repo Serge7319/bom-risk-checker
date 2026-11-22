@@ -16,6 +16,19 @@ import { cleanKiCadFieldText, evidenceSourceLabel, userFacingLabel } from "@/lib
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
+type EvidenceField = { evidence_class?: string; source?: string };
+type PartEvidence = {
+  identity_verified?: boolean;
+  evidence_class?: string;
+  source?: string;
+  fields?: Record<string, EvidenceField | undefined>;
+};
+
+function partEvidence(part: Record<string, unknown>): PartEvidence {
+  const value = part.evidence;
+  return value && typeof value === "object" ? value as PartEvidence : {};
+}
+
 function EvidenceReviewPageInner() {
   const session = useRequireSession();
   const searchParams = useSearchParams();
@@ -67,11 +80,12 @@ function EvidenceReviewPageInner() {
     setReviewed(true);
   };
 
-  const verifiedParts = report?.parts.filter((part) =>
-    part.supplier_data_verified === true || part["Supplier Data Verified"] === true,
-  ).length || 0;
   const totalParts = report?.parts.length || 0;
-  const unverifiedParts = totalParts - verifiedParts;
+  const evidenceByPart = report?.parts.map(partEvidence) || [];
+  const verifiedParts = evidenceByPart.filter((evidence) => evidence.identity_verified === true).length;
+  const unverifiedSupplierParts = evidenceByPart.filter((evidence) => evidence.evidence_class === "unverified").length;
+  const noSupplierMatchParts = evidenceByPart.filter((evidence) => evidence.evidence_class === "missing").length;
+  const unresolvedParts = totalParts - verifiedParts;
   const legacyKiCadMetadataCount = report?.parts.filter((part) =>
     [part.MPN, part.mpn, part.Manufacturer, part.manufacturer].some((value) =>
       /BoardText\(value=[\s\S]*?Vector2\(/.test(String(value || "")),
@@ -79,14 +93,19 @@ function EvidenceReviewPageInner() {
   ).length || 0;
   const verificationTone = totalParts === 0
     ? "blue"
-    : verifiedParts === totalParts ? "green" : verifiedParts > 0 ? "amber" : "blue";
+    : unresolvedParts === 0 ? "green" : verifiedParts > 0 ? "amber" : "blue";
   const verificationStatus = totalParts === 0
     ? { label: "No parts", tone: "gray" as const }
-    : verifiedParts === totalParts
-      ? { label: "All matched", tone: "green" as const }
-      : verifiedParts > 0
-        ? { label: "Some exact matches", tone: "amber" as const }
-        : { label: "No exact matches", tone: "gray" as const };
+    : unresolvedParts === 0
+      ? { label: "All identities verified", tone: "green" as const }
+      : { label: `${verifiedParts} verified`, tone: "amber" as const };
+  const unresolvedStatus = noSupplierMatchParts > 0 && unverifiedSupplierParts > 0
+    ? `${unverifiedSupplierParts} unverified · ${noSupplierMatchParts} no match`
+    : noSupplierMatchParts > 0
+      ? `${noSupplierMatchParts} no exact supplier match`
+      : unverifiedSupplierParts > 0
+        ? `${unverifiedSupplierParts} need verification`
+        : unresolvedParts > 0 ? "Supplier evidence is not verified" : "All identities verified";
 
   return (
     <Shell session={session}>
@@ -127,8 +146,8 @@ function EvidenceReviewPageInner() {
         <>
           <div className="cv-kpis" aria-label="Evidence summary">
             <KpiCard icon="box" tone="blue" label="Components assessed" value={totalParts} status={{ label: "In this report", tone: totalParts > 0 ? "blue" : "gray" }} detail="Parts available for review" />
-            <KpiCard icon="check" tone={verificationTone} label="Exact part matches" value={verifiedParts} status={verificationStatus} detail="MPN and manufacturer identity only" />
-            <KpiCard icon="shield" tone={unverifiedParts > 0 ? "amber" : "green"} label="No exact match" value={unverifiedParts} status={unverifiedParts > 0 ? { label: "Review needed", tone: "amber" } : { label: "All matched", tone: "green" }} detail="Supplier records to review" />
+            <KpiCard icon="check" tone={verificationTone} label="Verified identities" value={verifiedParts} status={verificationStatus} detail="Exact MPN and manufacturer identity" />
+            <KpiCard icon="shield" tone={unresolvedParts > 0 ? "amber" : "green"} label="Needs verification" value={unresolvedParts} status={unresolvedParts > 0 ? { label: unresolvedStatus, tone: "amber" } : { label: "All identities verified", tone: "green" }} detail="Unverified supplier results or no exact match" />
           </div>
           <section className="cv-card pad" aria-labelledby="evidence-review-title">
             <div className="cv-section-heading cv-section-heading--card">
@@ -159,12 +178,36 @@ function EvidenceReviewPageInner() {
                 <tbody>
                   {report.parts.map((part, index) => {
                     const mpn = cleanKiCadFieldText(part.MPN || part.mpn || part.manufacturer_part_number || "—");
-                    const rawSource = part.evidence_source ?? part["Evidence Source"] ?? part.source ?? part.source_type;
-                    const sourceFallback = /synthetic|preview/i.test(report.mode)
-                      ? "Synthetic analysis"
-                      : "Not recorded";
-                    const verified = part.supplier_data_verified === true || part["Supplier Data Verified"] === true;
-                    return (
+                    const evidence = partEvidence(part);
+                    const evidenceClass = evidence.evidence_class || "unverified";
+                    const identityVerified = evidence.identity_verified === true;
+                    const lifecycleEvidence = evidence.fields?.lifecycle;
+                    const lifecycleRaw = part.Lifecycle || part.lifecycle || "Unknown";
+                    const lifecycleHasValue = !/^(unknown|not reported|—|-)$/.test(String(lifecycleRaw).trim().toLowerCase());
+                    const lifecycleVerification = lifecycleEvidence?.evidence_class === "live-authorized-supplier"
+                      ? "Verified"
+                      : lifecycleEvidence?.evidence_class === "synthetic-preview"
+                        ? "Preview"
+                        : lifecycleEvidence?.evidence_class === "missing" || !lifecycleHasValue
+                          ? "Not reported"
+                          : "Unverified";
+                    const sourceLabel = evidenceClass === "live-authorized-supplier"
+                      ? "Authorized supplier"
+                      : evidenceClass === "unverified"
+                        ? "Supplier result · needs verification"
+                        : evidenceClass === "synthetic-preview"
+                          ? "Synthetic preview"
+                          : evidenceClass === "missing"
+                            ? "No exact supplier match"
+                            : evidenceSourceLabel(evidence.source ?? part.evidence_source ?? part["Evidence Source"] ?? part.source ?? part.source_type, "Not recorded");
+                    const identityLabel = identityVerified
+                      ? "Exact match"
+                      : evidenceClass === "missing"
+                        ? "No supplier match"
+                        : evidenceClass === "synthetic-preview"
+                          ? "Synthetic preview"
+                          : "Needs verification";
+                    return (                    return (
                       <tr key={`${mpn}-${index}`}>
                         <td>
                           <div className="cv-part-cell">
@@ -173,10 +216,15 @@ function EvidenceReviewPageInner() {
                           </div>
                         </td>
                         <td>{cleanKiCadFieldText(part.Manufacturer || part.manufacturer || "Not recorded")}</td>
-                        <td><StatusPill kind="lifecycle" value={part.Lifecycle || part.lifecycle || "Unknown"} /></td>
+                        <td>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            <StatusPill kind="lifecycle" value={lifecycleRaw} />
+                            <StatusPill kind="verification" value={lifecycleVerification} />
+                          </div>
+                        </td>
                         <td><StatusPill kind="risk" value={part["Risk Level"] || part.risk_level || "Unknown"} /></td>
-                        <td><span className="cv-source-label">{evidenceSourceLabel(rawSource, sourceFallback)}</span></td>
-                        <td><StatusPill kind="verification" value={verified ? "Exact match" : "No exact match"} /></td>
+                        <td><span className="cv-source-label">{sourceLabel}</span></td>
+                        <td><StatusPill kind="verification" value={identityLabel} /></td>
                       </tr>
                     );
                   })}
