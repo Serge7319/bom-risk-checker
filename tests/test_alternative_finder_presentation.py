@@ -201,12 +201,15 @@ class AlternativeFinderPresentationTests(unittest.TestCase):
                 self.assertNotIn(meta, row)
 
     def test_runtime_wires_presentation_guards(self):
-        self.assertIn("resolve_presentation_suitability(", RUNTIME_SOURCE)
-        self.assertIn("format_engineering_compatibility_headline(", RUNTIME_SOURCE)
+        self.assertIn("classify_recommendation_suitability(", RUNTIME_SOURCE)
         self.assertIn("user_facing_comparison_rows(", RUNTIME_SOURCE)
         self.assertIn("user_facing_pdf_evidence_rows(", RUNTIME_SOURCE)
         self.assertIn("Developer comparison diagnostics", RUNTIME_SOURCE)
-        self.assertIn("SUITABILITY_SUPPLIER_VALIDATE", RUNTIME_SOURCE)
+        detail_source = (
+            Path(__file__).resolve().parents[1] / "src" / "ui" / "approved_pages.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("def _candidate_detail_html(", detail_source)
+        self.assertIn("recorded_supply_factors({", detail_source)
         self.assertIn(
             "Engineering compatibility: Incomplete — validation required.",
             Path(__file__).resolve().parents[1]
@@ -334,7 +337,9 @@ class ReplacementCandidateDecisionTests(unittest.TestCase):
         self.assertNotIn("Known conflict", bias)
         self.assertIn("Pinout was not in either supplier record", html_text)
         self.assertNotIn("qualified", html_text.casefold())
-        self.assertIn("Reported manufacturer lead time is 12 weeks or longer", html_text)
+        self.assertIn("13 weeks", html_text)  # retained as a reported supplier value
+        self.assertIn("Recorded-factor points under Cadivor's existing rules: 0", html_text)
+        self.assertNotIn("Reported manufacturer lead time is 12 weeks or longer", html_text)
         self.assertNotIn("Lead time is between 8 and 16 weeks", html_text)
         self.assertIn("https://www.onsemi.com/pdf/datasheet/lm358-d.pdf", html_text)
         self.assertIn("Pinout was not in either supplier record", html_text)
