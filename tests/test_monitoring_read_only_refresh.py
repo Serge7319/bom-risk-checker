@@ -105,9 +105,11 @@ def test_monitoring_payload_never_persists_or_records_refresh(
     first = migration_tools.monitoring_payload(workspace_id=WS, analysis_id="an-1")
     second = migration_tools.monitoring_payload(workspace_id=WS, analysis_id="an-1")
     assert first["read_only"] is True
-    assert len(first["alerts"]) == 3  # AAA111 risk, BBB222 lifecycle, CCC333 risk
+    # The saved BOM is synthetic preview data, so its display labels must not
+    # turn into risk or lifecycle alerts without verified supplier evidence.
+    assert first["alerts"] == []
     assert all(a["persisted"] is False for a in first["alerts"])
-    assert first["metrics"]["unpersisted_alerts"] == 3
+    assert first["metrics"]["unpersisted_alerts"] == 0
     assert first["refresh"] is None
     assert first["freshness"]["never_refreshed"] is True
     assert first["freshness"]["stale"] is True
@@ -138,6 +140,7 @@ def test_explicit_refresh_persists_and_reads_back_with_provenance(saved_report):
     assert result["scope"] == "analysis"
     assert result["analysis_id"] == "an-1"
     assert result["live_supplier_refresh"] is False
+    assert result["alerts"] == []  # synthetic preview rows do not create risk alerts
     assert result["refresh"]["scope"] == "analysis"
 
     view = migration_tools.monitoring_payload(workspace_id=WS, analysis_id="an-1")
@@ -156,9 +159,9 @@ def test_per_part_refresh_only_touches_selected_part(saved_report):
     )
     assert result["scope"] == "part"
     assert result["part_number"] == "aaa111"
-    assert {a["part_number"] for a in result["alerts"]} == {"AAA111"}
+    assert result["alerts"] == []
     stored = monitoring_store.list_alerts(WS, analysis_id="an-1")
-    assert {a["part_number"] for a in stored} == {"AAA111"}
+    assert stored == []
     assert monitoring_store.list_refresh_history(WS)[0]["part_number"] == "aaa111"
 
     with pytest.raises(ValueError):
@@ -178,7 +181,7 @@ def test_refresh_requires_analysis_or_explicit_portfolio(saved_report):
     assert result["scope"] == "portfolio"
     assert "Portfolio-wide" in result["scope_label"]
     assert set(result["analysis_ids"]) == {"an-1", "an-2"}
-    assert {a["analysis_id"] for a in result["alerts"]} == {"an-1", "an-2"}
+    assert result["alerts"] == []  # both saved analyses contain preview-only evidence
 
 
 def test_refresh_route_requires_scope(saved_report):
@@ -252,7 +255,8 @@ def test_scheduler_dry_run_sends_no_email_and_writes_nothing(
     assert result["dry_run"] is True
     assert result["persisted"] is False
     assert result["notifications"] == []
-    assert result["alert_count"] == 3
+    assert result["alert_count"] == 0
+    assert result["alerts"] == []
     assert calls == []
     assert monitoring_store.recorded_emails() == []
 
@@ -300,14 +304,14 @@ def test_dry_run_part_scope_counts_only_requested_part(saved_report, monkeypatch
     )
     assert result["scope"] == "part"
     assert result["part_number"] == "AAA111"
-    assert result["alert_count"] == 1
-    assert {a["part_number"] for a in result["alerts"]} == {"AAA111"}
+    assert result["alert_count"] == 0
+    assert result["alerts"] == []
     assert result["email_sent"] is False
 
 
 def test_refresh_reconciles_stale_alerts_off_active_view(saved_report):
     first = migration_tools.monitoring_refresh_payload(workspace_id=WS, analysis_id="an-1")
-    assert len(first["alerts"]) == 3
+    assert first["alerts"] == []
     # Persist a synthetic alert that no longer derives from the analysis.
     monitoring_store.persist_alerts(
         WS,
