@@ -191,6 +191,7 @@ export default function DesignImpactPage() {
                     setMpn(event.target.value);
                     setError("");
                     setNotice("");
+                    setShowImpact(false);
                   }}
                   placeholder="Type an MPN or choose a saved part"
                   autoComplete="off"
@@ -322,9 +323,6 @@ export default function DesignImpactPage() {
                     : "No matching BOM rows were returned for this component."}
                 </p>
               </div>
-              {affected.length ? (
-                <Link className="cv-button primary" href={replacementHref}>Find replacement options</Link>
-              ) : null}
             </div>
 
             {affected.length ? (
