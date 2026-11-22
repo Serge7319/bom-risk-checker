@@ -51,6 +51,50 @@ def _normalize(value: Any) -> str:
     return _text(value).lower().replace("_", " ").strip()
 
 
+def _current_supplier_fields(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    """Return only current exact-part supplier fields for decision reasoning."""
+    try:
+        from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+        from src.alternative_candidate_intelligence import supplier_evidence_row
+
+        evidence = classify_part_evidence(supplier_evidence_row(candidate))
+    except Exception:  # noqa: BLE001 - missing classifier means evidence is unknown
+        evidence = {}
+    fields = evidence.get("fields") if isinstance(evidence.get("fields"), Mapping) else {}
+    stock = fields.get("stock") if isinstance(fields.get("stock"), Mapping) else {}
+    lifecycle = fields.get("lifecycle") if isinstance(fields.get("lifecycle"), Mapping) else {}
+    price = fields.get("price") if isinstance(fields.get("price"), Mapping) else {}
+    return {
+        "stock": (
+            stock.get("observed_total")
+            if stock.get("evidence_class") == EVIDENCE_LIVE and stock.get("current") is True
+            else None
+        ),
+        "stock_complete": bool(stock.get("complete") is True),
+        "lifecycle": (
+            _text(candidate.get("Lifecycle") or candidate.get("lifecycle_status"), "Unknown")
+            if lifecycle.get("evidence_class") == EVIDENCE_LIVE and lifecycle.get("current") is True
+            else "Needs verification"
+        ),
+        "lifecycle_verified": bool(
+            lifecycle.get("evidence_class") == EVIDENCE_LIVE
+            and lifecycle.get("current") is True
+        ),
+        "price_verified": bool(
+            price.get("evidence_class") == EVIDENCE_LIVE
+            and price.get("current") is True
+            and price.get("quantity_break_applies") is True
+        ),
+        "unit_price": (
+            price.get("reported_value")
+            if price.get("evidence_class") == EVIDENCE_LIVE
+            and price.get("current") is True
+            and price.get("quantity_break_applies") is True
+            else None
+        ),
+    }
+
+
 def _same_text(left: Any, right: Any) -> bool:
     left_value = _normalize(left)
     right_value = _normalize(right)
@@ -157,11 +201,16 @@ def _build_passive_alternative_reasoning(
     matches = int(counts.get("Match", 0) or 0)
     differences = int(counts.get("Different", 0) or 0)
     needs_data = int(counts.get("Needs data", 0) or 0)
+    compared_fields = max(
+        0,
+        int(counts.get("compared_fields") or (
+            matches + differences + needs_data + int(counts.get("Listing agreement", 0) or 0)
+        )),
+    )
 
-    lifecycle = _text(candidate.get("Lifecycle"), "Unknown")
-    estimated_risk = _text(candidate.get("Estimated Risk"), "Unknown")
-    stock = int(_number(candidate.get("Stock"), 0))
-    unit_price = _number(candidate.get("Unit Price"), 0)
+    supplier_fields = _current_supplier_fields(candidate)
+    lifecycle = supplier_fields["lifecycle"]
+    stock = supplier_fields["stock"]
 
     blockers: List[str] = []
     verification: List[str] = []
@@ -244,24 +293,21 @@ def _build_passive_alternative_reasoning(
             else:
                 blockers.append("Mounting differs between original and candidate.")
 
-    if lifecycle.lower() == "active":
-        confirmed.append("Candidate lifecycle is active.")
+    if lifecycle.lower() == "active" and supplier_fields["lifecycle_verified"]:
+        confirmed.append("Supplier API reports an active lifecycle status for this exact part.")
     else:
-        verification.append(f"Review lifecycle status: {lifecycle}.")
+        verification.append("Verify the manufacturer lifecycle status from a current exact-part source.")
 
-    if stock <= 0:
-        blockers.append("No confirmed stock is currently available.")
+    if stock is None:
+        verification.append("Current exact-part supplier inventory is not verified; this is not checkout inventory.")
+    elif stock == 0:
+        blockers.append("Current supplier API snapshots report zero inventory; verify checkout availability.")
     elif stock < 100:
         verification.append(
-            f"Only {stock:,} units are currently recorded; confirm build coverage."
+            f"Supplier APIs report {stock:,} units; confirm build coverage and checkout availability."
         )
     else:
-        confirmed.append(f"{stock:,} units are currently recorded.")
-
-    if estimated_risk.lower() == "high":
-        blockers.append("Candidate is classified as high engineering risk.")
-    elif estimated_risk.lower() == "medium":
-        verification.append("Candidate requires focused engineering review.")
+        confirmed.append(f"Supplier APIs report {stock:,} units in inventory snapshots; checkout availability is not verified.")
 
     hard_blocker_count = len(blockers)
     verification_count = len(verification)
@@ -294,7 +340,15 @@ def _build_passive_alternative_reasoning(
         or evidence_assessment.get("supplier_relationship_summary")
     )
 
-    if hard_blocker_count == 0 and classification == CLASS_VERIFIED_DIRECT and differences == 0:
+    if hard_blocker_count:
+        disposition = "Not recommended as a drop-in replacement"
+        disposition_tone = "warn"
+        use_case = "Do not use as a drop-in; redesign or select a different candidate"
+        approval_guidance = (
+            "At least one family-relevant mismatch is verified. Resolve the listed blocker(s) "
+            "or choose another candidate before considering qualification."
+        )
+    elif classification == CLASS_VERIFIED_DIRECT and differences == 0:
         suitability = _text(candidate.get("Recommendation Suitability"))
         if not suitability:
             from src.alternative_classification import classify_recommendation_suitability
@@ -339,7 +393,7 @@ def _build_passive_alternative_reasoning(
             )
         else:
             disposition = VERIFIED_DIRECT_DISPOSITION
-            disposition_tone = "good"
+            disposition_tone = "warn"
             use_case = "Supplier-listed direct replacement with engineering qualification confirmation"
             approval_guidance = (
                 "Proceed with engineering qualification confirmation before production approval. "
@@ -350,50 +404,30 @@ def _build_passive_alternative_reasoning(
                     " Retrieved engineering comparison evidence is incomplete; confirm family-relevant "
                     "fields before treating this as a validated drop-in replacement."
                 )
-    elif hard_blocker_count == 0 and engineering_confidence >= 80:
-        disposition = "Recommended for engineering qualification"
-        disposition_tone = "good"
-        use_case = "Prototype and controlled production qualification"
-        approval_guidance = (
-            "Proceed with datasheet review, footprint confirmation, and prototype validation."
-        )
-    elif hard_blocker_count == 0 and engineering_confidence >= 55:
-        disposition = "Conditional candidate"
+    elif compared_fields > 0 and needs_data == 0:
+        disposition = "No differences in compared fields — qualification still required"
         disposition_tone = "warn"
-        use_case = "Prototype evaluation only"
+        use_case = "Engineering qualification and prototype evaluation"
         approval_guidance = (
-            "Resolve the verification checklist before approving this candidate for production."
+            "No difference was found in the fields that were compared. This does not establish complete parametric, footprint, circuit, or production qualification."
         )
     else:
-        disposition = "Not recommended as a drop-in replacement"
-        disposition_tone = "bad"
-        use_case = "Comparison reference only"
+        disposition = "Insufficient evidence for drop-in approval"
+        disposition_tone = "warn"
+        use_case = "Comparison reference and engineering review"
         approval_guidance = (
-            "Do not approve for production until the identified compatibility blockers are resolved."
+            "The available comparison is incomplete or contains differences. Resolve the listed review items and qualify the candidate before production approval."
         )
-
-    if hard_blocker_count:
-        confidence_adjustment = min(35, hard_blocker_count * 12)
-    else:
-        confidence_adjustment = min(12, verification_count * 2)
-
-    decision_confidence = max(
-        5,
-        min(
-            98,
-            round(engineering_confidence - confidence_adjustment),
-        ),
-    )
 
     stock_advantage = "more stock" in _normalize(stock_delta)
-    cost_advantage = "lower cost" in _normalize(price_delta)
+    cost_advantage = "lower listed price" in _normalize(price_delta) and supplier_fields["price_verified"]
     business_value = []
     if stock_advantage:
-        business_value.append("Improves current supply availability.")
+        business_value.append("Current supplier API inventory snapshots report more units; confirm checkout availability.")
     if cost_advantage:
-        business_value.append("Reduces estimated unit cost.")
-    if lifecycle.lower() == "active":
-        business_value.append("Supports longer-term sourcing continuity.")
+        business_value.append("The quantity-applicable supplier list price is lower in the recorded snapshot.")
+    if lifecycle.lower() == "active" and supplier_fields["lifecycle_verified"]:
+        business_value.append("Supplier API records report active lifecycle status for this exact part.")
     if supplier_relationship_summary:
         business_value.insert(
             0,
@@ -413,7 +447,7 @@ def _build_passive_alternative_reasoning(
     return {
         "disposition": disposition,
         "disposition_tone": disposition_tone,
-        "decision_confidence": decision_confidence,
+        "decision_confidence": None,
         "engineering_comparison_confidence": engineering_confidence,
         "supplier_relationship_confidence": supplier_relationship_confidence,
         "engineering_evidence_status": evidence_assessment.get(
@@ -428,13 +462,7 @@ def _build_passive_alternative_reasoning(
         "blockers": blockers,
         "business_value": business_value,
         "expected_work": expected_work,
-        "estimated_effort_hours": max(
-            2,
-            min(
-                16,
-                2 + hard_blocker_count * 3 + verification_count,
-            ),
-        ),
+        "estimated_effort_hours": None,
         "hard_blocker_count": hard_blocker_count,
         "verification_count": verification_count,
         "candidate_part": _text(candidate.get("Alternative Part"), "Candidate"),
@@ -442,7 +470,7 @@ def _build_passive_alternative_reasoning(
         "comparison_family": comparison_family,
         "classification": classification,
         "stock": stock,
-        "unit_price": unit_price,
+        "unit_price": supplier_fields["unit_price"],
     }
 
 
@@ -545,10 +573,9 @@ def build_alternative_reasoning(
         or candidate.get("Supply Voltage")
     )
 
-    lifecycle = _text(candidate.get("Lifecycle"), "Unknown")
-    estimated_risk = _text(candidate.get("Estimated Risk"), "Unknown")
-    stock = int(_number(candidate.get("Stock"), 0))
-    unit_price = _number(candidate.get("Unit Price"), 0)
+    supplier_fields = _current_supplier_fields(candidate)
+    lifecycle = supplier_fields["lifecycle"]
+    stock = supplier_fields["stock"]
 
     blockers: List[str] = []
     verification: List[str] = []
@@ -627,24 +654,21 @@ def build_alternative_reasoning(
     else:
         verification.append("Verify operating and absolute maximum voltage limits.")
 
-    if lifecycle.lower() == "active":
-        confirmed.append("Candidate lifecycle is active.")
+    if lifecycle.lower() == "active" and supplier_fields["lifecycle_verified"]:
+        confirmed.append("Supplier API reports an active lifecycle status for this exact part.")
     else:
-        verification.append(f"Review lifecycle status: {lifecycle}.")
+        verification.append("Verify the manufacturer lifecycle status from a current exact-part source.")
 
-    if stock <= 0:
-        blockers.append("No confirmed stock is currently available.")
+    if stock is None:
+        verification.append("Current exact-part supplier inventory is not verified; this is not checkout inventory.")
+    elif stock == 0:
+        blockers.append("Current supplier API snapshots report zero inventory; verify checkout availability.")
     elif stock < 100:
         verification.append(
-            f"Only {stock:,} units are currently recorded; confirm build coverage."
+            f"Supplier APIs report {stock:,} units; confirm build coverage and checkout availability."
         )
     else:
-        confirmed.append(f"{stock:,} units are currently recorded.")
-
-    if estimated_risk.lower() == "high":
-        blockers.append("Candidate is classified as high engineering risk.")
-    elif estimated_risk.lower() == "medium":
-        verification.append("Candidate requires focused engineering review.")
+        confirmed.append(f"Supplier APIs report {stock:,} units in inventory snapshots; checkout availability is not verified.")
 
     for warning in warning_items:
         if warning and warning not in verification and warning not in blockers:
@@ -657,54 +681,45 @@ def build_alternative_reasoning(
     hard_blocker_count = len(blockers)
     verification_count = len(verification)
 
-    if hard_blocker_count == 0 and compatibility_confidence >= 80:
-        disposition = "Recommended for engineering qualification"
-        disposition_tone = "good"
-        use_case = "Prototype and controlled production qualification"
-        approval_guidance = (
-            "Proceed with datasheet review, footprint confirmation, and prototype validation."
-        )
-    elif hard_blocker_count == 0 and compatibility_confidence >= 55:
-        disposition = "Conditional candidate"
-        disposition_tone = "warn"
-        use_case = "Prototype evaluation only"
-        approval_guidance = (
-            "Resolve the verification checklist before approving this candidate for production."
-        )
-    else:
-        disposition = "Not recommended as a drop-in replacement"
-        disposition_tone = "bad"
-        use_case = "Comparison reference only"
-        approval_guidance = (
-            "Do not approve for production until the identified compatibility blockers are resolved."
-        )
-
     if hard_blocker_count:
-        confidence_adjustment = min(35, hard_blocker_count * 12)
+        disposition = "Not recommended as a drop-in replacement"
+        disposition_tone = "warn"
+        use_case = "Do not use as a drop-in; redesign or select a different candidate"
+        approval_guidance = (
+            "At least one family-relevant mismatch is verified. Resolve the listed blocker(s) "
+            "or choose another candidate before considering qualification."
+        )
+    elif resolved_classification == CLASS_VERIFIED_DIRECT:
+        disposition = VERIFIED_DIRECT_DISPOSITION
+        disposition_tone = "warn"
+        use_case = "Supplier-listed candidate; engineering qualification required"
+        approval_guidance = (
+            "Supplier-listed direct-substitute status is evidence about the listing only. It does not replace datasheet, footprint, electrical, circuit, and prototype validation."
+        )
+    elif verification_count == 0:
+        disposition = "No differences in checked fields — qualification still required"
+        disposition_tone = "warn"
+        use_case = "Engineering qualification and prototype evaluation"
+        approval_guidance = (
+            "No difference was found in the checks completed. This does not establish complete parametric, footprint, circuit, or production qualification."
+        )
     else:
-        confidence_adjustment = min(15, verification_count * 4)
-
-    decision_confidence = max(
-        5,
-        min(
-            98,
-            round(
-                recommendation_score * 0.45
-                + compatibility_confidence * 0.55
-                - confidence_adjustment
-            ),
-        ),
-    )
+        disposition = "Insufficient evidence for drop-in approval"
+        disposition_tone = "warn"
+        use_case = "Comparison reference and engineering review"
+        approval_guidance = (
+            "The available comparison is incomplete or contains differences. Resolve the listed review items and qualify the candidate before production approval."
+        )
 
     stock_advantage = "more stock" in _normalize(stock_delta)
-    cost_advantage = "lower cost" in _normalize(price_delta)
+    cost_advantage = "lower listed price" in _normalize(price_delta) and supplier_fields["price_verified"]
     business_value = []
     if stock_advantage:
-        business_value.append("Improves current supply availability.")
+        business_value.append("Current supplier API inventory snapshots report more units; confirm checkout availability.")
     if cost_advantage:
-        business_value.append("Reduces estimated unit cost.")
-    if lifecycle.lower() == "active":
-        business_value.append("Supports longer-term sourcing continuity.")
+        business_value.append("The quantity-applicable supplier list price is lower in the recorded snapshot.")
+    if lifecycle.lower() == "active" and supplier_fields["lifecycle_verified"]:
+        business_value.append("Supplier API records report active lifecycle status for this exact part.")
     if not business_value:
         business_value.append("No verified sourcing or cost advantage dominates.")
 
@@ -724,7 +739,7 @@ def build_alternative_reasoning(
     return {
         "disposition": disposition,
         "disposition_tone": disposition_tone,
-        "decision_confidence": decision_confidence,
+        "decision_confidence": None,
         "use_case": use_case,
         "approval_guidance": approval_guidance,
         "confirmed_matches": confirmed,
@@ -732,13 +747,7 @@ def build_alternative_reasoning(
         "blockers": blockers,
         "business_value": business_value,
         "expected_work": expected_work,
-        "estimated_effort_hours": max(
-            2,
-            min(
-                16,
-                2 + hard_blocker_count * 3 + verification_count,
-            ),
-        ),
+        "estimated_effort_hours": None,
         "hard_blocker_count": hard_blocker_count,
         "verification_count": verification_count,
         "candidate_part": _text(candidate.get("Alternative Part"), "Candidate"),
@@ -746,5 +755,5 @@ def build_alternative_reasoning(
         "comparison_family": resolved_family,
         "classification": resolved_classification,
         "stock": stock,
-        "unit_price": unit_price,
+        "unit_price": supplier_fields["unit_price"],
     }

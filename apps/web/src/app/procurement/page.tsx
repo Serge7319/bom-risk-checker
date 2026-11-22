@@ -269,12 +269,14 @@ function ProcurementPageInner() {
   const evidenceSummary = (data?.evidence_summary || {}) as Record<string, unknown>;
   const liveParts = Number(evidenceSummary.live_parts || 0);
   const sampleParts = Number(evidenceSummary.sample_parts || 0);
-  const missingParts = Number(evidenceSummary.parts_without_verified_supplier_evidence || 0);
+  const unverifiedParts = Number(evidenceSummary.unverified_parts || 0);
+  const unmatchedParts = Number(evidenceSummary.parts_without_supplier_match || 0);
   const partsTotal = Number(evidenceSummary.parts_total || ((data?.parts as unknown[]) || []).length || 0);
   const sourcingBadgeParts = [
     liveParts ? `Live: ${liveParts}` : "",
     sampleParts ? `Synthetic estimates: ${sampleParts}` : "",
-    missingParts ? `No supplier match: ${missingParts}` : "",
+    unverifiedParts ? `Needs supplier verification: ${unverifiedParts}` : "",
+    unmatchedParts ? `No supplier match: ${unmatchedParts}` : "",
   ].filter(Boolean);
   const sourcingBadge = partsTotal
     ? `${sourcingBadgeParts.join("; ") || `${partsTotal} parts`} (of ${partsTotal})`

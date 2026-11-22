@@ -69,6 +69,7 @@ export type Report = AnalyzeSummary & {
     live_count?: number;
     synthetic_count?: number;
     missing_count?: number;
+    unverified_count?: number;
     live_lookups_enabled?: boolean;
   };
   hierarchy?: {

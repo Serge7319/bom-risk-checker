@@ -2,6 +2,13 @@ import math
 import pandas as pd
 
 
+def _bool_value(value: object) -> bool:
+    """Parse persisted booleans without treating the string 'false' as true."""
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().casefold() in {"1", "true", "yes", "complete", "completed"}
+
+
 def normalize_saved_health_score(value: object) -> int | None:
     """Parse a persisted score while keeping missing or invalid scores unknown."""
     if value is None or (isinstance(value, str) and not value.strip()):
@@ -30,28 +37,21 @@ def calculate_bom_health_score(results_df: pd.DataFrame) -> dict:
             "needs_verification_count": 0,
         }
 
-    levels = (
-        results_df["Risk Level"].fillna("").astype(str).str.casefold()
-        if "Risk Level" in results_df.columns
-        else pd.Series("", index=results_df.index)
-    )
-    needs_verification = levels.eq("needs verification")
-    if "Supplier Data Verified" in results_df.columns:
-        verified = results_df["Supplier Data Verified"].fillna(False).astype(bool)
-        needs_verification = needs_verification | ~verified
-    if "Stock Data Complete" in results_df.columns:
-        stock_complete = results_df["Stock Data Complete"].fillna(False).astype(bool)
-        needs_verification = needs_verification | ~stock_complete
-    if "Supplier Coverage Complete" in results_df.columns:
-        source_coverage = results_df["Supplier Coverage Complete"].map(
-            lambda value: (
-                value is True
-                or str(value or "").strip().casefold() in {"1", "true", "yes"}
-            )
-        )
-        needs_verification = needs_verification | ~source_coverage
-    needs_verification_count = int(needs_verification.sum())
-    coverage = (len(results_df) - needs_verification_count) / max(1, len(results_df))
+    # Recalculate every row from its source records. Saved scores and boolean
+    # flags can outlive the supplier snapshot that originally produced them.
+    from src.risk_engine import calculate_risk
+
+    assessments = [
+        calculate_risk(row.to_dict())
+        for _, row in results_df.iterrows()
+    ]
+    complete = [
+        bool(item.get("evidence_coverage_complete"))
+        and item.get("risk_score") is not None
+        for item in assessments
+    ]
+    needs_verification_count = sum(not item for item in complete)
+    coverage = sum(complete) / max(1, len(complete))
     if needs_verification_count:
         return {
             "health_score": None,
@@ -65,24 +65,8 @@ def calculate_bom_health_score(results_df: pd.DataFrame) -> dict:
             "needs_verification_count": needs_verification_count,
         }
 
-    if "Risk Score" not in results_df.columns:
-        return {
-            "health_score": None,
-            "health_status": "Needs verification",
-            "summary_message": "Risk scores are not available for this BOM.",
-            "assessment_coverage": coverage,
-            "needs_verification_count": len(results_df),
-        }
-    risk_scores = pd.to_numeric(results_df["Risk Score"], errors="coerce")
-    if risk_scores.notna().sum() == 0:
-        return {
-            "health_score": None,
-            "health_status": "Needs verification",
-            "summary_message": "Risk scores are not available for this BOM.",
-            "assessment_coverage": 0.0,
-            "needs_verification_count": len(results_df),
-        }
-    average_risk_score = risk_scores.mean()
+    risk_scores = [float(item["risk_score"]) for item in assessments]
+    average_risk_score = sum(risk_scores) / len(risk_scores)
     health_score = round(100 - average_risk_score)
 
     if health_score >= 85:
@@ -109,31 +93,42 @@ def generate_executive_summary(results_df: pd.DataFrame) -> list:
     Generates plain-English executive summary bullets.
     """
 
-    high_count = len(results_df[results_df["Risk Level"] == "High"])
-    medium_count = len(results_df[results_df["Risk Level"] == "Medium"])
-    low_count = len(results_df[results_df["Risk Level"] == "Low"])
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+    from src.risk_engine import calculate_risk
 
-    obsolete_count = len(
-        results_df[
-            results_df["Lifecycle Status"].isin(["Obsolete", "EOL"])
-        ]
-    )
-
-    unknown_lifecycle_count = len(
-        results_df[results_df["Lifecycle Status"] == "Unknown"]
-    )
-
-    stock = pd.to_numeric(results_df.get("Stock Available", pd.Series(index=results_df.index, dtype=float)), errors="coerce")
-    stock_verified = (
-        results_df["Supplier Data Verified"].fillna(False).astype(bool)
-        if "Supplier Data Verified" in results_df.columns
-        else stock.notna()
-    )
-    no_stock_count = int((stock.eq(0) & stock_verified).sum())
-    needs_verification_count = int(
-        (results_df.get("Risk Level", pd.Series(index=results_df.index, dtype=str))
-         .fillna("").astype(str).str.casefold() == "needs verification").sum()
-    )
+    assessments = [calculate_risk(row.to_dict()) for _, row in results_df.iterrows()]
+    high_count = sum(item.get("risk_level") == "High" for item in assessments)
+    medium_count = sum(item.get("risk_level") == "Medium" for item in assessments)
+    low_count = sum(item.get("risk_level") == "Low" for item in assessments)
+    obsolete_count = 0
+    unknown_lifecycle_count = 0
+    no_stock_count = 0
+    needs_verification_count = 0
+    for (_, row), assessment in zip(results_df.iterrows(), assessments):
+        part = row.to_dict()
+        fields = (classify_part_evidence(part).get("fields") or {})
+        lifecycle_field = fields.get("lifecycle") or {}
+        stock_field = fields.get("stock") or {}
+        lifecycle_live = lifecycle_field.get("evidence_class") == EVIDENCE_LIVE
+        stock_live = stock_field.get("evidence_class") == EVIDENCE_LIVE
+        lifecycle_value = str(
+            part.get("Lifecycle") or part.get("lifecycle_status")
+            or part.get("Lifecycle Status") or ""
+        ).casefold()
+        if lifecycle_live and any(
+            token in lifecycle_value for token in ("obsolete", "eol", "end of life", "discontinued")
+        ):
+            obsolete_count += 1
+        if not lifecycle_live:
+            unknown_lifecycle_count += 1
+        if (
+            stock_live
+            and bool(stock_field.get("complete"))
+            and stock_field.get("observed_total") == 0
+        ):
+            no_stock_count += 1
+        if not assessment.get("evidence_coverage_complete"):
+            needs_verification_count += 1
 
     bullets = [
         f"{high_count} high-risk components require immediate review.",

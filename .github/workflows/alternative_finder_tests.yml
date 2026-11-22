@@ -45,6 +45,16 @@ jobs:
             tests/test_marketing_analytics.py \
             tests/test_public_contact_intake.py -q
 
+      - name: Run supplier evidence and report reliability regressions
+        run: |
+          python -m unittest \
+            tests.test_supplier_evidence_semantics \
+            tests.test_supplier_source_identity \
+            tests.test_health_score_evidence \
+            tests.test_procurement_advisor \
+            tests.test_saved_bom_cost \
+            tests.test_detailed_risk_export -v
+
       - name: Install Next.js web dependencies
         run: npm ci --prefix apps/web
 

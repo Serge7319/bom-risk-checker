@@ -25,6 +25,13 @@ def _url(value: Any) -> str:
     return text if text.startswith(("https://", "http://")) else ""
 
 
+def _supplier_url(value: Any, supplier: Any) -> str:
+    from src.supplier_source_identity import supplier_listing_url_is_valid
+
+    text = str(value or "").strip()
+    return text if supplier_listing_url_is_valid(supplier, text) else ""
+
+
 def _number(value: Any) -> int | float | None:
     if value is None or isinstance(value, bool):
         return None
@@ -106,7 +113,10 @@ def normalize_candidate_evidence(value: Any, *, original_mpn: str = "") -> list[
             if isinstance(candidate.get("supplier_offers"), list) else [],
             "compliance_evidence": dict(_first(candidate, "compliance_evidence") or {})
             if isinstance(_first(candidate, "compliance_evidence"), dict) else {},
-            "product_url": _url(_first(candidate, "Product URL", "product_detail_url", "Source URL", "source_url")),
+            "product_url": _supplier_url(
+                _first(candidate, "Product URL", "product_detail_url", "Source URL", "source_url"),
+                _first(candidate, "Supplier", "Evidence Source", "source"),
+            ),
             "datasheet_url": _url(_first(candidate, "Datasheet URL", "datasheet_url", "datasheet")),
             "retrieved_at": str(_first(candidate, "Retrieved At", "retrieved_at", "checked_at") or "").strip(),
         })

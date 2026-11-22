@@ -657,8 +657,21 @@ def _discovery_row_to_part_data(row: dict) -> dict:
         "manufacturer_part_number": mpn,
         "manufacturer": str(row.get("manufacturer") or "").strip(),
         "description": description,
-        "stock_total": coerce_stock_total(row.get("stock_total", 0)),
-        "unit_price": row.get("unit_price", 0.0),
+        "stock_total": parse_stock_total(row.get("stock_total")),
+        "unit_price": row.get("unit_price"),
+        "unit_price_currency": row.get("unit_price_currency") or row.get("currency") or "",
+        "price_break_quantity": row.get("price_break_quantity"),
+        "supplier_offers": row.get("supplier_offers") or [],
+        "stock_evidence": row.get("stock_evidence") or [],
+        "stock_data_sources": row.get("stock_data_sources") or [],
+        "stock_data_complete": row.get("stock_data_complete") is True,
+        "total_market_stock": row.get("total_market_stock"),
+        "lifecycle_evidence": row.get("lifecycle_evidence") or [],
+        "lifecycle_conflict": bool(row.get("lifecycle_conflict")),
+        "lead_time_evidence": row.get("lead_time_evidence") or [],
+        "compliance_evidence": row.get("compliance_evidence") or {},
+        "retrieved_at": str(row.get("retrieved_at") or "").strip(),
+        "provider_status": str(row.get("provider_status") or "").strip(),
         "datasheet_url": str(row.get("datasheet_url") or "").strip(),
         "package": package or passive_fields.get("package", ""),
         "mounting_style": str(row.get("mounting_style") or passive_fields.get("mounting_style", "")).strip(),
@@ -687,7 +700,7 @@ def _discovery_row_to_part_data(row: dict) -> dict:
         ).strip(),
         "source": str(row.get("source") or "DigiKey"),
         "image_url": str(row.get("image_url") or row.get("photo_url") or "").strip(),
-        "supplier_data_verified": bool(mpn),
+        "supplier_data_verified": bool(row.get("supplier_data_verified")),
         **passive_fields,
     }
 
@@ -1362,6 +1375,52 @@ def apply_supplier_enrichment_to_candidate(
     enriched = dict(candidate)
     supplier_data = dict(candidate_supplier_data or {})
 
+    candidate_mpn = str(
+        supplier_data.get("manufacturer_part_number")
+        or enriched.get("Alternative Part")
+        or ""
+    ).strip()
+    if candidate_mpn:
+        enriched["MPN"] = candidate_mpn
+        enriched["mpn"] = candidate_mpn
+        enriched["manufacturer_part_number"] = candidate_mpn
+    if supplier_data.get("manufacturer"):
+        enriched["manufacturer"] = supplier_data.get("manufacturer")
+        enriched["Supplier Manufacturer"] = supplier_data.get("manufacturer")
+    if supplier_data.get("retrieved_at"):
+        enriched["retrieved_at"] = supplier_data.get("retrieved_at")
+        enriched["identity_retrieved_at"] = supplier_data.get("retrieved_at")
+    if supplier_data.get("source"):
+        enriched["source"] = supplier_data.get("source")
+        enriched["Supplier"] = supplier_data.get("source")
+    if supplier_data.get("supplier_data_verified"):
+        enriched["identity_source"] = "live-authorized-supplier"
+        enriched["evidence_source"] = "live-authorized-supplier"
+    if supplier_data.get("provider_status"):
+        enriched["provider_status"] = supplier_data.get("provider_status")
+    for key in (
+        "supplier_data_verified",
+        "supplier_offers",
+        "stock_evidence",
+        "stock_data_sources",
+        "stock_data_complete",
+        "lifecycle_evidence",
+        "lifecycle_conflict",
+        "lead_time_evidence",
+        "compliance_evidence",
+        "price_break_quantity",
+        "product_detail_url",
+        "datasheet_url",
+    ):
+        if key in supplier_data:
+            enriched[key] = supplier_data.get(key)
+    enriched["product_url"] = (
+        supplier_data.get("product_detail_url")
+        or supplier_data.get("product_url")
+        or enriched.get("product_url")
+        or ""
+    )
+
     for candidate_key, supplier_key in (
         ("Package", "package"),
         ("Pin Count", "pin_count"),
@@ -1579,12 +1638,30 @@ def apply_supplier_enrichment_to_candidate(
         enriched["Supplier"] = supplier_data.get("source") or enriched.get("Supplier", "")
         enriched["Sources Available"] = supplier_data.get("sources_available", "")
         enriched["Supplier Count"] = supplier_data.get("supplier_count", 0)
-        enriched["Stock"] = coerce_stock_total(
-            supplier_data.get("stock_total", enriched.get("Stock", 0))
+        observed_market_stock = supplier_data.get("total_market_stock")
+        if observed_market_stock is None:
+            observed_market_stock = supplier_data.get("stock_total")
+        enriched["Stock"] = parse_stock_total(observed_market_stock)
+        enriched["stock"] = enriched["Stock"]
+        enriched["total_market_stock"] = observed_market_stock
+        enriched["Unit Price"] = supplier_data.get("unit_price")
+        enriched["unit_price"] = enriched["Unit Price"]
+        enriched["Unit Price Currency"] = supplier_data.get("unit_price_currency") or supplier_data.get("currency") or ""
+        enriched["unit_price_currency"] = enriched["Unit Price Currency"]
+        enriched["Lifecycle"] = supplier_data.get("lifecycle_status") or "Unknown"
+        enriched["lifecycle_status"] = enriched["Lifecycle"]
+
+    # Store the normalized field envelope beside the candidate so every display
+    # can distinguish a live, fresh supplier snapshot from an unverified value.
+    try:
+        from apps.api.evidence_contract import classify_part_evidence
+        from src.alternative_candidate_intelligence import supplier_evidence_row
+
+        enriched["evidence_envelope"] = classify_part_evidence(
+            supplier_evidence_row(enriched)
         )
-        enriched["Unit Price"] = supplier_data.get("unit_price", enriched.get("Unit Price", 0.0))
-        if supplier_data.get("lifecycle_status"):
-            enriched["Lifecycle"] = supplier_data.get("lifecycle_status")
+    except Exception:  # noqa: BLE001 - evidence display fails closed in the UI
+        enriched["evidence_envelope"] = {}
 
     suitability = classify_recommendation_suitability(
         str(enriched.get("Lifecycle") or ""),

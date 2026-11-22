@@ -18,33 +18,55 @@ from src.ui.ei_bom_report import (
     _format_snapshot_timestamp,
     _navigate_to_detailed_report_analysis,
 )
+from tests.evidence_fixtures import live_supplier_part
+
+def _layout_part(
+    mpn: str,
+    *,
+    description: str,
+    manufacturer: str,
+    lifecycle: str,
+    stock: int,
+    quantity: int,
+    unit_price: float | None = None,
+    lead_time_weeks: float | None = None,
+    legacy_risk_score: int | None = None,
+    legacy_risk_level: str = "",
+) -> dict:
+    """A source-qualified fixture for report layout assertions, never checkout data."""
+    part = live_supplier_part(
+        mpn,
+        lifecycle=lifecycle,
+        stock=stock,
+        quantity=quantity,
+        unit_price=unit_price,
+        lead_time_weeks=lead_time_weeks,
+    )
+    part.update({
+        "description": description,
+        "manufacturer": manufacturer,
+        "primary_supplier": "Digi-Key",
+        "best_source": "Digi-Key",
+    })
+    if legacy_risk_score is not None:
+        part["risk_score"] = legacy_risk_score
+    if legacy_risk_level:
+        part["risk_level"] = legacy_risk_level
+    return part
 
 
 PARTS = [
-    {
-        "mpn": "MPN-001",
-        "description": "32-bit Microcontroller",
-        "manufacturer": "AlphaSemi",
-        "risk_score": 92,
-        "risk_level": "High",
-        "stock_available": 0,
-        "supplier_count": 1,
-        "lifecycle_status": "Obsolete",
-        "lead_time_weeks": 52,
-        "best_source": "Digi-Key",
-    },
-    {
-        "mpn": "MPN-002",
-        "description": "Voltage Regulator",
-        "manufacturer": "BetaChip",
-        "risk_score": 28,
-        "risk_level": "Medium",
-        "stock_available": 40,
-        "supplier_count": 2,
-        "lifecycle_status": "Active",
-        "best_source": "Mouser",
-        "unit_price": "1.20",
-    },
+    _layout_part(
+        "MPN-001", description="32-bit Microcontroller", manufacturer="AlphaSemi",
+        lifecycle="Obsolete", stock=0, quantity=5, lead_time_weeks=52,
+        legacy_risk_score=92, legacy_risk_level="High",
+    ),
+    _layout_part(
+        "MPN-002", description="Voltage Regulator", manufacturer="BetaChip",
+        lifecycle="Active", stock=40, quantity=10, unit_price=1.2,
+        lead_time_weeks=26,
+        legacy_risk_score=28, legacy_risk_level="Medium",
+    ),
 ]
 REPORT_SOURCE = (Path(__file__).resolve().parents[1] / "src" / "ui" / "ei_bom_report.py").read_text(encoding="utf-8")
 
@@ -85,13 +107,11 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn('mpn=mpn', action)
 
     def test_detailed_risk_exposure_summary_uses_recorded_cost_and_lead_time(self):
-        markup = _risk_exposure_markup([
-            {
-                "mpn": "LM358N", "quantity": 10, "unit_price": 2.0,
-                "currency": "USD", "risk_level": "High", "lifecycle_status": "Obsolete",
-                "lead_time_weeks": 62, "lead_time_source": "Mouser",
-            }
-        ])
+        part = live_supplier_part(
+            "LM358N", lifecycle="Obsolete", stock=0, quantity=10,
+            unit_price=2.0, lead_time_weeks=62, sources=("Mouser", "DigiKey"),
+        )
+        markup = _risk_exposure_markup([part])
         self.assertIn("USD 20.00", markup)
         self.assertIn("62 weeks — LM358N (Mouser)", markup)
         self.assertIn("not a project-delay forecast", markup)
@@ -209,18 +229,15 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertTrue(session["cadivor_show_detailed_risk"])
         self.assertNotIn("ei_report_choice", session)
 
-    def test_confirmed_zero_stock_elevates_saved_medium_risk_in_report(self):
-        part = {
-            "mpn": "TEST-ONLY-TPS5430DDAR",
+    def test_confirmed_zero_stock_recalculates_risk_from_exact_supplier_evidence(self):
+        part = live_supplier_part(
+            "TEST-ONLY-TPS5430DDAR", lifecycle="Obsolete", stock=0, quantity=1,
+        )
+        part.update({
             "risk_score": 50,
             "risk_level": "Medium",
-            "quantity": 1,
-            "stock_available": 0,
-            "stock_data_sources": ["DigiKey"],
-            "supplier_count": 3,
             "lead_time_weeks": 13,
-            "lifecycle_status": "Conflicting supplier data",
-        }
+        })
 
         row = _part_rows([part])[0]
         html = engineering_intelligence_html(
@@ -231,8 +248,8 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
 
         self.assertEqual(row["level"], "High")
-        self.assertEqual(row["score"], 85)
-        self.assertEqual(row["score_display"], "85")
+        self.assertEqual(row["score"], 100)
+        self.assertEqual(row["score_display"], "100")
         self.assertIn("Engineering review required", html)
         self.assertNotIn("No high-risk components found", html)
 
@@ -247,8 +264,8 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
 
         row = _part_rows([part])[0]
 
-        self.assertEqual(row["level"], "Medium")
-        self.assertEqual(row["score"], 50)
+        self.assertEqual(row["level"], "Needs verification")
+        self.assertIsNone(row["score"])
 
     def test_bom_risk_puts_summary_and_snapshot_before_component_findings(self):
         report = engineering_intelligence_html(
@@ -369,7 +386,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertIn("Alternative approved: MPN-901", risk)
         self.assertIn("Mitigated", risk)
         self.assertIn("Original BOM risk: High", risk)
-        self.assertIn("score 92/100", risk)
+        self.assertIn("score 100/100", risk)
         self.assertIn("MPN-901", risk)
         self.assertIn("Approved alternatives</span><strong>1</strong>", risk)
         alternatives = engineering_intelligence_html(
@@ -409,6 +426,25 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
         self.assertIn("Approved mitigation recorded", report)
         self.assertIn("Needs review</span><strong>0</strong>", report)
+
+    def test_unverified_approved_alternative_does_not_mark_risk_as_mitigated(self):
+        report = engineering_intelligence_html(
+            bom_name="Unverified BOM",
+            part_count=1,
+            tab="BOM Risk",
+            parts=[{"mpn": "TEST-PART", "risk_score": 90, "risk_level": "High"}],
+            health_score=90,
+            approved_alternatives=[{
+                "original_part": "TEST-PART",
+                "alternative_part": "TEST-ALT",
+                "decision": "Approved",
+            }],
+        )
+
+        self.assertIn("Health</span><strong>Not calculated", report)
+        self.assertIn("Decision recorded", report)
+        self.assertIn("Original BOM risk: Needs verification", report)
+        self.assertNotIn("Mitigated", report)
 
     def test_saved_analysis_timestamp_is_human_readable_and_utc(self):
         self.assertEqual(
@@ -593,7 +629,7 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
             bom_name="Healthy BOM",
             part_count=1,
             tab="BOM Risk",
-            parts=[{"mpn": "R-1", "risk_level": "Low", "risk_score": 12}],
+            parts=[live_supplier_part("R-1", lifecycle="Active", stock=100, quantity=1)],
         )
         self.assertIn("No high-risk components found", html)
         self.assertNotIn("Engineering review required", html)
@@ -628,14 +664,16 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         )
 
         self.assertIn("Supplier evidence incomplete", html)
-        self.assertIn("1/2", html)
+        self.assertIn("0/2", html)
         self.assertIn("Needs review</span><strong>2</strong>", html)
-        self.assertIn("No-stock parts</span><strong>1</strong>", html)
+        self.assertIn("No-stock parts</span><strong>0</strong>", html)
         self.assertIn("Single-source</span><strong>0</strong>", html)
         self.assertNotIn("No high-risk components found", html)
         self.assertIn("Verify component data", html)
         self.assertIn("No configured distributor returned a matching record", html)
         self.assertIn("data-illustration=\"capacitor\"", html)
+        self.assertIn("Not calculated", html)
+        self.assertNotIn("0/100", html)
 
     def test_engineering_intelligence_tabs_commit_before_the_page_rerun(self):
         source = Path("src/ui/ei_bom_report.py").read_text(encoding="utf-8")
@@ -755,17 +793,14 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
                 "unit_price": 0.0,
                 "stock_available": 0,
             },
-            {
-                "mpn": "TPS54331D",
-                "manufacturer": "Texas Instruments",
-                "risk_level": "Medium",
-                "risk_reasons": "Lead time is longer than the release window.",
-                "unit_price": 1.2,
-                "quantity": 10,
-                "primary_supplier": "DigiKey",
-                "stock_available": 1200,
-                "product_url": "https://www.digikey.com/en/products/detail/ti/TPS54331D/1",
-            },
+            dict(
+                live_supplier_part(
+                    "TPS54331D", lifecycle="Active", stock=1200,
+                    quantity=10, unit_price=1.2, sources=("DigiKey",),
+                ),
+                manufacturer="Texas Instruments",
+                product_url="https://www.digikey.com/en/products/detail/ti/TPS54331D/1",
+            ),
         ]
         html = engineering_intelligence_html(
             bom_name="Industrial Controller BOM",
@@ -779,8 +814,8 @@ class EngineeringIntelligenceLayoutTests(unittest.TestCase):
         self.assertNotIn(">Best source<", html)
         self.assertIn("Saved distributor offer(s)", html)
         self.assertIn("DigiKey", html)
-        self.assertIn("$1.2", html)
-        self.assertIn("$12", html)
+        self.assertIn("USD 1.2", html)
+        self.assertIn("USD 12", html)
         self.assertIn("https://www.digikey.com/en/products/detail/ti/TPS54331D/1", html)
         self.assertIn("One saved offer", html)
         self.assertNotIn("Not labeled best", html)

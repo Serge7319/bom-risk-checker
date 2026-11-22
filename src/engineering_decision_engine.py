@@ -1,6 +1,7 @@
 """Cadivor Engineering Decision Intelligence — Sprint 66 v1 / Sprint 67 v2."""
 from __future__ import annotations
 
+import math
 from html import escape
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
@@ -96,30 +97,70 @@ def cache_decision_brief(cache_key: str, brief: Mapping[str, Any]) -> None:
 
 
 def parts_to_results_df(parts: Iterable[Dict[str, Any]]) -> pd.DataFrame:
-    """Normalize saved analysis parts into a BOM results frame for intelligence reuse."""
+    """Build a BOM results frame from evidence-gated saved part records."""
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+    from src.risk_engine import calculate_risk, _coverage_complete
+
     rows: List[Dict[str, Any]] = []
     for part in parts or []:
-        rows.append(
+        if not isinstance(part, dict):
+            continue
+        evidence = classify_part_evidence(part)
+        fields = evidence.get("fields") if isinstance(evidence.get("fields"), dict) else {}
+        lifecycle = fields.get("lifecycle") if isinstance(fields.get("lifecycle"), dict) else {}
+        stock = fields.get("stock") if isinstance(fields.get("stock"), dict) else {}
+        lead_time = fields.get("lead_time") if isinstance(fields.get("lead_time"), dict) else {}
+        identity = fields.get("identity") if isinstance(fields.get("identity"), dict) else {}
+        lifecycle_live = lifecycle.get("evidence_class") == EVIDENCE_LIVE
+        stock_live = stock.get("evidence_class") == EVIDENCE_LIVE
+        lead_time_live = lead_time.get("evidence_class") == EVIDENCE_LIVE
+        identity_live = identity.get("evidence_class") == EVIDENCE_LIVE
+        stock_complete = bool(stock_live and stock.get("complete"))
+        coverage_complete, _ = _coverage_complete(part)
+        risk = calculate_risk(part)
+        lifecycle_value = (
+            part.get("Lifecycle") or part.get("lifecycle_status")
+            or part.get("Lifecycle Status")
+        )
+        stock_value = stock.get("observed_total") if stock_live else None
+        supplier_count = (
+            part.get("supplier_count")
+            if part.get("supplier_count") is not None
+            else part.get("Supplier Count")
+        )
+        if not (identity_live and coverage_complete):
+            supplier_count = None
+        lead_value = (
+            part.get("lead_time_weeks")
+            if part.get("lead_time_weeks") is not None
+            else part.get("Lead Time Weeks")
+        )
+        # Keep the source payload columns so any downstream consumer can
+        # independently revalidate provenance instead of inheriting this view's
+        # display fields or a persisted evidence envelope.
+        row = dict(part)
+        row.update(
             {
                 "MPN": _mpn(part),
                 "Manufacturer": _text(part.get("manufacturer") or part.get("Manufacturer")),
-                "Lifecycle Status": _text(
-                    part.get("lifecycle_status") or part.get("Lifecycle Status"),
-                    "Unknown",
-                ),
-                "Stock Available": int(
-                    _number(part.get("stock_available") or part.get("Stock Available"), 0)
-                ),
-                "Supplier Count": int(
-                    _number(part.get("supplier_count") or part.get("Supplier Count"), 0)
-                ),
-                "Lead Time Weeks": _number(
-                    part.get("lead_time_weeks") or part.get("Lead Time Weeks"), 0
-                ),
-                "Risk Level": _text(part.get("risk_level") or part.get("Risk Level"), "Low"),
-                "Risk Score": int(_number(part.get("risk_score") or part.get("Risk Score"), 0)),
+                "Quantity": part.get("quantity") if part.get("quantity") is not None else part.get("Quantity"),
+                "Lifecycle Status": _text(lifecycle_value, "Needs verification") if lifecycle_live else "Needs verification",
+                "Stock Available": stock_value,
+                "Supplier Count": _number(supplier_count, None) if supplier_count is not None else None,
+                "Lead Time Weeks": _number(lead_value, None) if lead_time_live and lead_value is not None else None,
+                "Risk Level": risk.get("risk_level") or "Needs verification",
+                "Risk Score": risk.get("risk_score"),
+                "Risk Reasons": list(risk.get("risk_reasons") or []),
+                "Supplier Data Verified": identity_live,
+                "Stock Data Complete": stock_complete,
+                "Supplier Coverage Complete": bool(identity_live and coverage_complete),
+                "Lifecycle Evidence Status": lifecycle.get("evidence_class") or "missing",
+                "Stock Evidence Status": stock.get("evidence_class") or "missing",
+                "Price Evidence Status": (fields.get("price") or {}).get("evidence_class", "missing"),
+                "Evidence": evidence,
             }
         )
+        rows.append(row)
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 
@@ -133,36 +174,36 @@ def _results_to_parts(results_df: pd.DataFrame) -> List[Dict[str, Any]]:
             or row.get("Manufacturer Part Number"),
             "Part number unavailable",
         )
-        rows.append(
-            {
-                "mpn": part_number,
-                "MPN": part_number,
-                "manufacturer": _text(row.get("Manufacturer")),
-                "Manufacturer": _text(row.get("Manufacturer")),
-                "lifecycle_status": _text(row.get("Lifecycle Status"), "Unknown"),
-                "Lifecycle Status": _text(row.get("Lifecycle Status"), "Unknown"),
-                "stock_available": int(_number(row.get("Stock Available"), 0)),
-                "Stock Available": int(_number(row.get("Stock Available"), 0)),
-                "supplier_count": int(_number(row.get("Supplier Count"), 0)),
-                "Supplier Count": int(_number(row.get("Supplier Count"), 0)),
-                "lead_time_weeks": _number(row.get("Lead Time Weeks"), 0),
-                "Lead Time Weeks": _number(row.get("Lead Time Weeks"), 0),
-                "risk_level": _text(row.get("Risk Level"), "Low"),
-                "Risk Level": _text(row.get("Risk Level"), "Low"),
-                "risk_score": int(_number(row.get("Risk Score"), 0)),
-                "Risk Score": int(_number(row.get("Risk Score"), 0)),
-            }
-        )
+        part = row.to_dict()
+        part.setdefault("mpn", part_number)
+        part.setdefault("MPN", part_number)
+        part.setdefault("manufacturer", _text(row.get("Manufacturer")))
+        part.setdefault("Manufacturer", _text(row.get("Manufacturer")))
+        if "lifecycle_status" not in part:
+            part["lifecycle_status"] = _text(row.get("Lifecycle Status"), "Unknown")
+        if "stock_available" not in part:
+            part["stock_available"] = row.get("Stock Available")
+        if "supplier_count" not in part:
+            part["supplier_count"] = row.get("Supplier Count")
+        if "lead_time_weeks" not in part:
+            part["lead_time_weeks"] = row.get("Lead Time Weeks")
+        part["risk_level"] = _text(row.get("Risk Level"), "Needs verification")
+        part["risk_score"] = row.get("Risk Score")
+        part.setdefault("quantity", row.get("Quantity"))
+        part["evidence"] = row.get("Evidence") if isinstance(row.get("Evidence"), dict) else {}
+        rows.append(part)
     return rows
 
 
-def _analysis_from_results(results_df: pd.DataFrame, *, health_score: int = 0) -> Dict[str, Any]:
+def _analysis_from_results(results_df: pd.DataFrame, *, health_score: int | None = None) -> Dict[str, Any]:
     high = int((results_df["Risk Level"].astype(str).str.lower() == "high").sum()) if "Risk Level" in results_df else 0
     medium = int((results_df["Risk Level"].astype(str).str.lower() == "medium").sum()) if "Risk Level" in results_df else 0
     low = int((results_df["Risk Level"].astype(str).str.lower() == "low").sum()) if "Risk Level" in results_df else 0
+    from src.health_score import calculate_bom_health_score
+
+    health = calculate_bom_health_score(results_df).get("health_score")
     return {
-        "health_score": health_score
-        or max(0, 100 - int(results_df["Risk Score"].mean()) if "Risk Score" in results_df else 0),
+        "health_score": health,
         "high_risk_count": high,
         "medium_risk_count": medium,
         "low_risk_count": low,
@@ -177,43 +218,29 @@ def _has_sufficient_evidence(
 ) -> bool:
     if not part_rows:
         return False
-    recorded_signals = 0
-    for part in part_rows:
-        lifecycle = _text(part.get("lifecycle_status") or part.get("Lifecycle Status")).lower()
-        stock = _number(part.get("stock_available") or part.get("Stock Available"), -1)
-        suppliers = _number(part.get("supplier_count") or part.get("Supplier Count"), -1)
-        risk_score = _number(part.get("risk_score") or part.get("Risk Score"), 0)
-        if lifecycle and lifecycle != "unknown":
-            recorded_signals += 1
-        if stock >= 0:
-            recorded_signals += 1
-        if suppliers >= 0:
-            recorded_signals += 1
-        if risk_score > 0:
-            recorded_signals += 1
-    aggregate = any(
-        _number(metrics.get(key), 0) > 0
-        for key in ("lifecycle_concerns", "no_stock", "limited_sources", "long_lead", "active_alerts")
-    )
-    return recorded_signals >= 2 or aggregate or intelligence.get("bom_health_score") is not None
+    from src.risk_engine import calculate_risk
+
+    return all(
+        bool(calculate_risk(part).get("evidence_coverage_complete"))
+        for part in part_rows
+        if isinstance(part, dict)
+    ) and all(isinstance(part, dict) for part in part_rows)
 
 
 def _map_production_readiness(
     raw: str,
     *,
-    health: int,
+    health: int | None,
     high: int,
     blocking_actions: int,
 ) -> tuple[str, str]:
-    """Sprint 66 labels — used when v2 flag is disabled."""
+    """Legacy path, constrained to evidence review labels rather than approval."""
     lowered = _text(raw).lower()
-    if blocking_actions >= 1 or high >= 3 or health < 55 or "needs action" in lowered:
-        return "Not Recommended for Release", "bad"
-    if high > 0 or "review" in lowered or "prototype" in lowered:
-        return "Engineering Review Required", "warn"
-    if "monitoring" in lowered or health >= 85:
-        return "Ready for Production", "good"
-    return "Ready with Conditions", "warn"
+    if health is None:
+        return INSUFFICIENT_EVIDENCE, "warn"
+    if blocking_actions >= 1 or high > 0 or "needs action" in lowered:
+        return "Supplier risk signal requires review", "bad"
+    return "Supplier checks complete; engineering release decision required", "warn"
 
 
 def _map_production_readiness_v2(
@@ -228,56 +255,19 @@ def _map_production_readiness_v2(
         return INSUFFICIENT_EVIDENCE, "warn", (
             "Component lifecycle, inventory, supplier, or risk records are incomplete."
         )
-    readiness = _text(advisor.get("production_readiness")).lower()
-    if blocking_actions >= 1 or high >= 3 or health < 50 or "needs action" in readiness:
-        return (
-            "Not Ready",
-            "bad",
-            _text(
-                advisor.get("readiness_reason"),
-                "Production blockers remain before release can be considered.",
-            ),
-        )
-    if "prototype" in readiness or (high > 0 and health < 70):
-        return (
-            "Prototype Ready",
-            "warn",
-            _text(
-                advisor.get("readiness_reason"),
-                "Appropriate for prototype builds; production release requires additional mitigation.",
-            ),
-        )
-    if high > 0 or health < 80 or "review" in readiness:
-        return (
-            "Pilot Ready",
-            "warn",
-            _text(
-                advisor.get("readiness_reason"),
-                "Pilot builds are feasible with focused engineering review on remaining risks.",
-            ),
-        )
-    if health >= 85 and high == 0:
-        return (
-            "Production Ready",
-            "good",
-            _text(
-                advisor.get("readiness_reason"),
-                "No production blocker dominates the recorded evidence.",
-            ),
+    if blocking_actions >= 1 or high > 0:
+        return "Verified supplier risk requires review", "bad", _text(
+            advisor.get("readiness_reason"), "A verified supplier risk signal requires review."
         )
     return (
-        "Pilot Ready",
+        "Supplier checks complete; release review required",
         "warn",
-        _text(advisor.get("readiness_reason"), "Controlled release with ongoing monitoring."),
+        "Supplier and lifecycle evidence do not establish electrical, mechanical, compliance, or production approval.",
     )
 
 
-def _confidence_label(score: int) -> str:
-    if score >= 82:
-        return "High"
-    if score >= 68:
-        return "Medium"
-    return "Low"
+def _confidence_label(score: int | None) -> str:
+    return "Not scored"
 
 
 def _impact_summary(impacts: Mapping[str, Any] | None) -> str:
@@ -298,12 +288,12 @@ def _format_decision_impact_summary(impact: Mapping[str, Any]) -> str:
     lifecycle = impact.get("lifecycle_risk") or {}
     single = impact.get("single_source_exposure") or {}
     lines = [
-        f"Health {int(_number(health.get('before'), 0))} → {int(_number(health.get('after'), 0))}",
-        f"Supply risk {int(_number(supply.get('before'), 0))} → {int(_number(supply.get('after'), 0))}",
+        f"Health {health.get('before')} → {health.get('after')}" if health.get("before") is not None and health.get("after") is not None else "Health impact not estimated",
+        f"Supply risk {supply.get('before')} → {supply.get('after')}" if supply.get("before") is not None and supply.get("after") is not None else "Supply impact not estimated",
         f"Lifecycle risk { _text(lifecycle.get('before')) } → { _text(lifecycle.get('after')) }",
-        f"Single-source exposure {int(_number(single.get('before'), 0))} → {int(_number(single.get('after'), 0))}",
-        f"Schedule improvement ~{int(_number(impact.get('schedule_improvement_weeks'), 0))} week(s)",
-        f"Procurement effort ~{int(_number(impact.get('procurement_effort_hours'), 0))} hour(s)",
+        f"Single-source exposure {single.get('before')} → {single.get('after')}" if single.get("before") is not None and single.get("after") is not None else "Sourcing impact not estimated",
+        f"Schedule improvement ~{impact.get('schedule_improvement_weeks')} week(s)" if impact.get("schedule_improvement_weeks") is not None else "Schedule impact not estimated",
+        f"Procurement effort ~{impact.get('procurement_effort_hours')} hour(s)" if impact.get("procurement_effort_hours") is not None else "Procurement effort not estimated",
     ]
     return " · ".join(lines)
 
@@ -325,7 +315,7 @@ def _build_priority_matrix(actions: Iterable[Mapping[str, Any]]) -> Dict[str, Li
                 "title": _text(action.get("title")),
                 "owner": _text(action.get("owner")),
                 "effort": _text(action.get("effort")),
-                "score": int(_number(action.get("score"), 0)),
+                "score": action.get("score"),
             }
         )
     return matrix
@@ -370,28 +360,12 @@ def _build_executive_summary_v2(
             "This BOM should not be released to production until lifecycle and sourcing risks are mitigated. "
             f"{lead}"
         )
-    if readiness_label == "Prototype Ready":
-        return (
-            "This BOM is appropriate for prototype builds but should not be released to production until "
-            "lifecycle and sourcing risks are mitigated. "
-            + _text(
-                (top_finding or {}).get("detail"),
-                _text(advisor.get("readiness_reason")),
-            )
-        )
-    if readiness_label == "Pilot Ready":
-        return (
-            "This BOM can support pilot builds with focused engineering review. "
-            "Close remaining lifecycle, inventory, and supplier gaps before full production release. "
-            + _text((top_finding or {}).get("detail"), "")
-        ).strip()
-    if readiness_label == "Production Ready":
-        return (
-            "This BOM meets recorded production readiness criteria with no dominant blocker. "
-            "Continue controlled monitoring of lifecycle, inventory, and supplier signals. "
-            + _text((top_finding or {}).get("detail"), "")
-        ).strip()
-    return _text(advisor.get("executive_recommendation"), INSUFFICIENT_EVIDENCE)
+    detail = _text((top_finding or {}).get("detail"), _text(advisor.get("readiness_reason")))
+    return (
+        "Supplier and lifecycle checks are evidence inputs only; they do not approve electrical, "
+        "mechanical, compliance, manufacturing, or production release. Record the engineering "
+        "disposition in your controlled process. " + detail
+    ).strip()
 
 
 def _build_critical_findings(
@@ -561,14 +535,14 @@ def _format_recommended_action(action: Mapping[str, Any], *, insufficient: bool)
     ]
     evidence = "; ".join(evidence_parts) if evidence_parts else INSUFFICIENT_EVIDENCE
     improvement = action.get("improvement") or {}
-    health_gain = _number(improvement.get("health_gain"), 0)
-    supply_reduction = _number(improvement.get("supply_risk_reduction"), 0)
+    health_gain = improvement.get("health_gain")
+    supply_reduction = improvement.get("supply_risk_reduction")
     decision_impact = action.get("decision_impact") or {}
     if insufficient or not evidence_parts:
         expected = INSUFFICIENT_EVIDENCE
     elif decision_impact:
         expected = _format_decision_impact_summary(decision_impact)
-    elif health_gain or supply_reduction:
+    elif health_gain is not None or supply_reduction is not None:
         expected = (
             f"Projected BOM health +{int(health_gain)} and supply exposure reduction of "
             f"approximately {int(supply_reduction)} points when completed."
@@ -576,7 +550,7 @@ def _format_recommended_action(action: Mapping[str, Any], *, insufficient: bool)
     else:
         expected = _text(action.get("if_ignored"), INSUFFICIENT_EVIDENCE)
 
-    confidence_score = int(_number(action.get("confidence"), 0))
+    confidence_value = action.get("confidence")
     return {
         "priority": _text(action.get("business_priority"), "Moderate"),
         "priority_bucket": _text(action.get("priority_bucket"), "Can Wait"),
@@ -586,12 +560,12 @@ def _format_recommended_action(action: Mapping[str, Any], *, insufficient: bool)
         "owner": _text(action.get("owner"), "Component Engineering"),
         "reason": _text(action.get("why"), INSUFFICIENT_EVIDENCE),
         "evidence": evidence,
-        "confidence": f"{confidence_score}%" if confidence_score else INSUFFICIENT_EVIDENCE,
+        "confidence": "Not scored" if confidence_value is None else str(confidence_value),
         "expected_result": expected,
         "part_number": _text(action.get("part_number"), "—"),
         "title": _text(action.get("title"), "Engineering action"),
         "category": _text(action.get("category"), "Engineering Review"),
-        "score": int(_number(action.get("score"), 0)),
+        "score": action.get("score"),
         "decision_impact": decision_impact,
         "inaction_consequences": list(action.get("inaction_consequences") or []),
         "confidence_breakdown": list(action.get("confidence_breakdown") or []),
@@ -641,23 +615,9 @@ def _confidence_explanation(
             f"{INSUFFICIENT_EVIDENCE} — confidence cannot be validated until lifecycle, inventory, "
             "supplier, and risk records are complete."
         )
-    drivers: List[str] = []
-    if metrics.get("saved_alternatives"):
-        drivers.append(f"{metrics['saved_alternatives']} saved alternative record(s)")
-    if metrics.get("active_alerts"):
-        drivers.append(f"{metrics['active_alerts']} monitoring alert(s)")
-    if intelligence.get("bom_health_score") is not None:
-        drivers.append("BOM risk engine enrichment")
-    if metrics.get("lifecycle_concerns"):
-        drivers.append(f"{metrics['lifecycle_concerns']} lifecycle signal(s)")
-    if metrics.get("no_stock") is not None and metrics.get("limited_sources") is not None:
-        drivers.append("supplier, lifecycle, stock, and alternate data")
-    if not drivers:
-        drivers.append("component-level BOM health and risk scoring")
     return (
-        f"Confidence is {_confidence_label(confidence)} ({confidence}%) because Cadivor synthesized "
-        + ", ".join(drivers[:4])
-        + "."
+        "Confidence is not scored. Evidence coverage describes which fields were checked; "
+        "it does not measure the probability that a decision is correct."
     )
 
 
@@ -668,33 +628,10 @@ def _build_business_impact(
     production_label: str,
     insufficient: bool,
 ) -> Dict[str, str]:
-    if insufficient:
-        blank = INSUFFICIENT_EVIDENCE
-        return {
-            "schedule": blank,
-            "cost": blank,
-            "manufacturing": blank,
-            "procurement": blank,
-            "supply_chain": blank,
-        }
-    long_lead = int(_number(metrics.get("long_lead"), 0))
-    no_stock = int(_number(metrics.get("no_stock"), 0))
     return {
-        "schedule": (
-            f"{long_lead} long-lead component(s) may compress the production schedule."
-            if long_lead
-            else "No long-lead schedule pressure recorded in available evidence."
-        ),
-        "cost": (
-            f"{no_stock} no-stock and {long_lead} long-lead component(s) may increase expedite "
-            "or buffer inventory cost."
-            if no_stock or long_lead
-            else "No material cost escalation is indicated from current inventory and lead-time evidence."
-        ),
-        "manufacturing": (
-            f"Production readiness is {production_label.lower()}. "
-            f"{no_stock} no-stock component(s) may affect build continuity."
-        ),
+        "schedule": "Not assessed; no production schedule or committed delivery dates were provided.",
+        "cost": "Not assessed; supplier catalog snapshots do not establish checkout prices or total commercial impact.",
+        "manufacturing": "Not assessed; Cadivor supplier checks do not validate manufacturing or design fit.",
         "procurement": _text(advisor.get("procurement_summary"), INSUFFICIENT_EVIDENCE),
         "supply_chain": _text(advisor.get("supply_chain_summary"), INSUFFICIENT_EVIDENCE),
     }
@@ -712,6 +649,8 @@ def build_engineering_decision_brief(
     intelligence: Mapping[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Synthesize an executive engineering decision from existing Cadivor intelligence."""
+    from src.risk_engine import calculate_risk
+
     intelligence_data: Dict[str, Any] = dict(intelligence or {})
     part_rows = list(parts or [])
 
@@ -730,26 +669,38 @@ def build_engineering_decision_brief(
         if analysis is None:
             analysis = _analysis_from_results(
                 results_df,
-                health_score=health_score or intelligence_data.get("bom_health_score", 0),
+                health_score=health_score,
             )
 
     analysis = dict(analysis or {})
-    if health_score is not None:
-        analysis["health_score"] = health_score
-    if not analysis.get("health_score") and intelligence_data:
-        analysis["health_score"] = intelligence_data.get("bom_health_score", 0)
+    if part_rows:
+        strict_results = parts_to_results_df(part_rows)
+        from src.health_score import calculate_bom_health_score
 
-    if advisor is None:
-        advisor = build_engineering_supply_advisor(
-            analysis=analysis,
-            parts=part_rows,
-            alerts=alerts,
-            alternatives=alternatives,
-        )
-    else:
-        advisor = dict(advisor)
+        strict_health = calculate_bom_health_score(strict_results)
+        assessments = [
+            calculate_risk(part)
+            for part in part_rows
+            if isinstance(part, dict)
+        ]
+        analysis["health_score"] = strict_health.get("health_score")
+        analysis["high_risk_count"] = sum(item.get("risk_level") == "High" for item in assessments)
+        analysis["medium_risk_count"] = sum(item.get("risk_level") == "Medium" for item in assessments)
+        analysis["low_risk_count"] = sum(item.get("risk_level") == "Low" for item in assessments)
+        analysis["total_parts"] = len(assessments)
 
-    health = int(_number(analysis.get("health_score"), intelligence_data.get("bom_health_score", 0)))
+    # Rebuild recommendations from current part evidence. A caller-supplied
+    # advisor can contain legacy percentages or projections, so it is never a
+    # substitute for the source rows used by this report.
+    advisor = build_engineering_supply_advisor(
+        analysis=analysis,
+        parts=part_rows,
+        alerts=alerts,
+        alternatives=alternatives,
+    )
+
+    health_value = _number(analysis.get("health_score"), float("nan"))
+    health = int(health_value) if math.isfinite(health_value) and health_value >= 0 else None
     high = int(_number(analysis.get("high_risk_count"), 0))
     metrics = advisor.get("metrics") or {}
     insufficient = not _has_sufficient_evidence(part_rows, metrics, intelligence_data)
@@ -795,7 +746,7 @@ def build_engineering_decision_brief(
         raw_actions=ranked_raw[:8],
     )
 
-    confidence = int(_number(advisor.get("confidence"), 70))
+    confidence = None
     business_impact = _build_business_impact(
         advisor=advisor,
         metrics=metrics,
@@ -823,7 +774,7 @@ def build_engineering_decision_brief(
     # can independently derive a score from enriched component data, but that
     # derived value must never contradict the score shown on the BOM, Dashboard,
     # or report header.
-    evidence.append(f"BOM health score: {health}/100")
+    evidence.append(f"BOM health score: {health}/100" if health is not None else "BOM health score: Not scored")
     if metrics.get("lifecycle_concerns"):
         evidence.append(f"Lifecycle signals on {metrics['lifecycle_concerns']} component(s)")
     if metrics.get("no_stock"):
@@ -843,15 +794,6 @@ def build_engineering_decision_brief(
     ).strip()
     cost_impact = business_impact["cost"]
     executive_readiness = dict(advisor.get("executive_readiness") or {})
-    if not executive_readiness:
-        executive_readiness = {
-            "overall": health,
-            "engineering": max(0, min(100, health - high * 3)),
-            "supply_chain": max(0, min(100, 100 - int(_number(metrics.get("limited_sources"), 0)) * 5)),
-            "manufacturing": max(0, min(100, health - int(_number(metrics.get("no_stock"), 0)) * 4)),
-            "procurement": max(0, min(100, 100 - int(_number(metrics.get("long_lead"), 0)) * 4)),
-            "documentation": max(0, min(100, 60 + int(_number(metrics.get("saved_alternatives"), 0)) * 8)),
-        }
     confidence_breakdown = _build_brief_confidence_breakdown(
         advisor=advisor,
         metrics=metrics,
@@ -867,7 +809,7 @@ def build_engineering_decision_brief(
         "priority_matrix": priority_matrix,
         "production_readiness": {
             "label": production_label,
-            "score": int(_number(executive_readiness.get("overall"), health)),
+            "score": executive_readiness.get("overall"),
             "explanation": production_explanation,
             "tone": production_tone,
             "domains": executive_readiness,
@@ -941,14 +883,25 @@ def format_decision_brief_for_report(brief: Mapping[str, Any]) -> Dict[str, Any]
                 )
                 health = dep.get("projected_bom_health") or {}
                 roi = dep.get("engineering_roi") or {}
+                before = health.get("before")
+                after = health.get("after")
+                projected_health = (
+                    f"{int(before)} to {int(after)} (+{int(health.get('gain'))})"
+                    if before is not None and after is not None and health.get("gain") is not None
+                    else "Not estimated"
+                )
+                roi_score = (
+                    f" ({_number(roi.get('score'), 0):g})"
+                    if roi.get("score") is not None
+                    else ""
+                )
                 action_lines.append(
                     f"  Engineering impact: {domains or '—'}\n"
                     f"  Validation required: {validation or '—'}\n"
                     f"  Change difficulty: {_text(dep.get('change_difficulty'))}\n"
                     f"  Schedule impact: {_text(dep.get('schedule_impact'))}\n"
-                    f"  Engineering ROI: {_text(roi.get('label'))} ({_number(roi.get('score'), 0):g})\n"
-                    f"  Projected BOM health: {int(_number(health.get('before'), 0))} to "
-                    f"{int(_number(health.get('after'), 0))} (+{int(_number(health.get('gain'), 0))})"
+                    f"  Engineering ROI: {_text(roi.get('label'), 'Not assessed')}{roi_score}\n"
+                    f"  Projected BOM health: {projected_health}"
                 )
         else:
             action_lines.append(
@@ -960,8 +913,8 @@ def format_decision_brief_for_report(brief: Mapping[str, Any]) -> Dict[str, Any]
     return {
         "executive_summary": _text(brief.get("executive_summary")),
         "production_readiness": (
-            f"{_text(readiness.get('label'))} — {_text(readiness.get('explanation'))} "
-            f"({int(_number(readiness.get('score'), 0))}/100)"
+            f"{_text(readiness.get('label'))} — {_text(readiness.get('explanation'))}"
+            + (f" ({int(readiness['score'])}/100)" if readiness.get("score") is not None else "")
         ),
         "critical_findings": "\n".join(findings_lines) or INSUFFICIENT_EVIDENCE,
         "recommended_actions": "\n\n".join(action_lines) or INSUFFICIENT_EVIDENCE,
@@ -973,8 +926,7 @@ def format_decision_brief_for_report(brief: Mapping[str, Any]) -> Dict[str, Any]
             f"Supply chain: {_text(business.get('supply_chain'))}"
         ),
         "confidence": (
-            f"{_text(confidence.get('label'))} ({int(_number(confidence.get('score'), 0))}%) — "
-            f"{_text(confidence.get('explanation'))}"
+            f"{_text(confidence.get('label'), 'Not scored')} — {_text(confidence.get('explanation'))}"
         ),
         "supporting_evidence": "\n".join(evidence_lines) or INSUFFICIENT_EVIDENCE,
         "primary_recommendation": _text(brief.get("primary_recommendation")),
@@ -1098,7 +1050,7 @@ def _evidence_checklist_html(metrics: Mapping[str, Any], insufficient: bool) -> 
 
 def _html_readiness_panel(readiness: Mapping[str, Any], *, premium: bool) -> str:
     tone = _tone_css_class(_text(readiness.get("tone"), "warn"))
-    score = int(_number(readiness.get("score"), 0))
+    score = readiness.get("score")
     label = _text(readiness.get("label"), INSUFFICIENT_EVIDENCE)
     explanation = _text(readiness.get("explanation"), INSUFFICIENT_EVIDENCE)
     if not premium:
@@ -1106,7 +1058,7 @@ def _html_readiness_panel(readiness: Mapping[str, Any], *, premium: bool) -> str
             f'<article class="cv66-card cv66-card--{escape(tone)}">'
             f"<span>Production Readiness</span>"
             f"<strong>{escape(label)}</strong>"
-            f"<small>{score}/100 · {escape(explanation)}</small>"
+            f"<small>{(f'{score}/100 · ' if score is not None else '')}{escape(explanation)}</small>"
             f"</article>"
         )
     return (
@@ -1117,11 +1069,8 @@ def _html_readiness_panel(readiness: Mapping[str, Any], *, premium: bool) -> str
         f'<span class="cv671-badge cv671-badge--{escape(tone)}">{escape(label)}</span></div>'
         f"</div>"
         f'<p class="cv671-readiness-copy">{escape(explanation)}</p>'
-        f'<div class="cv671-readiness-meter" role="progressbar" aria-valuenow="{score}" '
-        f'aria-valuemin="0" aria-valuemax="100"><i style="width:{score}%"></i></div>'
-        f'<small class="cv671-readiness-score">{score}/100 production-readiness evidence score</small>'
-        f'<small class="cv671-readiness-score">Includes evidence completeness, supply continuity, '
-        f'and release blockers; may differ from BOM Health.</small>'
+        f'<p class="cv671-readiness-score">{f"{score}/100" if score is not None else "No readiness score"}</p>'
+        f'<small class="cv671-readiness-score">Cadivor supplier checks do not approve engineering or production release.</small>'
         f"</article>"
     )
 
@@ -1133,23 +1082,23 @@ def _html_confidence_panel(
     insufficient: bool,
     premium: bool,
 ) -> str:
-    score = int(_number(confidence.get("score"), 0))
+    score = confidence.get("score")
     label = _text(confidence.get("label"), INSUFFICIENT_EVIDENCE)
     explanation = _text(confidence.get("explanation"), INSUFFICIENT_EVIDENCE)
     if not premium:
         return (
             f'<article class="cv66-card cv66-card--confidence">'
             f"<span>Engineering Confidence</span>"
-            f"<strong>{score}%</strong>"
+            f"<strong>{f'{score}%' if score is not None else 'Not scored'}</strong>"
             f"<small>{escape(explanation)}</small>"
             f"</article>"
         )
     return (
         f'<article class="cv671-confidence">'
         f'<div class="cv671-section-label">{_decision_icon("gauge", 16)} Engineering Confidence</div>'
-        f'<div class="cv671-confidence-score">{score}%</div>'
-        f"{_confidence_bar_html(score)}"
-        f'<div class="cv671-confidence-label">{escape(label)} confidence</div>'
+        f'<div class="cv671-confidence-score">{f"{score}%" if score is not None else "Not scored"}</div>'
+        f'{_confidence_bar_html(score) if score is not None else ""}'
+        f'<div class="cv671-confidence-label">{escape(label)}</div>'
         f'<p class="cv671-muted">{escape(explanation)}</p>'
         f"<div class=\"cv671-based-on\"><strong>Based on:</strong>"
         f"{_confidence_breakdown_html(confidence.get('breakdown') or []) or _evidence_checklist_html(metrics, insufficient)}"
@@ -1255,12 +1204,11 @@ def _html_executive_readiness(readiness: Mapping[str, Any]) -> str:
     ]
     cards = []
     for label, key in domains:
-        score = int(_number(readiness.get(key), 0))
+        score = readiness.get(key)
         cards.append(
             f'<article class="cv68-readiness-card">'
             f'<div class="cv68-readiness-label">{escape(label)}</div>'
-            f'<div class="cv68-readiness-value">{score}%</div>'
-            f'<div class="cv68-readiness-meter"><i style="width:{score}%"></i></div>'
+            f'<div class="cv68-readiness-value">{f"{score}%" if score is not None else "Not assessed"}</div>'
             f"</article>"
         )
     return f'<div class="cv68-readiness-grid">{"".join(cards)}</div>'
@@ -1374,15 +1322,15 @@ def _action_projected_improvement_rows(action: Mapping[str, Any]) -> List[tuple[
     lifecycle = impact.get("lifecycle_risk") or {}
     single = impact.get("single_source_exposure") or {}
     return [
-        ("Health", f"{int(_number(health.get('before'), 0))} → {int(_number(health.get('after'), 0))}"),
-        ("Supply risk", f"{int(_number(supply.get('before'), 0))} → {int(_number(supply.get('after'), 0))}"),
+        ("Health", f"{health.get('before')} → {health.get('after')}" if health.get("before") is not None and health.get("after") is not None else "Not estimated"),
+        ("Supply risk", f"{supply.get('before')} → {supply.get('after')}" if supply.get("before") is not None and supply.get("after") is not None else "Not estimated"),
         ("Lifecycle risk", f"{_text(lifecycle.get('before'))} → {_text(lifecycle.get('after'))}"),
         (
             "Single-source exposure",
-            f"{int(_number(single.get('before'), 0))} → {int(_number(single.get('after'), 0))}",
+            f"{single.get('before')} → {single.get('after')}" if single.get("before") is not None and single.get("after") is not None else "Not estimated",
         ),
-        ("Schedule improvement", f"~{int(_number(impact.get('schedule_improvement_weeks'), 0))} week(s)"),
-        ("Procurement effort", f"~{int(_number(impact.get('procurement_effort_hours'), 0))} hour(s)"),
+        ("Schedule improvement", f"~{impact.get('schedule_improvement_weeks')} week(s)" if impact.get("schedule_improvement_weeks") is not None else "Not estimated"),
+        ("Procurement effort", f"~{impact.get('procurement_effort_hours')} hour(s)" if impact.get("procurement_effort_hours") is not None else "Not estimated"),
     ]
 
 
@@ -1404,11 +1352,11 @@ def _html_action_dependency_fields(action: Mapping[str, Any]) -> str:
     roi = dep.get("engineering_roi") or {}
     health = dep.get("projected_bom_health") or {}
     health_html = (
-        f"{int(_number(health.get('before'), 0))} → "
-        f"{int(_number(health.get('after'), 0))} "
-        f"(+{int(_number(health.get('gain'), 0))})"
+        f"{health.get('before')} → {health.get('after')} (+{health.get('gain')})"
+        if health.get("before") is not None and health.get("after") is not None and health.get("gain") is not None
+        else "Not estimated"
     )
-    roi_html = f"{escape(_text(roi.get('label')))} ({_number(roi.get('score'), 0):g})"
+    roi_html = escape(_text(roi.get("label"), "Not assessed"))
 
     return (
         f'<div><dt>Engineering impact</dt>'
@@ -1494,7 +1442,7 @@ def _html_workspace_strip(brief: Mapping[str, Any]) -> str:
     actions = brief.get("recommended_actions") or []
     top_part, top_title = _header_top_action(actions)
     effort_label, effort_value = _header_effort_display(brief)
-    conf_score = int(_number(confidence.get("score"), 0))
+    conf_score = confidence.get("score")
     return f"""
         <header class="cv671-exec-header cv672-exec-strip">
           <div class="cv671-exec-kicker">{_decision_icon("target", 16)} Executive Engineering Decision</div>
@@ -1505,7 +1453,7 @@ def _html_workspace_strip(brief: Mapping[str, Any]) -> str:
             </div>
             <div class="cv671-exec-stat">
               <span>Engineering Confidence</span>
-              <strong>{conf_score}%</strong>
+              <strong>{f"{conf_score}%" if conf_score is not None else "Not scored"}</strong>
             </div>
             <div class="cv671-exec-stat cv671-exec-stat--action">
               <span>Next engineering action</span>

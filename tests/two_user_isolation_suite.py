@@ -46,7 +46,7 @@ def seed_workspace(
     preferences: dict[str, bool],
     bom_path: Path = FLAT_BOM,
 ) -> dict[str, Any]:
-    """Create BOM + report + decision + persisted monitoring for one user."""
+    """Create tenant data plus an isolated monitoring record for one user."""
     created = client.post(
         "/boms/analyze",
         headers=headers,
@@ -94,7 +94,28 @@ def seed_workspace(
     assert refresh.status_code == 200, refresh.text
     assert refresh.json()["persisted"] is True
     alerts = client.get("/tools/monitoring/alerts", headers=headers).json()["alerts"]
-    assert alerts, "synthetic fixture should persist at least one monitoring alert"
+    assert alerts == [], "preview-only BOM rows must not create supplier risk alerts"
+
+    # This fixture tests tenant isolation for stored monitoring records. The
+    # preview BOM above correctly produces no evidence-backed alerts, so seed
+    # one clearly labeled test-only record directly instead of misrepresenting
+    # synthetic component values as supplier findings.
+    from apps.api import monitoring_store
+
+    alerts = monitoring_store.persist_alerts(
+        body["workspace_id"],
+        [
+            {
+                "analysis_id": analysis_id,
+                "part_number": "ISOLATION-TEST-FIXTURE",
+                "alert_type": "Isolation Test Fixture",
+                "severity": "Info",
+                "message": "Test-only monitoring record; not supplier evidence.",
+                "active": True,
+            }
+        ],
+    )
+    assert len(alerts) == 1
 
     saved = client.get(f"/reports/{analysis_id}", headers=headers).json()
     return {

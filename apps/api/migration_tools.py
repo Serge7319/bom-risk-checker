@@ -173,45 +173,17 @@ def _optional_number(value: Any) -> float | int | None:
 
 
 def _risk_score_from_report_part(part: dict[str, Any]) -> float | int | None:
-    known = _optional_number(part.get("Risk Score") if part.get("Risk Score") is not None else part.get("risk_score"))
-    if known is not None:
-        return known
-    level = str(part.get("Risk Level") or part.get("risk_level") or "").strip().lower()
-    if level == "high":
-        return 75
-    if level == "medium":
-        return 45
-    if level in {"low", "healthy"}:
-        return 15
-    return None
+    from src.risk_engine import calculate_risk
+
+    return _optional_number(calculate_risk(part).get("risk_score"))
 
 
 def _monitoring_evidence_source(part: dict[str, Any], report: dict[str, Any]) -> str:
-    """Use the part's saved provenance; never relabel live evidence as synthetic."""
-    raw = str(
-        part.get("evidence_source")
-        or part.get("evidence_class")
-        or part.get("Source")
-        or part.get("source")
-        or part.get("price_source")
-        or ""
-    ).strip()
-    tag = raw.casefold()
-    verified = part.get("supplier_data_verified") is True or str(
-        part.get("Supplier Data Verified") or ""
-    ).strip().casefold() in {"1", "true", "yes", "verified"}
-    report_mode = str(report.get("mode") or "").casefold()
-    if tag == "missing":
-        return "missing"
-    if tag.startswith("live") or (verified and report_mode == "legacy-supplier-engine"):
-        return raw if tag.startswith("live") else "live-authorized-supplier"
-    if any(token in tag for token in ("synthetic", "preview", "offline")):
-        return raw or "synthetic-preview-analysis"
-    if report_mode == "synthetic-preview":
-        return raw or "synthetic-preview-analysis"
-    if report_mode == "legacy-supplier-engine" and verified:
-        return "live-authorized-supplier"
-    return raw or "missing"
+    """Derive the source label from current row-level provenance."""
+    from apps.api.evidence_contract import classify_part_evidence
+
+    evidence = classify_part_evidence(part)
+    return str(evidence.get("evidence_class") or "missing")
 
 
 def _monitoring_evidence_phrase(evidence_source: str) -> str:
@@ -263,12 +235,23 @@ def _derive_monitoring_alerts(
             continue
         if wanted and mpn.casefold() != wanted:
             continue
-        lifecycle = str(part.get("Lifecycle") or part.get("lifecycle_status") or "")
-        risk = str(part.get("Risk Level") or part.get("risk_level") or "")
+        from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+        from src.risk_engine import calculate_risk
+
+        evidence = classify_part_evidence(part)
+        fields = evidence.get("fields") if isinstance(evidence.get("fields"), dict) else {}
+        lifecycle_field = fields.get("lifecycle") if isinstance(fields.get("lifecycle"), dict) else {}
+        lifecycle = (
+            str(part.get("Lifecycle") or part.get("lifecycle_status") or part.get("Lifecycle Status") or "")
+            if lifecycle_field.get("evidence_class") == EVIDENCE_LIVE
+            else ""
+        )
+        assessment = calculate_risk(part)
+        risk = str(assessment.get("risk_level") or "Needs verification")
         evidence_source = _monitoring_evidence_source(part, report)
         evidence_phrase = _monitoring_evidence_phrase(evidence_source)
-        reasons = part.get("Risk Reasons") or part.get("risk_reasons") or "see report"
-        if lifecycle.upper() == "NRND":
+        reasons = "; ".join(assessment.get("risk_reasons") or []) or "see report"
+        if any(term in lifecycle.casefold() for term in ("nrnd", "not recommended", "obsolete", "end of life", "eol")):
             alerts.append(
                 {
                     **build_alert_record(
@@ -323,22 +306,19 @@ def _part_data_status(part: dict[str, Any]) -> dict[str, Any]:
     """Per-part freshness / provider-failure view from saved analysis only."""
     health = part.get("provider_health") if isinstance(part.get("provider_health"), dict) else {}
     failed_sources = [str(s) for s in (health.get("failed_sources") or []) if str(s).strip()]
-    verified_flag = part.get("supplier_data_verified")
-    if verified_flag is None:
-        raw = str(part.get("Supplier Data Verified") or "").strip().casefold()
-        verified_flag = True if raw in {"1", "true", "yes", "verified"} else (
-            False if raw in {"0", "false", "no", "unverified"} else None
-        )
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+
+    fields = (classify_part_evidence(part).get("fields") or {})
+    identity = fields.get("identity") if isinstance(fields.get("identity"), dict) else {}
+    verified_flag = identity.get("evidence_class") == EVIDENCE_LIVE
     has_verified = health.get("has_verified_data")
-    provider_failure = bool(failed_sources) or (
-        has_verified is False or (has_verified is None and verified_flag is False)
-    )
+    provider_failure = bool(failed_sources) or has_verified is False
     if provider_failure:
         message = str(
             health.get("summary_message")
             or "Supplier data could not be verified during this analysis."
         )
-    elif verified_flag is True or has_verified is True:
+    elif verified_flag is True:
         message = ""
     else:
         message = "No live supplier verification is recorded for this part."
@@ -346,7 +326,7 @@ def _part_data_status(part: dict[str, Any]) -> dict[str, Any]:
         "part_number": _part_mpn(part),
         "provider_failure": provider_failure,
         "failed_sources": failed_sources,
-        "data_verified": bool(verified_flag is True or has_verified is True) and not failed_sources,
+        "data_verified": bool(verified_flag is True) and not failed_sources,
         "data_message": message,
         "last_checked": str(
             part.get("Last Checked")
@@ -1771,7 +1751,7 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
     }
 
     rows = []
-    evidence_counts = {"live": 0, "synthetic": 0, "missing": 0}
+    evidence_counts = {"live": 0, "synthetic": 0, "unverified": 0, "missing": 0}
     for part in raw_parts:
         mpn = str(first_value(part, "MPN", "mpn", "Part Number", "part_number", default="") or "").strip()
         manufacturer = str(first_value(part, "Manufacturer", "manufacturer", default="") or "").strip()
@@ -1823,7 +1803,7 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
             **part,
             "MPN": mpn,
             "manufacturer_part_number": first_value(
-                part, "manufacturer_part_number", "Manufacturer Part Number", default=mpn
+                part, "manufacturer_part_number", "Manufacturer Part Number", default=""
             ),
             "Manufacturer": manufacturer,
             "source": supplier,
@@ -1858,6 +1838,8 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
             evidence_counts["live"] += 1
         elif evidence_class == "synthetic-preview":
             evidence_counts["synthetic"] += 1
+        elif evidence_class == "reported-unverified":
+            evidence_counts["unverified"] += 1
         else:
             evidence_counts["missing"] += 1
 
@@ -1875,13 +1857,14 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
             "user-entered"
             if has_manual_price
             else price_class
-            if price_class in {"live-authorized-supplier", "synthetic-preview"}
+            if price_class in {
+                "live-authorized-supplier", "synthetic-preview", "reported-unverified"
+            }
             else "not-recorded"
         )
         # Trust saved commercial values only when that field's own class allows it.
         trusted_price = has_manual_price or price_class in {
-            "live-authorized-supplier",
-            "synthetic-preview",
+            "live-authorized-supplier", "synthetic-preview"
         }
         trusted_stock = str(stock_field.get("evidence_class") or evidence_class) in {
             "live-authorized-supplier",
@@ -1890,14 +1873,14 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
         saved_stock = first_value(
             part, "stock_available", "Stock Available", "Total Market Stock", "stock", "Stock"
         )
-        display_price = recommendation.get("Unit Price")
-        if display_price is None and trusted_price:
-            display_price = reported_price
-        if display_price is None and not trusted_price:
-            display_price = None
-        display_stock = recommendation.get("Available Stock")
-        if display_stock is None and trusted_stock:
-            display_stock = saved_stock
+        # Do not let the Procurement Advisor's aggregate recommendation
+        # reintroduce values that the field-level provenance check rejected.
+        display_price = (
+            reported_price
+            if trusted_price or has_manual_price
+            else None
+        )
+        display_stock = saved_stock if trusted_stock else None
         supplier_count = recommendation.get("Supplier Sources")
         if offers:
             coverage = f"{len(offers)} saved offer{'s' if len(offers) != 1 else ''}"
@@ -1971,12 +1954,20 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
                 ),
                 "stock": display_stock,
                 "unit_price": display_price,
+                "reported_unit_price": reported_price,
                 "currency": recommendation.get("Currency")
+                or price_field.get("currency")
                 or normalized_evidence_part["unit_price_currency"],
                 "lead_time_weeks": recommendation.get("Lead Time (Weeks)"),
                 "price_source": price_source,
                 "price_type": price_field.get("price_type") or "not-recorded",
                 "price_retrieved_at": price_field.get("retrieved_at") or "",
+                "price_supplier": price_field.get("source") or "",
+                "price_evidence_class": price_class,
+                "price_evidence_note": price_field.get("gap") or "",
+                "price_break_quantity": price_field.get("price_break_quantity"),
+                "price_quantity_applicable": price_field.get("quantity_break_applies"),
+                "price_product_url": price_field.get("product_url") or "",
                 "identity_source": identity_field.get("source") or evidence.get("source") or "",
                 "identity_retrieved_at": identity_field.get("retrieved_at")
                 or evidence.get("retrieved_at")
@@ -1985,6 +1976,10 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
                 "lifecycle_retrieved_at": lifecycle_field.get("retrieved_at") or "",
                 "stock_source": stock_field.get("source") or "",
                 "stock_retrieved_at": stock_field.get("retrieved_at") or "",
+                "stock_evidence_class": stock_field.get("evidence_class") or "missing",
+                "stock_evidence_note": stock_field.get("gap") or "",
+                "stock_snapshot_complete": bool(stock_field.get("complete")),
+                "stock_evidence": stock_field.get("sources") or [],
                 "evidence_class": evidence_class,
                 "supplier_offers": offers,
                 "offer_count": len(offers),
@@ -2009,6 +2004,7 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
         live_count=counts["live"],
         synthetic_count=counts["synthetic"],
         missing_count=counts["missing"],
+        unverified_count=counts["unverified"],
         configured_sources=configured_sources,
         analysis_mode=str(report.get("mode") or ""),
     )
@@ -2028,16 +2024,23 @@ def procurement_payload(*, workspace_id: str, analysis_id: str | None = None) ->
             "evidence_summary": {
                 "live_parts": counts["live"],
                 "sample_parts": counts["synthetic"],
-                "parts_without_verified_supplier_evidence": counts["missing"],
+                "unverified_parts": counts["unverified"],
+                "parts_without_verified_supplier_evidence": counts["missing"] + counts["unverified"],
+                "parts_without_supplier_match": counts["missing"],
                 "parts_total": total,
                 "configured_supplier_sources": configured_sources,
                 "live_price_parts": sum(
-                    1 for row in rows if str(row.get("price_source") or "") == "live-authorized-supplier"
+                    1 for row in rows if str(row.get("price_evidence_class") or "") == "live-authorized-supplier"
                 ),
                 "synthetic_price_parts": sum(
-                    1 for row in rows if str(row.get("price_source") or "") == "synthetic-preview"
+                    1 for row in rows if str(row.get("price_evidence_class") or "") == "synthetic-preview"
                 ),
-                "missing_price_parts": sum(1 for row in rows if row.get("unit_price") is None),
+                "unverified_price_parts": sum(
+                    1 for row in rows if str(row.get("price_evidence_class") or "") == "reported-unverified"
+                ),
+                "missing_price_parts": sum(
+                    1 for row in rows if str(row.get("price_evidence_class") or "") == "missing"
+                ),
             },
             "parts": rows,
         }
@@ -2051,7 +2054,7 @@ def design_impact_payload(
     if not analyses:
         return {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": "workspace-portfolio",
             "gap": "Analyze a BOM first. Design impact needs at least one saved analysis.",
             "intelligence": {},
         }
@@ -2064,7 +2067,7 @@ def design_impact_payload(
     return _json_safe(
         {
             "ok": True,
-            "mode": "synthetic-preview",
+            "mode": "workspace-portfolio",
             "gap": "Based on saved analyses in this workspace.",
             "intelligence": intelligence,
         }
@@ -2098,6 +2101,7 @@ def cost_optimization_payload(
         live_count=int(summary.get("live_count") or 0),
         synthetic_count=int(summary.get("synthetic_count") or 0),
         missing_count=int(summary.get("missing_count") or 0),
+        unverified_count=int(summary.get("unverified_count") or 0),
         configured_sources=configured_sources,
         analysis_mode=str((analyses[0] or {}).get("mode") or ""),
     )
@@ -2359,6 +2363,7 @@ def detailed_risk_payload(*, workspace_id: str, analysis_id: str | None = None) 
         live_count=int(evidence_summary.get("live_count") or 0),
         synthetic_count=int(evidence_summary.get("synthetic_count") or 0),
         missing_count=int(evidence_summary.get("missing_count") or 0),
+        unverified_count=int(evidence_summary.get("unverified_count") or 0),
         configured_sources=configured_sources,
         analysis_mode=str(report.get("mode") or ""),
     )

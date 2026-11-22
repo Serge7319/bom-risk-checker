@@ -18,8 +18,12 @@ CSV_COLUMNS = (
     "Manufacturer source",
     "Qty",
     "Lifecycle",
+    "Lifecycle evidence status",
+    "Lifecycle evidence note",
     "Stock",
     "Stock evidence",
+    "Stock evidence status",
+    "Stock evidence note",
     "Lead time (weeks)",
     "Lead-time source",
     "Lead-time checked at",
@@ -38,6 +42,12 @@ CSV_COLUMNS = (
     "Why",
     "Unit price",
     "Unit price currency",
+    "Price evidence status",
+    "Price evidence note",
+    "Price source",
+    "Price checked at",
+    "Price break quantity",
+    "Price quantity applicability",
     "Extended cost",
     "Description-mentioned alternatives",
 )
@@ -51,9 +61,13 @@ DETAIL_COLUMNS = (
     "Manufacturer source",
     "Qty",
     "Lifecycle",
+    "Lifecycle evidence status",
+    "Lifecycle evidence note",
     "Stock",
     "Stock evidence",
     "Stock aggregation",
+    "Stock evidence status",
+    "Stock evidence note",
     "Evidence source",
     "Supplier product URL",
     "Datasheet URL",
@@ -78,6 +92,12 @@ DETAIL_COLUMNS = (
     "Approved alternatives",
     "Unit price",
     "Unit price currency",
+    "Price evidence status",
+    "Price evidence note",
+    "Price source",
+    "Price checked at",
+    "Price break quantity",
+    "Price quantity applicability",
     "Extended cost",
     "Description-mentioned alternatives",
 )
@@ -163,70 +183,24 @@ def _safe_http_url(value: Any) -> str:
     return url if url.startswith(("https://", "http://")) else ""
 
 
-def _supplier_listing_links(record: dict[str, Any]) -> list[dict[str, str]]:
-    """Collect the exact-part source links saved with each piece of evidence."""
-    groups = (
-        ("supplier offer", ("Supplier Offers", "supplier_offers")),
-        ("stock", ("Stock Evidence", "stock_evidence")),
-        ("lead time", ("Lead Time Evidence", "lead_time_evidence")),
-        ("lifecycle", ("Lifecycle Evidence", "lifecycle_evidence")),
-    )
-    links: dict[str, dict[str, str]] = {}
+def _supplier_listing_links(
+    evidence: dict[str, Any],
+) -> list[dict[str, str]]:
+    """Return only the listing tied to the verified, exact requested MPN."""
+    if evidence.get("identity_verified") is not True:
+        return []
+    source = str(evidence.get("source") or "").strip()
+    url = _safe_http_url(evidence.get("source_url"))
+    from src.supplier_source_identity import supplier_listing_url_is_valid
 
-    def add(source: Any, url_value: Any, evidence_type: str, retrieved_at: Any = "") -> None:
-        url = _safe_http_url(url_value)
-        if not url:
-            return
-        key = url.casefold()
-        source_name = str(source or "Supplier").strip() or "Supplier"
-        entry = links.setdefault(
-            key,
-            {
-                "source": source_name,
-                "url": url,
-                "evidence_types": evidence_type,
-                "retrieved_at": str(retrieved_at or "").strip(),
-            },
-        )
-        if evidence_type not in entry["evidence_types"].split(", "):
-            entry["evidence_types"] = f"{entry['evidence_types']}, {evidence_type}"
-        if not entry["retrieved_at"] and retrieved_at:
-            entry["retrieved_at"] = str(retrieved_at).strip()
-
-    for evidence_type, keys in groups:
-        values = _json_value(_first(record, *keys, default=[]))
-        if isinstance(values, dict):
-            values = [values]
-        if not isinstance(values, (list, tuple)):
-            continue
-        for item in values:
-            if not isinstance(item, dict):
-                continue
-            add(
-                _first(item, "source", "supplier", "distributor", "vendor"),
-                _first(item, "product_url", "product_detail_url", "source_url", "url"),
-                evidence_type,
-                _first(item, "retrieved_at", "checked_at", "updated_at"),
-            )
-
-    # The selected exact-part listing is still useful on older reports where
-    # per-source evidence arrays were not saved.
-    add(
-        _first(
-            record,
-            "Product URL Source",
-            "product_url_source",
-            "primary_supplier",
-            "best_source",
-            "Best Source",
-            "supplier",
-            "distributor",
-        ),
-        _first(record, "product_url", "Product URL", "product_detail_url", "source_url"),
-        "product listing",
-        _first(record, "retrieved_at", "sourcing_updated_at", "updated_at"),
-    )
-    return list(links.values())
+    if not supplier_listing_url_is_valid(source, url):
+        return []
+    return [{
+        "source": source,
+        "url": url,
+        "evidence_types": "exact part identity",
+        "retrieved_at": str(evidence.get("retrieved_at") or "").strip(),
+    }]
 
 
 def _flag(value: Any) -> bool | None:
@@ -255,106 +229,56 @@ def _lifecycle_evidence(value: Any) -> str:
 
 
 def _reasons(record: dict[str, Any]) -> str:
-    if _risk(record)[0] == "Not assessed" and not _has_supplier_match(record):
-        alternate_status = _text(
-            _first(record, "alternate_search_status", "Alternate Search Status"),
-            fallback="",
-        )
-        if "found related catalog lead(s)" in alternate_status.casefold():
-            # Preserve the distinction between the requested BOM identity and
-            # a related orderable variant. The lead is useful for review, but
-            # its stock, price, and lifecycle cannot safely rate the original.
-            route_status = alternate_status.split(";", 1)[0].strip()
-            return (
-                f"{route_status} Confirm that the package, electrical device, "
-                "and ordering suffix meet the design requirements before using "
-                "candidate evidence; this BOM part remains unassessed."
-            )
-        return (
-            "No configured distributor returned a matching record for this MPN. "
-            "Verify the full manufacturer part number and rerun; stock, lifecycle, "
-            "and lead-time risk remain unknown."
-        )
-    value = _first(record, "risk_reasons", "Risk Reasons", "risk_reason", "Why", default="")
-    value = _json_value(value)
-    if isinstance(value, (list, tuple, set)):
-        reasons = [str(item).strip() for item in value if str(item).strip()]
-    elif isinstance(value, dict):
-        reasons = [_joined(value)]
-    else:
-        reasons = [item.strip() for item in str(value or "").split(";") if item.strip()]
-    if _stock(record) == "Not reported":
-        reasons = [
-            "Inventory status needs confirmation; source-backed stock evidence was not saved."
-            if re.search(r"\b(no stock|no inventory|zero stock|out of stock|inventory unavailable)\b", reason, re.IGNORECASE)
-            else reason
-            for reason in reasons
-        ]
-    return "; ".join(reasons) or "No risk explanation was saved for this component."
+    from src.risk_engine import calculate_risk
 
-
-def _has_supplier_match(record: dict[str, Any]) -> bool:
-    supplier_count = _number(_first(record, "supplier_count", "Supplier count", "Suppliers"))
-    if supplier_count is not None and supplier_count > 0:
-        return True
-    return any(
-        value not in {"—", "Unavailable", ""}
-        for value in (
-            _sources(record),
-            _text(
-                _first(
-                    record,
-                    "primary_supplier",
-                    "best_source",
-                    "Best Source",
-                    "supplier",
-                    "distributor",
-                ),
-                "",
-            ),
-            _text(_first(record, "lead_time_source", "Lead Time Source"), ""),
-            _lifecycle_evidence(
-                _first(record, "lifecycle_evidence", "Lifecycle Evidence")
-            ),
-        )
+    assessment = calculate_risk(record)
+    evidence_reasons = [
+        str(item).strip()
+        for item in assessment.get("risk_reasons", [])
+        if str(item).strip()
+    ]
+    if evidence_reasons:
+        return "; ".join(evidence_reasons)
+    return (
+        "Risk is not scored because exact-part supplier evidence or source coverage "
+        "is incomplete. Verify the manufacturer part number and rerun the supplier checks."
     )
 
 
+def _has_supplier_match(record: dict[str, Any]) -> bool:
+    from apps.api.evidence_contract import classify_part_evidence
+
+    return bool(classify_part_evidence(record).get("identity_verified"))
+
+
 def _risk(record: dict[str, Any]) -> tuple[str, int | float | None]:
-    score = _number(_first(record, "risk_score", "Risk Score", "score"))
-    raw = str(_first(record, "risk_level", "Risk Level", "risk", "Risk", default="") or "").strip()
-    folded = raw.casefold()
-    if any(token in folded for token in ("verif", "unassess", "not assess", "not rated", "unknown", "unrated")):
+    """Recalculate from the exact-part evidence contract; ignore stale saved labels."""
+    from src.risk_engine import calculate_risk
+
+    assessment = calculate_risk(record)
+    score = assessment.get("risk_score")
+    level = str(assessment.get("risk_level") or "Needs verification")
+    if score is None or level.casefold() == "needs verification":
         return "Not assessed", None
-    if "critical" in folded or "high" in folded:
-        return "High", score
-    if "medium" in folded or folded == "med":
-        return "Medium", score
-    if "low" in folded:
-        return "Low", score
-    if score is None:
-        return "Not assessed", None
-    if score == 0 and not _has_supplier_match(record):
-        return "Not assessed", None
-    if score >= 70:
-        return "High", score
-    if score >= 40:
-        return "Medium", score
-    return "Low", score
+    return level, _number(score)
 
 
 def _stock(record: dict[str, Any]) -> int | float | str:
-    value = _number(_first(record, "stock_available", "Stock Available", "stock", "Stock"))
-    if value is None:
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+
+    field = (classify_part_evidence(record).get("fields") or {}).get("stock") or {}
+    if field.get("evidence_class") != EVIDENCE_LIVE or not field.get("complete"):
         return "Not reported"
-    # Before source provenance was stored, zero was also used as an empty
-    # default. Only present zero when a distributor explicitly returned stock.
-    if value == 0 and _sources(record) == "—":
-        return "Not reported"
-    return value
+    value = _number(field.get("observed_total"))
+    return value if value is not None else "Not reported"
 
 
 def _lead_time(record: dict[str, Any]) -> int | float | str:
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+
+    field = (classify_part_evidence(record).get("fields") or {}).get("lead_time") or {}
+    if field.get("evidence_class") != EVIDENCE_LIVE:
+        return "Not reported"
     value = _first(record, "lead_time_weeks", "Lead Time Weeks", "lead_time", "Lead time (weeks)")
     number = _number(value)
     if number is not None:
@@ -388,10 +312,15 @@ def _evidence_readings(value: Any, *, key: str, unit: str = "") -> str:
 
 
 def _supplier_count(record: dict[str, Any]) -> int | float | str:
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+    from src.risk_engine import _coverage_complete
+
+    identity = (classify_part_evidence(record).get("fields") or {}).get("identity") or {}
+    complete, _ = _coverage_complete(record)
+    if identity.get("evidence_class") != EVIDENCE_LIVE or not complete:
+        return "—"
     value = _number(_first(record, "supplier_count", "Supplier Count", "Suppliers"))
     if value is None:
-        return "—"
-    if value == 0 and _text(record.get("supplier_coverage"), "") == "":
         return "—"
     return value
 
@@ -543,6 +472,11 @@ def component_rows(
     from src.alternate_reference_parser import extract_description_alternates
     from src.bom_intake import clean_text
     from src.saved_bom_cost import extended_cost
+    from apps.api.evidence_contract import (
+        EVIDENCE_LIVE,
+        EVIDENCE_SYNTHETIC,
+        classify_part_evidence,
+    )
 
     approved_by_part = approved_mpn_map(approved_alternatives)
     output = []
@@ -550,7 +484,7 @@ def component_rows(
         if not isinstance(record, dict):
             continue
         risk, score = _risk(record)
-        lifecycle = _text(_first(record, "lifecycle_status", "Lifecycle Status", "lifecycle"), "Unknown")
+        lifecycle = _text(_first(record, "Lifecycle", "lifecycle_status", "Lifecycle Status", "lifecycle"), "Unknown")
         stock_sources = _sources(record)
         complete = _flag(_first(record, "stock_data_complete", "Stock Data Complete"))
         supplier_count_value = _number(_first(record, "supplier_count", "Supplier Count", "Suppliers"))
@@ -574,11 +508,70 @@ def component_rows(
             _first(record, "primary_supplier", "best_source", "Best Source", "supplier", "distributor"),
             "",
         )
-        supplier_links = _supplier_listing_links(record)
         quantity = _number(_first(record, "quantity", "Quantity", "qty"))
-        extended = extended_cost(price, quantity)
-        price_currency = _price_currency(
-            record, mpn=mpn, supplier=supplier, price=price
+        evidence = classify_part_evidence(record)
+        supplier_links = _supplier_listing_links(evidence)
+        fields = evidence.get("fields") if isinstance(evidence.get("fields"), dict) else {}
+        stock_field = fields.get("stock") if isinstance(fields.get("stock"), dict) else {}
+        price_field = fields.get("price") if isinstance(fields.get("price"), dict) else {}
+        lifecycle_field = fields.get("lifecycle") if isinstance(fields.get("lifecycle"), dict) else {}
+        lead_time_field = fields.get("lead_time") if isinstance(fields.get("lead_time"), dict) else {}
+        identity_field = fields.get("identity") if isinstance(fields.get("identity"), dict) else {}
+        lead_time_evidence = _json_value(
+            _first(record, "lead_time_evidence", "Lead Time Evidence", default=[])
+        )
+        lead_time_checked_at = _first(record, "lead_time_retrieved_at", "Lead Time Retrieved At")
+        if lifecycle_field.get("evidence_class") != EVIDENCE_LIVE:
+            lifecycle = "Needs verification"
+        stock_sources = ", ".join(
+            str(item.get("source") or "").strip()
+            for item in stock_field.get("sources", [])
+            if isinstance(item, dict) and str(item.get("source") or "").strip()
+        ) if stock_field.get("evidence_class") == EVIDENCE_LIVE else "—"
+        complete = bool(
+            stock_field.get("evidence_class") == EVIDENCE_LIVE
+            and stock_field.get("complete")
+        )
+        supplier_count_value = _number(_supplier_count(record))
+        coverage = (
+            "Complete"
+            if complete
+            else "Incomplete"
+            if stock_field.get("evidence_class") == EVIDENCE_LIVE
+            else "Unavailable"
+        )
+        stock_evidence = (
+            stock_field.get("sources")
+            if stock_field.get("evidence_class") == EVIDENCE_LIVE
+            else []
+        )
+        price_class = str(price_field.get("evidence_class") or "missing")
+        if price_class != EVIDENCE_LIVE:
+            price = None
+        if lead_time_field.get("evidence_class") != EVIDENCE_LIVE:
+            lead_time_evidence = []
+            lead_time_checked_at = ""
+        else:
+            lead_time_evidence = _json_value(lead_time_evidence)
+            lead_time_checked_at = lead_time_field.get("retrieved_at") or ""
+        if not isinstance(lead_time_evidence, (list, dict)):
+            lead_time_evidence = []
+        if lifecycle_field.get("evidence_class") == EVIDENCE_LIVE:
+            conflict = bool(lifecycle_field.get("conflict"))
+            evidence_conflict = "Conflict detected" if conflict else "No conflict recorded"
+        else:
+            evidence_conflict = "Unavailable"
+        if identity_field.get("evidence_class") != EVIDENCE_LIVE:
+            supplier = ""
+            supplier_links = []
+        extended = extended_cost(
+            price if price_class == EVIDENCE_LIVE else None,
+            quantity,
+        )
+        price_currency = (
+            str(price_field.get("currency") or "")
+            if price_class == EVIDENCE_LIVE
+            else ""
         )
         description = _first(record, "description", "Description", "part_description")
         description_alternates = extract_description_alternates(description)
@@ -594,13 +587,26 @@ def component_rows(
         candidate_mpns = ", ".join(item["mpn"] for item in candidates)
         if not candidate_mpns and "candidate" in alternate_status.casefold() and "returned" in alternate_status.casefold():
             candidate_mpns = "Candidate details were not saved in this analysis snapshot"
-        product_url = _safe_http_url(
-            _first(record, "product_url", "Product URL", "product_detail_url", "source_url")
+        related_lead = re.search(
+            r"related catalog lead(?:\(s\))? for review only:\s*([^.;]+)",
+            alternate_status,
+            flags=re.IGNORECASE,
         )
-        if not product_url and supplier_links:
-            product_url = supplier_links[0]["url"]
+        why = _reasons(record)
+        if related_lead:
+            why = f"{why}; " if why else ""
+            why += (
+                f"Related catalog lead for review only: {related_lead.group(1).strip()}. "
+                "It is not evidence for this BOM part; the part remains unassessed."
+            )
+        # Identity URLs live on the part evidence envelope, not inside the
+        # field status envelope. Keep them only after exact identity has been
+        # verified and the named distributor's own host has been checked.
+        product_url = supplier_links[0]["url"] if supplier_links else ""
         datasheet_url = _safe_http_url(
-            _first(record, "datasheet_url", "Datasheet URL", "datasheet", "datasheet_link")
+            evidence.get("datasheet_url")
+            if evidence.get("identity_verified") is True
+            else ""
         )
         approvals = approved_by_part.get(
             part_key(mpn),
@@ -611,8 +617,6 @@ def component_rows(
             for item in approvals
             if str(item.get("alternative_part") or "").strip()
         ]
-        stock_evidence = _first(record, "stock_evidence", "Stock Evidence", default=[])
-        lead_time_evidence = _first(record, "lead_time_evidence", "Lead Time Evidence", default=[])
         stock_aggregation = _text(
             _first(record, "Stock Aggregation", "stock_aggregation"),
             "Combined across supplier sources" if "," in stock_sources else "Single source or not reported",
@@ -645,9 +649,13 @@ def component_rows(
             if quantity is not None
             else _text(_first(record, "quantity", "Quantity", "qty")),
             "Lifecycle": lifecycle,
+            "Lifecycle evidence status": _text(lifecycle_field.get("evidence_class"), "missing"),
+            "Lifecycle evidence note": _text(lifecycle_field.get("gap"), ""),
             "Stock": _stock(record),
             "Stock evidence": _evidence_readings(stock_evidence, key="stock", unit="units"),
             "Stock aggregation": stock_aggregation,
+            "Stock evidence status": _text(stock_field.get("evidence_class"), "missing"),
+            "Stock evidence note": _text(stock_field.get("gap"), ""),
             "Evidence source": stock_sources,
             "Supplier product URL": product_url or "—",
             "Datasheet URL": datasheet_url or "—",
@@ -694,7 +702,7 @@ def component_rows(
             "supplier_links": supplier_links,
             "Risk": risk,
             "Risk score": score if score is not None else ("Not assessed" if risk == "Not assessed" else "Not recorded"),
-            "Why": _reasons(record),
+            "Why": why,
             "Lifecycle evidence": _lifecycle_evidence(
                 _first(record, "lifecycle_evidence", "Lifecycle Evidence")
             ),
@@ -704,6 +712,20 @@ def component_rows(
             "Candidate count": len(candidates) if candidates else ("Not saved" if candidate_mpns else 0),
             "Unit price": price if price is not None and price > 0 else "—",
             "Unit price currency": price_currency or "Not reported",
+            "Price evidence status": price_class,
+            "Price evidence note": _text(price_field.get("gap"), ""),
+            "Price source": _text(price_field.get("source"), "Not recorded"),
+            "Price checked at": _text(price_field.get("retrieved_at"), "Not recorded"),
+            "Price break quantity": (
+                price_field.get("price_break_quantity")
+                if price_field.get("price_break_quantity") is not None
+                else "Not reported"
+            ),
+            "Price quantity applicability": (
+                "Applies"
+                if price_field.get("quantity_break_applies") is True
+                else "Not established"
+            ),
             "Extended cost": extended if extended is not None else "—",
             "Description-mentioned alternatives": ", ".join(description_alternates) or "—",
         })
@@ -849,7 +871,7 @@ def detailed_risk_excel_bytes(
     supplier_match_count = sum(_has_supplier_match(part) for part in parts or [] if isinstance(part, dict))
     metrics = [
         ("Total components", len(rows)),
-        ("Parts with matched supplier evidence", supplier_match_count),
+        ("Exact current supplier identity matches", supplier_match_count),
         ("Risk assessed", risk_assessed_count),
         ("Risk coverage", f"{risk_coverage:.0%}"),
         ("High risk", counts["High"]),
@@ -990,7 +1012,9 @@ def detailed_risk_excel_bytes(
             "BOM manufacturer": 26, "Supplier manufacturer": 26,
             "Manufacturer source": 24, "Qty": 10,
             "Lifecycle": 18, "Stock": 14, "Stock evidence": 48,
+            "Lifecycle evidence status": 24, "Lifecycle evidence note": 56,
             "Stock aggregation": 34, "Evidence source": 24, "Recorded supplier": 22,
+            "Stock evidence status": 22, "Stock evidence note": 56,
             "Supplier product URL": 34, "Datasheet URL": 34, "Sourcing checked at": 24,
             "Stock coverage": 18, "Lead time (weeks)": 17, "Lead-time source": 22,
             "Lead-time checked at": 24, "Lead-time evidence": 48,
@@ -999,7 +1023,10 @@ def detailed_risk_excel_bytes(
             "Lifecycle conflict": 22, "Alternate search status": 38,
             "Candidate MPNs": 34, "Candidate count": 16,
             "Approved alternatives": 28, "Unit price": 14,
-            "Unit price currency": 19, "Extended cost": 16,
+            "Unit price currency": 19, "Price evidence status": 24,
+            "Price evidence note": 58, "Price source": 22,
+            "Price checked at": 24, "Price break quantity": 20,
+            "Price quantity applicability": 28, "Extended cost": 16,
             "Description-mentioned alternatives": 38,
         }
         for index, label in enumerate(DETAIL_COLUMNS, start=1):

@@ -101,14 +101,8 @@ def recommendation_workspace_init_script() -> str:
         const applyFilter = (key) => {
           cards.forEach((card) => {
             let visible = true;
-            const confidence = Number(card.getAttribute('data-confidence') || 0);
-            const roi = Number(card.getAttribute('data-roi') || 0);
-            const effort = Number(card.getAttribute('data-effort') || 0);
-            if (key === 'high-confidence') visible = confidence >= 80;
-            else if (key === 'highest-roi') visible = roi >= 1;
-            else if (key === 'quick-wins') visible = card.getAttribute('data-quick-win') === '1';
-            else if (key === 'production-blockers') visible = card.getAttribute('data-production-blocker') === '1';
-            else if (key === 'low-effort') visible = effort <= 3;
+            if (key === 'high-risk') visible = card.getAttribute('data-high-risk') === '1';
+            else if (key === 'needs-verification') visible = card.getAttribute('data-needs-verification') === '1';
             else if (key === 'awaiting-review') visible = card.getAttribute('data-awaiting-review') === '1';
             card.hidden = !visible;
           });
@@ -143,11 +137,12 @@ def recommendation_workspace_init_script() -> str:
           const b = compareData[Number(selectB.value)] || compareData[1] || compareData[0];
           const row = (label, left, right) =>
             '<div class="cv70-compare-row"><span>' + label + '</span><strong>' + left + '</strong><strong>' + right + '</strong></div>';
+          const display = (value) => value === null || value === undefined ? 'Not assessed' : value;
           grid.innerHTML =
-            row('Confidence', a.confidence + '%', b.confidence + '%') +
-            row('ROI score', a.roi, b.roi) +
-            row('Health gain', '+' + a.health_gain, '+' + b.health_gain) +
-            row('Effort (hrs)', a.effort, b.effort) +
+            row('Confidence', display(a.confidence), display(b.confidence)) +
+            row('ROI score', display(a.roi), display(b.roi)) +
+            row('Health gain', display(a.health_gain), display(b.health_gain)) +
+            row('Effort (hrs)', display(a.effort), display(b.effort)) +
             row('Validation', (a.validation || []).join(', '), (b.validation || []).join(', ')) +
             row('Trade-offs', (a.tradeoffs || []).join(' · '), (b.tradeoffs || []).join(' · ')) +
             row('Timeline', (a.timeline || []).join(' → '), (b.timeline || []).join(' → '));

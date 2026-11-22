@@ -331,8 +331,11 @@ def _positive_quantity(part: dict[str, Any]) -> float | None:
     return number
 
 
-def _money(amount: float) -> str:
-    return f"${amount:,.4f}".rstrip("0").rstrip(".")
+def _money(amount: float, currency: str = "") -> str:
+    """Format an amount without silently assuming the dollar currency."""
+    code = str(currency or "").strip().upper()
+    number = f"{amount:,.4f}".rstrip("0").rstrip(".")
+    return f"{code} {number}" if code else f"Currency unverified · {number}"
 
 
 def _source_name(part: dict[str, Any]) -> str:
@@ -366,22 +369,19 @@ def _source_url(part: dict[str, Any]) -> str:
 
 
 def _risk_reason(part: dict[str, Any]) -> str:
-    return str(
-        _first(part, "risk_reasons", "Risk Reasons", "risk_reason", fallback="") or ""
-    ).strip()
+    from src.risk_engine import calculate_risk
+
+    return "; ".join(calculate_risk(part).get("risk_reasons") or [])
 
 
 def _supplier_evidence(part: dict[str, Any]) -> bool:
-    """Whether the saved part has a distributor match, not just a coverage note."""
-    count = _recorded_number(_first(part, "supplier_count", "Supplier Count"))
-    if count is not None and count > 0:
-        return True
-    for key in ("stock_data_sources", "sources"):
-        value = _first(part, key, fallback=None)
-        if _source_payload_present(value):
-            return True
-    offers = _first(part, "supplier_offers", "Supplier Offers", fallback=None)
-    return isinstance(offers, (list, tuple)) and bool(offers)
+    """Whether exact supplier identity and configured-source coverage verify."""
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+    from src.risk_engine import _coverage_complete
+
+    identity = (classify_part_evidence(part).get("fields") or {}).get("identity") or {}
+    complete, _ = _coverage_complete(part)
+    return identity.get("evidence_class") == EVIDENCE_LIVE and complete
 
 
 def _source_payload_present(value: Any) -> bool:
@@ -398,13 +398,27 @@ def _source_payload_present(value: Any) -> bool:
 
 
 def _stock_value(part: dict[str, Any]) -> float | None:
-    value = _recorded_number(_first(part, "stock_available", "Stock Available", "stock"))
-    if value == 0:
-        # Legacy rows often serialized absent stock as zero. A zero is
-        # reportable only when a distributor explicitly supplied it.
-        sources = _first(part, "stock_data_sources", "sources", fallback=None)
-        return value if _supplier_evidence(part) and _source_payload_present(sources) else None
-    return value
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+
+    field = (classify_part_evidence(part).get("fields") or {}).get("stock") or {}
+    if field.get("evidence_class") != EVIDENCE_LIVE or not field.get("complete"):
+        return None
+    return _recorded_number(field.get("observed_total"))
+
+
+def _supplier_count(part: dict[str, Any]) -> float | None:
+    if not _supplier_evidence(part):
+        return None
+    return _recorded_number(_first(part, "supplier_count", "Supplier Count"))
+
+
+def _field_value(part: dict[str, Any], field_name: str, *keys: str) -> Any:
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+
+    field = (classify_part_evidence(part).get("fields") or {}).get(field_name) or {}
+    if field.get("evidence_class") != EVIDENCE_LIVE:
+        return None
+    return _first(part, *keys)
 
 
 def _display_count(value: float | None) -> str:
@@ -424,68 +438,14 @@ def _first(row: dict[str, Any], *keys: str, fallback: Any = None) -> Any:
 
 
 def _priority_assessment(part: dict[str, Any]) -> tuple[str, float | None]:
-    """Align the report rating with saved risk and confirmed supply evidence."""
-    raw_score = _recorded_number(_first(part, "risk_score", "Risk Score"))
-    supplier_evidence = _supplier_evidence(part)
-    label = str(_first(part, "risk_level", "Risk Level", fallback="") or "").strip()
-    folded = label.casefold()
+    """Recalculate using exact supplier evidence; saved risk labels are display-only."""
+    from src.risk_engine import calculate_risk
 
-    if "critical" in folded or "high" in folded:
-        stored_level = "High"
-    elif "med" in folded:
-        stored_level = "Medium"
-    elif "low" in folded:
-        stored_level = "Low"
-    elif any(token in folded for token in ("verif", "unassess", "not assess", "not rated", "unknown", "unrated")):
-        stored_level = "Needs verification"
-    else:
-        stored_level = ""
-
-    unassessed = raw_score is None or (raw_score == 0 and not supplier_evidence)
-    stored_score = max(0.0, min(100.0, raw_score or 0.0))
-    floors: list[float] = []
-    if folded == "critical":
-        floors.append(90)
-    elif stored_level == "High":
-        floors.append(75)
-    elif stored_level == "Medium":
-        floors.append(50)
-
-    lifecycle = str(_first(part, "lifecycle_status", "Lifecycle Status", fallback="") or "").strip().casefold()
-    if any(token in lifecycle for token in ("obsolete", "end of life", "eol", "replacement", "not recommended", "nrnd")):
-        floors.append(85)
-    elif lifecycle in {"", "unknown", "not available", "—"}:
-        floors.append(50)
-
-    stock = _stock_value(part)
-    quantity = _recorded_number(_first(part, "quantity", "Quantity"))
-    suppliers = _recorded_number(_first(part, "supplier_count", "Supplier Count"))
-    lead_time = _recorded_number(_first(part, "lead_time_weeks", "Lead Time Weeks"))
-    if stock is not None:
-        if stock <= 0:
-            floors.append(85)
-        elif quantity is not None and quantity > 0 and stock < quantity:
-            floors.append(75)
-    if suppliers is not None and supplier_evidence:
-        if suppliers <= 0:
-            floors.append(75)
-        elif suppliers == 1:
-            floors.append(60)
-    if lead_time is not None and lead_time >= 12:
-        floors.append(60)
-
-    score = max([stored_score, *floors])
-    if unassessed and not stored_level and score < 75:
-        return "Needs verification", raw_score
-    if unassessed and stored_level == "Needs verification" and score < 75:
-        return "Needs verification", raw_score
-    if score >= 75:
-        return "High", score
-    if score >= 50:
-        return "Medium", score
-    if stored_level == "Low":
-        return "Low", raw_score
-    return "Low", score
+    assessment = calculate_risk(part)
+    return (
+        str(assessment.get("risk_level") or "Needs verification"),
+        _recorded_number(assessment.get("risk_score")),
+    )
 
 
 def _level(part: dict[str, Any]) -> str:
@@ -502,31 +462,23 @@ def _level_class(level: str) -> str:
 
 
 def _drivers(part: dict[str, Any]) -> list[str]:
-    notes: list[str] = []
-    stock = _stock_value(part)
-    suppliers = _recorded_number(_first(part, "supplier_count", "Supplier Count"))
-    lifecycle = str(_first(part, "lifecycle_status", "Lifecycle Status", fallback="") or "")
-    lead = _first(part, "lead_time_weeks", "Lead Time Weeks")
-    if not _supplier_evidence(part):
-        notes.append("No configured distributor returned a matching record for this MPN")
-        notes.append("Verify the full manufacturer part number and rerun the analysis")
-    if any(token in lifecycle.casefold() for token in ("obsolete", "eol", "end of life", "nrnd")):
-        notes.append("Product lifecycle status: " + lifecycle)
-    if stock == 0:
-        notes.append("No stock at approved suppliers")
-    elif stock is not None and 0 < stock < 100:
-        notes.append("Limited stock at approved suppliers")
-    if suppliers == 1:
-        notes.append("Single-source manufacturer")
-    elif suppliers is not None and 1 < suppliers < 3:
-        notes.append("Fewer than 3 active suppliers")
-    if lead is not None and _num(lead, 0) >= 26:
-        notes.append(f"Long lead time ({_num(lead)}+ weeks)")
-    if not notes:
-        notes.append(
-            "This saved analysis does not record a part-specific exception or supplier evidence for this component"
+    from src.risk_engine import calculate_risk
+
+    assessment = calculate_risk(part)
+    reasons = [str(item).strip() for item in assessment.get("risk_reasons", []) if str(item).strip()]
+    coverage = str(_first(part, "supplier_coverage", "Supplier Coverage", fallback="") or "").strip()
+    coverage_key = coverage.casefold()
+    if "no configured supplier returned" in coverage_key or "no supplier match" in coverage_key:
+        reasons.append(
+            "No configured distributor returned a matching record; verify the exact MPN and supplier setup"
         )
-    return notes[:3]
+    elif coverage and not assessment.get("supplier_coverage_complete"):
+        reasons.append(f"Supplier lookup coverage is incomplete: {coverage}")
+    if assessment.get("risk_level") == "Needs verification" or not reasons:
+        reasons.append(
+            "Verify exact-part identity, source coverage, lifecycle, and inventory evidence before making a sourcing decision"
+        )
+    return reasons[:3]
 
 
 def _action(level: str) -> tuple[str, str]:
@@ -552,82 +504,154 @@ def _action(level: str) -> tuple[str, str]:
 
 
 def _cost_cells(part: dict[str, Any]) -> dict[str, str]:
-    """Cost columns from saved fields only. A zero price is a missing default."""
-    from src.saved_bom_cost import distributor_comparison, extended_cost, normalize_saved_offers
+    """Show only prices backed by exact-MPN, timestamped distributor offers."""
+    from src.saved_bom_cost import (
+        distributor_comparison,
+        extended_cost,
+        normalize_saved_offers,
+        select_supplier_offer,
+        supplier_offer_is_current,
+    )
 
-    price = _positive_price(part)
+    raw_price = _positive_price(part)
     quantity = _positive_quantity(part)
     name = _source_name(part)
     url = _source_url(part)
-    stock = _recorded_number(_first(part, "stock_available", "Stock Available", "stock"))
     mpn = str(_first(part, "mpn", "MPN", "part_number", fallback="") or "")
     offers = normalize_saved_offers(
         part.get("supplier_offers") or part.get("Supplier Offers"),
         mpn=mpn,
     )
-    comparison = distributor_comparison(offers, mpn=mpn, bom_quantity=quantity)
-    price_html = _esc(_money(price)) if price is not None else "Not recorded"
+    raw_currency = str(_first(part, "unit_price_currency", "Unit Price Currency", "currency", fallback="") or "").strip().upper()
+    selected_offer = None
+    recorded_offer = None
+    if raw_price is not None:
+        offer_args = {
+            "mpn": mpn,
+            "supplier": name,
+            "unit_price": raw_price,
+            "currency": raw_currency,
+            "quantity": quantity,
+        }
+        recorded_offer = select_supplier_offer(
+            offers,
+            **offer_args,
+            require_current=False,
+        )
+        current_offer = select_supplier_offer(
+            offers,
+            **offer_args,
+            require_current=True,
+        )
+        selected_offer = (
+            current_offer
+            if current_offer and current_offer.get("quantity_break_applies") is True
+            else None
+        )
+    price = float(selected_offer["unit_price"]) if selected_offer else None
+    currency = str(
+        (selected_offer or recorded_offer or {}).get("currency") or raw_currency or ""
+    )
+    verified_source = str(selected_offer.get("distributor") or "") if selected_offer else ""
+    comparison = distributor_comparison(
+        offers, mpn=mpn, bom_quantity=quantity, require_current=True
+    )
+    recorded_offer_is_stale = bool(
+        recorded_offer
+        and recorded_offer.get("quantity_break_applies") is True
+        and not supplier_offer_is_current(recorded_offer)
+    )
+    price_html = (
+        _esc(_money(price, currency))
+        if price is not None
+        else "Stale snapshot" if recorded_offer_is_stale
+        else "Not verified"
+    )
     link = ""
     if url:
         link = (
             f'<a href="{html.escape(url, quote=True)}" rel="noopener noreferrer">'
             "Product page</a>"
         )
-    elif name or price is not None:
+    elif name or raw_price is not None:
         link = "<small>Product URL was not saved.</small>"
     refresh = (
         "<small>Re-run the BOM analysis to save a missing distributor, unit price, "
         "BOM quantity, or product URL when the supplier or the BOM file returns it.</small>"
     )
-    if name and price is not None:
-        details = [f"<small>{price_html}</small>"]
-        if stock is not None:
-            details.append(f"<small>Stock {int(stock):,}</small>")
+    if verified_source and price is not None:
+        details = [f"<small>{price_html} · exact MPN API snapshot</small>"]
+        if selected_offer.get("retrieved_at"):
+            details.append(f"<small>Retrieved {_esc(str(selected_offer['retrieved_at']))}</small>")
         if link:
             details.append(link)
-        details.append("<small>Recorded offer.</small>")
+        details.append("<small>Catalog snapshot; supplier checkout price may differ.</small>")
         for offer in offers[:8]:
-            bits = [str(offer["distributor"]), _money(float(offer["unit_price"]))]
-            if offer.get("currency"):
-                bits.append(str(offer["currency"]))
-            if offer.get("price_break_quantity") is not None:
-                bits.append(f"from {float(offer['price_break_quantity']):g}")
-            if offer.get("stock") is not None:
-                bits.append(f"stock {int(offer['stock']):,}")
-            if offer.get("retrieved_at"):
-                bits.append(f"retrieved {offer['retrieved_at']}")
+            verified_offer = select_supplier_offer(
+                [offer],
+                mpn=mpn,
+                supplier=str(offer.get("distributor") or ""),
+                unit_price=offer.get("unit_price"),
+                currency=offer.get("currency"),
+                quantity=quantity,
+            )
+            if verified_offer is None:
+                continue
+            bits = [
+                str(verified_offer["distributor"]),
+                _money(float(verified_offer["unit_price"]), str(verified_offer.get("currency") or "")),
+            ]
+            if verified_offer.get("price_break_quantity") is not None:
+                bits.append(f"from {float(verified_offer['price_break_quantity']):g}")
+            if verified_offer.get("retrieved_at"):
+                bits.append(f"retrieved {verified_offer['retrieved_at']}")
             line = _esc(" · ".join(bits))
-            if offer.get("product_url"):
+            if verified_offer.get("product_url"):
                 line += (
-                    f' <a href="{html.escape(offer["product_url"], quote=True)}" '
+                    f' <a href="{html.escape(verified_offer["product_url"], quote=True)}" '
                     'rel="noopener noreferrer">Product page</a>'
                 )
             details.append(f"<small>{line}</small>")
-        source_html = f"<strong>{_esc(name)}</strong>{''.join(details)}"
-    elif name:
+        source_html = f"<strong>{_esc(verified_source)}</strong>{''.join(details)}"
+    elif recorded_offer_is_stale:
+        stale_price = _money(
+            float(recorded_offer["unit_price"]),
+            str(recorded_offer.get("currency") or currency),
+        )
+        retrieved = _esc(str(recorded_offer.get("retrieved_at") or "timestamp unavailable"))
+        details = [
+            f"<small>Saved amount {_esc(stale_price)} from a supplier API snapshot retrieved {retrieved}.</small>",
+            "<small>This snapshot is older than 24 hours. It is excluded from current extended cost and price comparisons; refresh supplier data before relying on it.</small>",
+        ]
+        if url:
+            details.append(link)
         source_html = (
-            f"<strong>{_esc(name)}</strong>"
-            "<small>Distributor was saved. Unit price was not saved, so this is not a comparable offer.</small>"
+            f"<strong>{_esc(str(recorded_offer.get('distributor') or name or 'Supplier'))} · stale snapshot</strong>"
+            f"{''.join(details)}"
+        )
+    elif name or raw_price is not None:
+        reported = (
+            f" Saved amount: {_esc(_money(raw_price, raw_currency))}."
+            if raw_price is not None
+            else ""
+        )
+        source_html = (
+            f"<strong>{_esc(name or 'Supplier not verified')}</strong>"
+            f"<small>{reported} No matching exact-MPN offer with timestamp, distributor, currency, and applicable quantity was saved. This amount is excluded from cost calculations.</small>"
             + link
             + refresh
         )
     else:
-        stock_note = (
-            f" Recorded stock is {int(stock):,}."
-            if stock is not None
-            else ""
-        )
         source_html = (
             "Not recorded"
-            "<small>Distributor was not saved."
-            f"{html.escape(stock_note)}</small>"
+            "<small>Distributor was not saved. No exact-part supplier offer was saved.</small>"
             + refresh
         )
     total = extended_cost(price, quantity)
     if total is not None:
         extended_html = (
-            f"{_esc(_money(total))}"
-            f"<small>{price_html} × {_esc(f'{quantity:g}')} recorded</small>"
+            f"{_esc(_money(total, currency))}"
+            f"<small>{price_html} × {_esc(f'{quantity:g}')}; saved API snapshot, not checkout confirmation.</small>"
         )
     else:
         missing = []
@@ -649,23 +673,21 @@ def _cost_cells(part: dict[str, Any]) -> dict[str, str]:
         break_unit = "unit" if float(break_quantity) == 1 else "units"
         comparison_html = (
             f"<strong>{_esc(comparison['lower_distributor'])} is "
-            f"{_esc(_money(float(comparison['savings_per_unit'])))} / unit lower</strong>"
+            f"{_esc(_money(float(comparison['savings_per_unit']), str(comparison.get('currency') or '')))} / unit lower</strong>"
             f"<small>Price applies from {break_quantity_text} {break_unit}; BOM quantity "
             f"{_esc(f'{quantity:g}' if quantity is not None else 'not recorded')}. "
             f"Compared with "
             f"{_esc(comparison['higher_distributor'])} at "
-            f"{_esc(_money(float(comparison['higher_price'])))} "
-            f"{_esc(comparison.get('currency') or '')}.</small>"
+            f"{_esc(_money(float(comparison['higher_price']), str(comparison.get('currency') or '')))}.</small>"
         )
         comparable = True
     elif comparison.get("currency") and comparison.get("lower_price") is not None:
         comparison_html = (
             "<strong>No lower comparable price was found</strong>"
             f"<small>{_esc(comparison.get('lower_distributor') or '')} "
-            f"{_esc(_money(float(comparison['lower_price'])))} and "
+            f"{_esc(_money(float(comparison['lower_price']), str(comparison.get('currency') or '')))} and "
             f"{_esc(comparison.get('higher_distributor') or '')} "
-            f"{_esc(_money(float(comparison['higher_price'])))} "
-            f"{_esc(comparison.get('currency') or '')} at the saved quantity.</small>"
+            f"{_esc(_money(float(comparison['higher_price']), str(comparison.get('currency') or '')))} at the saved quantity.</small>"
         )
         comparable = True
     elif len(offers) >= 2:
@@ -716,6 +738,18 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "The saved analysis has no recorded exception or supplier evidence for this part, so Cadivor is not recommending a substitute or sourcing action.",
             )
         raw_mpn = str(_first(part, "mpn", "MPN", "part_number", fallback="Part") or "Part")
+        lifecycle_value = _field_value(part, "lifecycle", "Lifecycle", "lifecycle_status", "Lifecycle Status")
+        lead_value = _field_value(part, "lead_time", "lead_time_weeks", "Lead Time Weeks")
+        supplier_count = _supplier_count(part)
+        from apps.api.evidence_contract import classify_part_evidence
+
+        identity = (classify_part_evidence(part).get("fields") or {}).get("identity", {})
+        source_name = (
+            _first(part, "primary_supplier", "best_source", "Best Source", "distributor", fallback="—")
+            if identity.get("evidence_class") == "live-authorized-supplier"
+            else "—"
+        )
+        cost_cells = _cost_cells(part)
         ranked.append(
             {
                 "mpn_raw": raw_mpn,
@@ -749,23 +783,14 @@ def _part_rows(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "score_display": _display_score(effective_score),
                 "stock": _stock_value(part),
                 "stock_display": _display_count(_stock_value(part)),
-                "suppliers": _recorded_number(_first(part, "supplier_count", "Supplier Count")),
-                "suppliers_display": _display_count(_recorded_number(_first(part, "supplier_count", "Supplier Count"))),
-                "lifecycle": _esc(_first(part, "lifecycle_status", "Lifecycle Status", fallback="Unknown")),
-                "lead": _esc(_first(part, "lead_time_weeks", "Lead Time Weeks", fallback="—")),
-                "source": _esc(
-                    _first(
-                        part,
-                        "primary_supplier",
-                        "best_source",
-                        "Best Source",
-                        "distributor",
-                        fallback="—",
-                    )
-                ),
-                "price": _esc(_first(part, "unit_price", "Unit Price", "price", fallback="—")),
+                "suppliers": supplier_count,
+                "suppliers_display": _display_count(supplier_count),
+                "lifecycle": _esc(lifecycle_value or "Needs verification"),
+                "lead": _esc(lead_value if lead_value is not None else "Not reported"),
+                "source": _esc(source_name),
+                "price": cost_cells["cost_price"],
                 "risk_reason": _esc(_risk_reason(part)),
-                **_cost_cells(part),
+                **cost_cells,
                 "image": str(
                     _first(
                         part,
@@ -939,7 +964,14 @@ def _fragment_render(function):
         import streamlit as st
 
         fragment = getattr(st, "fragment", None)
-        return fragment(function) if callable(fragment) else function
+        if not callable(fragment):
+            return function
+        wrapped = fragment(function)
+        # Retain access to the plain renderer for headless export tests and
+        # debugging tools that do not run Streamlit's rerun machinery.
+        if callable(wrapped) and not hasattr(wrapped, "__wrapped__"):
+            wrapped.__wrapped__ = function
+        return wrapped
     except Exception:
         return function
 
@@ -982,7 +1014,13 @@ def engineering_intelligence_html(
     ]
     no_stock = [row for row in rows if row["stock"] == 0]
     single = [row for row in rows if row["suppliers"] == 1]
-    health_display = f"{_esc(health_score)}/100" if health_score is not None else "Not calculated"
+    # A persisted number is not a current health result when any row cannot
+    # be risk-rated from exact, current supplier evidence.
+    health_display = (
+        f"{_esc(health_score)}/100"
+        if health_score is not None and not unassessed
+        else "Not calculated"
+    )
     active = tab if tab in EI_TABS else "BOM Risk"
     banner = ""
     if active == "BOM Risk":
@@ -1039,7 +1077,7 @@ def engineering_intelligence_html(
         banner += textwrap.dedent(
             f"""
             <section class="cv-ei-kpis">
-              <div class="cv-ei-kpi"><div class="cv-ei-icon health">♡</div><div><span>{'Risk coverage' if unassessed else 'Health'}</span><strong>{f'{len(rows) - len(unassessed)}/{len(rows)}' if unassessed else health_display}</strong></div></div>
+              <div class="cv-ei-kpi"><div class="cv-ei-icon health">♡</div><div><span>Health</span><strong>{health_display}</strong>{f'<small>Risk coverage {len(rows) - len(unassessed)}/{len(rows)}</small>' if unassessed else ''}</div></div>
               <div class="cv-ei-kpi"><div class="cv-ei-icon review">▣</div><div><span>Needs review</span><strong>{len(open_high) + len(open_medium) + len(open_unassessed)}</strong></div></div>
               <div class="cv-ei-kpi"><div class="cv-ei-icon stock">▢</div><div><span>No-stock parts</span><strong>{len(no_stock)}</strong></div></div>
               <div class="cv-ei-kpi"><div class="cv-ei-icon source">⚭</div><div><span>Single-source</span><strong>{len(single)}</strong></div></div>
@@ -1326,7 +1364,7 @@ def _tab_body(
                 )
                 + f"<small>{row['action_detail']}</small>"
             )
-        if approvals:
+        if approvals and row["level"] != "Needs verification":
             original_risk = row["level"]
             score_note = (
                 f" · score {row['score_display']}/100"
@@ -1336,6 +1374,11 @@ def _tab_body(
             risk_cell = (
                 "<span class='cv-pill low'>Mitigated</span>"
                 f"<small>Original BOM risk: {original_risk}{score_note}</small>"
+            )
+        elif approvals:
+            risk_cell = (
+                "<span class='cv-pill verification'>Decision recorded</span>"
+                "<small>Original BOM risk: Needs verification. An approval record does not replace missing supplier evidence.</small>"
             )
         else:
             risk_cell = (

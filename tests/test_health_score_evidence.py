@@ -10,6 +10,7 @@ from src.health_score import (
     normalize_saved_health_score,
 )
 from src.engineering_overview import build_engineering_overview
+from tests.evidence_fixtures import live_supplier_part
 
 
 class HealthScoreEvidenceTests(unittest.TestCase):
@@ -33,7 +34,7 @@ class HealthScoreEvidenceTests(unittest.TestCase):
 
     def test_overall_health_is_withheld_when_any_component_needs_verification(self):
         result = calculate_bom_health_score(pd.DataFrame([
-            {"Risk Score": 10, "Risk Level": "Low", "Supplier Data Verified": True},
+            live_supplier_part("GOOD-1", stock=1000),
             {"Risk Score": None, "Risk Level": "Needs verification", "Supplier Data Verified": False},
         ]))
         self.assertIsNone(result["health_score"])
@@ -43,10 +44,10 @@ class HealthScoreEvidenceTests(unittest.TestCase):
 
     def test_complete_evidence_gets_a_health_score(self):
         result = calculate_bom_health_score(pd.DataFrame([
-            {"Risk Score": 10, "Risk Level": "Low", "Supplier Data Verified": True},
-            {"Risk Score": 30, "Risk Level": "Medium", "Supplier Data Verified": True},
+            live_supplier_part("GOOD-1", stock=1000),
+            live_supplier_part("GOOD-2", stock=1200),
         ]))
-        self.assertEqual(result["health_score"], 80)
+        self.assertEqual(result["health_score"], 95)
         self.assertEqual(result["assessment_coverage"], 1.0)
 
     def test_overall_health_is_withheld_when_supplier_stock_coverage_is_partial(self):
@@ -63,9 +64,10 @@ class HealthScoreEvidenceTests(unittest.TestCase):
         self.assertEqual(result["needs_verification_count"], 1)
 
     def test_executive_summary_does_not_count_unknown_stock_as_stockout(self):
+        verified_stockout = live_supplier_part("ZERO-1", stock=0)
         rows = pd.DataFrame([
-            {"Risk Level": "Needs verification", "Lifecycle Status": "Unknown", "Stock Available": None, "Supplier Data Verified": False},
-            {"Risk Level": "High", "Lifecycle Status": "Active", "Stock Available": 0, "Supplier Data Verified": True},
+            {"MPN": "UNKNOWN-1", "Risk Level": "Needs verification", "Lifecycle Status": "Unknown", "Stock Available": None, "Supplier Data Verified": False},
+            verified_stockout,
         ])
         summary = generate_executive_summary(rows)
         self.assertIn("1 components have a confirmed zero on-hand stock report.", summary)

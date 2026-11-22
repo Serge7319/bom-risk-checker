@@ -57,6 +57,14 @@ def _number(value: Any) -> Any:
     return None
 
 
+def _is_distributor_label(value: Any) -> bool:
+    compact = "".join(char for char in str(value or "").casefold() if char.isalnum())
+    return compact in {
+        "digikey", "digikeyelectronics", "mouser", "mouserelectronics",
+        "newark", "element14", "farnell", "nexarsupply",
+    }
+
+
 def _part_data_for_row(row: Mapping[str, Any]) -> dict[str, Any]:
     from src.bom_parser import bom_metadata_text
     from integrations.supplier_aggregator import get_best_part_data
@@ -170,23 +178,29 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
     lead_time_evidence = part.get("lead_time_evidence") if isinstance(part.get("lead_time_evidence"), list) else []
     stock_evidence = part.get("stock_evidence") if isinstance(part.get("stock_evidence"), list) else []
     lifecycle_evidence = part.get("lifecycle_evidence") if isinstance(part.get("lifecycle_evidence"), list) else []
-    has_live_offer_price = any(
-        isinstance(offer, dict)
-        and (offer.get("unit_price") is not None or offer.get("price") is not None)
-        and str(offer.get("retrieved_at") or "").strip()
-        for offer in offers
-    )
-    if explicit_price_source:
+    matching_price_offer = None
+    if verified and price is not None:
+        from src.saved_bom_cost import select_supplier_offer
+
+        matching_price_offer = select_supplier_offer(
+            offers,
+            mpn=normalized,
+            supplier=explicit_price_source if _is_distributor_label(explicit_price_source) else supplier,
+            unit_price=price,
+            currency=part.get("unit_price_currency") or part.get("currency"),
+            quantity=(row.get("effective_quantity") or row.get("quantity") or row.get("Quantity")),
+        )
+    if "synthetic" in explicit_price_source.casefold() or "preview" in explicit_price_source.casefold():
         price_source = explicit_price_source
     elif price is None:
         price_source = "missing"
-    elif verified and has_live_offer_price:
-        price_source = str(part.get("source") or "live-authorized-supplier")
-    elif verified:
-        # Live identity must not wash an unlabeled/synthetic price into "live".
-        price_source = "synthetic-preview"
+    elif matching_price_offer is not None:
+        price_source = str(
+            matching_price_offer.get("distributor") or explicit_price_source or supplier
+        )
     else:
-        price_source = "missing"
+        # A live exact-part identity alone is not a supplier price quote.
+        price_source = "reported-unverified"
     lifecycle_sources = sorted({
         str(item.get("source") or "").strip()
         for item in lifecycle_evidence
@@ -215,34 +229,23 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
             ),
             "",
         )
-    matching_price_offer = next(
-        (
-            offer for offer in offers
-            if isinstance(offer, dict)
-            and str(offer.get("distributor") or offer.get("source") or "").casefold()
-            == str(supplier or "").casefold()
-            and _number(offer.get("unit_price")) == _number(price)
-            and str(offer.get("retrieved_at") or "").strip()
-        ),
-        {},
-    )
+    matching_price_offer = matching_price_offer or {}
     stock_source = (
         ", ".join(str(item) for item in stock_sources if item)
         if stock_sources
         else (evidence_class if stock is not None and verified else ("missing" if stock is None else "synthetic-preview"))
     )
     price_type = str(part.get("price_type") or "").strip()
-    if not price_type:
+    if price_source == "reported-unverified":
+        price_type = "unverified"
+    elif not price_type:
         if price is None:
             price_type = "not-recorded"
         elif "synthetic" in price_source.casefold() or "preview" in price_source.casefold():
             price_type = "synthetic-estimate"
-        elif any(
-            isinstance(offer, dict) and offer.get("price_break_quantity") not in (None, "")
-            for offer in offers
-        ):
+        elif matching_price_offer.get("price_break_quantity") not in (None, ""):
             price_type = "quantity-break"
-        elif price_source == "live-authorized-supplier":
+        elif matching_price_offer:
             price_type = "distributor-list"
         else:
             price_type = "recorded"
@@ -314,7 +317,8 @@ def _part_analysis(row: Mapping[str, Any]) -> dict[str, Any]:
         "Manufacturer Source": str(part.get("manufacturer_source") or ""),
         "manufacturer_source": str(part.get("manufacturer_source") or ""),
         "Manufacturer Identity Status": str(part.get("identity_status") or ("matched" if verified else "unverified")),
-        "Manufacturer Part Number": str(part.get("manufacturer_part_number") or mpn),
+        "Manufacturer Part Number": str(part.get("manufacturer_part_number") or ""),
+        "manufacturer_part_number": str(part.get("manufacturer_part_number") or ""),
         "Description": str(part.get("description") or row.get("description") or row.get("part_description") or ""),
         "description": str(part.get("description") or row.get("description") or row.get("part_description") or ""),
         "Category": str(part.get("category") or part.get("architecture") or row.get("category") or ""),
@@ -495,6 +499,8 @@ def _part_analysis_failure(row: Mapping[str, Any]) -> dict[str, Any]:
         "mpn_normalized": str(row.get("mpn_normalized") or mpn),
         "Manufacturer": str(row.get("manufacturer") or ""),
         "manufacturer": str(row.get("manufacturer") or ""),
+        "Manufacturer Part Number": "",
+        "manufacturer_part_number": "",
         "Description": str(row.get("description") or ""),
         "description": str(row.get("description") or ""),
         "Quantity": quantity, "quantity": quantity,

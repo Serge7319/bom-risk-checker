@@ -3,11 +3,15 @@ from __future__ import annotations
 import unittest
 
 from src.alternative_candidate_intelligence import build_alternative_candidate_insight
+from tests.evidence_fixtures import live_supplier_part
 
 
 class AlternativeCandidateIntelligenceTests(unittest.TestCase):
     def test_names_mismatches_and_missing_evidence(self):
+        part = live_supplier_part("CAND-123", stock=1250, quantity=1, unit_price=0.25)
         insight = build_alternative_candidate_insight({
+            **part,
+            "Alternative Part": "CAND-123",
             "Recommendation Score": 81,
             "Engineering Comparison Confidence": 68,
             "Supplier Relationship Confidence": 94,
@@ -21,7 +25,7 @@ class AlternativeCandidateIntelligenceTests(unittest.TestCase):
             ],
         })
         self.assertEqual(insight["score"], 81)
-        self.assertEqual(insight["stock_label"], "1,250")
+        self.assertEqual(insight["stock_label"], "1,250 reported by supplier API")
         self.assertIn("Package differs", insight["verification_gaps"][0])
         self.assertTrue(any("supply voltage" in item for item in insight["verification_gaps"]))
         self.assertNotIn("Channel count", " ".join(insight["verification_gaps"]))
@@ -31,8 +35,8 @@ class AlternativeCandidateIntelligenceTests(unittest.TestCase):
             "Recommendation Score": 60, "Lifecycle": "Unknown", "Stock": 0,
         })
         self.assertIn("Confirm the manufacturer lifecycle status.", insight["verification_gaps"])
-        self.assertIn("Confirm procurable stock before qualification.", insight["verification_gaps"])
-        self.assertEqual(insight["stock_label"], "No confirmed stock")
+        self.assertIn("Supplier inventory is not verified for this exact candidate.", insight["verification_gaps"])
+        self.assertEqual(insight["stock_label"], "Not verified")
 
 
 if __name__ == "__main__":

@@ -134,6 +134,7 @@ function asComplianceRecord(value: unknown): Record<string, unknown> {
 function complianceStatus(status: unknown): { label: string; tone: string } {
   switch (String(status || "")) {
     case "evidence_linked": return { label: "Source attached", tone: "green" };
+    case "partial_evidence": return { label: "Partial · review", tone: "amber" };
     case "reported_unverified": return { label: "Reported · verify", tone: "amber" };
     case "conflicting_evidence": return { label: "Conflicting · review", tone: "red" };
     case "supplier_reports_unknown": return { label: "Supplier reports unknown", tone: "gray" };
@@ -703,10 +704,15 @@ export default function ReportPage() {
                   <>
                     <div className={complianceStyles.summaryBadges}>
                       <span className="cv-badge green">{Number(compliancePreviewSummary.evidence_linked || 0)} source attached</span>
+                      <span className="cv-badge amber">{Number(compliancePreviewSummary.partial_evidence || 0)} partial</span>
+                      <span className="cv-badge red">{Number(compliancePreviewSummary.conflicting_evidence || 0)} conflicting</span>
                       <span className="cv-badge amber">{Number(compliancePreviewSummary.reported_unverified || 0)} reported, verify</span>
-                      <span className="cv-badge gray">{Number(compliancePreviewSummary.missing_evidence || 0)} unknown</span>
+                      <span className="cv-badge gray">{Number(compliancePreviewSummary.unknown ?? (Number(compliancePreviewSummary.missing_evidence || 0) + Number(compliancePreviewSummary.supplier_reports_unknown || 0)))} unknown</span>
                       <span className={complianceStyles.totalCount}>{Number(compliancePreviewSummary.total || 0)} components</span>
                     </div>
+                    <p className={complianceStyles.rowDetail}>
+                      Counts cover every component once. “Unknown” includes missing records and supplier responses that say unknown; conflicts and partial evidence remain separate.
+                    </p>
                     {compliancePreviewRecords.length ? (
                       <div className={`cv-table-wrap ${complianceStyles.previewTableWrap}`}>
                         <table className={`cv-table ${complianceStyles.previewTable}`}>

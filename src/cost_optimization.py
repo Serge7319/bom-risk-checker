@@ -17,6 +17,41 @@ from src.ui.cadivor_design_system import cadivor_engineering_dataframe
 from src.part_images import part_image_markup, part_image_source
 
 
+def _verified_stock(row: Dict[str, Any], mpn: str) -> int | None:
+    """Reconcile stock only from exact, timestamped authorized supplier rows."""
+    from datetime import datetime
+    from integrations.stock_coercion import parse_stock_total
+    from src.normalizer import normalize_part_number
+
+    observations = _first(row, "stock_evidence", "Stock Evidence", default=[]) or []
+    if isinstance(observations, dict):
+        observations = [observations]
+    trusted = []
+    authorized = {"digikey", "digikeyelectronics", "mouser", "mouserelectronics", "newark", "element14", "farnell", "nexarsupply"}
+    for item in observations if isinstance(observations, (list, tuple)) else []:
+        if not isinstance(item, dict):
+            continue
+        source = "".join(ch for ch in str(item.get("source") or item.get("supplier") or "").casefold() if ch.isalnum())
+        try:
+            retrieved = datetime.fromisoformat(str(item.get("retrieved_at") or "").replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if (
+            source not in authorized
+            or not item.get("mpn")
+            or normalize_part_number(str(item.get("mpn"))) != normalize_part_number(mpn)
+            or retrieved.tzinfo is None
+        ):
+            continue
+        quantity = parse_stock_total(item.get("stock", item.get("stock_total")))
+        if quantity is not None:
+            trusted.append(int(quantity))
+    reported = parse_stock_total(_first(row, "stock_available", "Stock Available", "Total Market Stock", "total_market_stock", "stock"))
+    if trusted and reported is not None and sum(trusted) == reported:
+        return int(reported)
+    return None
+
+
 def _text(value: Any, default: str = "") -> str:
     if value is None:
         return default
@@ -31,6 +66,14 @@ def _number(value: Any, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _format_money(value: Any, currency: str = "") -> str:
+    amount = _number(value, 0.0)
+    code = _text(currency).upper()
+    if code == "USD":
+        return "$" + format(amount, ",.2f")
+    return f"{code or 'Currency not recorded'} {amount:,.2f}"
 
 
 def _first(row: Dict[str, Any], *keys: str, default: Any = None) -> Any:
@@ -57,31 +100,54 @@ def build_cost_optimization(
         for row in analyses
     }
 
+    from src.saved_bom_cost import normalize_saved_offers, select_supplier_offer, distributor_comparison, extended_cost
+
     normalized: List[Dict[str, Any]] = []
     for row in parts:
         analysis_id = _text(row.get("analysis_id"))
-        qty = max(1, int(_number(_first(row, "quantity", "qty", "required_quantity"), 1)))
-        unit_price = max(
-            0.0,
-            _number(
-                _first(
-                    row,
-                    "unit_price",
-                    "price",
-                    "best_price",
-                    "estimated_unit_price",
-                    default=0,
-                ),
-                0,
-            ),
+        raw_qty = _number(_first(row, "effective_quantity", "Effective Quantity", "quantity", "Quantity", "qty", "required_quantity"), 0)
+        qty = max(0, int(raw_qty))
+        part_number = _text(_first(row, "mpn", "MPN", "part_number"), "Unknown")
+        raw_offers = _first(row, "supplier_offers", "Supplier Offers", default=[])
+        offers = normalize_saved_offers(raw_offers, mpn=part_number)
+        quantity_offers = []
+        for offer in offers:
+            selected = select_supplier_offer(
+                [offer],
+                mpn=part_number,
+                supplier=str(offer.get("distributor") or ""),
+                unit_price=offer.get("unit_price"),
+                currency=offer.get("currency"),
+                quantity=qty if qty > 0 else None,
+            )
+            if selected and selected.get("quantity_break_applies") is True:
+                quantity_offers.append(selected)
+        selected_supplier = _text(_first(row, "price_source", "Price Source", "primary_supplier", "supplier", "best_source"))
+        raw_price = _first(row, "unit_price", "Unit Price", "price", "best_price")
+        raw_currency = _text(_first(row, "unit_price_currency", "Unit Price Currency", "currency", "Currency")).upper()
+        matched_current = select_supplier_offer(
+            quantity_offers,
+            mpn=part_number,
+            supplier=selected_supplier,
+            unit_price=raw_price,
+            currency=raw_currency,
+            quantity=qty if qty > 0 else None,
+        ) if raw_price not in (None, "") else None
+        current_quote = matched_current or min(
+            quantity_offers,
+            key=lambda offer: float(offer["unit_price"]),
+            default=None,
         )
-        suppliers = int(_number(row.get("supplier_count"), 0))
-        stock = int(_number(_first(row, "stock_available", "stock"), 0))
-        risk_score = int(_number(row.get("risk_score"), 0))
-        part_number = _text(
-            _first(row, "mpn", "MPN", "part_number"),
-            "Unknown",
-        )
+        unit_price = float(current_quote["unit_price"]) if current_quote else 0.0
+        currency = str(current_quote.get("currency") or "") if current_quote else ""
+        verified_supplier = str(current_quote.get("distributor") or "") if current_quote else ""
+        suppliers = len({str(offer.get("distributor") or "").casefold() for offer in quantity_offers})
+        stock_value = _verified_stock(row, part_number)
+        stock = int(stock_value) if stock_value is not None else None
+        from src.risk_engine import calculate_risk
+
+        scored_risk = calculate_risk(row).get("risk_score")
+        risk_score = int(scored_risk) if scored_risk is not None else None
         description = _text(
             _first(row, "description", "Description", "part_description", "product_description"),
             "",
@@ -132,24 +198,32 @@ def build_cost_optimization(
                 "Image URL": image_url,
                 "Image Context": image_context,
                 "Manufacturer": manufacturer,
-                "Supplier": _text(
-                    _first(row, "primary_supplier", "supplier", "best_source"),
-                    "Not recorded",
-                ),
+                "Supplier": verified_supplier or "Not recorded",
                 "Quantity per Build": qty,
                 "Unit Price": unit_price,
-                "Extended Cost per Build": qty * unit_price,
+                "Currency": currency,
+                "Extended Cost per Build": extended_cost(unit_price, qty),
                 "Supplier Sources": suppliers,
                 "Available Stock": stock,
                 "Lifecycle": _text(row.get("lifecycle_status"), "Unknown"),
                 "Risk Score": risk_score,
+                "Verified Offers": quantity_offers,
             }
         )
-    priced = [row for row in normalized if row["Unit Price"] > 0]
-    missing_price = [row for row in normalized if row["Unit Price"] <= 0]
-
-    current_cost_per_build = sum(row["Extended Cost per Build"] for row in priced)
-    production_run_cost = current_cost_per_build * max(1, build_quantity)
+    priced = [row for row in normalized if row["Unit Price"] > 0 and row["Currency"]]
+    missing_price = [row for row in normalized if row not in priced]
+    currencies = {row["Currency"] for row in priced}
+    current_cost_per_build = (
+        sum(float(row["Extended Cost per Build"] or 0) for row in priced)
+        if (
+            priced
+            and len(priced) == len(normalized)
+            and len(currencies) == 1
+            and all(row["Extended Cost per Build"] is not None for row in priced)
+        )
+        else None
+    )
+    production_run_cost = current_cost_per_build * max(1, build_quantity) if current_cost_per_build is not None else None
     pricing_coverage = (
         round((len(priced) / max(1, len(normalized))) * 100)
         if normalized else 0
@@ -162,47 +236,37 @@ def build_cost_optimization(
     opportunities: List[Dict[str, Any]] = []
     for _, rows in grouped.items():
         reference = rows[0]
-        unit_price = max(row["Unit Price"] for row in rows)
-        if unit_price <= 0:
-            continue
-
         project_count = len({row["Project"] for row in rows})
         analysis_ids = {row["Analysis ID"] for row in rows if row["Analysis ID"]}
         total_qty_per_build = sum(row["Quantity per Build"] for row in rows)
-        suppliers = min(row["Supplier Sources"] for row in rows)
-        risk_score = max(row["Risk Score"] for row in rows)
-        stock = min(row["Available Stock"] for row in rows)
-
-        savings_rate = 0.0
-        reason = ""
-        category = ""
-
-        if project_count >= 2 and total_qty_per_build >= 2:
-            savings_rate = 0.08
-            category = "Volume Consolidation"
-            reason = (
-                f"Used across {project_count} projects. Consolidated purchasing may improve "
-                "pricing leverage."
-            )
-        elif suppliers >= 2:
-            savings_rate = 0.05
-            category = "Supplier Competition"
-            reason = (
-                f"{suppliers} supplier sources are recorded. Competitive quoting may reduce cost."
-            )
-        elif total_qty_per_build >= 10:
-            savings_rate = 0.06
-            category = "Quantity Break"
-            reason = (
-                f"{total_qty_per_build} units are required across the recorded build set. "
-                "Review distributor price breaks."
-            )
-
-        if savings_rate <= 0:
+        suppliers = max(row["Supplier Sources"] for row in rows)
+        risk_scores = [row["Risk Score"] for row in rows if row["Risk Score"] is not None]
+        risk_score = max(risk_scores) if risk_scores else None
+        stock_values = [row["Available Stock"] for row in rows if row["Available Stock"] is not None]
+        stock = min(stock_values) if stock_values else None
+        exact_offers = [offer for row in rows for offer in row["Verified Offers"]]
+        if total_qty_per_build <= 0 or len({str(offer.get("distributor") or "").casefold() for offer in exact_offers}) < 2:
             continue
-
-        current_run_cost = unit_price * total_qty_per_build * max(1, build_quantity)
-        estimated_savings = current_run_cost * savings_rate
+        comparison_quantity = total_qty_per_build * max(1, build_quantity)
+        comparison = distributor_comparison(
+            exact_offers,
+            mpn=reference["Part Number"],
+            bom_quantity=comparison_quantity,
+        )
+        if comparison.get("savings_per_unit") is None:
+            continue
+        unit_price = float(comparison["higher_price"])
+        target_price = float(comparison["lower_price"])
+        currency = str(comparison.get("currency") or "")
+        estimated_savings = float(comparison["savings_per_unit"]) * comparison_quantity
+        savings_rate = (unit_price - target_price) / unit_price if unit_price > 0 else 0
+        category = "Comparable supplier quote"
+        reason = (
+            f"Exact-MPN snapshots from {comparison['higher_distributor']} and "
+            f"{comparison['lower_distributor']} differ by {currency} "
+            f"{float(comparison['savings_per_unit']):,.4g} per unit at quantity {comparison_quantity:,}. "
+            "Catalog snapshots are not checkout quotes; freight, tax, MOQ, and qualification are excluded."
+        )
         opportunities.append(
             {
                 "Part Number": reference["Part Number"],
@@ -217,9 +281,10 @@ def build_cost_optimization(
                 "Projects": project_count,
                 "Units per Build": total_qty_per_build,
                 "Current Unit Price": unit_price,
-                "Estimated Target Price": unit_price * (1 - savings_rate),
+                "Estimated Target Price": target_price,
                 "Estimated Run Savings": estimated_savings,
                 "Savings Rate": savings_rate,
+                "Currency": currency,
                 "Supplier Sources": suppliers,
                 "Lowest Stock": stock,
                 "Risk Score": risk_score,
@@ -228,40 +293,60 @@ def build_cost_optimization(
         )
 
     opportunities.sort(
-        key=lambda row: (-row["Estimated Run Savings"], -row["Risk Score"])
+        key=lambda row: (
+            -row["Estimated Run Savings"],
+            -(row["Risk Score"] if row["Risk Score"] is not None else -1),
+        )
     )
 
-    estimated_savings = sum(
-        row["Estimated Run Savings"] for row in opportunities
+    savings_currencies = {row["Currency"] for row in opportunities}
+    estimated_savings = (
+        sum(row["Estimated Run Savings"] for row in opportunities)
+        if opportunities and len(savings_currencies) == 1
+        else 0.0 if not opportunities else None
     )
-    estimated_optimized_cost = max(0.0, production_run_cost - estimated_savings)
+    estimated_optimized_cost = (
+        max(0.0, production_run_cost - estimated_savings)
+        if production_run_cost is not None and estimated_savings is not None
+        and (not savings_currencies or savings_currencies == currencies)
+        else None
+    )
 
-    top_cost_parts = sorted(
-        priced,
-        key=lambda row: -row["Extended Cost per Build"],
-    )[:10]
+    top_cost_parts = []
+    for currency_code in sorted(currencies):
+        top_cost_parts.extend(
+            sorted(
+                [
+                    row for row in priced
+                    if row["Currency"] == currency_code
+                    and row["Extended Cost per Build"] is not None
+                ],
+                key=lambda row: -row["Extended Cost per Build"],
+            )[:10]
+        )
 
     sourcing_risk_cost = sum(
-        row["Extended Cost per Build"] * max(1, build_quantity)
+        float(row["Extended Cost per Build"] or 0) * max(1, build_quantity)
         for row in priced
-        if row["Supplier Sources"] <= 1 or row["Available Stock"] <= 0
-    )
+        if row["Extended Cost per Build"] is not None
+        and (row["Supplier Sources"] <= 1 or (row["Available Stock"] is not None and row["Available Stock"] <= 0))
+    ) if len(currencies) == 1 else None
 
     recommendations = []
     if opportunities:
         top = opportunities[0]
         recommendations.append(
             f"Start with {top['Part Number']}: the estimated production-run savings opportunity "
-            f"is ${top['Estimated Run Savings']:,.2f}."
+            f"is {_format_money(top['Estimated Run Savings'], top['Currency'])} based on saved distributor snapshots, not a confirmed checkout quote."
         )
     if missing_price:
         recommendations.append(
             f"Add current pricing for {len(missing_price)} component record(s) to improve "
             "cost-analysis coverage."
         )
-    if sourcing_risk_cost > 0:
+    if sourcing_risk_cost is not None and sourcing_risk_cost > 0:
         recommendations.append(
-            f"${sourcing_risk_cost:,.2f} of modeled production-run spend is attached to "
+            f"{_format_money(sourcing_risk_cost, next(iter(currencies)))} of recorded production-run spend is attached to "
             "single-source or no-stock records."
         )
     if not recommendations:
@@ -280,6 +365,12 @@ def build_cost_optimization(
         "production_run_cost": production_run_cost,
         "estimated_savings": estimated_savings,
         "estimated_optimized_cost": estimated_optimized_cost,
+        "currency": next(iter(currencies)) if len(currencies) == 1 else "",
+        "currencies": sorted(currencies),
+        "mixed_currency_totals": {
+            code: sum(float(row["Extended Cost per Build"] or 0) for row in priced if row["Currency"] == code) * max(1, build_quantity)
+            for code in sorted(currencies)
+        },
         "pricing_coverage": pricing_coverage,
         "sourcing_risk_cost": sourcing_risk_cost,
         "recommendations": recommendations[:4],
@@ -403,6 +494,7 @@ def _opportunity_table_markup(rows: List[Dict[str, Any]]) -> str:
         )
         unit_price = _number(row.get("Current Unit Price"), 0.0)
         estimated_savings = _number(row.get("Estimated Run Savings"), 0.0)
+        currency = _text(row.get("Currency"))
         savings_rate = max(0, min(100, int(round(_number(row.get("Savings Rate"), 0.0) * 100))))
         bar_width = (
             max(0, min(100, int(round(estimated_savings / maximum_savings * 100))))
@@ -427,34 +519,36 @@ def _opportunity_table_markup(rows: List[Dict[str, Any]]) -> str:
             "<td><div class='cv21-component'>"
             f"{photo}<div class='cv21-component-copy'><div class='cv21-component-name'>{safe_name}</div>"
             f"<div class='cv21-component-mpn'>{safe_part_number}</div></div></div></td>"
-            f"<td class='cv21-price'>{'$' + format(unit_price, ',.4f')}</td>"
+            f"<td class='cv21-price'>{html.escape(_format_money(unit_price, currency))}</td>"
             f"<td><div class='cv21-path-title'>{safe_category}</div>"
             f"<div class='cv21-path-copy'>{reason}</div></td>"
             "<td><div class='cv21-savings-amount'>"
-            f"<span>{'$' + format(estimated_savings, ',.2f')}</span>"
+            f"<span>{html.escape(_format_money(estimated_savings, currency))}</span>"
             f"<span class='cv21-savings-rate'>{savings_rate}%</span></div>"
             f"<div class='cv21-progress' role='presentation'><span style='width:{bar_width}%'></span></div></td>"
             "<td class='cv21-review-cell'>"
-            "<span class='cv21-review-pill' title='Modeled opportunity only; confirm supplier pricing and engineering fit before action'>Needs review</span>"
+            "<span class='cv21-review-pill' title='Calculated from timestamped exact-part supplier API snapshots; confirm the supplier quote and engineering fit before action'>Confirm quote</span>"
             f"<a class='cv21-row-action' href='{html.escape(alternative_url, quote=True)}' target='_self'>Find alternatives</a></td>"
             "</tr>"
         )
     return (
         "<div class='cv21-table-card'><div class='cv21-table-scroll'>"
         "<table class='cv21-table'><thead><tr>"
-        "<th>#</th><th>Component</th><th>Current unit price</th>"
-        "<th>Opportunity</th><th>Estimated savings</th><th>Review status</th>"
+        "<th>#</th><th>Component</th><th>Higher saved quote</th>"
+        "<th>Evidence and quantity</th><th>Saved quote spread</th><th>Review status</th>"
         "</tr></thead><tbody>"
         + "".join(body)
         + "</tbody></table></div></div>"
     )
 
 
-def _currency(value: Any, *, show_zero: bool = True) -> str:
+def _currency(value: Any, *, currency: str = "", show_zero: bool = True) -> str:
+    if value is None:
+        return "Not comparable"
     amount = _number(value, 0.0)
     if not show_zero and amount <= 0:
         return "—"
-    return "$" + format(amount, ",.2f")
+    return _format_money(amount, currency)
 
 
 def render_cost_optimization(
@@ -477,7 +571,7 @@ def render_cost_optimization(
                 <div class="cv-ap cv21-page">
                   <p class="cv21-eyebrow">Cost optimization</p>
                   <h1 class="cv21-title">Cost optimization</h1>
-                  <p class="cv21-copy">Identify lower-cost opportunities, reduce spend, and optimize your bill of materials without compromising performance.</p>
+                  <p class="cv21-copy">Compare exact-part, timestamped supplier price snapshots and quantity breaks. Cadivor only calculates a price spread when the saved offers are comparable.</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -490,26 +584,37 @@ def render_cost_optimization(
         priced_count = len(intelligence.get("priced_rows") or [])
         pricing_coverage = int(intelligence.get("pricing_coverage", 0) or 0)
         has_priced_components = component_count > 0 and priced_count > 0
-        savings_text = _currency(intelligence.get("estimated_savings"), show_zero=has_priced_components)
-        spend_text = _currency(intelligence.get("production_run_cost"), show_zero=has_priced_components)
+        currency = str(intelligence.get("currency") or "")
+        mixed_currency = len(intelligence.get("currencies") or []) > 1
+        savings_text = (
+            "Multiple currencies" if mixed_currency and intelligence.get("estimated_savings") is None
+            else _currency(intelligence.get("estimated_savings"), currency=currency, show_zero=bool(intelligence.get("opportunities")))
+        )
+        spend_text = (
+            "Multiple currencies" if mixed_currency and intelligence.get("production_run_cost") is None
+            else _currency(intelligence.get("production_run_cost"), currency=currency, show_zero=has_priced_components)
+        )
         opportunities = list(intelligence.get("opportunities") or [])
         opportunity_count = len(opportunities)
         build_quantity = int(intelligence.get("build_quantity", 1) or 1)
 
         if has_priced_components:
-            savings_note = f"Modeled for {build_quantity:,} builds from saved BOM prices"
-            spend_note = f"{priced_count} of {component_count} components have current prices"
+            savings_note = (
+                f"Saved distributor price spread across {build_quantity:,} builds; excludes freight, tax, MOQ, and checkout"
+                if opportunity_count else "Requires two comparable exact-part supplier offers at the BOM quantity"
+            )
+            spend_note = f"{priced_count} of {component_count} components have exact-part, timestamped price snapshots"
         else:
-            savings_note = "Saved BOM pricing is needed to model savings"
-            spend_note = "No current component prices are available"
+            savings_note = "No comparable supplier price spread is available"
+            spend_note = "No exact-part, timestamped supplier price snapshots are available"
 
         if opportunity_count:
-            opportunity_note = "Ranked by estimated savings using saved supplier and quantity data"
+            opportunity_note = "Ranked by exact-part saved supplier price spread at the stated quantity"
         else:
-            opportunity_note = "No eligible savings opportunities from current data"
+            opportunity_note = "Two comparable supplier snapshots are required"
 
         kpis = [
-            ("Estimated savings", savings_text, savings_note, "dollar-sign"),
+            ("Comparable quote spread", savings_text, savings_note, "dollar-sign"),
             ("Addressable spend", spend_text, spend_note, "chart"),
             ("Opportunities", f"{opportunity_count:,}", opportunity_note, "lightbulb"),
         ]
@@ -538,8 +643,8 @@ def render_cost_optimization(
             st.info("Upload and analyze a BOM to populate cost optimization with your saved component data.")
         elif pricing_coverage < 100:
             st.caption(
-                f"Current spend reflects components with recorded prices ({pricing_coverage}% pricing coverage). "
-                "Savings remain estimates based on the saved BOM data."
+                f"{pricing_coverage}% of component lines have exact-part, timestamped supplier API price snapshots. "
+                "Catalog snapshots can differ from checkout prices."
             )
 
         category_options = sorted(
@@ -560,8 +665,8 @@ def render_cost_optimization(
                     """
                     <div class="cv21-section-heading">
                       <div>
-                        <h2 class="cv21-section-title">Top cost optimization opportunities</h2>
-                        <p class="cv21-section-subtitle">Ranked by estimated savings from the current saved BOM data.</p>
+                        <h2 class="cv21-section-title">Comparable supplier quote spreads</h2>
+                        <p class="cv21-section-subtitle">Differences use exact-MPN saved API snapshots in one currency at a stated quantity; confirm with the supplier before purchasing.</p>
                       </div>
                     </div>
                     """,
@@ -640,7 +745,7 @@ def render_cost_optimization(
                 )
             else:
                 st.markdown(
-                    "<p class='cv21-empty'>No priced component currently meets the saved supplier, quantity, or shared-demand criteria for a modeled savings opportunity.</p>",
+                    "<p class='cv21-empty'>No exact-part, timestamped supplier offers currently support a same-currency price comparison at a known quantity. Record a supplier quote or rerun the analysis to add evidence.</p>",
                     unsafe_allow_html=True,
                 )
 
@@ -651,14 +756,14 @@ def render_cost_optimization(
                 st.markdown(
                     f"<div class='cv21-kpi'><div><div class='cv21-kpi-label'>Pricing coverage</div>"
                     f"<div class='cv21-kpi-value'>{pricing_coverage}%</div>"
-                    f"<div class='cv21-kpi-note'>{priced_count} of {component_count} saved component records have a positive unit price</div></div></div>",
+                    f"<div class='cv21-kpi-note'>{priced_count} of {component_count} rows have an exact-part, timestamped supplier price snapshot</div></div></div>",
                     unsafe_allow_html=True,
                 )
             with quality_cols[1]:
                 st.markdown(
                     f"<div class='cv21-kpi'><div><div class='cv21-kpi-label'>Single-source or no-stock spend</div>"
-                    f"<div class='cv21-kpi-value'>{html.escape(_currency(intelligence.get('sourcing_risk_cost'), show_zero=has_priced_components))}</div>"
-                    f"<div class='cv21-kpi-note'>Modeled production-run spend requiring sourcing review</div></div></div>",
+                    f"<div class='cv21-kpi-value'>{html.escape(_currency(intelligence.get('sourcing_risk_cost'), currency=currency, show_zero=has_priced_components))}</div>"
+                    f"<div class='cv21-kpi-note'>Saved price snapshot spend with one quote source or a timestamped zero-stock observation</div></div></div>",
                     unsafe_allow_html=True,
                 )
 
@@ -673,8 +778,9 @@ def render_cost_optimization(
                             "Part Number",
                             "Image URL",
                             "Manufacturer",
-                            "Quantity per Build",
+                        "Quantity per Build",
                             "Unit Price",
+                        "Currency",
                             "Extended Cost per Build",
                             "Supplier Sources",
                             "Available Stock",
@@ -683,8 +789,8 @@ def render_cost_optimization(
                     ],
                     column_config={
                         "Image URL": photo_column,
-                        "Unit Price": st.column_config.NumberColumn(format="$%.4f"),
-                        "Extended Cost per Build": st.column_config.NumberColumn(format="$%.2f"),
+                        "Unit Price": st.column_config.NumberColumn(format="%.4f"),
+                        "Extended Cost per Build": st.column_config.NumberColumn(format="%.2f"),
                     },
                 )
             missing_tab, all_tab = st.tabs(["Missing price data", "All cost records"])
@@ -720,6 +826,7 @@ def render_cost_optimization(
                                 "Manufacturer",
                                 "Quantity per Build",
                                 "Unit Price",
+                                "Currency",
                                 "Extended Cost per Build",
                                 "Supplier Sources",
                                 "Available Stock",
@@ -729,8 +836,8 @@ def render_cost_optimization(
                         ],
                         column_config={
                             "Image URL": photo_column,
-                            "Unit Price": st.column_config.NumberColumn(format="$%.4f"),
-                            "Extended Cost per Build": st.column_config.NumberColumn(format="$%.2f"),
+                            "Unit Price": st.column_config.NumberColumn(format="%.4f"),
+                            "Extended Cost per Build": st.column_config.NumberColumn(format="%.2f"),
                         },
                     )
                 else:

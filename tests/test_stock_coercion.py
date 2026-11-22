@@ -150,7 +150,7 @@ class StockCoercionTests(unittest.TestCase):
         risk = self.risk.calculate_risk(
             {"stock_total": "7180 In Stock", "supplier_count": 2, "quantity": 1}
         )
-        self.assertIn(risk["risk_level"], {"Low", "Medium", "High"})
+        self.assertEqual(risk["risk_level"], "Needs verification")
 
         render_stock = float(self.coerce.coerce_stock_total(candidate["Stock"]))
         render_original = float(
@@ -197,6 +197,7 @@ class StockCoercionTests(unittest.TestCase):
                 "provider_status": "AVAILABLE",
                 "manufacturer_part_number": "LM358N",
                 "stock_total": 0,
+                "retrieved_at": "2026-11-21T12:00:00+00:00",
             }
         ]
         with patch.object(self.aggregator, "get_supplier_results", return_value=rows):

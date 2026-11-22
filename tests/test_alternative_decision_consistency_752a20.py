@@ -9,17 +9,20 @@ from src.alternative_reasoning import (
     build_alternative_reasoning,
 )
 from src.datasheet_comparison import build_datasheet_comparison
+from tests.evidence_fixtures import live_supplier_part
 
 
 class AlternativeDecisionConsistencyTests(unittest.TestCase):
     def _reason(self, original_package, candidate_package, **overrides):
         candidate = {
+            **live_supplier_part("LM358P", lifecycle="Active", stock=51366, unit_price=0.33),
             "Alternative Part": "LM358P",
             "Package": candidate_package,
             "Pin Count": 8,
             "Architecture": "Operational Amplifier",
             "Voltage Range": "3-32V",
             "Lifecycle": "Active",
+            "Classification": CLASS_VERIFIED_DIRECT,
             "Estimated Risk": "Low",
             "Stock": 51366,
             "Unit Price": 0.33,
@@ -40,6 +43,7 @@ class AlternativeDecisionConsistencyTests(unittest.TestCase):
             "warnings": [],
             "stock_delta": "2× more stock",
             "price_delta": "72.0% lower cost",
+            "classification": CLASS_VERIFIED_DIRECT,
         }
         kwargs.update(overrides)
         return build_alternative_reasoning(**kwargs)
@@ -56,8 +60,8 @@ class AlternativeDecisionConsistencyTests(unittest.TestCase):
 
     def test_equivalent_package_is_recommended_for_qualification(self):
         result = self._reason('8-DIP (0.300", 7.62mm)', "PDIP-8")
-        self.assertEqual(result["disposition"], "Recommended for engineering qualification")
-        self.assertEqual(result["disposition_tone"], "good")
+        self.assertEqual(result["disposition"], VERIFIED_DIRECT_DISPOSITION)
+        self.assertEqual(result["disposition_tone"], "warn")
         self.assertEqual(result["verification_count"], 0)
 
     def test_genuine_package_mismatch_remains_an_approval_blocker(self):
@@ -76,8 +80,9 @@ class AlternativeDecisionConsistencyTests(unittest.TestCase):
         self.assertTrue(any("Pin count differs" in item for item in result["blockers"]))
 
     def test_unavailable_stock_still_blocks_approval(self):
-        result = self._reason("DIP-8", "PDIP-8", candidate={"Stock": 0})
-        self.assertTrue(any("No confirmed stock" in item for item in result["blockers"]))
+        candidate = live_supplier_part("LM358P", lifecycle="Active", stock=0, unit_price=0.33)
+        result = self._reason("DIP-8", "PDIP-8", candidate=candidate)
+        self.assertTrue(any("zero inventory" in item for item in result["blockers"]))
 
     def test_normalizer_preserves_distinct_package_families(self):
         self.assertEqual(_normalize_package("SOIC-8"), "SOIC-8")
@@ -106,6 +111,9 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
     def _capacitor_reason(self, **overrides):
         rows, counts, original = _c0603_capacitor_comparison_rows()
         candidate = {
+            **live_supplier_part(
+                "C0603C104K5RAC3121", lifecycle="Active", stock=50000, unit_price=0.05,
+            ),
             "Alternative Part": "C0603C104K5RAC3121",
             "Classification": CLASS_VERIFIED_DIRECT,
             "Comparison Family": "Capacitor",
@@ -138,7 +146,7 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
     def test_c0603_verified_direct_shows_positive_disposition(self):
         result = self._capacitor_reason()
         self.assertEqual(result["disposition"], VERIFIED_DIRECT_DISPOSITION)
-        self.assertEqual(result["disposition_tone"], "good")
+        self.assertEqual(result["disposition_tone"], "warn")
         self.assertNotEqual(result["disposition"], "Not recommended as a drop-in replacement")
 
     def test_c0603_verified_direct_has_strong_confidence(self):
@@ -147,7 +155,7 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
         # but catalog Listing agreement rows must not inflate engineering confidence.
         self.assertEqual(result["disposition"], VERIFIED_DIRECT_DISPOSITION)
         self.assertLess(result["engineering_comparison_confidence"], 75)
-        self.assertLess(result["decision_confidence"], 75)
+        self.assertIsNone(result["decision_confidence"])
 
     def test_sparse_capacitor_evidence_limits_engineering_confidence(self):
         rows, counts, original = _c0603_capacitor_comparison_rows()
@@ -165,6 +173,7 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
             original_part="C0603C104K5RACTU",
             original_data=original,
             candidate={
+                **live_supplier_part("C0603C104K5RAC3121", stock=50000, unit_price=0.05),
                 "Alternative Part": "C0603C104K5RAC3121",
                 "Classification": CLASS_VERIFIED_DIRECT,
                 "Substitute Type": "Direct",
@@ -267,6 +276,7 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
             original_part="C0603C104K5RACTU",
             original_data=original,
             candidate={
+                **live_supplier_part("C0603C104K5RAC3121", stock=50000, unit_price=0.05),
                 "Alternative Part": "C0603C104K5RAC3121",
                 "Classification": CLASS_VERIFIED_DIRECT,
                 "Stock": 50000,
@@ -306,6 +316,7 @@ class PassiveAlternativeDecisionTests(unittest.TestCase):
             original_part="RC0603FR-0710KL",
             original_data=original,
             candidate={
+                **live_supplier_part("RC0603FR-0710KL-B", stock=8000, unit_price=0.12),
                 "Alternative Part": "RC0603FR-0710KL-B",
                 "Classification": CLASS_VERIFIED_DIRECT,
                 "Stock": 10000,

@@ -209,118 +209,81 @@ class RiskDimensions:
 
 
 def calculate_advanced_risk(part: Dict[str, Any]) -> Dict[str, Any]:
-    lifecycle = _get(part, "Lifecycle Status", "lifecycle_status", default="Unknown")
-    total_stock = _num(_get(part, "Total Market Stock", "Stock Available", "stock_available", "stock_total", default=0))
-    supplier_count = _num(_get(part, "Supplier Count", "supplier_count", default=0))
-    lead_time = _num(_get(part, "Lead Time Weeks", "lead_time_weeks", default=0))
-    compliance = _clean_text(_get(part, "Compliance", "RoHS", "rohs", default="Unknown"))
-    manufacturer = _clean_text(_get(part, "Manufacturer", "manufacturer", default=""))
+    """Return risk dimensions only when their own supplier evidence verifies."""
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+    from src.risk_engine import calculate_risk, _coverage_complete
 
-    reasons: List[str] = []
+    evidence = classify_part_evidence(part)
+    fields = evidence.get("fields") if isinstance(evidence.get("fields"), dict) else {}
 
-    if _contains_any(lifecycle, HIGH_RISK_LIFECYCLE_TERMS):
-        lifecycle_risk = 95
-        reasons.append("Lifecycle status indicates obsolete, EOL, NRND, or discontinued risk.")
-    elif _contains_any(lifecycle, MEDIUM_RISK_LIFECYCLE_TERMS):
-        lifecycle_risk = 60
-        reasons.append("Lifecycle status requires verification before production release.")
-    elif _contains_any(lifecycle, HEALTHY_LIFECYCLE_TERMS):
-        lifecycle_risk = 10
-    else:
-        lifecycle_risk = 55
-        reasons.append("Lifecycle status is unclear or unavailable.")
+    def verified(name: str) -> dict[str, Any]:
+        value = fields.get(name)
+        return value if isinstance(value, dict) and value.get("evidence_class") == EVIDENCE_LIVE else {}
 
-    if supplier_count <= 0:
-        supply_chain_risk = 95
-        reasons.append("No distributor source was confirmed.")
-    elif supplier_count == 1:
-        supply_chain_risk = 75
-        reasons.append("Only one supplier source is visible.")
-    elif supplier_count == 2:
-        supply_chain_risk = 40
-    else:
-        supply_chain_risk = 15
+    assessment = calculate_risk(part)
+    lifecycle = verified("lifecycle")
+    stock = verified("stock")
+    lead = verified("lead_time")
+    identity = verified("identity")
+    coverage_complete, _ = _coverage_complete(part)
+    supplier_count = _num(_get(part, "Supplier Count", "supplier_count", default=None), default=float("nan"))
+    if not math.isfinite(supplier_count) or not (identity and coverage_complete):
+        supplier_count = None
+    lifecycle_value = _clean_text(_get(part, "Lifecycle", "lifecycle_status", "Lifecycle Status", default=""))
+    stock_value = stock.get("observed_total") if stock and stock.get("complete") else None
+    lead_value = _num(_get(part, "Lead Time Weeks", "lead_time_weeks", default=None), default=float("nan"))
+    if not lead or not math.isfinite(lead_value):
+        lead_value = None
 
-    if total_stock <= 0:
-        inventory_risk = 95
-        reasons.append("No available market stock was found.")
-    elif total_stock < 100:
-        inventory_risk = 75
-        reasons.append("Available stock is very limited.")
-    elif total_stock < 1000:
-        inventory_risk = 45
-    else:
-        inventory_risk = 10
+    lifecycle_risk = None
+    if lifecycle:
+        text = lifecycle_value.casefold()
+        lifecycle_risk = 90 if _contains_any(text, HIGH_RISK_LIFECYCLE_TERMS) else 35 if _contains_any(text, MEDIUM_RISK_LIFECYCLE_TERMS) else 0
+    inventory_risk = None
+    if stock_value is not None:
+        qty = _num(_get(part, "Effective Quantity", "effective_quantity", "Quantity", "quantity", default=None), default=0)
+        inventory_risk = 90 if stock_value == 0 else 60 if qty > 0 and stock_value < qty else 25 if stock_value < 100 else 0
+    supply_risk = None if supplier_count is None else (90 if supplier_count <= 1 else 50 if supplier_count == 2 else 10)
+    lead_risk = None if lead_value is None else (80 if lead_value >= 26 else 60 if lead_value >= 12 else 25 if lead_value >= 6 else 0)
+    single_source_risk = supply_risk
+    compliance_fields = fields.get("compliance") if isinstance(fields.get("compliance"), dict) else {}
+    compliance_values = [
+        item for item in compliance_fields.values()
+        if isinstance(item, dict) and item.get("evidence_class") == EVIDENCE_LIVE
+    ]
+    compliance_risk = None
+    if compliance_values:
+        statuses = [str(item.get("reported_value") or "").casefold() for item in compliance_values]
+        compliance_risk = 90 if any(value in {"no", "false", "non-compliant", "not compliant"} for value in statuses) else 0
 
-    if lead_time <= 0:
-        lead_time_risk = 35
-    elif lead_time >= 26:
-        lead_time_risk = 90
-        reasons.append("Lead time is very long.")
-    elif lead_time >= 12:
-        lead_time_risk = 65
-        reasons.append("Lead time is elevated.")
-    elif lead_time >= 6:
-        lead_time_risk = 35
-    else:
-        lead_time_risk = 10
-
-    if supplier_count <= 1:
-        single_source_risk = 90
-    elif supplier_count == 2:
-        single_source_risk = 55
-    else:
-        single_source_risk = 15
-
-    if compliance.lower() in {"yes", "y", "true", "rohs", "rohs compliant", "compliant"}:
-        compliance_risk = 10
-    elif compliance.lower() in {"no", "false", "non-compliant", "not compliant"}:
-        compliance_risk = 90
-        reasons.append("Compliance field suggests a possible RoHS/compliance issue.")
-    else:
-        compliance_risk = 45
-
-    manufacturer_key = manufacturer.lower()
-    if not manufacturer_key:
-        manufacturer_risk = 55
-    elif manufacturer_key in KNOWN_STRONG_MANUFACTURERS:
-        manufacturer_risk = 10
-    else:
-        manufacturer_risk = 35
-
-    weights = {
-        "lifecycle_risk": 0.30,
-        "supply_chain_risk": 0.20,
-        "inventory_risk": 0.15,
-        "lead_time_risk": 0.10,
-        "single_source_risk": 0.10,
-        "compliance_risk": 0.05,
-        "manufacturer_risk": 0.10,
+    reasons = list(assessment.get("risk_reasons") or [])
+    dims = {
+        "Lifecycle": lifecycle_risk,
+        "Supply Chain": supply_risk,
+        "Inventory": inventory_risk,
+        "Lead Time": lead_risk,
+        "Single Source": single_source_risk,
+        "Compliance": compliance_risk,
+        "Manufacturer": None,
     }
-
-    overall = (
-        lifecycle_risk * weights["lifecycle_risk"]
-        + supply_chain_risk * weights["supply_chain_risk"]
-        + inventory_risk * weights["inventory_risk"]
-        + lead_time_risk * weights["lead_time_risk"]
-        + single_source_risk * weights["single_source_risk"]
-        + compliance_risk * weights["compliance_risk"]
-        + manufacturer_risk * weights["manufacturer_risk"]
-    )
-
-    result = RiskDimensions(
-        lifecycle_risk=round(_clamp(lifecycle_risk), 1),
-        supply_chain_risk=round(_clamp(supply_chain_risk), 1),
-        inventory_risk=round(_clamp(inventory_risk), 1),
-        lead_time_risk=round(_clamp(lead_time_risk), 1),
-        single_source_risk=round(_clamp(single_source_risk), 1),
-        compliance_risk=round(_clamp(compliance_risk), 1),
-        manufacturer_risk=round(_clamp(manufacturer_risk), 1),
-        overall_risk=round(_clamp(overall), 1),
-        risk_level=_risk_level(overall),
-        reasons=reasons or ["No major risk driver detected from available data."],
-    )
-    return result.to_dict()
+    stars = {
+        key: _score_to_stars(value) if value is not None else "Not assessed"
+        for key, value in dims.items()
+    }
+    return {
+        "lifecycle_risk": lifecycle_risk,
+        "supply_chain_risk": supply_risk,
+        "inventory_risk": inventory_risk,
+        "lead_time_risk": lead_risk,
+        "single_source_risk": single_source_risk,
+        "compliance_risk": compliance_risk,
+        "manufacturer_risk": None,
+        "overall_risk": assessment.get("risk_score"),
+        "risk_score": assessment.get("risk_score"),
+        "risk_level": assessment.get("risk_level") or "Needs verification",
+        "reasons": reasons,
+        "dimension_stars": stars,
+    }
 
 
 # -----------------------------------------------------------------------------
@@ -399,75 +362,108 @@ def explain_compatibility(original: Dict[str, Any], candidate: Dict[str, Any]) -
         checks.append({"field": "Architecture", "status": "Unknown", "note": "Architecture/category data is incomplete."})
         score -= 5
 
-    compatibility_score = round(_clamp(score), 1)
+    unknown_checks = sum(check["status"] == "Unknown" for check in checks)
+    compatibility_score = None if unknown_checks else round(_clamp(score), 1)
 
-    if compatibility_score >= 90:
+    if compatibility_score is None:
+        recommendation = "Needs engineering verification; required package, pin, voltage, or architecture data is missing."
+        compatibility_level = "Needs verification"
+    elif compatibility_score >= 90:
         recommendation = "Likely drop-in replacement, pending datasheet verification."
+        compatibility_level = "High"
     elif compatibility_score >= 75:
         recommendation = "Strong candidate; engineering validation recommended."
+        compatibility_level = "High"
     elif compatibility_score >= 55:
         recommendation = "Possible candidate; schematic, PCB, and datasheet review required."
+        compatibility_level = "Medium"
     else:
         recommendation = "High migration risk; do not treat as drop-in."
+        compatibility_level = "Low"
 
     return {
         "compatibility_score": compatibility_score,
-        "compatibility_level": "High" if compatibility_score >= 80 else "Medium" if compatibility_score >= 55 else "Low",
+        "compatibility_level": compatibility_level,
         "recommendation": recommendation,
         "checks": checks,
     }
 
 
 def rank_alternative_candidates(original: Dict[str, Any], candidates: List[Dict[str, Any]]) -> pd.DataFrame:
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+    from src.risk_engine import calculate_risk, _coverage_complete
+
     rows: List[Dict[str, Any]] = []
 
     for candidate in candidates:
         compatibility = explain_compatibility(original, candidate)
-        risk = calculate_advanced_risk(candidate)
-
-        stock = _num(_get(candidate, "Total Market Stock", "Stock Available", "stock", "stock_available", default=0))
-        supplier_count = _num(_get(candidate, "Supplier Count", "supplier_count", default=0))
-        lead_time = _num(_get(candidate, "Lead Time Weeks", "lead_time_weeks", default=0))
-        unit_price = _num(_get(candidate, "Unit Price", "unit_price", "Price", default=0))
-
-        availability_score = 100 if stock >= 1000 else 75 if stock >= 100 else 45 if stock > 0 else 5
-        supplier_score = 100 if supplier_count >= 3 else 75 if supplier_count == 2 else 35 if supplier_count == 1 else 5
-        lead_time_score = 100 if lead_time and lead_time <= 4 else 75 if lead_time <= 8 else 45 if lead_time <= 16 else 25
-        price_score = 70 if unit_price <= 0 else 100 if unit_price <= 0.5 else 85 if unit_price <= 2 else 70 if unit_price <= 10 else 45
-        risk_score_inverse = 100 - _num(risk.get("overall_risk"), 50)
-
-        final_score = (
-            compatibility["compatibility_score"] * 0.40
-            + availability_score * 0.15
-            + supplier_score * 0.15
-            + lead_time_score * 0.10
-            + price_score * 0.05
-            + risk_score_inverse * 0.15
+        risk = calculate_risk(candidate)
+        evidence = classify_part_evidence(candidate)
+        fields = evidence.get("fields") if isinstance(evidence.get("fields"), dict) else {}
+        identity = fields.get("identity") if isinstance(fields.get("identity"), dict) else {}
+        stock_field = fields.get("stock") if isinstance(fields.get("stock"), dict) else {}
+        price_field = fields.get("price") if isinstance(fields.get("price"), dict) else {}
+        lead_field = fields.get("lead_time") if isinstance(fields.get("lead_time"), dict) else {}
+        coverage_complete, _ = _coverage_complete(candidate)
+        sourcing_complete = bool(
+            identity.get("evidence_class") == EVIDENCE_LIVE
+            and coverage_complete
+            and stock_field.get("evidence_class") == EVIDENCE_LIVE
+            and stock_field.get("complete")
+            and price_field.get("evidence_class") == EVIDENCE_LIVE
+            and price_field.get("quantity_break_applies") is True
+            and lead_field.get("evidence_class") == EVIDENCE_LIVE
         )
+        stock = stock_field.get("observed_total") if stock_field.get("evidence_class") == EVIDENCE_LIVE and stock_field.get("complete") else None
+        supplier_count = _num(_get(candidate, "Supplier Count", "supplier_count", default=None), default=float("nan"))
+        if not math.isfinite(supplier_count) or not coverage_complete or identity.get("evidence_class") != EVIDENCE_LIVE:
+            supplier_count = None
+        lead_time = _num(_get(candidate, "Lead Time Weeks", "lead_time_weeks", default=None), default=float("nan"))
+        if lead_field.get("evidence_class") != EVIDENCE_LIVE or not math.isfinite(lead_time):
+            lead_time = None
+        unit_price = price_field.get("reported_value") if price_field.get("evidence_class") == EVIDENCE_LIVE and price_field.get("quantity_break_applies") is True else None
+        final_score = None
+        if compatibility.get("compatibility_score") is not None and sourcing_complete and risk.get("risk_score") is not None:
+            availability_score = 100 if stock >= 1000 else 75 if stock >= 100 else 45 if stock > 0 else 5
+            supplier_score = 100 if supplier_count >= 3 else 75 if supplier_count == 2 else 35
+            lead_score = 100 if lead_time <= 4 else 75 if lead_time <= 8 else 45 if lead_time <= 16 else 25
+            price_score = 100 if unit_price <= 0.5 else 85 if unit_price <= 2 else 70 if unit_price <= 10 else 45
+            risk_inverse = 100 - float(risk["risk_score"])
+            final_score = round(_clamp(
+                compatibility["compatibility_score"] * 0.40
+                + availability_score * 0.15
+                + supplier_score * 0.15
+                + lead_score * 0.10
+                + price_score * 0.05
+                + risk_inverse * 0.15
+            ), 1)
 
         rows.append(
             {
                 "Alternative Part": _get(candidate, "Alternative Part", "MPN", "mpn", "part_number", default=""),
                 "Manufacturer": _get(candidate, "Manufacturer", "manufacturer", default=""),
-                "Recommendation Score": round(_clamp(final_score), 1),
+                "Recommendation Score": final_score,
+                "Ranking Status": "Ranked from complete evidence" if final_score is not None else "Needs verification",
                 "Compatibility Score": compatibility["compatibility_score"],
                 "Compatibility Level": compatibility["compatibility_level"],
                 "Engineering Recommendation": compatibility["recommendation"],
-                "Risk Score": risk["overall_risk"],
-                "Risk Level": risk["risk_level"],
-                "Supplier Count": int(supplier_count),
-                "Total Market Stock": int(stock),
-                "Lead Time Weeks": lead_time if lead_time else None,
-                "Unit Price": unit_price if unit_price else None,
+                "Risk Score": risk.get("risk_score"),
+                "Risk Level": risk.get("risk_level", "Needs verification"),
+                "Supplier Count": int(supplier_count) if supplier_count is not None else None,
+                "Total Market Stock": int(stock) if stock is not None else None,
+                "Lead Time Weeks": lead_time,
+                "Unit Price": unit_price,
                 "Compatibility Checks": compatibility["checks"],
-                "Risk Reasons": "; ".join(risk["reasons"]),
+                "Risk Reasons": "; ".join(risk.get("risk_reasons") or []),
             }
         )
 
     if not rows:
         return pd.DataFrame()
 
-    return pd.DataFrame(rows).sort_values("Recommendation Score", ascending=False).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values(
+        "Recommendation Score", ascending=False, na_position="last"
+    ).reset_index(drop=True)
 
 
 # -----------------------------------------------------------------------------
@@ -475,11 +471,30 @@ def rank_alternative_candidates(original: Dict[str, Any], candidates: List[Dict[
 # -----------------------------------------------------------------------------
 
 def supplier_intelligence(part: Dict[str, Any]) -> Dict[str, Any]:
-    supplier_count = int(_num(_get(part, "Supplier Count", "supplier_count", default=0)))
-    stock = int(_num(_get(part, "Total Market Stock", "Stock Available", "stock_available", "stock_total", default=0)))
-    sources = _clean_text(_get(part, "Sources Available", "sources_available", "Best Source", "source", default=""))
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+    from src.risk_engine import _coverage_complete
 
-    if supplier_count >= 4:
+    evidence = classify_part_evidence(part)
+    fields = evidence.get("fields") if isinstance(evidence.get("fields"), dict) else {}
+    identity = fields.get("identity") if isinstance(fields.get("identity"), dict) else {}
+    stock_field = fields.get("stock") if isinstance(fields.get("stock"), dict) else {}
+    coverage_complete, _ = _coverage_complete(part)
+    verified_count = identity.get("evidence_class") == EVIDENCE_LIVE and coverage_complete
+    supplier_count = _num(_get(part, "Supplier Count", "supplier_count", default=None), default=float("nan")) if verified_count else float("nan")
+    supplier_count = int(supplier_count) if math.isfinite(supplier_count) else None
+    stock = (
+        int(stock_field["observed_total"])
+        if stock_field.get("evidence_class") == EVIDENCE_LIVE
+        and stock_field.get("complete")
+        and stock_field.get("observed_total") is not None
+        else None
+    )
+    source_rows = stock_field.get("sources") if isinstance(stock_field.get("sources"), list) else []
+    sources = ", ".join(sorted({str(row.get("source") or "").strip() for row in source_rows if isinstance(row, dict) and str(row.get("source") or "").strip()}))
+
+    if supplier_count is None:
+        diversity, supplier_risk = "Not assessed", "Not assessed"
+    elif supplier_count >= 4:
         diversity = "Excellent"
         supplier_risk = "Low"
     elif supplier_count >= 2:
@@ -489,57 +504,30 @@ def supplier_intelligence(part: Dict[str, Any]) -> Dict[str, Any]:
         diversity = "Weak"
         supplier_risk = "High"
     else:
-        diversity = "Unknown"
+        diversity = "Not found in completed source checks"
         supplier_risk = "High"
 
     return {
         "supplier_count": supplier_count,
         "total_market_stock": stock,
-        "sources_available": sources,
+        "sources_available": sources or "Not reported",
         "supplier_diversity": diversity,
         "supplier_risk": supplier_risk,
-        "summary": f"{supplier_count} supplier source(s), {stock:,} units visible, supplier diversity: {diversity}.",
+        "summary": (
+            f"{supplier_count} exact-part supplier source(s) returned."
+            if supplier_count is not None
+            else "Supplier diversity was not assessed because exact-part identity or source coverage is incomplete."
+        ),
     }
 
 
 def manufacturer_health(part: Dict[str, Any]) -> Dict[str, Any]:
     manufacturer = _clean_text(_get(part, "Manufacturer", "manufacturer", default=""))
-    key = manufacturer.lower()
-    supplier_count = _num(_get(part, "Supplier Count", "supplier_count", default=0))
-    lifecycle = _get(part, "Lifecycle Status", "lifecycle_status", default="Unknown")
-
-    score = 60.0
-    notes: List[str] = []
-
-    if not manufacturer:
-        score -= 15
-        notes.append("Manufacturer is missing or unknown.")
-    elif key in KNOWN_STRONG_MANUFACTURERS:
-        score += 25
-        notes.append("Manufacturer appears to be a major established component supplier.")
-    else:
-        notes.append("Manufacturer health is based on available sourcing and lifecycle signals.")
-
-    if supplier_count >= 3:
-        score += 10
-    elif supplier_count <= 1:
-        score -= 15
-        notes.append("Limited distributor visibility lowers confidence.")
-
-    if _contains_any(lifecycle, HIGH_RISK_LIFECYCLE_TERMS):
-        score -= 30
-        notes.append("Lifecycle status reduces manufacturer/part support confidence.")
-    elif _contains_any(lifecycle, HEALTHY_LIFECYCLE_TERMS):
-        score += 10
-
-    score = round(_clamp(score), 1)
-    label = "Very Stable" if score >= 85 else "Stable" if score >= 70 else "Moderate" if score >= 50 else "Weak"
-
     return {
         "manufacturer": manufacturer or "Unknown",
-        "manufacturer_health_score": score,
-        "manufacturer_health": label,
-        "notes": notes,
+        "manufacturer_health_score": None,
+        "manufacturer_health": "Not assessed",
+        "notes": ["Cadivor has no validated manufacturer financial or quality-risk dataset for this supplier."],
     }
 
 
@@ -572,43 +560,19 @@ def classify_component_type(row: Dict[str, Any]) -> str:
 
 
 def forecast_part_risk(part: Dict[str, Any]) -> Dict[str, Any]:
-    risk = calculate_advanced_risk(part)
-    lifecycle = _get(part, "Lifecycle Status", "lifecycle_status", default="Unknown")
-    lead_time = _num(_get(part, "Lead Time Weeks", "lead_time_weeks", default=0))
-    supplier_count = _num(_get(part, "Supplier Count", "supplier_count", default=0))
-    stock = _num(_get(part, "Total Market Stock", "Stock Available", "stock_available", default=0))
-
-    future_score = risk["overall_risk"]
-    drivers: List[str] = []
-
-    if _contains_any(lifecycle, MEDIUM_RISK_LIFECYCLE_TERMS):
-        future_score += 10
-        drivers.append("Lifecycle status may worsen if not verified.")
-    if supplier_count <= 1:
-        future_score += 8
-        drivers.append("Single-source exposure can become critical quickly.")
-    if stock < 100:
-        future_score += 8
-        drivers.append("Low inventory increases near-term shortage risk.")
-    if lead_time >= 12:
-        future_score += 7
-        drivers.append("Long lead time increases future procurement risk.")
-
-    future_score = round(_clamp(future_score), 1)
-
     return {
-        "current_risk": risk["overall_risk"],
-        "current_level": risk["risk_level"],
-        "forecast_12_month_risk": future_score,
-        "forecast_12_month_level": _risk_level(future_score),
-        "forecast_drivers": drivers or ["No strong future risk escalation signal detected from available data."],
+        "current_risk": calculate_advanced_risk(part).get("overall_risk"),
+        "current_level": calculate_advanced_risk(part).get("risk_level"),
+        "forecast_12_month_risk": None,
+        "forecast_12_month_level": "Not forecast",
+        "forecast_drivers": ["A defensible forecast requires dated historical supplier and lifecycle observations."],
     }
 
 
 def analyze_bom_intelligence(results_df: pd.DataFrame) -> Dict[str, Any]:
     if results_df is None or results_df.empty:
         return {
-            "bom_health_score": 0,
+            "bom_health_score": None,
             "health_label": "No Data",
             "risk_distribution": {},
             "component_mix": {},
@@ -618,6 +582,10 @@ def analyze_bom_intelligence(results_df: pd.DataFrame) -> Dict[str, Any]:
             "top_risks": pd.DataFrame(),
             "enriched_parts": pd.DataFrame(),
         }
+
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+    from src.health_score import calculate_bom_health_score
+    from src.risk_engine import calculate_risk
 
     enriched_rows: List[Dict[str, Any]] = []
     for _, row in results_df.iterrows():
@@ -630,7 +598,7 @@ def analyze_bom_intelligence(results_df: pd.DataFrame) -> Dict[str, Any]:
 
         record.update(
             {
-                "Advanced Risk Score": risk["overall_risk"],
+                "Advanced Risk Score": risk.get("risk_score"),
                 "Advanced Risk Level": risk["risk_level"],
                 "Lifecycle Risk": risk["lifecycle_risk"],
                 "Supply Chain Risk": risk["supply_chain_risk"],
@@ -642,6 +610,8 @@ def analyze_bom_intelligence(results_df: pd.DataFrame) -> Dict[str, Any]:
                 "Advanced Risk Reasons": "; ".join(risk["reasons"]),
                 "Supplier Diversity": supplier["supplier_diversity"],
                 "Supplier Risk": supplier["supplier_risk"],
+                "Verified Supplier Count": supplier["supplier_count"],
+                "Verified Stock": supplier["total_market_stock"],
                 "Manufacturer Health": mfg["manufacturer_health"],
                 "Manufacturer Health Score": mfg["manufacturer_health_score"],
                 "Component Type": component_type,
@@ -650,24 +620,57 @@ def analyze_bom_intelligence(results_df: pd.DataFrame) -> Dict[str, Any]:
                 "Forecast Drivers": "; ".join(forecast["forecast_drivers"]),
             }
         )
+        evidence = classify_part_evidence(record)
+        fields = evidence.get("fields") if isinstance(evidence.get("fields"), dict) else {}
+        identity = fields.get("identity") if isinstance(fields.get("identity"), dict) else {}
+        stock = fields.get("stock") if isinstance(fields.get("stock"), dict) else {}
+        from src.risk_engine import _coverage_complete
+
+        coverage_complete, _ = _coverage_complete(record)
+        assessed = calculate_risk(record)
+        record.update({
+            "Supplier Data Verified": identity.get("evidence_class") == EVIDENCE_LIVE,
+            "Stock Data Complete": stock.get("evidence_class") == EVIDENCE_LIVE and bool(stock.get("complete")),
+            "Supplier Coverage Complete": identity.get("evidence_class") == EVIDENCE_LIVE and coverage_complete,
+            "Risk Score": assessed.get("risk_score"),
+            "Risk Level": assessed.get("risk_level"),
+        })
         enriched_rows.append(record)
 
     enriched = pd.DataFrame(enriched_rows)
-
-    avg_risk = float(enriched["Advanced Risk Score"].mean())
-    bom_health = int(round(_clamp(100 - avg_risk)))
-    health_label = _health_label(bom_health)
+    health_result = calculate_bom_health_score(enriched)
+    bom_health = health_result.get("health_score")
+    health_label = health_result.get("health_status") or "Needs verification"
 
     risk_distribution = enriched["Advanced Risk Level"].value_counts().to_dict()
     component_mix = enriched["Component Type"].value_counts(normalize=True).mul(100).round(1).to_dict()
 
     high_risk = int((enriched["Advanced Risk Level"] == "High").sum())
     medium_risk = int((enriched["Advanced Risk Level"] == "Medium").sum())
-    single_source = int((_num_series(enriched["Supplier Count"]) <= 1).sum()) if "Supplier Count" in enriched else 0
-    no_stock = int((_num_series(enriched.get("Stock Available", pd.Series([0] * len(enriched)))) <= 0).sum())
-    obsolete_like = int(enriched.get("Lifecycle Status", pd.Series(dtype=str)).astype(str).str.lower().apply(lambda x: any(t in x for t in HIGH_RISK_LIFECYCLE_TERMS)).sum()) if "Lifecycle Status" in enriched else 0
+    needs_verification = int((enriched["Advanced Risk Level"] == "Needs verification").sum())
+    verified_supplier_counts = [
+        item.get("Verified Supplier Count") for item in enriched_rows
+        if item.get("Verified Supplier Count") is not None
+    ]
+    single_source = sum(value == 1 for value in verified_supplier_counts)
+    no_stock = sum(
+        item.get("Verified Stock") == 0
+        for item in enriched_rows
+        if item.get("Verified Stock") is not None
+    )
+    obsolete_like = 0
+    for record in enriched_rows:
+        fields = (classify_part_evidence(record).get("fields") or {})
+        lifecycle_field = fields.get("lifecycle") if isinstance(fields.get("lifecycle"), dict) else {}
+        lifecycle_value = str(record.get("Lifecycle") or record.get("lifecycle_status") or record.get("Lifecycle Status") or "")
+        if lifecycle_field.get("evidence_class") == EVIDENCE_LIVE and _contains_any(lifecycle_value, HIGH_RISK_LIFECYCLE_TERMS):
+            obsolete_like += 1
 
     recommendations: List[str] = []
+    if needs_verification:
+        recommendations.append(
+            f"Verify exact-part identity, lifecycle, inventory, and source coverage for {needs_verification} component(s) before relying on an overall BOM health score."
+        )
     if high_risk:
         recommendations.append(f"Review {high_risk} high-risk component(s) before production release.")
     if obsolete_like:
@@ -679,9 +682,11 @@ def analyze_bom_intelligence(results_df: pd.DataFrame) -> Dict[str, Any]:
     if medium_risk and not high_risk:
         recommendations.append(f"Monitor {medium_risk} medium-risk component(s) over the next 3–6 months.")
     if not recommendations:
-        recommendations.append("No immediate critical actions detected; continue periodic lifecycle and stock monitoring.")
+        recommendations.append("No verified high or medium risk signal was found in the completed supplier checks.")
 
-    top_risks = enriched.sort_values("Advanced Risk Score", ascending=False).head(10)
+    scored = enriched[enriched["Advanced Risk Score"].notna()]
+    avg_risk = float(scored["Advanced Risk Score"].mean()) if not scored.empty else None
+    top_risks = scored.sort_values("Advanced Risk Score", ascending=False).head(10) if not scored.empty else enriched.head(0)
 
     insights = generate_engineering_insights(enriched)
     executive_summary = generate_intelligence_executive_summary(
@@ -698,7 +703,7 @@ def analyze_bom_intelligence(results_df: pd.DataFrame) -> Dict[str, Any]:
     return {
         "bom_health_score": bom_health,
         "health_label": health_label,
-        "average_risk_score": round(avg_risk, 1),
+        "average_risk_score": round(avg_risk, 1) if avg_risk is not None else None,
         "risk_distribution": risk_distribution,
         "component_mix": component_mix,
         "recommendations": recommendations,
@@ -737,25 +742,30 @@ def generate_engineering_insights(enriched: pd.DataFrame) -> List[str]:
             insights.append(f"High risk is concentrated most strongly in {top_risk_type} components.")
 
     if "Supplier Diversity" in enriched:
-        weak_count = int((enriched["Supplier Diversity"].isin(["Weak", "Unknown"])).sum())
+        weak_count = int((enriched["Supplier Diversity"] == "Weak").sum())
         if weak_count:
             insights.append(f"{weak_count} component(s) have weak or unknown supplier diversity.")
 
-    if "Forecast 12 Month Level" in enriched:
+    if "Forecast 12 Month Level" in enriched and enriched["Forecast 12 Month Level"].ne("Not forecast").any():
         future_high = int((enriched["Forecast 12 Month Level"] == "High").sum())
         current_high = int((enriched["Advanced Risk Level"] == "High").sum())
         if future_high > current_high:
             insights.append(f"Forecasting suggests {future_high - current_high} additional component(s) may become high risk within 12 months.")
 
+    if "Advanced Risk Level" in enriched:
+        needs_verification = int((enriched["Advanced Risk Level"] == "Needs verification").sum())
+        if needs_verification:
+            insights.append(f"Supplier evidence is incomplete for {needs_verification} component(s); no overall health conclusion is available yet.")
+
     if not insights:
-        insights.append("No unusual engineering concentration or future escalation pattern was detected from available data.")
+        insights.append("No unusual component concentration was identified from the saved BOM data.")
 
     return insights
 
 
 def generate_intelligence_executive_summary(
     total_parts: int,
-    bom_health: int,
+    bom_health: int | None,
     health_label: str,
     high_risk: int,
     medium_risk: int,
@@ -763,10 +773,16 @@ def generate_intelligence_executive_summary(
     single_source: int,
     obsolete_like: int,
 ) -> str:
-    summary = (
-        f"This BOM contains {total_parts} component(s) with an overall health score of "
-        f"{bom_health}/100, classified as {health_label}. "
-    )
+    if bom_health is None:
+        summary = (
+            f"This BOM contains {total_parts} component(s). Overall BOM health is not scored "
+            f"because supplier evidence coverage is incomplete ({health_label}). "
+        )
+    else:
+        summary = (
+            f"This BOM contains {total_parts} component(s) with an overall health score of "
+            f"{bom_health}/100, classified as {health_label}. "
+        )
 
     concerns: List[str] = []
     if high_risk:
@@ -885,8 +901,10 @@ def render_bom_intelligence_panel(st_module: Any, results_df: pd.DataFrame) -> D
     st_module.caption("Advanced risk dimensions, supplier resilience, future risk, and engineering recommendations.")
 
     col1, col2, col3, col4 = st_module.columns(4)
-    col1.metric("BOM Health", f"{intelligence['bom_health_score']}/100", intelligence["health_label"])
-    col2.metric("Avg Risk", intelligence.get("average_risk_score", 0))
+    health_score = intelligence.get("bom_health_score")
+    average_risk = intelligence.get("average_risk_score")
+    col1.metric("BOM Health", f"{health_score}/100" if health_score is not None else "Not scored", intelligence["health_label"])
+    col2.metric("Avg Risk", average_risk if average_risk is not None else "Not assessed")
     col3.metric("High Risk", intelligence["risk_distribution"].get("High", 0))
     col4.metric("Medium Risk", intelligence["risk_distribution"].get("Medium", 0))
 

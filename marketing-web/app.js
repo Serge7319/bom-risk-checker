@@ -775,9 +775,9 @@
   const phaseWidths = [4, 12, 28, 42, 52, 62, 72, 80, 88, 94, 100];
   const commandStates = [
     { phase: 'Baseline risk posture', health: 72, blockers: 4, alerts: 17, decisions: 16, ring: 'Blocked', headline: 'Release blocked by component risks', detail: 'Cadivor is tracing lifecycle and supplier evidence before recommending action.', statuses: ['Blocker', 'Open', 'Review'] },
-    { phase: 'Alternate identified', health: 81, blockers: 2, alerts: 12, decisions: 16, ring: 'Mitigation in progress', headline: 'MPU6050 alternate identified', detail: 'ICM-42688-P reduces confirmed EOL exposure while preserving electrical compatibility.', statuses: ['Resolved', 'Qualifying', 'Review'] },
-    { phase: 'Second source qualified', health: 89, blockers: 1, alerts: 8, decisions: 17, ring: 'Final qualification', headline: 'LM35DN second source qualified', detail: 'DigiKey provides the strongest authorized inventory and verified lead-time posture.', statuses: ['Resolved', 'Qualified', 'Review'] },
-    { phase: 'Release posture resolved', health: 96, blockers: 0, alerts: 5, decisions: 18, ring: 'Ready for controlled production release', headline: 'Ready for controlled production release', detail: 'Cadivor linked 14 illustrative evidence points to DR-1048 and saved selected-part monitoring settings.', statuses: ['Resolved', 'Qualified', 'Configured'] }
+    { phase: 'Alternate identified', health: 81, blockers: 2, alerts: 12, decisions: 16, ring: 'Mitigation in progress', headline: 'MPU6050 alternate identified', detail: 'ICM-42688-P is an alternate candidate for review; lifecycle, datasheet, and board-level compatibility still require verification.', statuses: ['Resolved', 'Qualifying', 'Review'] },
+    { phase: 'Second-source review', health: 89, blockers: 1, alerts: 8, decisions: 17, ring: 'Final qualification', headline: 'LM35DN second-source candidate identified', detail: 'Illustrative supplier values only; verify exact-part identity, seller authorization under your purchasing policy, current offers, and lead time with the distributor.', statuses: ['Evidence found', 'Review pending', 'Review'] },
+    { phase: 'Release posture resolved', health: 96, blockers: 0, alerts: 5, decisions: 18, ring: 'Engineer review still required', headline: 'Illustrative workflow complete · engineering approval still required', detail: 'Cadivor linked 14 illustrative evidence points to DR-1048 and saved selected-part monitoring settings.', statuses: ['Evidence found', 'Review pending', 'Configured'] }
   ];
   const WF_STEPS = [
     { state: 'Validated', outcomeHtml: 'Validated · <b>1,842</b> components', detail: 'motor_controller_rev_c.xlsx · 36 supplier records normalized', duration: 1200 },
@@ -1136,13 +1136,13 @@
     const details = $('#answerDetails');
     const chatAi = $('#chatAi');
     chatAi?.classList.add('visible', 'streaming');
-    $('#confidenceLabel').textContent = '93% confidence';
+    $('#confidenceLabel').textContent = 'Illustrative screening score · not probability';
     if (i !== 6) {
       $('#answerText').textContent = ansShort;
       if (details) {
         details.hidden = false;
         details.classList.add('visible');
-        details.innerHTML = ansDetails.map(d => `<li>${d}</li>`).join('') + '<li class="answer-confidence">Confidence: 93%</li><li>Recommended mitigation</li>';
+        details.innerHTML = ansDetails.map(d => `<li>${d}</li>`).join('') + '<li class="answer-confidence">Illustrative screening score · not probability</li><li>Recommended mitigation</li>';
       }
       chatAi?.classList.remove('streaming');
       return;
@@ -1153,7 +1153,7 @@
         if (details) {
           details.hidden = false;
           details.classList.add('visible');
-          details.innerHTML = ansDetails.map(d => `<li>${d}</li>`).join('') + '<li class="answer-confidence">Confidence: 93%</li><li>Recommended mitigation</li>';
+          details.innerHTML = ansDetails.map(d => `<li>${d}</li>`).join('') + '<li class="answer-confidence">Illustrative screening score · not probability</li><li>Recommended mitigation</li>';
         }
         chatAi?.classList.remove('streaming');
         return;
@@ -1171,7 +1171,7 @@
         } else {
           const conf = document.createElement('li');
           conf.className = 'answer-confidence';
-          conf.textContent = 'Confidence: 93%';
+          conf.textContent = 'Illustrative screening score · not probability';
           details.appendChild(conf);
           const mit = document.createElement('li');
           mit.textContent = 'Recommended mitigation';
@@ -1277,7 +1277,7 @@
         else heroTimers.push(setTimeout(() => chip.classList.add('visible'), ci * 220));
       }
     });
-    $('#confidenceLabel').textContent = i >= 6 ? '93% confidence' : i === 5 ? 'Reasoning…' : 'Evidence grounded';
+    $('#confidenceLabel').textContent = i >= 6 ? 'Illustrative screening score · not probability' : i === 5 ? 'Reasoning…' : 'Evidence grounded';
 
     $('#decisionActions')?.classList.toggle('visible', i >= 8);
     const approveBtn = $('#demoApproveMitigation');
@@ -1287,7 +1287,7 @@
 
     $('#approvalToast')?.classList.toggle('visible', i >= 10);
     $('#lifeEvidence').textContent = i >= 3 ? 'EOL notice matched' : i >= 1 ? 'Scanning…' : 'Waiting';
-    $('#supplyEvidence').textContent = i >= 7 ? 'DigiKey · 42,860 units' : i >= 3 ? 'Analyzing…' : 'Waiting';
+    $('#supplyEvidence').textContent = i >= 7 ? 'Illustrative inventory · not a live supplier feed' : i >= 3 ? 'Analyzing…' : 'Waiting';
     $('#decisionEvidence').textContent = i >= 9 ? 'DR-1048 approved' : i >= 6 ? 'Draft ready' : 'Pending';
 
     $$('.supplier-row').forEach((row, si) => {
@@ -1552,7 +1552,7 @@
         el.textContent = state.statuses[k];
         const row = el.closest('div');
         row?.classList.toggle('resolving', /Qualifying|Mitigating/.test(state.statuses[k]));
-        row?.classList.toggle('resolved', /Resolved|Qualified|Monitoring/.test(state.statuses[k]));
+        row?.classList.toggle('resolved', /Resolved|Evidence found|Monitoring|Configured/.test(state.statuses[k]));
       });
       const score = $('.score-ring .score');
       if (score) score.style.strokeDashoffset = `${314 - (314 * state.health / 100)}`;
@@ -1741,7 +1741,7 @@
       $('#copilotQuestionText').textContent = q;
       $('#copilotInputField')?.classList.remove('typing');
       $('#copilotAnswerText').textContent = answerChunks.join(' ');
-      $('#copilotConfidence').textContent = '93% confidence';
+      $('#copilotConfidence').textContent = 'Illustrative screening score · not probability';
       $('#copilotBlockers').innerHTML = '<span>MPU6050 · EOL blocker</span><span>LM35DN · single-source exposure</span>';
       $('#copilotMitigation').textContent = 'Qualify LM35DN second source and replace MPU6050 before production release.';
       $('#copilotCreateDecision').disabled = false;
@@ -1804,7 +1804,7 @@
           $('#copilotShellState').textContent = 'Recommendation streaming';
           streamCopilotChunks($('#copilotAnswerText'), answerChunks, 320, ctx, () => {
             if (!ctx.isActive()) return;
-            $('#copilotConfidence').textContent = '93% confidence';
+            $('#copilotConfidence').textContent = 'Illustrative screening score · not probability';
             $('#copilotBlockers').innerHTML = '<span>MPU6050 · EOL blocker</span><span>LM35DN · single-source exposure</span>';
             $('#copilotMitigation').textContent = 'Qualify LM35DN second source and replace MPU6050 before production release.';
             $('#copilotCreateDecision').disabled = false;
@@ -1846,9 +1846,9 @@
 
     const pathIds = ['pathDigiKey', 'pathMouser', 'pathNewark'];
     const supplierData = [
-      { name: 'DigiKey', availability: '42,860', lead: '8 weeks', concentration: 'Reduced 38%', altQual: 'Qualified', score: '94', reason: 'Highest authorized inventory with the shortest verified lead time.' },
-      { name: 'Mouser', availability: '31,240', lead: '10 weeks', concentration: 'Reduced 31%', altQual: 'Qualified', score: '86', reason: 'Strong global availability and a validated secondary procurement path.' },
-      { name: 'Newark', availability: '9,810', lead: '12 weeks', concentration: 'Reduced 17%', altQual: 'Available', score: '71', reason: 'Useful regional coverage, but lower available inventory and longer lead time.' }
+      { name: 'DigiKey', availability: '42,860 (sample)', lead: '8 weeks (sample)', concentration: 'Example only', altQual: 'Qualification pending', score: 'Demo', reason: 'Illustrative listing only; verify exact-part authorization, current offer, and lead time with the supplier.' },
+      { name: 'Mouser', availability: '31,240 (sample)', lead: '10 weeks (sample)', concentration: 'Example only', altQual: 'Qualification pending', score: 'Demo', reason: 'Illustrative listing only; verify exact-part authorization, current offer, and lead time with the supplier.' },
+      { name: 'Newark', availability: '9,810 (sample)', lead: '12 weeks (sample)', concentration: 'Example only', altQual: 'Qualification pending', score: 'Demo', reason: 'Illustrative listing only; verify exact-part authorization, current offer, and lead time with the supplier.' }
     ];
 
     let cycleIndex = 0;
@@ -1912,19 +1912,19 @@
       const d = supplierData[i];
       if (!d) return;
       const tableBtn = $$('#supplierComparisonTable button')[i];
-      const statusLabels = ['Recommended', 'Qualified', 'Available'];
+      const statusLabels = ['Illustrative only', 'Illustrative only', 'Illustrative only'];
       const rec = $('#supplierRecommendation');
       if (rec) {
         rec.style.opacity = '0';
         rec.style.transform = 'translateY(6px)';
         requestAnimationFrame(() => {
-          rec.textContent = `${d.name} is ${i === 0 ? 'the preferred' : 'a qualified'} source.`;
+          rec.textContent = `${d.name} is highlighted in this illustrative scenario.`;
           rec.style.opacity = '1';
           rec.style.transform = 'translateY(0)';
         });
       }
       $('#supplierAltQual').textContent = d.altQual;
-      if ($('#supplierStatus')) $('#supplierStatus').textContent = statusLabels[i] || 'Qualified';
+      if ($('#supplierStatus')) $('#supplierStatus').textContent = statusLabels[i] || 'Review pending';
       const qualInv = $('#qualInventory');
       if (qualInv) {
         qualInv.textContent = d.availability;
@@ -2083,7 +2083,7 @@
       approveBtn.disabled = false;
       if (statusEl) statusEl.textContent = 'READY FOR APPROVAL';
       if (ownerEl) { ownerEl.textContent = 'Jordan Ellis'; ownerEl.classList.add('is-visible'); }
-      if (confidenceEl) confidenceEl.textContent = '93%';
+      if (confidenceEl) confidenceEl.textContent = 'Demo only';
       if (evidenceEl) evidenceEl.textContent = '14 sources';
       if (monitorEl) { monitorEl.textContent = 'Pending'; monitorEl.classList.remove('is-active', 'is-fading'); }
       if (monitorLabel) { monitorLabel.textContent = 'Pending'; monitorLabel.classList.remove('is-active', 'is-fading'); }
@@ -2102,7 +2102,7 @@
       approveBtn.disabled = true;
       if (statusEl) statusEl.textContent = 'APPROVED';
       if (ownerEl) { ownerEl.textContent = 'Jordan Ellis'; ownerEl.classList.add('is-visible'); }
-      if (confidenceEl) confidenceEl.textContent = '93%';
+      if (confidenceEl) confidenceEl.textContent = 'Demo only';
       if (evidenceEl) evidenceEl.textContent = '14 sources';
       if (monitorEl) { monitorEl.textContent = 'Configured'; monitorEl.classList.add('is-active'); }
       if (monitorLabel) { monitorLabel.textContent = 'Configured'; monitorLabel.classList.add('is-active'); }
@@ -2126,7 +2126,7 @@
       }
 
       schedule(() => {
-        animatePercent(confidenceEl, 93);
+        if (confidenceEl) confidenceEl.textContent = 'Demo only';
         animateSources(evidenceEl, 14);
       }, MOTION.fast);
 
@@ -2344,7 +2344,7 @@
             'Two issues block release.',
             'Qualify LM35DN second source and replace MPU6050 before approval.'
           ], reducedMotion ? 0 : 260, () => {
-            $('#productCopilotState').textContent = '93% confidence';
+            $('#productCopilotState').textContent = 'Illustrative screening score · not probability';
           });
         }, reducedMotion ? 0 : 1400);
       };
@@ -2365,7 +2365,7 @@
 
     const supplierRows = $$('[data-ps-supplier]', $('#product-supplier'));
     const rec = $('#productSupplierRec');
-    const psData = ['DigiKey is the preferred qualification source.', 'Mouser is a qualified secondary source.', 'Newark provides regional coverage with lower inventory.'];
+    const psData = ['Illustrative scenario only; confirm supplier details before sourcing.', 'Illustrative scenario only; qualification has not been established.', 'Illustrative scenario only; current inventory is not verified.'];
     supplierRows.forEach(row => {
       row.style.cursor = 'pointer';
       row.onclick = () => {
@@ -2380,7 +2380,7 @@
     const solScene = $('#solution-supply');
     const solRows = $$('[data-sol-supplier]');
     const solRec = $('#solutionSupplierRec');
-    const solData = ['DigiKey recommended', 'Mouser qualified', 'Newark available'];
+    const solData = ['DigiKey sample', 'Mouser sample', 'Newark sample'];
     let solIndex = 0;
     let solTimer = null;
     let solObserver = null;

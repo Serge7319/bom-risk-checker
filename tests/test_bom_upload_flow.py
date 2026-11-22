@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from src.saved_bom_cost import analysis_part_cost_fields, json_safe_value
+from tests.evidence_fixtures import retrieved_now, supplier_url
 from src.bom_upload_flow import (
     consume_approved_bom_submission,
     stage_approved_bom_submission,
@@ -538,10 +539,14 @@ class BOMPartPayloadJsonSafetyTests(unittest.TestCase):
                 "Quantity": 4,
                 "Supplier Offers": [
                     {
+                        "mpn": "CAP-10U",
                         "distributor": "DigiKey",
                         "unit_price": 0.25,
+                        "currency": "USD",
                         "price_break_quantity": float("inf"),
                         "stock": float("inf"),
+                        "product_url": supplier_url("DigiKey", "CAP-10U"),
+                        "retrieved_at": retrieved_now(),
                     }
                 ],
             }

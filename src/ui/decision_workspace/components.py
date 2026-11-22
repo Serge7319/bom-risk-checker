@@ -79,39 +79,22 @@ def recommendation_summary(
     rows = list(actions or [])
     summary = report.get("summary") or {}
     count = len(rows)
-    total_effort = int(number(summary.get("total_effort_hours"), 0))
-    if not total_effort:
-        total_effort = sum(
-            int(number((row.get("dependency") or {}).get("effort_hours"), 0)) for row in rows
-        )
+    total_effort_value = summary.get("total_effort_hours")
+    total_effort = (
+        f"{int(number(total_effort_value, 0))} hrs"
+        if total_effort_value is not None
+        else "Not estimated"
+    )
 
     intelligence = brief.get("intelligence") or {}
     readiness = brief.get("production_readiness") or {}
-    health_before = int(
-        number(
-            intelligence.get("bom_health_score"),
-            number(readiness.get("score"), 0),
-        )
-    )
-    health_gain = int(number(summary.get("combined_health_gain"), 0))
-    if not health_gain:
-        health_gain = sum(
-            int(
-                number(
-                    (row.get("dependency") or {}).get("projected_bom_health", {}).get("gain"),
-                    0,
-                )
-            )
-            for row in rows
-        )
-    health_after = min(100, health_before + health_gain)
+    health_score = intelligence.get("bom_health_score")
 
     top = rows[0] if rows else {}
     top_part = esc(top.get("part_number"), "—")
 
     confidence = brief.get("confidence") or {}
-    confidence_label = esc(confidence.get("label"), "Moderate")
-    confidence_score = int(number(confidence.get("score"), 0))
+    confidence_label = esc(confidence.get("label"), "Not scored")
 
     return f"""
     <header class="cv69-recommendation-summary">
@@ -127,16 +110,16 @@ def recommendation_summary(
         </article>
         <article class="cv69-summary-stat">
           <span>Estimated effort</span>
-          <strong>{total_effort} hrs</strong>
+          <strong>{total_effort}</strong>
         </article>
         <article class="cv69-summary-stat">
           <span>Potential health</span>
-          <strong>{health_before} → {health_after}</strong>
+          <strong>{f"{health_score}/100" if health_score is not None else "Not scored"}</strong>
         </article>
         <article class="cv69-summary-stat">
           <span>Confidence</span>
           <strong>{confidence_label}</strong>
-          <small>{confidence_score}% confidence from saved BOM evidence</small>
+          <small>Confidence is not assigned as a percentage.</small>
         </article>
       </div>
       <p class="cv69-summary-copy">Select a recommendation below to review its rationale, evidence, expected impact, and next engineering step.</p>
@@ -150,9 +133,9 @@ def recommendation_card(action: Mapping[str, Any], *, index: int) -> str:
     roi = dep.get("engineering_roi") or {}
     health = dep.get("projected_bom_health") or {}
     roi_label = esc(roi.get("label"))
-    health_before = int(number(health.get("before"), 0))
-    health_after = int(number(health.get("after"), 0))
-    health_gain = int(number(health.get("gain"), 0))
+    health_before = health.get("before")
+    health_after = health.get("after")
+    health_gain = health.get("gain")
     effort = esc(dep.get("estimated_effort") or action.get("effort"), "—")
     confidence = esc(action.get("confidence"))
     status = infer_status_badge(action)
@@ -182,8 +165,8 @@ def recommendation_card(action: Mapping[str, Any], *, index: int) -> str:
         <div><span>ROI</span><strong>{roi_label}</strong></div>
         <div class="cv69-card-health">
           <span>Projected health</span>
-          <strong>{health_before} → {health_after}</strong>
-          <small>+{health_gain}</small>
+          <strong>{f"{health_before} → {health_after}" if health_before is not None and health_after is not None else "Not estimated"}</strong>
+          <small>{f"+{health_gain}" if health_gain is not None else "No impact estimate"}</small>
         </div>
       </div>
       <span class="cv69-card-expand">Expand</span>
@@ -334,10 +317,10 @@ def recommendation_intelligence_details(action: Mapping[str, Any]) -> str:
             {f'<section class="cv69-disclosure-section"><h4>Engineering impact</h4><ul class="cv69-detail-list">{engineering_impact_html}</ul></section>' if engineering_impact_html else ''}
             {f'<section class="cv69-disclosure-section"><h4>Validation required</h4><ul class="cv69-detail-list">{validation_html}</ul></section>' if validation_html else ''}
             <div class="cv69-analysis-grid">
-              <div><span>Difficulty</span><strong>{esc(dep.get('change_difficulty'))}</strong></div>
-              <div><span>Engineering ROI</span><strong>{esc(roi.get('label'))} ({number(roi.get('score'), 0):g})</strong></div>
+              <div><span>Difficulty</span><strong>{esc(dep.get('change_difficulty'), 'Not estimated')}</strong></div>
+              <div><span>Engineering ROI</span><strong>{esc(roi.get('label'), 'Not assessed')}</strong></div>
               <div><span>Estimated effort</span><strong>{esc(dep.get('estimated_effort') or action.get('effort'))}</strong></div>
-              <div><span>Projected health</span><strong>{int(number(health.get('before'), 0))} → {int(number(health.get('after'), 0))}</strong></div>
+              <div><span>Projected health</span><strong>{f"{health.get('before')} → {health.get('after')}" if health.get('before') is not None and health.get('after') is not None else 'Not estimated'}</strong></div>
             </div>
           </div>
         </details>

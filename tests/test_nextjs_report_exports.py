@@ -25,6 +25,7 @@ from apps.api.report_exports import (
 from apps.api.sandbox_auth import reset_auth_store_for_tests
 from apps.api.workspace_store import reset_store_for_tests
 from tests.fixtures.sandbox_auth_accounts import SANDBOX_SEED_USERS, SMOKE_EMAIL, SMOKE_PASSWORD
+from tests.evidence_fixtures import live_supplier_part
 
 ROOT = Path(__file__).resolve().parents[1]
 CSV_FIXTURE = ROOT / "tests" / "fixtures" / "synthetic_bom_25parts.csv"
@@ -149,23 +150,24 @@ def test_exports_preserve_synthetic_label_and_neutralize_formula_cells():
 
 
 def test_xlsx_keeps_quantities_risk_stock_and_price_numeric():
+    verified = live_supplier_part(
+        "R-1", stock=1200, quantity=6, unit_price=0.125
+    )
+    verified.update(
+        {
+            "quantity_per_parent": 2,
+            "effective_quantity": 6,
+            # Persisted numbers are intentionally stale; exports recalculate.
+            "Risk Score": 25,
+        }
+    )
     report = {
         "project_name": "Numeric export",
         "bom_name": "numeric.csv",
         "mode": "live",
         "health_score": 81,
-        "parts": [
-            {
-                "MPN": "R-1",
-                "Manufacturer": "Example",
-                "quantity_per_parent": 2,
-                "effective_quantity": 6,
-                "Risk Score": 25,
-                "Stock": 1200,
-                "Unit Price": 0.125,
-                "Currency": "USD",
-            }
-        ],
+        "health_status": "High Risk",
+        "parts": [verified],
     }
     workbook = load_workbook(io.BytesIO(build_xlsx(report)), data_only=False)
     components = workbook["Components"]
@@ -173,7 +175,7 @@ def test_xlsx_keeps_quantities_risk_stock_and_price_numeric():
     expected = {
         "Quantity per Parent": 2,
         "Effective Quantity": 6,
-        "Risk Score": 25,
+        "Risk Score": 5,
         "Stock": 1200,
         "Unit Price": 0.125,
     }
@@ -186,7 +188,8 @@ def test_xlsx_keeps_quantities_risk_stock_and_price_numeric():
 
     summary = {row[0].value: row[1] for row in workbook["Summary"].iter_rows(min_row=4)}
     assert summary["Health score"].data_type == "n"
-    assert summary["Health score"].value == 81
+    assert summary["Health score"].value == 95
+    assert summary["Health status"].value == "Healthy"
     assert summary["Total components"].data_type == "n"
     assert summary["Total components"].value == 1
 
@@ -202,7 +205,15 @@ def test_report_summaries_keep_unverified_parts_out_of_low_risk_counts():
         "medium_risk_count": 0,
         "low_risk_count": 1,
         "parts": [
-            {"MPN": "PART-UNKNOWN", "Risk Level": "Needs verification", "Risk Score": 0},
+            {
+                "MPN": "PART-UNKNOWN", "Risk Level": "Needs verification", "Risk Score": 0,
+                "Stock": 900, "Unit Price": 0.42, "Currency": "USD",
+                "supplier_offers": [{"mpn": "PART-UNKNOWN", "distributor": "DigiKey", "unit_price": 0.42, "currency": "USD"}],
+                "rohs_status": "Compliant", "rohs_source": "DigiKey",
+                "compliance_evidence": {
+                    "rohs": {"reported_value": "Compliant", "source": "DigiKey", "mpn": "OTHER-PART"}
+                },
+            },
             {"MPN": "PART-LOW", "Risk Level": "Low", "Risk Score": 18},
         ],
     }
@@ -219,15 +230,22 @@ def test_report_summaries_keep_unverified_parts_out_of_low_risk_counts():
         if row[0].value
     }
     assert "Executive summary" in summary_text
-    assert "Supplier evidence is incomplete" in summary_text
-    assert summary_facts["Risk not assessed"] == 1
-    assert summary_facts["Low risk"] == 1
+    assert "2 needing verification" in summary_text
+    assert summary_facts["Risk not assessed"] == 2
+    assert summary_facts["Low risk"] == 0
+    component_rows = list(workbook["Components"].iter_rows(values_only=True))
+    component_columns = {name: index for index, name in enumerate(component_rows[0])}
+    unknown_row = next(row for row in component_rows[1:] if row[component_columns["MPN"]] == "PART-UNKNOWN")
+    assert unknown_row[component_columns["Stock"]] == "Not verified"
+    assert unknown_row[component_columns["Unit Price"]] == "Not verified"
+    assert unknown_row[component_columns["Supplier Offers"]] in ("", None)
+    assert unknown_row[component_columns["RoHS Status"]] == "Not verified"
+    assert unknown_row[component_columns["RoHS Evidence Details"]] in ("", None)
 
     pdf_text, _ = _pdf_text(build_pdf(report))
     normalized = _normalized(pdf_text)
     assert _normalized("Executive summary") in normalized
-    assert _normalized("Supplier evidence is incomplete") in normalized
-    assert _normalized("1 needs verification") in normalized
+    assert _normalized("2 needing verification") in normalized
 
 
 def test_report_exports_reconcile_saved_counts_from_visible_rows():
@@ -251,13 +269,13 @@ def test_report_exports_reconcile_saved_counts_from_visible_rows():
         for row in workbook["Summary"].iter_rows(min_row=4)
         if row[0].value
     }
-    assert summary["Risk assessed"] == 2
-    assert summary["Risk not assessed"] == 0
-    assert summary["High risk"] == 1
-    assert summary["Low risk"] == 1
+    assert summary["Risk assessed"] == 0
+    assert summary["Risk not assessed"] == 2
+    assert summary["High risk"] == 0
+    assert summary["Low risk"] == 0
 
     pdf_text, _ = _pdf_text(build_pdf(report))
-    assert _normalized("High / medium / low: 1 / 0 / 1") in _normalized(pdf_text)
+    assert _normalized("High / medium / low: 0 / 0 / 0") in _normalized(pdf_text)
 
 
 def test_exports_hide_opaque_record_references_from_names_and_summary():
@@ -481,8 +499,9 @@ def test_csv_xlsx_pdf_row_and_field_parity_against_saved_bom(client: TestClient)
         assert csv_row["Identity Source"] == evidence["fields"]["identity"]["source"]
         assert csv_row["Price Source"] == evidence["fields"]["price"]["source"]
         assert csv_row["Price Type"] == evidence["fields"]["price"]["price_type"]
-        assert csv_row["Risk Level"] == str(part["Risk Level"])
-        assert csv_row["Risk Score"] == str(part["Risk Score"])
+        # Uploaded preview values must never appear as assessed supplier risk.
+        assert csv_row["Risk Level"] == "Needs verification"
+        assert csv_row["Risk Score"] == "Not assessed"
         assert csv_row["Lifecycle"] == str(part["Lifecycle"])
         assert csv_row["Stock"] == str(part["Stock"])
         assert csv_row["Unit Price"] == str(part["Unit Price"])

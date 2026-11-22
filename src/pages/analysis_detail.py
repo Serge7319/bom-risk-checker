@@ -374,6 +374,10 @@ def _num(value: Any, default: int = 0) -> int:
         return default
 
 
+def _truthy(value: Any) -> bool:
+    return value is True or str(value or "").strip().casefold() in {"1", "true", "yes"}
+
+
 def _date(value: Any) -> str:
     if not value:
         return "—"
@@ -408,6 +412,8 @@ def _relative_date(value: Any) -> str:
 
 def _risk_class(level: Any = None, score: Any = None) -> str:
     level_text = str(level or "").lower()
+    if any(token in level_text for token in ("verification", "unassessed", "not assessed", "unknown")):
+        return "muted"
     score_num = _num(score, 0)
     if "high" in level_text or score_num >= 70:
         return "bad"
@@ -579,85 +585,29 @@ def _stored_risk_label(part: dict[str, Any]) -> str:
 
 
 def _component_priority_assessment(part: dict[str, Any]) -> dict[str, Any]:
-    """Resolve one truthful priority from saved score plus release evidence.
+    """Return a risk rating only when its contributing supplier fields verify."""
+    from src.risk_engine import calculate_risk
 
-    Saved analyses can contain an older numeric score that predates a lifecycle
-    or sourcing change.  The UI must never call an EOL/no-stock component a
-    green Monitor item, so material evidence establishes a minimum score while
-    preserving a higher stored score.
-    """
-    stored_score = max(
-        0,
-        min(100, _num(_part_value(part, "risk_score", "Risk Score"), 0)),
-    )
-    stored_level = _stored_risk_label(part).strip().casefold()
-    floors: list[tuple[int, str]] = []
-    if stored_level in {"critical"}:
-        floors.append((90, "stored critical classification"))
-    elif stored_level in {"high", "high risk"}:
-        floors.append((75, "stored high-risk classification"))
-    elif stored_level in {"medium", "moderate"}:
-        floors.append((50, "stored medium-risk classification"))
-
-    lifecycle = _safe(
-        _part_value(part, "lifecycle_status", "Lifecycle Status"),
-        "Unknown",
-    ).strip().casefold()
-    if any(
-        token in lifecycle
-        for token in (
-            "obsolete",
-            "end of life",
-            "eol",
-            "replacement",
-            "not recommended",
-            "nrnd",
-        )
-    ):
-        floors.append((85, "lifecycle continuity risk"))
-    elif lifecycle in {"", "unknown", "not available", "—"}:
-        floors.append((50, "unverified lifecycle status"))
-
-    quantity_raw = _part_value(part, "quantity", "Quantity")
-    stock_raw = _part_value(part, "stock_available", "Stock Available")
-    supplier_raw = _part_value(part, "supplier_count", "Supplier Count")
-    lead_time_raw = _part_value(part, "lead_time_weeks", "Lead Time Weeks")
-    quantity = max(0, _num(quantity_raw, 0))
-    if stock_raw is not None and str(stock_raw).strip() != "":
-        stock = max(0, _num(stock_raw, 0))
-        if stock <= 0:
-            floors.append((85, "no recorded inventory"))
-        elif quantity > 0 and stock < quantity:
-            floors.append((75, "inventory below BOM demand"))
-    if supplier_raw is not None and str(supplier_raw).strip() != "":
-        suppliers = max(0, _num(supplier_raw, 0))
-        if suppliers <= 0:
-            floors.append((75, "no qualified source"))
-        elif suppliers == 1:
-            floors.append((60, "single-source exposure"))
-    if lead_time_raw is not None and str(lead_time_raw).strip() != "":
-        if max(0, _num(lead_time_raw, 0)) >= 12:
-            floors.append((60, "long lead-time exposure"))
-
-    floor_score, floor_reason = max(floors, default=(0, ""), key=lambda row: row[0])
-    effective_score = max(stored_score, floor_score)
-    risk_level = (
-        "Critical"
-        if effective_score >= 90
-        else "High"
-        if effective_score >= 75
-        else "Medium"
-        if effective_score >= 50
-        else "Low"
+    stored_score_raw = _part_value(part, "risk_score", "Risk Score")
+    stored_score = _num(stored_score_raw, 0) if stored_score_raw is not None else None
+    assessment = calculate_risk(part)
+    effective_score = assessment.get("risk_score")
+    risk_level = str(assessment.get("risk_level") or "Needs verification")
+    priority_label = (
+        semantic_priority_label(effective_score)
+        if effective_score is not None
+        else "Needs verification"
     )
     return {
         "stored_score": stored_score,
         "stored_level": _stored_risk_label(part),
         "score": effective_score,
         "risk_level": risk_level,
-        "priority": semantic_priority_label(effective_score),
-        "elevated": effective_score > stored_score,
-        "elevation_reason": floor_reason if effective_score > stored_score else "",
+        "priority": priority_label,
+        "elevated": False,
+        "elevation_reason": "",
+        "reasons": list(assessment.get("risk_reasons") or []),
+        "evidence_coverage_complete": bool(assessment.get("evidence_coverage_complete")),
     }
 
 
@@ -701,7 +651,7 @@ def _matching_component_records(
     return [
         record
         for record in records
-        if any(
+        if detail.get("lifecycle_verified") and any(
             str(record.get(key) or "").strip().casefold() == target
             for key in keys
         )
@@ -720,10 +670,24 @@ def _component_risk_detail_model(
         _part_value(part, "manufacturer", "Manufacturer"),
         "Unknown manufacturer",
     )
-    lifecycle = _safe(
+    from apps.api.evidence_contract import classify_part_evidence, EVIDENCE_LIVE
+    from src.risk_engine import _coverage_complete
+
+    evidence = classify_part_evidence(part)
+    fields = evidence.get("fields") if isinstance(evidence.get("fields"), dict) else {}
+    lifecycle_field = fields.get("lifecycle") if isinstance(fields.get("lifecycle"), dict) else {}
+    stock_field = fields.get("stock") if isinstance(fields.get("stock"), dict) else {}
+    lead_field = fields.get("lead_time") if isinstance(fields.get("lead_time"), dict) else {}
+    identity_field = fields.get("identity") if isinstance(fields.get("identity"), dict) else {}
+    lifecycle_verified = lifecycle_field.get("evidence_class") == EVIDENCE_LIVE
+    stock_verified = stock_field.get("evidence_class") == EVIDENCE_LIVE
+    lead_time_verified = lead_field.get("evidence_class") == EVIDENCE_LIVE
+    identity_verified = identity_field.get("evidence_class") == EVIDENCE_LIVE
+    raw_lifecycle = _safe(
         _part_value(part, "lifecycle_status", "Lifecycle Status"),
         "Unknown",
     )
+    lifecycle = raw_lifecycle if lifecycle_verified else "Needs verification"
     lifecycle_key = lifecycle.casefold()
     lifecycle_exposed = any(
         token in lifecycle_key
@@ -731,45 +695,43 @@ def _component_risk_detail_model(
             "obsolete",
             "end of life",
             "eol",
-            "replacement",
             "not recommended",
             "nrnd",
         )
     )
-    lifecycle_unknown = lifecycle_key in {"", "unknown", "not available", "—"}
+    lifecycle_unknown = not lifecycle_verified
 
     quantity_raw = _part_value(part, "quantity", "Quantity")
-    stock_raw = _part_value(part, "stock_available", "Stock Available")
+    stock_raw = _part_value(part, "stock_available", "Stock Available", "Total Market Stock")
     supplier_raw = _part_value(part, "supplier_count", "Supplier Count")
     lead_time_raw = _part_value(part, "lead_time_weeks", "Lead Time Weeks")
     quantity = max(0, _num(quantity_raw, 0))
-    stock = max(0, _num(stock_raw, 0))
-    suppliers = max(0, _num(supplier_raw, 0))
-    lead_time = max(0, _num(lead_time_raw, 0))
-    stock_known = stock_raw is not None and str(stock_raw).strip() != ""
-    suppliers_known = supplier_raw is not None and str(supplier_raw).strip() != ""
-    lead_time_known = lead_time_raw is not None and str(lead_time_raw).strip() != ""
-    stock_exposed = stock_known and stock <= 0
-    stock_shortage = stock_known and quantity > 0 and stock < quantity
-    supplier_exposed = suppliers_known and suppliers <= 1
-    lead_time_exposed = lead_time_known and lead_time >= 12
+    stock_complete = _truthy(_part_value(part, "stock_data_complete", "Stock Data Complete"))
+    stock_evidence_value = stock_field.get("observed_total")
+    if stock_evidence_value is None:
+        stock_evidence_value = stock_field.get("reported_value")
+    stock = (
+        max(0, _num(stock_evidence_value, 0))
+        if stock_verified and stock_evidence_value is not None
+        else None
+    )
+    coverage_complete, _configured_sources = _coverage_complete(part)
+    suppliers = max(0, _num(supplier_raw, 0)) if identity_verified and coverage_complete else None
+    lead_time = max(0, _num(lead_time_raw, 0)) if lead_time_verified else None
+    stock_known = stock_verified and stock_complete and stock is not None
+    suppliers_known = suppliers is not None
+    lead_time_known = lead_time_verified and lead_time is not None
+    stock_exposed = bool(stock_known and stock <= 0)
+    stock_shortage = bool(stock_known and quantity > 0 and stock < quantity)
+    supplier_exposed = bool(suppliers_known and suppliers <= 1)
+    lead_time_exposed = bool(lead_time_known and lead_time >= 12)
 
     priority = _component_priority_assessment(part)
-    risk_score = int(priority["score"])
+    risk_score = priority["score"]
     risk_level = str(priority["risk_level"])
-    reason_raw = _part_value(
-        part,
-        "risk_reasons",
-        "Risk Reasons",
-        "risk_reason",
-        fallback="",
-    )
-    if isinstance(reason_raw, (list, tuple, set)):
-        risk_reason = "; ".join(
-            str(item).strip() for item in reason_raw if str(item).strip()
-        )
-    else:
-        risk_reason = str(reason_raw or "").strip()
+    risk_reason = "; ".join(priority.get("reasons") or [])
+    if not risk_reason and risk_score is None:
+        risk_reason = "Risk was not scored because exact-part supplier evidence or source coverage is incomplete."
 
     matching_alerts = _matching_component_records(
         alerts,
@@ -820,6 +782,22 @@ def _component_risk_detail_model(
                 "warn",
             )
         )
+    elif stock_verified and not stock_complete:
+        drivers.append(
+            (
+                "Inventory coverage gap",
+                "Some exact-part supplier readings were returned, but provider coverage is incomplete; shortage is not established.",
+                "warn",
+            )
+        )
+    elif not stock_verified:
+        drivers.append(
+            (
+                "Inventory evidence gap",
+                "No timestamped exact-part inventory evidence is available for a stock assessment.",
+                "warn",
+            )
+        )
     if supplier_exposed:
         drivers.append(
             (
@@ -830,6 +808,14 @@ def _component_risk_detail_model(
                     else "No qualified supplier source is recorded."
                 ),
                 "bad" if suppliers == 0 else "warn",
+            )
+        )
+    elif not coverage_complete:
+        drivers.append(
+            (
+                "Supplier coverage gap",
+                "Cadivor cannot assess supplier concentration because source checks are incomplete.",
+                "warn",
             )
         )
     if lead_time_exposed:
@@ -846,6 +832,8 @@ def _component_risk_detail_model(
         inventory_coverage = (
             f"{covered_builds:,} complete BOM build{'s' if covered_builds != 1 else ''}"
         )
+    elif stock_verified and stock is not None and not stock_complete:
+        inventory_coverage = f"{stock:,} units observed; supplier coverage incomplete"
     elif stock_known:
         inventory_coverage = f"{stock:,} units recorded; BOM quantity unavailable"
     else:
@@ -855,9 +843,9 @@ def _component_risk_detail_model(
         lifecycle_exposed
         or stock_exposed
         or supplier_exposed
-        or risk_score >= 60
+        or (risk_score is not None and risk_score >= 60)
     )
-    needs_decision = bool(drivers or risk_score >= 30)
+    needs_decision = bool(drivers or (risk_score is not None and risk_score >= 30))
     if needs_alternative:
         recommendation = "Qualify a replacement or second source"
         recommendation_detail = (
@@ -869,6 +857,11 @@ def _component_risk_detail_model(
         recommendation_detail = (
             "Confirm the flagged evidence and record an engineering disposition for this component."
         )
+    elif risk_score is None:
+        recommendation = "Verify supplier evidence before release"
+        recommendation_detail = (
+            "Confirm the exact manufacturer part number, supplier coverage, and missing lifecycle or inventory evidence before using a risk rating."
+        )
     else:
         recommendation = "Continue controlled monitoring"
         recommendation_detail = (
@@ -877,22 +870,50 @@ def _component_risk_detail_model(
         )
 
     unit_price_raw = _part_value(part, "unit_price", "Unit Price")
-    try:
-        unit_price = float(unit_price_raw) if unit_price_raw not in (None, "") else None
-    except (TypeError, ValueError):
-        unit_price = None
-    if unit_price is not None and unit_price <= 0:
-        unit_price = None
+    raw_price_source = _safe(
+        _part_value(part, "price_source", "primary_supplier", "Best Source", "supplier"),
+        "",
+    )
+    raw_price_currency = _safe(
+        _part_value(part, "unit_price_currency", "Unit Price Currency", "currency"),
+        "",
+    )
+    price_offer = None
+    price_field = fields.get("price") if isinstance(fields.get("price"), dict) else {}
+    if unit_price_raw not in (None, "") and price_field.get("evidence_class") == EVIDENCE_LIVE:
+        try:
+            from src.saved_bom_cost import normalize_saved_offers, select_supplier_offer
+
+            saved_offers = normalize_saved_offers(
+                _part_value(part, "supplier_offers", "Supplier Offers", fallback=[]),
+                mpn=mpn,
+            )
+            price_offer = select_supplier_offer(
+                saved_offers,
+                mpn=mpn,
+                supplier=raw_price_source,
+                unit_price=unit_price_raw,
+                currency=raw_price_currency,
+                quantity=quantity if quantity > 0 else None,
+            )
+        except (TypeError, ValueError):
+            price_offer = None
+    unit_price = float(price_offer["unit_price"]) if price_offer else None
 
     return {
         "mpn": mpn,
         "manufacturer": manufacturer,
         "lifecycle": lifecycle,
         "quantity": quantity,
-        "stock": stock,
+        "stock": stock if stock_verified else None,
+        "stock_complete": stock_complete,
+        "stock_verified": stock_verified,
         "suppliers": suppliers,
+        "supplier_coverage_complete": coverage_complete,
         "lead_time": lead_time,
         "lead_time_known": lead_time_known,
+        "lifecycle_verified": lifecycle_verified,
+        "identity_verified": identity_verified,
         "source": _safe(
             _part_value(
                 part,
@@ -902,11 +923,11 @@ def _component_risk_detail_model(
                 "supplier",
             ),
             "Not recorded",
-        ),
+        ) if identity_verified else "Not verified",
         "url": _safe(
             _part_value(part, "product_url", "Product URL", "datasheet_url"),
             "",
-        ),
+        ) if identity_verified else "",
         "risk_score": risk_score,
         "risk_level": risk_level,
         "priority": priority["priority"],
@@ -920,6 +941,15 @@ def _component_risk_detail_model(
         "alternative_count": len(matching_alternatives),
         "unit_price": unit_price,
         "extended_cost": unit_price * quantity if unit_price is not None and quantity else None,
+        "price_currency": str(price_offer.get("currency") or "") if price_offer else "",
+        "price_supplier": str(price_offer.get("distributor") or "") if price_offer else "",
+        "price_retrieved_at": str(price_offer.get("retrieved_at") or "") if price_offer else "",
+        "price_verified": price_offer is not None,
+        "lifecycle_evidence_status": str(lifecycle_field.get("evidence_class") or "missing"),
+        "stock_evidence_status": str(stock_field.get("evidence_class") or "missing"),
+        "stock_evidence_note": str(stock_field.get("gap") or ""),
+        "lead_time_evidence_status": str(lead_field.get("evidence_class") or "missing"),
+        "identity_evidence_status": str(identity_field.get("evidence_class") or "missing"),
         "needs_alternative": needs_alternative,
         "needs_decision": needs_decision,
         "recommendation": recommendation,
@@ -929,12 +959,12 @@ def _component_risk_detail_model(
 
 def _health_summary(health: int, high: int, medium: int) -> tuple[str, str, int]:
     if health >= 90 and high == 0:
-        return "Production Ready", "Strong portfolio health with no high-risk components.", 95
+        return "No high-risk supplier signal", "Supplier evidence shows no high-risk component; this is not a release approval.", 0
     if health >= 80 and high <= 1:
-        return "Review Recommended", "A focused engineering review is recommended before release.", 84
+        return "Focused review", "Review supplier evidence and engineering requirements before release.", 0
     if health >= 60:
-        return "Engineering Review Required", "Resolve risk drivers and validate sourcing before release.", 68
-    return "Release Hold Recommended", "Material lifecycle or sourcing risks require remediation.", 45
+        return "Engineering review required", "Resolve recorded supplier risk signals and validate sourcing before release.", 0
+    return "Supplier risk signal detected", "Review recorded lifecycle, inventory, and sourcing evidence before making a release decision.", 0
 
 
 def _render_focused_component_review(
@@ -957,7 +987,7 @@ def _render_focused_component_review(
     ]
     focus_part = max(
         matching,
-        key=lambda part: _component_priority_assessment(part)["score"],
+        key=lambda part: _num(_component_priority_assessment(part)["score"], -1),
         default=None,
     )
     st.markdown('<div id="cv-review-focus-top" style="scroll-margin-top:85px"></div>', unsafe_allow_html=True)
@@ -1003,7 +1033,7 @@ def _render_focused_component_review(
         (
             {
                 "mpn": _safe(_part_value(part, "mpn", "MPN"), ""),
-                "risk_score": _num(_part_value(part, "risk_score", "Risk Score"), 0),
+                "risk_score": _num(_component_priority_assessment(part)["score"], -1),
                 "risk_level": _risk_label(part),
                 "stored_risk_level": _stored_risk_label(part),
             }
@@ -1050,16 +1080,15 @@ def _render_focused_component_review(
     lifecycle = _safe(_part_value(focus_part, "lifecycle_status", "Lifecycle Status"), "Unknown")
     stock = _num(_part_value(focus_part, "stock_available", "Stock Available"), 0)
     sources = _num(_part_value(focus_part, "supplier_count", "Supplier Count"), 0)
-    reason = _safe(
-        _part_value(focus_part, "risk_reasons", "Risk Reasons", "risk_reason"),
-        "Recorded engineering risk requires review.",
+    reason = "; ".join(priority_assessment.get("reasons") or []) or (
+        "Risk was not scored because exact-part supplier evidence or source coverage is incomplete."
     )
     status = _safe(saved.get("decision"), "Not reviewed")
     st.markdown(
         '<section class="cv-review-focus-part">'
         f'<div><span>PART TO DECIDE</span><strong>{html.escape(requested_mpn)}</strong>'
         f'<small>{html.escape(_safe(_part_value(focus_part, "manufacturer", "Manufacturer"), "Unknown manufacturer"))}</small></div>'
-        f'<div><span>{html.escape(risk_level)} risk · {risk_score}/100</span>'
+        f'<div><span>{html.escape(risk_level)} risk · {risk_score if risk_score is not None else "Not assessed"}{"/100" if risk_score is not None else ""}</span>'
         f'<strong>{html.escape(status)}</strong></div></section>',
         unsafe_allow_html=True,
     )
@@ -1111,7 +1140,7 @@ def _render_focused_component_review(
         with st.form(f"focus_component_decision_{analysis_id}_{part_key}"):
             decision_col, owner_col, due_col = st.columns([1.15, 1, 1])
             options = ["Approve", "Needs Investigation", "Reject", "Skip"]
-            suggested = "Needs Investigation" if risk_score >= 35 else "Approve"
+            suggested = "Needs Investigation" if risk_score is None or risk_score >= 35 else "Approve"
             current_decision = saved.get("decision") if saved.get("decision") in options else suggested
             decision = decision_col.selectbox("Decision", options, index=options.index(current_decision), disabled=disabled)
             owner_options = ["Electrical", "Procurement", "Supply Chain", "Firmware", "Quality", "General Engineering"]
@@ -1128,7 +1157,7 @@ def _render_focused_component_review(
             )
             member = member_options[member_labels.index(assignee)]
             priorities = ["High", "Medium", "Low"]
-            default_priority = "High" if risk_score >= 70 else "Medium" if risk_score >= 35 else "Low"
+            default_priority = "Medium" if risk_score is None else "High" if risk_score >= 70 else "Medium" if risk_score >= 35 else "Low"
             current_priority = saved.get("priority") if saved.get("priority") in priorities else default_priority
             priority = priority_col.selectbox("Priority", priorities, index=priorities.index(current_priority), disabled=disabled)
             today = date.today()
@@ -1184,7 +1213,9 @@ def _render_focused_component_review(
                     assignee_name=assignee_name, assignee_email=member[1], assignee_user_id=member[2],
                     priority=priority, notes=notes.strip(), reviewer_name=reviewer_name,
                     reviewer_email=reviewer_email, recommendation=suggested,
-                    recommendation_confidence=max(0, min(100, 100 - abs(risk_score - 50))),
+                    # The legacy schema requires an integer; never derive a
+                    # confidence percentage from the risk score.
+                    recommendation_confidence=0,
                     evidence={
                         "risk_score": risk_score, "lifecycle": lifecycle, "stock": stock,
                         "supplier_sources": sources, "reason": reason,
@@ -1833,14 +1864,35 @@ def render_analysis_detail(
 
     project = _safe(analysis.get("project_name") or analysis.get("filename"), "Saved BOM Analysis")
     filename = _safe(analysis.get("filename"))
-    health = _num(analysis.get("health_score"))
-    high = _num(analysis.get("high_risk_count"))
-    medium = _num(analysis.get("medium_risk_count"))
-    low = _num(analysis.get("low_risk_count"))
-    total_parts = _num(analysis.get("total_parts"), len(parts)) or len(parts)
+    # Recompute scores from the attached evidence. Persisted aggregate scores
+    # may predate the current evidence contract and are not authoritative.
+    priority_by_part = [
+        (part, _component_priority_assessment(part))
+        for part in parts
+        if isinstance(part, dict)
+    ]
+    high = sum(item.get("risk_level") == "High" for _, item in priority_by_part)
+    medium = sum(item.get("risk_level") == "Medium" for _, item in priority_by_part)
+    low = sum(item.get("risk_level") == "Low" for _, item in priority_by_part)
+    scored_risks = [item["score"] for _, item in priority_by_part if item.get("score") is not None]
+    complete_assessments = sum(
+        bool(item.get("evidence_coverage_complete")) and item.get("score") is not None
+        for _, item in priority_by_part
+    )
+    health_assessed = bool(priority_by_part) and complete_assessments == len(priority_by_part)
+    needs_verification_count = len(priority_by_part) - complete_assessments
+    health = round(100 - sum(scored_risks) / len(scored_risks)) if health_assessed else 0
+    health_display = f"{health}/100" if health_assessed else "Not scored"
+    total_parts = len(priority_by_part) or _num(analysis.get("total_parts"))
     created = analysis.get("created_at")
-    risk_status = "Review Recommended" if health < 80 or high else "Healthy"
-    health_cls = _health_class(health)
+    risk_status = (
+        "Needs verification"
+        if not health_assessed
+        else "Review Recommended"
+        if health < 80 or high
+        else "Healthy"
+    )
+    health_cls = _health_class(health) if health_assessed else "muted"
     advisor = cached_engineering_advisor(
         analysis_id,
         analysis=analysis,
@@ -1851,7 +1903,7 @@ def render_analysis_detail(
     )
     context_fingerprint = (
         f"{len(parts)}:{len(alerts)}:{len(alternatives)}:"
-        f"{len(comments)}:{len(followers)}:{health}"
+        f"{len(comments)}:{len(followers)}:{health_display}"
     )
     engineering_context = cached_engineering_context(
         analysis_id,
@@ -1952,54 +2004,40 @@ def render_analysis_detail(
     long_lead_parts = []
     ranked_parts = []
 
-    for part in parts:
-        lifecycle_text = _safe(
-            _part_value(part, "lifecycle_status", "Lifecycle Status"),
-            "Unknown",
-        ).lower()
-        stock_value = _num(
-            _part_value(part, "stock_available", "Stock Available"),
-            0,
-        )
-        source_count = _num(
-            _part_value(part, "supplier_count", "Supplier Count"),
-            0,
-        )
-        lead_time_value = _num(
-            _part_value(part, "lead_time_weeks", "Lead Time Weeks"),
-            0,
-        )
-        risk_score_value = _num(
-            _part_value(part, "risk_score", "Risk Score"),
-            0,
-        )
+    component_detail_by_mpn: dict[str, dict[str, Any]] = {}
+    component_details: list[dict[str, Any]] = []
+    for part, priority in priority_by_part:
+        detail = _component_risk_detail_model(part, alerts, alternatives)
+        component_details.append(detail)
+        component_detail_by_mpn[str(detail.get("mpn") or "").casefold()] = detail
+        lifecycle_text = str(detail.get("lifecycle") or "").casefold()
+        stock_value = detail.get("stock") if detail.get("stock_complete") else None
+        source_count = detail.get("suppliers")
+        lead_time_value = detail.get("lead_time") if detail.get("lead_time_known") else None
+        risk_score_value = priority.get("score")
         mpn_value = _safe(_part_value(part, "mpn", "MPN"), "Unknown MPN")
         manufacturer_value = _safe(
             _part_value(part, "manufacturer", "Manufacturer"),
             "Unknown manufacturer",
         )
-        reason_value = _safe(
-            _part_value(part, "risk_reasons", "Risk Reasons", "risk_reason"),
-            "Recorded engineering risk requires review.",
-        )
+        reason_value = str(detail.get("risk_reason") or "Needs supplier verification")
 
-        if any(
+        if detail.get("lifecycle_verified") and any(
             token in lifecycle_text
             for token in (
                 "obsolete",
                 "end of life",
                 "eol",
-                "replacement",
                 "not recommended",
                 "nrnd",
             )
         ):
             lifecycle_exposed_parts.append(part)
-        if stock_value <= 0:
+        if stock_value is not None and stock_value <= 0:
             no_stock_parts.append(part)
-        if source_count <= 1:
+        if source_count is not None and source_count <= 1:
             limited_source_parts.append(part)
-        if lead_time_value >= 12:
+        if lead_time_value is not None and lead_time_value >= 12:
             long_lead_parts.append(part)
 
         ranked_parts.append(
@@ -2007,15 +2045,12 @@ def render_analysis_detail(
                 "mpn": mpn_value,
                 "manufacturer": manufacturer_value,
                 "risk_score": risk_score_value,
-                "risk_level": _risk_label(part),
+                "risk_level": priority.get("risk_level"),
                 "stored_risk_level": _stored_risk_label(part),
                 "reason": reason_value,
                 "stock": stock_value,
                 "sources": source_count,
-                "lifecycle": _safe(
-                    _part_value(part, "lifecycle_status", "Lifecycle Status"),
-                    "Unknown",
-                ),
+                "lifecycle": detail.get("lifecycle") or "Needs verification",
             }
         )
 
@@ -2027,24 +2062,33 @@ def render_analysis_detail(
         reverse=True,
     )
 
-    engineering_readiness = max(
-        0,
-        min(
-            100,
-            round(
-                (health * 0.60)
-                + (max(0, 100 - min(100, high * 12 + medium * 4)) * 0.25)
-                + (_num(advisor.get("confidence"), 0) * 0.15)
-            ),
-        ),
+    lifecycle_assessed_count = sum(bool(row.get("lifecycle_verified")) for row in component_details)
+    inventory_assessed_count = sum(
+        bool(row.get("stock_verified") and row.get("stock_complete"))
+        for row in component_details
     )
-    readiness_class = _health_class(engineering_readiness)
+    supplier_coverage_assessed_count = sum(
+        bool(row.get("identity_verified") and row.get("supplier_coverage_complete"))
+        for row in component_details
+    )
+    stock_available_count = sum(
+        bool(
+            row.get("stock_verified")
+            and row.get("stock_complete")
+            and row.get("stock") is not None
+            and row.get("stock") > 0
+        )
+        for row in component_details
+    )
+
+    engineering_readiness = round(complete_assessments / max(1, len(priority_by_part)) * 100)
+    readiness_class = _health_class(engineering_readiness) if health_assessed else "muted"
+    readiness_display = f"{engineering_readiness}%" if health_assessed else "Not assessed"
+    readiness_label = "Evidence assessed" if health_assessed else "Needs verification"
     release_posture = (
-        "Ready for controlled release"
-        if engineering_readiness >= 85 and high == 0
-        else "Focused engineering review"
-        if engineering_readiness >= 65
-        else "Release hold recommended"
+        "Evidence verification required"
+        if not health_assessed
+        else "Engineering release decision required"
     )
     top_ranked_part = ranked_parts[0] if ranked_parts else None
 
@@ -2069,7 +2113,7 @@ def render_analysis_detail(
                 parts=parts,
                 alerts=alerts,
                 alternatives=alternatives,
-                health_score=health,
+                health_score=health if health_assessed else None,
                 advisor=advisor,
             )
             cache_decision_brief(brief_cache_key, decision_brief)
@@ -2133,7 +2177,7 @@ def render_analysis_detail(
                 analysis=analysis,
                 parts=parts or [],
                 alternatives=alternatives or [],
-                health_score=health,
+                health_score=health if health_assessed else None,
                 approved_alternatives=approved_alternatives,
                 approval_load_failed=approval_load_failed,
                 saved_analyses=saved_report_analyses,
@@ -2458,7 +2502,7 @@ def render_analysis_detail(
                 f1,f2,f3,f4 = st.columns(4)
                 status_filter = f1.selectbox("Review status", ["All", "Open", "Completed", "Overdue"], key=f"cv272_status_{analysis_id}")
                 assignee_filter = f2.selectbox("Assignee", ["All", "Assigned to me", "Unassigned"] + member_labels[1:], key=f"cv272_assignee_{analysis_id}")
-                priority_filter = f3.selectbox("Priority", ["All", "High", "Medium", "Low"], key=f"cv272_priority_{analysis_id}")
+                priority_filter = f3.selectbox("Priority", ["All", "High", "Medium", "Low", "Needs verification"], key=f"cv272_priority_{analysis_id}")
                 decision_filter = f4.selectbox("Decision", ["All", "Approve", "Needs Investigation", "Reject", "Skip", "Not reviewed"], key=f"cv272_decision_filter_{analysis_id}")
                 unresolved_only = st.checkbox(
                     "Show unresolved only",
@@ -2504,8 +2548,9 @@ def render_analysis_detail(
                     c_saved = decision_map.get(c_mpn.casefold(), {})
                     c_decision = c_saved.get("decision") or "Not reviewed"
                     c_due = parse_due_date(c_saved, today=today)
-                    c_score = _num(candidate.get("risk_score"),0)
-                    c_priority = "High" if c_score >= 70 else "Medium" if c_score >= 35 else "Low"
+                    c_score_raw = candidate.get("risk_score")
+                    c_score = _num(c_score_raw, 0) if c_score_raw is not None else None
+                    c_priority = "Needs verification" if c_score is None else "High" if c_score >= 70 else "Medium" if c_score >= 35 else "Low"
                     is_completed = c_decision in {"Approve","Reject","Skip"}
                     if status_filter == "Open" and is_completed: continue
                     if status_filter == "Completed" and not is_completed: continue
@@ -2532,7 +2577,9 @@ def render_analysis_detail(
                     saved = decision_map.get(mpn.casefold(), {})
                     status_label = saved.get("decision") or "Not reviewed"
                     updated_label = _relative_date(saved.get("updated_at")) if saved else "Not saved"
-                    saved_priority = _safe(saved.get("priority"), "High" if _num(part.get("risk_score"), 0) >= 70 else "Medium" if _num(part.get("risk_score"), 0) >= 35 else "Low")
+                    part_score_raw = part.get("risk_score")
+                    part_score = _num(part_score_raw, 0) if part_score_raw is not None else None
+                    saved_priority = _safe(saved.get("priority"), "Needs verification" if part_score is None else "High" if part_score >= 70 else "Medium" if part_score >= 35 else "Low")
                     saved_assignee = _safe(saved.get("assignee_name"), "Unassigned")
                     saved_due = _safe(saved.get("due_label"), "No due date")
                     with st.expander(
@@ -2540,20 +2587,24 @@ def render_analysis_detail(
                         expanded=(review_index == 1 and reviewed_count == 0),
                     ):
                         st.caption(f"Component {review_index} of {len(filtered_review_parts)}")
-                        risk_score = _num(part.get("risk_score"), 0)
-                        suggested = "Needs Investigation" if risk_score >= 35 else "Approve"
+                        risk_score_raw = part.get("risk_score")
+                        risk_score = _num(risk_score_raw, 0) if risk_score_raw is not None else None
+                        suggested = "Needs Investigation" if risk_score is None or risk_score >= 35 else "Approve"
                         rec_reason = _safe(
                             part.get("reason"),
                             "Review recorded engineering evidence before approval.",
                         )
-                        recommendation_confidence = max(0, min(100, 100 - abs(risk_score - 50)))
+                        recommendation_confidence = "Evidence incomplete" if risk_score is None else "Evidence based"
                         risk_class = _risk_class(part.get("risk_level"), risk_score)
                         lifecycle_value = _safe(part.get("lifecycle"), "Unknown")
-                        stock_value = _num(part.get("stock"), 0)
-                        supplier_value = _num(part.get("sources"), 0)
+                        stock_value = _num(part.get("stock"), 0) if part.get("stock") is not None else None
+                        supplier_value = _num(part.get("sources"), 0) if part.get("sources") is not None else None
+                        stock_display = f"{stock_value:,} units" if stock_value is not None else "Not verified"
+                        supplier_display = f"{supplier_value} checked source(s)" if supplier_value is not None else "Not assessed"
+                        risk_score_display = f"{risk_score}/100" if risk_score is not None else "Not assessed"
                         due_badge_class = "bad" if saved.get("due_date") and str(saved.get("due_date"))[:10] < today.isoformat() and status_label not in {"Approve", "Reject", "Skip"} else "warn"
                         st.markdown(
-                            f'''<div class="cv28-review-head"><div class="cv28-review-main"><span>Component Under Review</span><strong>{html.escape(mpn)}</strong><p>{html.escape(_safe(part.get("manufacturer"), "Unknown manufacturer"))}</p><div class="cv28-badge-row"><span class="cv28-badge {risk_class}">{html.escape(_safe(part.get("risk_level"), "Low"))} risk</span><span class="cv28-badge">{html.escape(saved_priority)} priority</span><span class="cv28-badge {"good" if status_label == "Approve" else "bad" if status_label == "Reject" else "warn"}">{html.escape(status_label)}</span></div></div><div class="cv28-review-stat"><span>Assignee</span><strong>{html.escape(saved_assignee)}</strong><small>{html.escape(_safe(saved.get("assignee_email"), "No member assigned"))}</small></div><div class="cv28-review-stat"><span>Due</span><strong>{html.escape(saved_due)}</strong><small>{html.escape(_date(saved.get("due_date"))) if saved.get("due_date") else "No calendar deadline"}</small></div><div class="cv28-review-stat"><span>Last Saved</span><strong>{html.escape(updated_label)}</strong><small>{html.escape(_safe(saved.get("reviewer_name"), "Not reviewed"))}</small></div><div class="cv28-review-stat"><span>Decision</span><strong>{html.escape(status_label)}</strong><small>Persistent audit record</small></div></div><div class="cv28-confidence"><div class="cv28-confidence-top"><div><span>Cadivor Recommendation</span><strong>{html.escape(suggested)}</strong></div><strong>{recommendation_confidence}%</strong></div><p>{html.escape(rec_reason)}</p></div><div class="cv28-evidence-grid"><div class="cv28-evidence-card"><span>Lifecycle Evidence</span><strong>{html.escape(lifecycle_value)}</strong><small>{"Lifecycle action is required." if any(x in lifecycle_value.lower() for x in ("obsolete","replacement","eol","nrnd")) else "No severe lifecycle state recorded."}</small></div><div class="cv28-evidence-card"><span>Inventory Evidence</span><strong>{stock_value:,} available</strong><small>{"No recorded stock is available." if stock_value <= 0 else "Recorded inventory is available."}</small></div><div class="cv28-evidence-card"><span>Supplier Coverage</span><strong>{supplier_value} source(s)</strong><small>{"Single-source exposure requires validation." if supplier_value <= 1 else "Multiple recorded sources improve resilience."}</small></div><div class="cv28-evidence-card"><span>Risk Score</span><strong>{risk_score}/100</strong><small>Component-level release exposure.</small></div><div class="cv28-evidence-card"><span>Alternative Evidence</span><strong>{"Available" if alternatives else "Not linked"}</strong><small>Open Alternative Finder to evaluate candidates.</small></div><div class="cv28-evidence-card"><span>Monitoring Evidence</span><strong>{len([a for a in alerts if _safe(a.get("mpn") or a.get("part_number"), "") == mpn])} alert(s)</strong><small>Recorded monitoring changes for this component.</small></div></div>''',
+                            f'''<div class="cv28-review-head"><div class="cv28-review-main"><span>Component Under Review</span><strong>{html.escape(mpn)}</strong><p>{html.escape(_safe(part.get("manufacturer"), "Unknown manufacturer"))}</p><div class="cv28-badge-row"><span class="cv28-badge {risk_class}">{html.escape(_safe(part.get("risk_level"), "Needs verification"))}</span><span class="cv28-badge">{html.escape(saved_priority)} priority</span><span class="cv28-badge {"good" if status_label == "Approve" else "bad" if status_label == "Reject" else "warn"}">{html.escape(status_label)}</span></div></div><div class="cv28-review-stat"><span>Assignee</span><strong>{html.escape(saved_assignee)}</strong><small>{html.escape(_safe(saved.get("assignee_email"), "No member assigned"))}</small></div><div class="cv28-review-stat"><span>Due</span><strong>{html.escape(saved_due)}</strong><small>{html.escape(_date(saved.get("due_date"))) if saved.get("due_date") else "No calendar deadline"}</small></div><div class="cv28-review-stat"><span>Last Saved</span><strong>{html.escape(updated_label)}</strong><small>{html.escape(_safe(saved.get("reviewer_name"), "Not reviewed"))}</small></div><div class="cv28-review-stat"><span>Decision</span><strong>{html.escape(status_label)}</strong><small>Persistent audit record</small></div></div><div class="cv28-confidence"><div class="cv28-confidence-top"><div><span>Assessment basis</span><strong>{html.escape(recommendation_confidence)}</strong></div><strong>{html.escape(suggested)}</strong></div><p>{html.escape(rec_reason)}</p></div><div class="cv28-evidence-grid"><div class="cv28-evidence-card"><span>Lifecycle Evidence</span><strong>{html.escape(lifecycle_value)}</strong><small>{"Lifecycle action is required." if any(x in lifecycle_value.lower() for x in ("obsolete","eol","nrnd")) else "Status is displayed only when verified."}</small></div><div class="cv28-evidence-card"><span>Inventory Evidence</span><strong>{html.escape(stock_display)}</strong><small>{"No stock was reported in the complete checks." if stock_value == 0 else "Supplier API snapshot; not checkout inventory." if stock_value is not None else "A complete, exact-part stock check is unavailable."}</small></div><div class="cv28-evidence-card"><span>Supplier Coverage</span><strong>{html.escape(supplier_display)}</strong><small>{"Single-source exposure requires validation." if supplier_value == 1 else "Source coverage is incomplete." if supplier_value is None else "Checked supplier results for this part."}</small></div><div class="cv28-evidence-card"><span>Risk Score</span><strong>{risk_score_display}</strong><small>Component-level evidence assessment.</small></div><div class="cv28-evidence-card"><span>Alternative Evidence</span><strong>{"Available" if alternatives else "Not linked"}</strong><small>Open Alternative Finder to evaluate candidates.</small></div><div class="cv28-evidence-card"><span>Monitoring Evidence</span><strong>{len([a for a in alerts if _safe(a.get("mpn") or a.get("part_number"), "") == mpn])} alert(s)</strong><small>Recorded monitoring changes for this component.</small></div></div>''',
                             unsafe_allow_html=True,
                         )
                         alt_col, monitor_col = st.columns(2)
@@ -2620,7 +2671,7 @@ def render_analysis_detail(
                         assignee_label = assign_col.selectbox("Assigned workspace member", member_labels, index=assignee_index, key=f"cv272_assignee_item_{analysis_id}_{part_key}", disabled=disabled)
                         selected_member = member_options[member_labels.index(assignee_label)]
                         priority_options = ["High", "Medium", "Low"]
-                        default_priority = saved.get("priority") if saved.get("priority") in priority_options else ("High" if risk_score >= 70 else "Medium" if risk_score >=35 else "Low")
+                        default_priority = saved.get("priority") if saved.get("priority") in priority_options else ("Medium" if risk_score is None else "High" if risk_score >= 70 else "Medium" if risk_score >=35 else "Low")
                         priority_value = priority_col.selectbox("Priority", priority_options, index=priority_options.index(default_priority), key=f"cv272_priority_item_{analysis_id}_{part_key}", disabled=disabled)
                         due_date_value = saved.get("due_date")
                         if due_value == "Custom":
@@ -2694,7 +2745,9 @@ def render_analysis_detail(
                                 reviewer_name=reviewer_name,
                                 reviewer_email=reviewer_email,
                                 recommendation=suggested,
-                                recommendation_confidence=max(0, min(100, 100 - abs(risk_score - 50))),
+                                # The legacy schema requires an integer; never
+                                # derive a confidence percentage from risk score.
+                                recommendation_confidence=0,
                                 evidence={
                                     "risk_score": risk_score,
                                     "lifecycle": _safe(part.get("lifecycle"), "Unknown"),
@@ -2838,42 +2891,45 @@ def render_analysis_detail(
                 render_engineering_workspace_evidence(decision_brief)
             render_engineering_workspace_impact(decision_brief)
 
-        if "Risk Analytics" in categories_to_render:
+    if "Risk Analytics" in categories_to_render:
             st.markdown('<section class="cv672-category"><h3 class="cv671-heading">BOM Risk Dashboard</h3></section>', unsafe_allow_html=True)
             assessment = _safe(advisor.get("overall_assessment"), "Focused Review Recommended")
-            confidence = _num(advisor.get("confidence"), 0)
+            confidence = round(complete_assessments / max(1, len(priority_by_part)) * 100)
             metrics = advisor.get("metrics") or {}
             saved_alternatives = _num(metrics.get("saved_alternatives"), len(alternatives))
             lifecycle_count, stock_count = len(lifecycle_exposed_parts), len(no_stock_parts)
             source_count, lead_count = len(limited_source_parts), len(long_lead_parts)
 
-            if high >= 3 or health < 55:
+            if not health_assessed:
+                release_recommendation, cockpit_status, cockpit_class = "Verify Supplier Evidence", "Needs verification", "muted"
+            elif high >= 3 or health < 55:
                 release_recommendation, cockpit_status, cockpit_class = "Hold Release", "Release hold recommended", "bad"
             elif high > 0 or health < 80 or lifecycle_count > 0:
                 release_recommendation, cockpit_status, cockpit_class = "Focused Review", "Focused engineering review", "warn"
             else:
-                release_recommendation, cockpit_status, cockpit_class = "Controlled Release", "Ready for controlled release", "good"
+                release_recommendation, cockpit_status, cockpit_class = "Engineering Review", "Supplier checks show no high-risk signal", "good"
 
-            engineering_readiness = max(0, min(100, round((health * .60) + (max(0, 100 - min(100, high * 12 + medium * 4)) * .25) + (confidence * .15))))
-            readiness_class = _health_class(engineering_readiness)
-            readiness_label = "Excellent" if engineering_readiness >= 90 else "Strong" if engineering_readiness >= 75 else "Needs attention" if engineering_readiness >= 55 else "At risk"
-            lifecycle_health = max(0, round(100 - lifecycle_count / max(1, total_parts) * 100))
-            inventory_coverage = max(0, round(100 - stock_count / max(1, total_parts) * 100))
-            supplier_diversity = max(0, round(100 - source_count / max(1, total_parts) * 100))
-            engineering_review = max(0, min(100, round((engineering_readiness + confidence) / 2)))
+            assessment_coverage = confidence
+            readiness_class = _health_class(assessment_coverage) if health_assessed else "muted"
+            readiness_label = "Evidence assessed" if health_assessed else "Needs verification"
+            readiness_display = f"{assessment_coverage}%" if health_assessed else "Not assessed"
+            lifecycle_health = round(lifecycle_assessed_count / max(1, total_parts) * 100)
+            inventory_coverage = round(inventory_assessed_count / max(1, total_parts) * 100)
+            supplier_diversity = round(supplier_coverage_assessed_count / max(1, total_parts) * 100)
+            engineering_review = assessment_coverage
 
-            checklist = [("Lifecycle validated", lifecycle_count == 0), ("Inventory reviewed", stock_count == 0), ("Alternatives reviewed", saved_alternatives > 0), ("Supplier diversity verified", source_count == 0), ("Procurement signoff", confidence >= 85 and stock_count == 0), ("Engineering approval", high == 0 and lifecycle_count == 0)]
+            checklist = [("Lifecycle coverage verified", lifecycle_assessed_count == total_parts), ("Inventory coverage verified", inventory_assessed_count == total_parts), ("Alternatives reviewed", saved_alternatives > 0), ("Supplier coverage verified", supplier_coverage_assessed_count == total_parts), ("Procurement signoff", health_assessed and inventory_assessed_count == total_parts and stock_count == 0), ("Engineering approval", health_assessed and high == 0 and lifecycle_count == 0)]
             checklist_complete = sum(1 for _, done in checklist if done)
             checklist_percent = round(checklist_complete / len(checklist) * 100)
             top_ranked_part = ranked_parts[0] if ranked_parts else None
             primary_part = _safe(top_ranked_part.get("mpn") if top_ranked_part else None, "No critical component")
             primary_reason = _safe(top_ranked_part.get("reason") if top_ranked_part else None, "No component-level risk explanation is currently available.")
 
-            st.markdown(f'''<section class="cv26-summary"><div class="cv26-summary-top"><div><div class="cv26-kicker">Cadivor Executive BOM Summary</div><div class="cv26-title">{html.escape(cockpit_status)}</div><div class="cv26-copy">Cadivor combined BOM health, lifecycle, inventory, supplier coverage, monitoring, and replacement evidence to produce this release recommendation.</div></div><span class="cv26-status {cockpit_class}">{html.escape(release_recommendation)}</span></div><div class="cv26-kpis"><div class="cv26-kpi"><span>Overall Health</span><strong>{health}/100</strong><small>{html.escape(risk_status)}</small></div><div class="cv26-kpi"><span>Readiness</span><strong>{engineering_readiness}%</strong><small>{readiness_label}</small></div><div class="cv26-kpi"><span>Critical Components</span><strong>{high}</strong><small>{medium} medium-risk parts</small></div><div class="cv26-kpi"><span>Qualified Alternatives</span><strong>{saved_alternatives}</strong><small>Saved replacement evidence</small></div><div class="cv26-kpi"><span>Monitoring Alerts</span><strong>{len(alerts)}</strong><small>Recorded alerts</small></div><div class="cv26-kpi"><span>Decision Confidence</span><strong>{confidence}%</strong><small>Evidence coverage</small></div></div></section>''', unsafe_allow_html=True)
+            st.markdown(f'''<section class="cv26-summary"><div class="cv26-summary-top"><div><div class="cv26-kicker">Cadivor Executive BOM Summary</div><div class="cv26-title">{html.escape(cockpit_status)}</div><div class="cv26-copy">Supplier findings support review workflows. Missing evidence remains unscored; this is not a production release approval.</div></div><span class="cv26-status {cockpit_class}">{html.escape(release_recommendation)}</span></div><div class="cv26-kpis"><div class="cv26-kpi"><span>Overall Health</span><strong>{health_display}</strong><small>{html.escape(risk_status)}</small></div><div class="cv26-kpi"><span>Assessment Coverage</span><strong>{readiness_display}</strong><small>{readiness_label}</small></div><div class="cv26-kpi"><span>High Risk</span><strong>{high}</strong><small>{medium} medium · {needs_verification_count} need verification</small></div><div class="cv26-kpi"><span>Qualified Alternatives</span><strong>{saved_alternatives}</strong><small>Saved replacement evidence</small></div><div class="cv26-kpi"><span>Monitoring Alerts</span><strong>{len(alerts)}</strong><small>attached to analysis</small></div><div class="cv26-kpi"><span>Evidence Coverage</span><strong>{round((len(priority_by_part) - needs_verification_count) / max(1, len(priority_by_part)) * 100)}%</strong><small>{len(priority_by_part) - needs_verification_count} of {len(priority_by_part)} scored</small></div></div></section>''', unsafe_allow_html=True)
 
             left, right = st.columns([1.03, .97])
             with left:
-                st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Release Readiness</div><div class="cv26-card-meta">Directional readiness based on BOM health, severity, and evidence coverage.</div><div class="cv26-readiness-line"><div><div class="cv26-readiness-score">{engineering_readiness}%</div><div class="cv26-readiness-label">{readiness_label}</div></div><span class="cv26-status {cockpit_class}">{release_recommendation}</span></div><div class="cv26-meter {readiness_class}"><i style="width:{engineering_readiness}%"></i></div><div class="cv26-copy"><strong>Top recommendation:</strong> validate {html.escape(primary_part)}. {html.escape(primary_reason)}</div></section>''', unsafe_allow_html=True)
+                st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Supplier Evidence Coverage</div><div class="cv26-card-meta">Share of components with complete exact-part supplier evidence; this does not assess design fit or approve release.</div><div class="cv26-readiness-line"><div><div class="cv26-readiness-score">{readiness_display}</div><div class="cv26-readiness-label">{readiness_label}</div></div><span class="cv26-status {cockpit_class}">{release_recommendation}</span></div><div class="cv26-meter {readiness_class}"><i style="width:{assessment_coverage if health_assessed else 0}%"></i></div><div class="cv26-copy"><strong>Recommended next step:</strong> validate {html.escape(primary_part)}. {html.escape(primary_reason)}</div></section>''', unsafe_allow_html=True)
                 st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
                 checks_html = "".join(f'<div class="cv26-check"><div class="cv26-check-left"><span class="cv26-check-icon {"done" if done else "open"}">{"✓" if done else "!"}</span>{html.escape(label)}</div><span class="cv26-status {"good" if done else "warn"}">{"Complete" if done else "Open"}</span></div>' for label, done in checklist)
                 st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Release Checklist</div><div class="cv26-card-meta">{checklist_complete} of {len(checklist)} release controls are satisfied.</div><div class="cv26-checks">{checks_html}</div><div class="cv26-meter {"good" if checklist_percent >= 80 else "warn"}"><i style="width:{checklist_percent}%"></i></div><div class="cv26-copy">Completion: <strong>{checklist_percent}%</strong></div></section>''', unsafe_allow_html=True)
@@ -2883,23 +2939,24 @@ def render_analysis_detail(
                 if source_count: issues.append(f"{source_count} component(s) have limited supplier coverage.")
                 if lifecycle_count: issues.append(f"{lifecycle_count} component(s) require lifecycle validation.")
                 if stock_count: issues.append(f"{stock_count} component(s) have no recorded stock.")
+                if needs_verification_count: issues.append(f"{needs_verification_count} component(s) need complete supplier evidence before an overall health score can be reported.")
                 if not issues: issues.append("No major exposure is currently recorded.")
                 issue_html="".join(f"<li>{html.escape(x)}</li>" for x in issues)
-                evidence=[("Lifecycle data", lifecycle_count==0),("Inventory coverage",stock_count==0),("Supplier coverage",source_count==0),("Alternative evidence",saved_alternatives>0),("Monitoring evidence",len(alerts)>0),("Engineering confidence",confidence>=80)]
+                evidence=[("Lifecycle data", lifecycle_assessed_count==total_parts),("Inventory coverage",inventory_assessed_count==total_parts),("Supplier coverage",supplier_coverage_assessed_count==total_parts),("Alternative evidence",saved_alternatives>0),("Monitoring evidence",len(alerts)>0),("Supplier risk assessment",health_assessed)]
                 evidence_html="".join(f'<div class="cv26-evidence">{"✓" if ok else "⚠"} {html.escape(label)}</div>' for label,ok in evidence)
                 st.markdown(f'''<section class="cv26-insight"><div class="cv26-insight-kicker">Cadivor Executive Insight</div><h3>{html.escape(assessment)}</h3><p>This BOM is assessed as <strong>{html.escape(release_recommendation.lower())}</strong>.</p><ul>{issue_html}</ul><p><strong>Suggested action:</strong> close the remaining checklist items before final approval.</p><div class="cv26-confidence">{evidence_html}</div></section>''', unsafe_allow_html=True)
                 st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-                risk_rows=[("Lead Time",min(100,lead_count*28)),("Lifecycle",min(100,lifecycle_count*32)),("Inventory",min(100,stock_count*30)),("Supplier",min(100,source_count*25))]
+                risk_rows=[("Lead Time",round(lead_count/max(1,total_parts)*100)),("Lifecycle",round(lifecycle_count/max(1,total_parts)*100)),("Inventory",round(stock_count/max(1,total_parts)*100)),("Supplier",round(source_count/max(1,total_parts)*100))]
                 risk_html="".join(f'<div class="cv26-bar-row"><div class="cv26-bar-label">{label}</div><div class="cv26-bar-track"><i style="width:{value}%"></i></div><div class="cv26-bar-value">{value}</div></div>' for label,value in risk_rows)
                 st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Top Risk Drivers</div><div class="cv26-card-meta">Relative exposure derived from recorded evidence.</div><div class="cv26-bars">{risk_html}</div></section>''', unsafe_allow_html=True)
 
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-            progress=[("Engineering Review",engineering_review),("Supplier Diversity",supplier_diversity),("Lifecycle Health",lifecycle_health),("Inventory Coverage",inventory_coverage)]
+            progress=[("Overall evidence coverage",engineering_review),("Supplier coverage",supplier_diversity),("Lifecycle coverage",lifecycle_health),("Inventory coverage",inventory_coverage)]
             progress_html="".join(f'<div class="cv26-bar-row"><div class="cv26-bar-label">{label}</div><div class="cv26-bar-track"><i style="width:{value}%"></i></div><div class="cv26-bar-value">{value}%</div></div>' for label,value in progress)
-            healthy_count=max(0,total_parts-high-medium); healthy_pct=round(healthy_count/max(1,total_parts)*100); medium_pct=round(medium/max(1,total_parts)*100); critical_pct=max(0,100-healthy_pct-medium_pct)
+            verification_count=max(0,total_parts-high-medium-low); healthy_count=low; healthy_pct=round(healthy_count/max(1,total_parts)*100); medium_pct=round(medium/max(1,total_parts)*100); critical_pct=round(high/max(1,total_parts)*100); verification_pct=max(0,100-healthy_pct-medium_pct-critical_pct)
             c1,c2=st.columns(2)
             with c1: st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Review Progress</div><div class="cv26-card-meta">Cross-functional completion inferred from evidence.</div><div class="cv26-bars">{progress_html}</div></section>''', unsafe_allow_html=True)
-            with c2: st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Component Health Distribution</div><div class="cv26-card-meta">Healthy, medium-risk, and critical components.</div><div class="cv26-riskdist"><i class="healthy" style="width:{healthy_pct}%"></i><i class="medium" style="width:{medium_pct}%"></i><i class="critical" style="width:{critical_pct}%"></i></div><div class="cv26-legend"><span>Healthy {healthy_count}</span><span>Medium {medium}</span><span>Critical {high}</span></div></section>''', unsafe_allow_html=True)
+            with c2: st.markdown(f'''<section class="cv26-card"><div class="cv26-card-title">Evidence and Risk Distribution</div><div class="cv26-card-meta">Unscored rows stay separate from low, medium, and high risk.</div><div class="cv26-riskdist"><i class="healthy" style="width:{healthy_pct}%"></i><i class="medium" style="width:{medium_pct}%"></i><i class="critical" style="width:{critical_pct}%"></i><i class="unknown" style="width:{verification_pct}%"></i></div><div class="cv26-legend"><span>Low {healthy_count}</span><span>Medium {medium}</span><span>High {high}</span><span>Needs verification {verification_count}</span></div></section>''', unsafe_allow_html=True)
 
             st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
             s68_readiness = decision_brief.get("executive_readiness") or {}
@@ -3079,12 +3136,15 @@ def render_analysis_detail(
             </div>''',
             unsafe_allow_html=True,
         )
-        overall_status, engineering_recommendation, decision_confidence = _health_summary(
-            health,
-            high,
-            medium,
-        )
-        status_class = _health_class(health)
+        if health_assessed:
+            overall_status, engineering_recommendation, _ = _health_summary(health, high, medium)
+            decision_confidence = round(complete_assessments / max(1, len(priority_by_part)) * 100)
+            status_class = _health_class(health)
+        else:
+            overall_status = "Needs verification"
+            engineering_recommendation = "Verify exact-part supplier evidence before using an overall BOM score."
+            decision_confidence = 0
+            status_class = "muted"
         st.markdown(
             f"""
             <div class="cv-status-grid">
@@ -3093,15 +3153,15 @@ def render_analysis_detail(
                 <strong>{html.escape(overall_status)}</strong>
                 <small>{html.escape(engineering_recommendation)}</small>
               </div>
-              <div class="cv-status-card {'bad' if high else 'good'}">
+              <div class="cv-status-card {'bad' if high else 'warn' if not health_assessed else 'good'}">
                 <span>Engineering Recommendation</span>
-                <strong>{'Resolve high-risk parts' if high else 'Continue controlled release review'}</strong>
-                <small>{high} high-risk and {medium} medium-risk components identified.</small>
+                <strong>{'Resolve high-risk parts' if high else 'Verify supplier evidence' if not health_assessed else 'Continue controlled release review'}</strong>
+                <small>{high} high-risk · {medium} medium-risk · {needs_verification_count} need full evidence.</small>
               </div>
               <div class="cv-status-card {'good' if decision_confidence >= 80 else 'warn'}">
-                <span>Decision Confidence</span>
-                <strong>{decision_confidence}%</strong>
-                <small>Confidence based on health, risk coverage, lifecycle, and saved sourcing data.</small>
+                <span>Evidence Coverage</span>
+                <strong>{f"{decision_confidence}%" if health_assessed else "Not scored"}</strong>
+                <small>Share of rows with complete evidence. This is not decision confidence.</small>
               </div>
             </div>
             """,
@@ -3109,10 +3169,10 @@ def render_analysis_detail(
         )
         summary_col, risk_col = st.columns([1.05, 1])
         with summary_col:
-            action_text = "Review high-risk components before release." if high else "Continue periodic monitoring for supplier and lifecycle changes."
-            st.markdown(f'''<div class="cv-analysis-card"><div class="cv-analysis-card-title"><span>Recommended Next Action</span><div class="cv-analysis-icon">{_lucide('shield',18)}</div></div><div class="cv-analysis-row-list"><div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{html.escape(action_text)}</div><div class="cv-analysis-row-meta">{high} high-risk components • {len(alerts)} saved alerts • {len(alternatives)} replacement records</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill {health_cls}">{health} health</span></div></div><div class="cv-analysis-row"><div><div class="cv-analysis-row-title">Source file</div><div class="cv-analysis-row-meta">{html.escape(filename)} • saved {_relative_date(created)}</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill">Saved</span></div></div></div></div>''', unsafe_allow_html=True)
+            action_text = "Review high-risk components before release." if high else "Verify supplier evidence before using this report." if not health_assessed else "Continue periodic monitoring for supplier and lifecycle changes."
+            st.markdown(f'''<div class="cv-analysis-card"><div class="cv-analysis-card-title"><span>Recommended Next Action</span><div class="cv-analysis-icon">{_lucide('shield',18)}</div></div><div class="cv-analysis-row-list"><div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{html.escape(action_text)}</div><div class="cv-analysis-row-meta">{high} high-risk components · {needs_verification_count} need complete evidence · {len(alerts)} saved alerts</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill {health_cls}">{health_display} health</span></div></div><div class="cv-analysis-row"><div><div class="cv-analysis-row-title">Source file</div><div class="cv-analysis-row-meta">{html.escape(filename)} • saved {_relative_date(created)}</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill">Saved</span></div></div></div></div>''', unsafe_allow_html=True)
         with risk_col:
-            risk_html = "".join(f'<div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{label}</div><div class="cv-analysis-row-meta">Component count in this analysis</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill {cls}">{value}</span></div></div>' for label,value,cls in [("High Risk",high,"bad" if high else "good"),("Medium Risk",medium,"warn" if medium else "good"),("Low Risk",low,"good")])
+            risk_html = "".join(f'<div class="cv-analysis-row"><div><div class="cv-analysis-row-title">{label}</div><div class="cv-analysis-row-meta">Component count in this analysis</div></div><div class="cv-analysis-pills"><span class="cv-analysis-pill {cls}">{value}</span></div></div>' for label,value,cls in [("High Risk",high,"bad" if high else "good"),("Medium Risk",medium,"warn" if medium else "good"),("Low Risk",low,"good"),("Needs verification",needs_verification_count,"warn" if needs_verification_count else "good")])
             st.markdown(f'<div class="cv-analysis-card"><div class="cv-analysis-card-title"><span>Risk Breakdown</span><div class="cv-analysis-icon">{_lucide("alert",18)}</div></div><div class="cv-analysis-row-list">{risk_html}</div></div>', unsafe_allow_html=True)
 
     if active_tab == "Intelligence":
@@ -3124,14 +3184,17 @@ def render_analysis_detail(
     if _render_intelligence:
         _section_header("Lifecycle & Replacement Intelligence", "Operational readiness, stock health, supplier alerts, and replacement signals.")
         total = max(1, total_parts)
-        active_count = sum(1 for p in parts if "active" in str(p.get("lifecycle_status") or p.get("Lifecycle Status") or "").lower())
-        no_stock = sum(1 for p in parts if _num(p.get("stock_available") or p.get("Stock Available"), 0) <= 0)
-        active_pct = round((active_count / total) * 100) if parts else 0
-        stock_health = max(0, total_parts - no_stock)
-        stock_pct = round((stock_health / total) * 100) if parts else 0
+        active_count = sum(
+            1 for detail in component_details
+            if detail.get("lifecycle_verified") and "active" in str(detail.get("lifecycle") or "").casefold()
+        )
+        no_stock = len(no_stock_parts)
+        active_pct = round((lifecycle_assessed_count / total) * 100) if parts else 0
+        stock_health = stock_available_count
+        stock_pct = round((inventory_assessed_count / total) * 100) if parts else 0
         intel_col, alerts_col = st.columns([1.05,1])
         with intel_col:
-            st.markdown(f'''<div class="cv-risk-compact"><div class="cv-readiness-list"><div class="cv-readiness-row"><div><strong>Lifecycle Coverage</strong><span>{active_count} active components · {active_pct}% of BOM</span></div><div class="cv-readiness-bar"><i style="width:{active_pct}%"></i></div></div><div class="cv-readiness-row"><div><strong>Stock Health</strong><span>{stock_health} parts with available stock · {no_stock} no-stock risk</span></div><div class="cv-readiness-bar"><i style="width:{stock_pct}%"></i></div></div><div class="cv-readiness-metrics"><div><span>Supplier Alerts</span><strong>{len(alerts)}</strong><small>attached to analysis</small></div><div><span>Validated Alternatives</span><strong>{len(alternatives)}</strong><small>linked to analysis</small></div><div><span>High-Risk Parts</span><strong>{high}</strong><small>need review</small></div></div></div></div>''', unsafe_allow_html=True)
+            st.markdown(f'''<div class="cv-risk-compact"><div class="cv-readiness-list"><div class="cv-readiness-row"><div><strong>Lifecycle Evidence Coverage</strong><span>{active_count} verified active components · {lifecycle_assessed_count}/{total_parts} assessed</span></div><div class="cv-readiness-bar"><i style="width:{active_pct}%"></i></div></div><div class="cv-readiness-row"><div><strong>Inventory Evidence Coverage</strong><span>{stock_health} verified in-stock components · {inventory_assessed_count}/{total_parts} fully covered · {no_stock} confirmed stockouts</span></div><div class="cv-readiness-bar"><i style="width:{stock_pct}%"></i></div></div><div class="cv-readiness-metrics"><div><span>Supplier Alerts</span><strong>{len(alerts)}</strong><small>attached to analysis</small></div><div><span>Validated Alternatives</span><strong>{len(alternatives)}</strong><small>linked to analysis</small></div><div><span>Needs Verification</span><strong>{needs_verification_count}</strong><small>not fully assessed</small></div></div></div></div>''', unsafe_allow_html=True)
         with alerts_col:
             if alerts:
                 for alert_index, alert in enumerate(alerts[:8]):
@@ -3243,9 +3306,15 @@ def render_analysis_detail(
         if parts:
             normalized_parts = sorted(
                 parts,
-                key=lambda x: _component_priority_assessment(x)["score"],
+                key=lambda x: _num(_component_priority_assessment(x)["score"], -1),
                 reverse=True,
             )
+            component_detail_by_id = {
+                id(part): _component_risk_detail_model(
+                    part, alerts=alerts, alternatives=alternatives
+                )
+                for part in normalized_parts
+            }
 
             search_col, risk_filter_col, lifecycle_filter_col = st.columns(
                 [0.48, 0.24, 0.28],
@@ -3266,14 +3335,7 @@ def render_analysis_detail(
             )
             lifecycle_options = ["All"] + sorted(
                 {
-                    _safe(
-                        _part_value(
-                            part,
-                            "lifecycle_status",
-                            "Lifecycle Status",
-                        ),
-                        "Unknown",
-                    )
+                    str(component_detail_by_id[id(part)]["lifecycle"])
                     for part in normalized_parts
                 }
             )
@@ -3301,14 +3363,7 @@ def render_analysis_detail(
                     _part_value(part, "manufacturer", "Manufacturer"),
                     "Unknown manufacturer",
                 )
-                lifecycle_text = _safe(
-                    _part_value(
-                        part,
-                        "lifecycle_status",
-                        "Lifecycle Status",
-                    ),
-                    "Unknown",
-                )
+                lifecycle_text = str(component_detail_by_id[id(part)]["lifecycle"])
                 risk_text = _risk_label(part)
 
                 if search_text and search_text not in (
@@ -3355,7 +3410,20 @@ def render_analysis_detail(
                         "Unknown MPN",
                     )
                     priority = _component_priority_assessment(part)
+                    detail = component_detail_by_id[id(part)]
                     component_row_ids.append(mpn_value)
+                    stock_label = (
+                        f"{detail['stock']:,}"
+                        if detail["stock_verified"] and detail["stock_complete"] and detail["stock"] is not None
+                        else f"Partial · {detail['stock']:,}"
+                        if detail["stock_verified"] and detail["stock"] is not None
+                        else "Needs verification"
+                    )
+                    supplier_label = (
+                        str(detail["suppliers"])
+                        if detail["supplier_coverage_complete"] and detail["suppliers"] is not None
+                        else "Needs verification"
+                    )
                     component_rows.append(
                         {
                             "Photo": {
@@ -3369,26 +3437,10 @@ def render_analysis_detail(
                                 _part_value(part, "manufacturer", "Manufacturer"),
                                 "Unknown manufacturer",
                             ),
-                            "Lifecycle": _safe(
-                                _part_value(
-                                    part,
-                                    "lifecycle_status",
-                                    "Lifecycle Status",
-                                ),
-                                "Unknown",
-                            ),
+                            "Lifecycle": detail["lifecycle"],
                             "Qty": f"{_num(_part_value(part, 'quantity', 'Quantity'), 0):,}",
-                            "Stock": f"{_num(_part_value(part, 'stock_available', 'Stock Available'), 0):,}",
-                            "Sources": str(
-                                _num(
-                                    _part_value(
-                                        part,
-                                        "supplier_count",
-                                        "Supplier Count",
-                                    ),
-                                    0,
-                                )
-                            ),
+                            "Stock": stock_label,
+                            "Sources": supplier_label,
                             "Priority": priority["priority"],
                         }
                     )
@@ -3459,11 +3511,7 @@ def render_analysis_detail(
                     and component_table_result.detail_slot is not None
                 ):
                     selected_part = visible_parts[selected_component_position]
-                    detail = _component_risk_detail_model(
-                        selected_part,
-                        alerts=alerts,
-                        alternatives=alternatives,
-                    )
+                    detail = component_detail_by_id[id(selected_part)]
                     selected_mpn = detail["mpn"]
                     selected_mfg = detail["manufacturer"]
                     st.session_state[selector_key] = f"{selected_mpn} — {selected_mfg}"
@@ -3499,17 +3547,33 @@ def render_analysis_detail(
                     )
                     cost_card = ""
                     if detail["extended_cost"] is not None:
+                        currency = html.escape(detail["price_currency"])
+                        unit_amount = html.escape(f"{detail['unit_price']:,.4f}")
+                        extended_amount = html.escape(f"{detail['extended_cost']:,.2f}")
+                        retrieved = html.escape(detail["price_retrieved_at"])
                         cost_card = (
                             '<div class="cv-part-risk-evidence-card">'
                             '<span>Material cost per BOM</span>'
-                            f'<strong>${detail["extended_cost"]:,.2f}</strong>'
-                            f'<small>${detail["unit_price"]:,.4f} recorded unit price</small>'
+                            f'<strong>{currency} {extended_amount}</strong>'
+                            f'<small>{currency} {unit_amount} × {detail["quantity"]:,}; '
+                            f'exact-MPN supplier snapshot from {html.escape(detail["price_supplier"])}'
+                            f'{f" · retrieved {retrieved}" if retrieved else ""}. '
+                            'Not a checkout confirmation.</small>'
+                            '</div>'
+                        )
+                    elif _part_value(selected_part, "unit_price", "Unit Price") not in (None, ""):
+                        cost_card = (
+                            '<div class="cv-part-risk-evidence-card">'
+                            '<span>Material cost per BOM</span>'
+                            '<strong>Price not verified</strong>'
+                            '<small>The saved amount has no matching timestamped exact-MPN supplier offer. '
+                            'It is excluded from cost calculations.</small>'
                             '</div>'
                         )
                     stored_reason = ""
                     if detail["risk_reason"]:
                         stored_reason = (
-                            '<div class="cv-part-risk-source-note"><b>Stored risk explanation:</b> '
+                            '<div class="cv-part-risk-source-note"><b>Evidence-backed risk assessment:</b> '
                             f'{html.escape(detail["risk_reason"])}</div>'
                         )
                     priority_note = ""
@@ -3534,7 +3598,7 @@ def render_analysis_detail(
                                   <p>{html.escape(detail['recommendation_detail'])}</p>
                                 </div>
                                 <span class="cv-analysis-pill {_risk_class(detail['risk_level'], detail['risk_score'])}">
-                                  {html.escape(detail['risk_level'])} · {detail['risk_score']}/100
+                                  {html.escape(detail['risk_level'])}{f" · {detail['risk_score']}/100" if detail['risk_score'] is not None else ""}
                                 </span>
                               </div>
                               <div class="cv-part-risk-driver-grid">{drivers_html}</div>
@@ -3545,15 +3609,15 @@ def render_analysis_detail(
                                 </div>
                                 <div class="cv-part-risk-evidence-card">
                                   <span>Inventory coverage</span><strong>{html.escape(detail['inventory_coverage'])}</strong>
-                                  <small>{detail['stock']:,} units in the saved market snapshot</small>
+                                  <small>{f"{detail['stock']:,} units in exact-part supplier snapshots" if detail['stock_verified'] else "No verified exact-part inventory reading is saved"}{"; provider coverage is incomplete and the count does not confirm BOM demand" if detail['stock_verified'] and not detail['stock_complete'] else "; API snapshot, not checkout inventory" if detail['stock_verified'] else ""}</small>
                                 </div>
                                 <div class="cv-part-risk-evidence-card">
-                                  <span>Sourcing resilience</span><strong>{detail['suppliers']} recorded source{'s' if detail['suppliers'] != 1 else ''}</strong>
-                                  <small>Best source: {html.escape(detail['source'])}</small>
+                                  <span>Sourcing resilience</span><strong>{f"{detail['suppliers']} checked source{'s' if detail['suppliers'] != 1 else ''}" if detail['suppliers'] is not None else "Needs verification"}</strong>
+                                  <small>{f"Saved primary source: {html.escape(detail['source'])}" if detail['identity_verified'] else "Exact supplier identity was not verified"}</small>
                                 </div>
                                 <div class="cv-part-risk-evidence-card">
                                   <span>Schedule exposure</span><strong>{html.escape(selected_lead_time_label)}</strong>
-                                  <small>12 weeks or more is treated as elevated</small>
+                                  <small>{"Verified supplier field; 12 weeks or more is treated as elevated" if detail['lead_time_known'] else "The saved lead-time value is not tied to a verified exact-part supplier record"}</small>
                                 </div>
                                 <div class="cv-part-risk-evidence-card">
                                   <span>Linked intelligence</span><strong>{detail['alert_count']} alert{'s' if detail['alert_count'] != 1 else ''} · {detail['alternative_count']} alternative{'s' if detail['alternative_count'] != 1 else ''}</strong>

@@ -397,13 +397,7 @@ def compute_dashboard_summary_metrics(overview: Dict[str, Any]) -> Dict[str, Any
     else:
         health_tone = "success" if portfolio_health >= 85 else "warning" if portfolio_health >= 70 else "danger"
         health_status = "Excellent" if portfolio_health >= 90 else "Stable" if portfolio_health >= 75 else "Needs attention"
-        release_label = (
-            "Ready for controlled release"
-            if portfolio_health >= 85 and blocked_projects == 0
-            else "Release review required"
-            if blocked_projects
-            else "Controlled review recommended"
-        )
+        release_label = "This evidence score is not a release approval. Record release decisions in your controlled process."
     return {
         "projects": projects,
         "blocked_projects": blocked_projects,
@@ -431,7 +425,7 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
     render_kpi_row_safe(
         [
             MetricCard(
-                label="Portfolio Health",
+                label="Evidence-based BOM score",
                 value=(
                     f"{metrics['portfolio_health']}%"
                     if metrics["portfolio_health"] is not None
@@ -442,26 +436,26 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
                 icon="gauge",
             ),
             MetricCard(
-                label="Ready for Production",
-                value=str(overview.get("ready_projects", 0)),
-                detail="Projects cleared for release",
-                tone="success",
+                label="Production approvals recorded",
+                value=str(overview.get("production_approved_projects", 0)),
+                detail="Manual approvals in saved records",
+                tone="info",
                 icon="badge-check",
                 active=selected_drilldown == "ready",
             ),
             MetricCard(
-                label="Action Today",
+                label="High-priority reviews",
                 value=str(len(overview.get("action_today", []))),
-                detail="Prioritized engineering tasks",
+                detail="Triage score; no due date implied",
                 tone="info",
                 icon="clipboard-list",
                 active=selected_drilldown == "actions",
             ),
             MetricCard(
-                label="Blocked Projects",
+                label="Verified risk signals",
                 value=str(metrics["blocked_projects"]),
-                detail="Require immediate review" if metrics["blocked_projects"] else "No blockers recorded",
-                tone="danger" if metrics["blocked_projects"] else "success",
+                detail="Evidence requiring engineering review" if metrics["blocked_projects"] else "No verified risk signal recorded",
+                tone="warning" if metrics["blocked_projects"] else "info",
                 icon="octagon-alert",
                 active=selected_drilldown == "blocked",
             ),
@@ -471,7 +465,7 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
     drill_ready, drill_actions, drill_blocked = st.columns(3)
     with drill_ready:
         if st.button(
-            "Showing ready projects" if selected_drilldown == "ready" else "View ready projects",
+            "Showing recorded approvals" if selected_drilldown == "ready" else "View recorded approvals",
             key="dashboard_view_ready",
             use_container_width=True,
         ):
@@ -479,7 +473,7 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
             st.rerun()
     with drill_actions:
         if st.button(
-            "Showing today's actions" if selected_drilldown == "actions" else "View today's actions",
+            "Showing high-priority reviews" if selected_drilldown == "actions" else "View high-priority reviews",
             key="dashboard_view_actions",
             use_container_width=True,
         ):
@@ -487,7 +481,7 @@ def render_engineering_overview_brief_and_kpis(*, overview: Dict[str, Any], metr
             st.rerun()
     with drill_blocked:
         if st.button(
-            "Showing blocked projects" if selected_drilldown == "blocked" else "View blocked projects",
+            "Showing risk signals" if selected_drilldown == "blocked" else "View risk signals",
             key="dashboard_view_blocked",
             use_container_width=True,
         ):
@@ -522,9 +516,9 @@ def render_engineering_overview_workspace(
     selected_drilldown = _dashboard_detail_view()
     if selected_drilldown:
         detail_titles = {
-            "ready": "Ready for production",
-            "actions": "Action today",
-            "blocked": "Blocked projects",
+            "ready": "Production approvals recorded",
+            "actions": "High-priority reviews",
+            "blocked": "Verified risk signals",
         }
         st.markdown(
             f'<section class="cv6723-section cv6723-dashboard-detail-panel"><div class="cv6723-section-head">'
@@ -537,22 +531,16 @@ def render_engineering_overview_workspace(
             _set_dashboard_detail_view("")
             st.rerun()
         if selected_drilldown == "actions":
-            st.html(_full_work_queue_table_html(overview.get("action_today", []) or actions))
+            st.html(_full_work_queue_table_html(overview.get("high_priority_actions", []) or actions))
         else:
             projects = list(overview.get("projects", []))
             if selected_drilldown == "ready":
-                projects = [
-                    project for project in projects
-                    if project.get("health") is not None
-                    and int(_number(project.get("health"), 0)) >= 85
-                    and int(_number(project.get("high"), 0)) == 0
-                ]
+                approved_ids = set(overview.get("production_approved_analysis_ids", []))
+                projects = [project for project in projects if project.get("id") in approved_ids]
             else:
                 projects = [
                     project for project in projects
-                    if project.get("health") is None
-                    or int(_number(project.get("health"), 0)) < 70
-                    or int(_number(project.get("high"), 0)) >= 3
+                    if project.get("status") == "Verified risk signal"
                 ]
             render_portfolio_project_summaries(projects=projects)
 
