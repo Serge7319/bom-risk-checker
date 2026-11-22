@@ -197,6 +197,38 @@ class PortfolioAndProcurementCopyTests(unittest.TestCase):
         self.assertNotIn("Complete sourcing data", recommendations)
 
 
+class AnnotatedRiskFreshnessTests(unittest.TestCase):
+    def test_report_replaces_stale_saved_risk_and_reconciles_totals(self):
+        fresh_obsolete = live_supplier_part(
+            "LIVE-HIGH", lifecycle="Obsolete", stock=0, quantity=1
+        )
+        stale_high = {
+            "MPN": "STALE-HIGH",
+            "Lifecycle": "Obsolete",
+            "Stock": 0,
+            "Risk Level": "High",
+            "Risk Score": 95,
+            "supplier_data_verified": False,
+        }
+
+        report = annotate_report_parts({
+            "high_risk_count": 2,
+            "medium_risk_count": 3,
+            "low_risk_count": 4,
+            "total_parts": 2,
+            "parts": [stale_high, fresh_obsolete],
+        })
+
+        stale, current = report["parts"]
+        self.assertEqual(stale["Risk Level"], "Needs verification")
+        self.assertIsNone(stale["Risk Score"])
+        self.assertEqual(current["Risk Level"], "High")
+        self.assertGreaterEqual(current["Risk Score"], 60)
+        self.assertEqual(report["high_risk_count"], 1)
+        self.assertEqual(report["medium_risk_count"], 0)
+        self.assertEqual(report["low_risk_count"], 0)
+
+
 class ExportProvenanceTests(unittest.TestCase):
     def test_exports_include_assembly_rollup_and_field_provenance(self):
         report = annotate_report_parts(
