@@ -301,23 +301,29 @@ export default function PortfolioPage() {
               <div className="cv-portfolio-section-heading">
                 <div>
                   <h2 className="cv-card-title">Shared components</h2>
-                  <p className="cv-card-subtitle">Parts found in more than one saved BOM.</p>
+                  <p className="cv-card-subtitle">Parts found in more than one saved BOM. Risk scores use current evidence; unverified lifecycle values are labeled.</p>
                 </div>
               </div>
               {shared.length ? <div className="cv-table-wrap cv-table-wrap--fit" style={{ marginTop: 12 }}>
                 <table className="cv-table cv-table--fit cv-table--mpn-safe cv-portfolio-table">
-                  <thead><tr><th>Part</th><th>Manufacturer</th><th>Lifecycle</th><th className="cv-num">BOMs</th><th className="cv-num">Highest risk score</th></tr></thead>
+                  <thead><tr><th>Part</th><th>Manufacturer</th><th>Lifecycle</th><th className="cv-num">BOMs</th><th className="cv-num" title="Highest risk score recalculated from current field-level evidence. Not assessed means required evidence is missing, stale, conflicting, or unverified.">Highest current risk score</th></tr></thead>
                   <tbody>{shared.slice(0, 20).map((row, i) => {
                     const mpn = userFacingLabel(row["Part Number"] || row.mpn, "Component");
                     const maker = userFacingLabel(row.Manufacturer || row.manufacturer, "Unknown");
                     const risk = numeric(row["Highest Risk Score"]);
                     const bomCount = numeric(row["BOMs Using Part"] ?? row["Projects Using Part"]);
+                    const lifecycleLabel = userFacingLabel(row.Lifecycle, "Unknown");
+                    const reportedLifecycle = userFacingLabel(row["Reported Lifecycle"], "");
+                    const lifecycleEvidence = String(row["Lifecycle Evidence"] || "").toLowerCase();
+                    const lifecycleTone = /obsolete|eol|discontinued/i.test(lifecycleLabel) ? "red"
+                      : /nrnd|not recommended|conflict/i.test(lifecycleLabel) ? "amber"
+                        : /active/i.test(lifecycleLabel) && lifecycleEvidence === "live" ? "green" : "gray";
                     return <tr key={`${mpn}-${i}`}>
                       <td data-label="Part"><Link className="cv-portfolio-row-link" href={`/design-impact?mpn=${encodeURIComponent(mpn)}`}>{mpn}</Link></td>
                       <td data-label="Manufacturer">{maker}</td>
-                      <td data-label="Lifecycle"><StatusChip label={userFacingLabel(row.Lifecycle, "Unknown")} tone={/obsolete|eol|discontinued/i.test(String(row.Lifecycle || "")) ? "red" : /nrnd|not recommended|conflict/i.test(String(row.Lifecycle || "")) ? "amber" : /active/i.test(String(row.Lifecycle || "")) ? "green" : "gray"} /></td>
+                      <td data-label="Lifecycle"><div className="cv-portfolio-health-cell"><StatusChip label={lifecycleLabel} tone={lifecycleTone} />{lifecycleEvidence !== "live" && reportedLifecycle && reportedLifecycle !== lifecycleLabel ? <small className="cv-portfolio-health-note">Reported: {reportedLifecycle} · unverified</small> : null}</div></td>
                       <td className="cv-num" data-label="BOMs">{bomCount === null ? "Not reported" : bomCount}</td>
-                      <td className="cv-num" data-label="Highest risk score"><StatusChip label={risk === null ? "Not assessed" : `${Math.round(risk)}/100`} tone={risk === null ? "gray" : risk >= 60 ? "red" : risk >= 30 ? "amber" : "green"} /></td>
+                      <td className="cv-num" data-label="Highest current risk score"><StatusChip label={risk === null ? "Not assessed" : `${Math.round(risk)}/100`} tone={risk === null ? "gray" : risk >= 60 ? "red" : risk >= 30 ? "amber" : "green"} /></td>
                     </tr>;
                   })}</tbody>
                 </table>
