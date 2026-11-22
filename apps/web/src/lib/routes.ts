@@ -27,7 +27,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: "compare", href: "/compare-parts", label: "Compare Parts" },
       { id: "qa", href: "/datasheet-qa", label: "Datasheet Q&A" },
       { id: "procurement", href: "/procurement", label: "Procurement Advisor" },
-      { id: "design", href: "/design-impact", label: "Design Impact Analyzer" },
+      { id: "design", href: "/design-impact", label: "Component Impact" },
       { id: "cost", href: "/cost-optimization", label: "Cost Optimization" },
       { id: "supply", href: "/supply-risk", label: "Supply Risk Scenario" },
     ],
@@ -135,10 +135,10 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   design: {
     icon: "design",
-    title: "Design Impact Analyzer",
-    eyebrow: "Design impact",
+    title: "Where is this part used?",
+    eyebrow: "Component impact",
     description:
-      "Trace a component change through saved BOMs, projects, and affected decisions.",
+      "See which saved BOMs include a part, then review the designs that may need attention if it changes.",
   },
   cost: {
     icon: "cost",

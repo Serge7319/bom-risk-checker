@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { FormEvent, useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
-import { PageHeader, PrimaryLink } from "@/components/PageHeader";
+import { PageHeader } from "@/components/PageHeader";
 import { fetchDesignImpact } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
@@ -18,23 +19,79 @@ function cell(value: unknown, fallback = "—") {
   return String(value);
 }
 
+function partNumber(row: Record<string, unknown>) {
+  return String(row["Part Number"] || row.mpn || "").trim();
+}
+
+function isUsablePart(row: Record<string, unknown>) {
+  const value = partNumber(row);
+  return Boolean(
+    value &&
+      !["unknown", "not recorded", "n/a", "—", "-"].includes(value.toLowerCase()) &&
+      !/^(?:boardtext|gr_text|fp_text|text)\s*\(/i.test(value),
+  );
+}
+
+function formatAnalysisDate(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return "Not recorded";
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(parsed);
+}
+
 export default function DesignImpactPage() {
   const session = useRequireSession();
   const [mpn, setMpn] = useState("");
+  const [suggestedMpn, setSuggestedMpn] = useState("");
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(true);
+  const [showImpact, setShowImpact] = useState(false);
 
-  function load(selected = mpn) {
+  function load(selected = mpn, reveal = true) {
     if (!session) return;
+    const requested = String(selected || "").trim();
     setBusy(true);
     setError("");
-    // Aggregate across every saved BOM in the workspace. Passing the last
-    // analysis_id silently collapsed same-MPN usage to a single report.
-    fetchDesignImpact(session.access_token, {
-      mpn: selected,
-    })
-      .then(setData)
+    setNotice("");
+    setShowImpact(false);
+
+    fetchDesignImpact(session.access_token, { mpn: requested })
+      .then((payload) => {
+        const nextIntel = (payload.intelligence || {}) as Record<string, unknown>;
+        const rawCatalog = (nextIntel.component_catalog || nextIntel.catalog || []) as Array<Record<string, unknown>>;
+        const selectable = Array.isArray(rawCatalog) ? rawCatalog.filter(isUsablePart) : [];
+        const resolvedMpn = String(nextIntel.selected_mpn || "").trim();
+        const inCatalog = (value: string) =>
+          selectable.some((row) => partNumber(row).toLowerCase() === value.toLowerCase());
+        const fallbackMpn = partNumber(selectable[0] || {});
+
+        setData(payload);
+
+        if (!requested) {
+          const suggested = inCatalog(resolvedMpn) ? resolvedMpn : fallbackMpn;
+          setMpn(suggested);
+          setSuggestedMpn(suggested);
+          if (resolvedMpn && !inCatalog(resolvedMpn)) {
+            setNotice("A non-component board annotation was excluded. Choose a saved component to review.");
+          }
+          setShowImpact(false);
+          return;
+        }
+
+        if (!inCatalog(requested) || !inCatalog(resolvedMpn)) {
+          setMpn(fallbackMpn);
+          setSuggestedMpn("");
+          setNotice("That part number was not found in the saved BOM components. Choose a part from the list.");
+          setShowImpact(false);
+          return;
+        }
+
+        setMpn(resolvedMpn);
+        setShowImpact(reveal);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed"))
       .finally(() => setBusy(false));
   }
@@ -42,160 +99,295 @@ export default function DesignImpactPage() {
   useEffect(() => {
     const requestedMpn = new URLSearchParams(window.location.search).get("mpn")?.trim() || "";
     setMpn(requestedMpn);
-    load(requestedMpn);
+    load(requestedMpn, Boolean(requestedMpn));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   if (!session) return null;
-  const intel = (data?.intelligence || {}) as Record<string, unknown>;
-  const catalog = (intel.component_catalog || intel.catalog || []) as Array<Record<string, unknown>>;
-  const selectedMpn = String(intel.selected_mpn || "");
+
+  const intelligence = (data?.intelligence || {}) as Record<string, unknown>;
+  const intel = intelligence;
+  const rawCatalog = (intelligence.component_catalog || intelligence.catalog || []) as Array<Record<string, unknown>>;
+  const catalog = Array.isArray(rawCatalog) ? rawCatalog.filter(isUsablePart) : [];
+  const selectedMpn = String(intelligence.selected_mpn || "").trim();
   const selected =
-    catalog.find(
-      (row) =>
-        String(row["Part Number"] || "").toLowerCase() ===
-        selectedMpn.toLowerCase(),
-    ) || {};
-  const affected = (intel.affected_projects || []) as Array<Record<string, unknown>>;
+    catalog.find((row) => partNumber(row).toLowerCase() === selectedMpn.toLowerCase()) || {};
+  const affected = (intelligence.affected_projects || []) as Array<Record<string, unknown>>;
+  const affectedBomCount = Number(intelligence.affected_bom_count ?? affected.length);
+  const projectCount = Number(intelligence.project_count ?? 0);
+  const impactLevel = cell(intelligence.impact_level, "Not assessed");
+  const impactDrivers = Array.isArray(intelligence.impact_score_drivers)
+    ? (intelligence.impact_score_drivers as Array<Record<string, unknown>>)
+    : [];
+  const selectedLifecycle = cell(
+    selected.Lifecycle || selected.lifecycle || selected["Lifecycle Values"],
+    "Not recorded",
+  );
+  const selectedRisk = cell(
+    selected["Risk Level"] || selected.risk_level || selected["Risk Level Values"],
+    "Not recorded",
+  );
+  const selectedManufacturer = cell(
+    selected.Manufacturer || selected.manufacturer || selected["Manufacturer Values"],
+    "Not recorded",
+  );
+  const selectedPackage = cell(selected.Package || selected.package, "Not recorded");
+  const replacementParams = new URLSearchParams({ mpn: selectedMpn });
+  if (selectedManufacturer !== "Not recorded" && selectedManufacturer !== "Unknown") {
+    replacementParams.set("manufacturer", selectedManufacturer);
+  }
+  if (affected[0]?.["Analysis ID"]) {
+    replacementParams.set("analysis_id", String(affected[0]["Analysis ID"]));
+  }
+  const replacementHref = "/find-replacement?" + replacementParams.toString();
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const requested = mpn.trim();
+    if (!requested) {
+      setError("Choose a component from your saved BOM analyses.");
+      return;
+    }
+    if (!catalog.some((row) => partNumber(row).toLowerCase() === requested.toLowerCase())) {
+      setError("Choose a component from the saved part suggestions.");
+      return;
+    }
+    load(requested, true);
+  }
 
   return (
     <Shell session={session}>
-      <PageHeader meta={PAGE_META.design} actions={<PrimaryLink href="/compare-parts">Compare parts</PrimaryLink>} />
-      {<EvidenceNotice gap={data?.gap} />}
-      <div className="cv-card pad" style={{ marginBottom: 14 }}>
-        <div className="cv-form-grid">
-          <div className="cv-field">
-            <label htmlFor="mpn">Focus MPN (optional)</label>
-            <input id="mpn" value={mpn} onChange={(e) => setMpn(e.target.value)} placeholder="e.g. from catalog" />
-          </div>
-          <div style={{ display: "flex", alignItems: "end" }}>
-            <button type="button" className="cv-button primary" onClick={() => load(mpn)} disabled={busy}>
-              {busy ? "Loading…" : "Refresh impact"}
-            </button>
-          </div>
-        </div>
-      </div>
-      {busy ? <LoadingCard label="Building design impact from saved analyses…" /> : null}
-      {error ? <div className="cv-error" role="alert">Design impact could not load. {error}</div> : null}
-      {!busy && data ? (
-        catalog.length ? (
-          <div className="cv-stack" style={{ gap: 14 }}>
-            <div className="cv-grid-2 cv-grid-2--tables">
-              <section className="cv-card pad cv-card--table">
-                <h3 className="cv-card-title">Component catalog</h3>
-                <p className="cv-card-subtitle">{Array.isArray(catalog) ? catalog.length : 0} parts from saved analyses</p>
-                <div className="cv-table-wrap cv-table-wrap--fit" style={{ marginTop: 12 }}>
-                  <table className="cv-table cv-table--fit cv-table--mpn-safe">
-                    <thead>
-                      <tr>
-                        <th>Part</th>
-                        <th>Manufacturer</th>
-                        <th>Lifecycle</th>
-                        <th className="cv-num">Risk</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(Array.isArray(catalog) ? catalog : []).slice(0, 25).map((row, i) => (
-                        <tr key={i}>
-                          <td data-label="Part" className="cv-mpn-cell">
-                            <strong>{cell(row["Part Number"] || row.mpn)}</strong>
-                          </td>
-                          <td data-label="Manufacturer">
-                            {cell(
-                              row.Manufacturer
-                                || row.manufacturer
-                                || (Array.isArray(row["Manufacturer Values"])
-                                  ? row["Manufacturer Values"][0]
-                                  : ""),
-                            )}
-                          </td>
-                          <td data-label="Lifecycle">{cell(row.Lifecycle || row.lifecycle)}</td>
-                          <td className="cv-num" data-label="Risk">{cell(row["Risk Level"] || row.risk_level)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-              <section className="cv-card pad">
-                <h3 className="cv-card-title">Selected impact</h3>
-                <p className="cv-card-subtitle">
-                  {Object.keys(selected).length
-                    ? cell(selected["Part Number"] || selected.mpn, "Selected component")
-                    : "Select or refresh to surface recommended component"}
-                </p>
-                <dl className="cv-record-meta" style={{ marginTop: 12, gridTemplateColumns: "1fr 1fr" }}>
-                  <div className="cv-record-field"><dt>Lifecycle</dt><dd>{cell(selected.Lifecycle || selected.lifecycle)}</dd></div>
-                  <div className="cv-record-field"><dt>Risk</dt><dd>{cell(selected["Risk Level"] || selected.risk_level)}</dd></div>
-                  <div className="cv-record-field"><dt>Manufacturer</dt><dd>{cell(selected.Manufacturer || selected.manufacturer)}</dd></div>
-                  <div className="cv-record-field"><dt>Package</dt><dd>{cell(selected.Package || selected.package)}</dd></div>
-                  <div className="cv-record-field">
-                    <dt>Qty across BOMs</dt>
-                    <dd>{cell(intel.total_quantity)}</dd>
-                  </div>
-                  <div className="cv-record-field">
-                    <dt>Saved BOMs</dt>
-                    <dd>{cell(intel.affected_bom_count || affected.length)}</dd>
-                  </div>
-                  <div className="cv-record-field"><dt>Impact level</dt><dd>{cell(intel.impact_level)}</dd></div>
-                </dl>
-              </section>
-            </div>
-            <section className="cv-card pad cv-card--table">
-              <h3 className="cv-card-title">Affected BOM rows</h3>
+      <PageHeader
+        meta={{
+          ...PAGE_META.design,
+          title: "Where is this part used?",
+          eyebrow: "Component impact",
+          description:
+            "Find the saved BOMs that include a part, then review which designs may need attention if it changes.",
+        }}
+      />
+      <EvidenceNotice gap={data?.gap} />
+
+      {catalog.length ? (
+        <section className="cv-card pad" aria-labelledby="component-picker-title">
+          <div className="cv-section-heading" style={{ margin: "0 0 12px" }}>
+            <div>
+              <div className="cv-eyebrow">Step 1</div>
+              <h2 id="component-picker-title" className="cv-card-title">Choose a component</h2>
               <p className="cv-card-subtitle">
-                {affected.length
-                  ? `${affected.length} separate BOM/analysis usage row${affected.length === 1 ? "" : "s"} for ${cell(selectedMpn, "the selected part")} · combined quantity ${cell(intel.total_quantity, "—")}`
-                  : "No affected BOM rows were returned for the selected part."}
+                Search {catalog.length} parts found in saved BOM analyses.
               </p>
-              {affected.length ? (
-                <div className="cv-table-wrap cv-table-wrap--fit" style={{ marginTop: 12 }}>
-                  <table className="cv-table cv-table--fit cv-table--mpn-safe">
-                    <thead>
-                      <tr>
-                        <th>Project</th>
-                        <th>BOM</th>
-                        <th>Part</th>
-                        <th className="cv-num">Qty</th>
-                        <th>Manufacturer</th>
-                        <th>Lifecycle</th>
-                        <th>Risk</th>
-                        <th>Package</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {affected.map((row, i) => (
-                        <tr key={i}>
-                          <td data-label="Project">{cell(row.Project || row.project)}</td>
-                          <td data-label="BOM">{cell(row.BOM || row.Bom || (Array.isArray(row["BOM Names"]) ? row["BOM Names"].join(", ") : ""))}</td>
-                          <td data-label="Part" className="cv-mpn-cell">
-                            <strong>{cell(row["Part Number"] || row.mpn || selectedMpn)}</strong>
-                          </td>
-                          <td className="cv-num" data-label="Qty">{cell(row.Quantity || row.quantity)}</td>
-                          <td data-label="Manufacturer">{cell(row.Manufacturer || row.manufacturer)}</td>
-                          <td data-label="Lifecycle">{cell(row.Lifecycle || row.lifecycle)}</td>
-                          <td data-label="Risk">{cell(row["Risk Level"] || row.risk_level)}</td>
-                          <td data-label="Package">{cell(row.Package || row.package)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="cv-small-note" style={{ marginTop: 12 }}>
-                  Analyze a BOM that includes this MPN to populate affected row details.
-                </p>
-              )}
-            </section>
+            </div>
           </div>
-        ) : (
-          <EmptyState
-            icon="impact"
-            title="No saved BOM components to trace"
-            body="Design impact uses saved BOM analyses to find affected projects and parts. Analyze a BOM to start a trace."
-            action={<PrimaryLink href="/bom-analyzer">Analyze a BOM</PrimaryLink>}
-          />
-        )
+
+          <form onSubmit={onSubmit}>
+            <div className="cv-form-grid">
+              <div className="cv-field">
+                <label htmlFor="mpn">Part number</label>
+                <input
+                  id="mpn"
+                  list="saved-component-options"
+                  value={mpn}
+                  onChange={(event) => {
+                    setMpn(event.target.value);
+                    setError("");
+                    setNotice("");
+                    setShowImpact(false);
+                  }}
+                  placeholder="Type an MPN or choose a saved part"
+                  autoComplete="off"
+                  aria-describedby="impact-data-note"
+                />
+                <datalist id="saved-component-options">
+                  {catalog.map((row, index) => (
+                    <option key={index} value={partNumber(row)}>
+                      {cell(row.Manufacturer || row.manufacturer || row["Manufacturer Values"], "Manufacturer not recorded")}
+                    </option>
+                  ))}
+                </datalist>
+              </div>
+              <div style={{ display: "flex", alignItems: "end" }}>
+                <button type="submit" className="cv-button primary" disabled={busy || !mpn.trim()}>
+                  {busy
+                    ? "Loading…"
+                    : showImpact && mpn.toLowerCase() === selectedMpn.toLowerCase()
+                      ? "Refresh impact"
+                      : "View impact"}
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {suggestedMpn && mpn.toLowerCase() === suggestedMpn.toLowerCase() ? (
+            <p className="cv-small-note" style={{ marginTop: 12 }}>
+              Suggested starting point: <strong>{suggestedMpn}</strong>. Cadivor prioritizes saved parts with recorded risk, lifecycle, or sourcing signals. You can choose any part in the list.
+            </p>
+          ) : null}
+          {notice ? <p className="cv-small-note" role="status" style={{ marginTop: 12 }}>{notice}</p> : null}
+          {error ? <div className="cv-error" role="alert" style={{ marginTop: 12 }}>{error}</div> : null}
+
+          <p id="impact-data-note" className="cv-small-note" style={{ marginTop: 12, marginBottom: 0 }}>
+            This view loads saved BOM analyses when you open the page and recalculates the selected part when you choose View impact. Reopen the page after saving a new BOM to refresh the part list. It does not monitor supplier changes, refresh live stock or pricing, or edit a BOM. For supplier updates, use{" "}
+            <Link href="/monitoring" style={{ color: "var(--blue)", textDecoration: "underline" }}>Monitoring</Link>.
+          </p>
+        </section>
+      ) : null}
+
+      {busy ? <LoadingCard label="Checking saved BOM analyses…" /> : null}
+
+      {error && !catalog.length ? (
+        <div className="cv-error" role="alert">
+          The component impact view could not load. {error}
+          <button type="button" className="cv-button" style={{ marginLeft: 10 }} onClick={() => load(mpn, false)}>
+            Try again
+          </button>
+        </div>
+      ) : null}
+
+      {!busy && data && !catalog.length ? (
+        <EmptyState
+          icon="impact"
+          title="No saved BOM components to review"
+          body="Analyze and save a BOM first. Cadivor will then list its components here so you can see where they are used."
+          action={<Link className="cv-button primary" href="/bom-analyzer">Analyze a BOM</Link>}
+        />
+      ) : null}
+
+      {!busy && data && !showImpact ? (
+        <section className="cv-card pad" style={{ marginTop: 14 }} aria-live="polite">
+          <h2 className="cv-card-title">Step 2 · Review where it is used</h2>
+          <p className="cv-card-subtitle" style={{ marginTop: 8 }}>
+            Choose a part above and select <strong>View impact</strong>. Cadivor will show the saved BOMs that contain it and the recorded risk and lifecycle signals. You decide whether those designs need review.
+          </p>
+        </section>
+      ) : null}
+
+      {!busy && data && showImpact && selectedMpn ? (
+        <>
+          <section className="cv-card pad" style={{ marginTop: 14 }} aria-labelledby="impact-summary-title">
+            <div className="cv-section-heading" style={{ marginTop: 0 }}>
+              <div>
+                <div className="cv-eyebrow">Step 2 · Review impact</div>
+                <h2 id="impact-summary-title" className="cv-card-title">
+                  {selectedMpn}
+                  {selectedManufacturer !== "Not recorded" ? " · " + selectedManufacturer : ""}
+                </h2>
+                <p className="cv-card-subtitle">
+                  A workspace-level view of saved BOMs that include this component.
+                </p>
+              </div>
+            </div>
+
+            <dl className="cv-record-meta" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+              <div className="cv-record-field"><dt>Saved BOMs affected</dt><dd>{affectedBomCount}</dd></div>
+              <div className="cv-record-field"><dt>Projects affected</dt><dd>{projectCount || "—"}</dd></div>
+              <div className="cv-record-field"><dt>Combined quantity in saved BOMs</dt><dd>{cell(intel.total_quantity)}</dd></div>
+              <div className="cv-record-field"><dt>Impact indicator</dt><dd>{impactLevel}</dd></div>
+              <div className="cv-record-field"><dt>Recorded lifecycle</dt><dd>{selectedLifecycle}</dd></div>
+              <div className="cv-record-field"><dt>Recorded risk</dt><dd>{selectedRisk}</dd></div>
+              <div className="cv-record-field"><dt>Manufacturer</dt><dd>{selectedManufacturer}</dd></div>
+              <div className="cv-record-field"><dt>Package</dt><dd>{selectedPackage}</dd></div>
+            </dl>
+
+            <p className="cv-small-note" style={{ marginBottom: 0 }}>
+              The impact indicator is a triage signal from saved evidence, not an engineering approval or replacement-fit result. Review the source BOM reports before making a design decision.
+            </p>
+
+            {impactDrivers.length ? (
+              <details style={{ marginTop: 12 }}>
+                <summary style={{ cursor: "pointer", color: "var(--blue)", fontSize: 12, fontWeight: 700 }}>
+                  Why is the impact indicator {impactLevel.toLowerCase()}?
+                </summary>
+                <ul className="cv-missing-list">
+                  {impactDrivers.map((driver, index) => (
+                    <li key={index}>
+                      <strong>{cell(driver.label)}:</strong> {cell(driver.detail)}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+          </section>
+
+          <section className="cv-card pad cv-card--table" style={{ marginTop: 14 }} aria-labelledby="affected-boms-title">
+            <div className="cv-section-heading" style={{ marginTop: 0 }}>
+              <div>
+                <div className="cv-eyebrow">Step 3 · Open a report to review</div>
+                <h2 id="affected-boms-title" className="cv-card-title">
+                  Saved BOMs containing {selectedMpn}
+                </h2>
+                <p className="cv-card-subtitle">
+                  {affected.length
+                    ? affected.length + " saved BOM report" + (affected.length === 1 ? "" : "s") +
+                      " across " + projectCount + " project" + (projectCount === 1 ? "" : "s") +
+                      " · combined quantity " + cell(intel.total_quantity, "not recorded")
+                    : "No matching BOM rows were returned for this component."}
+                </p>
+              </div>
+            </div>
+
+            {affected.length ? (
+              <div className="cv-table-wrap cv-table-wrap--fit" style={{ marginTop: 12 }}>
+                <table className="cv-table cv-table--fit cv-table--mpn-safe">
+                  <thead>
+                    <tr>
+                      <th>Project</th>
+                      <th>BOM</th>
+                      <th className="cv-num">Quantity</th>
+                      <th>Recorded lifecycle</th>
+                      <th>Recorded risk</th>
+                      <th>Analysis updated</th>
+                      <th>Report</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {affected.map((row, index) => {
+                      const analysisId = String(row["Analysis ID"] || "");
+                      return (
+                        <tr key={analysisId || index}>
+                          <td data-label="Project">{cell(row.Project || row.project, "Project not recorded")}</td>
+                          <td data-label="BOM">{cell(row.BOM || row.Bom || (Array.isArray(row["BOM Names"]) ? row["BOM Names"].join(", ") : ""), "BOM not recorded")}</td>
+                          <td className="cv-num" data-label="Quantity">{cell(row.Quantity || row.quantity)}</td>
+                          <td data-label="Recorded lifecycle">{cell(row.Lifecycle || row.lifecycle, "Not recorded")}</td>
+                          <td data-label="Recorded risk">{cell(row["Risk Level"] || row.risk_level, "Not assessed")}</td>
+                          <td data-label="Analysis updated">{formatAnalysisDate(row.Updated || row.updated_at)}</td>
+                          <td data-label="Report">
+                            {analysisId ? (
+                              <Link className="cv-table-open" href={"/reports/" + encodeURIComponent(analysisId)}>
+                                Open report
+                              </Link>
+                            ) : "Not available"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="cv-small-note" style={{ marginTop: 12 }}>
+                Analyze and save a BOM containing this part to add it to the impact view.
+              </p>
+            )}
+          </section>
+
+          <section className="cv-card pad" style={{ marginTop: 14 }}>
+            <div className="cv-grid-2">
+              <div>
+                <h2 className="cv-card-title">What to do next</h2>
+                <p className="cv-card-subtitle" style={{ marginTop: 8 }}>
+                  Open an affected report to confirm its saved evidence. If you are considering a change, search for replacement candidates next.
+                </p>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+                <Link className="cv-button primary" href={replacementHref}>Find replacement options</Link>
+              </div>
+            </div>
+            <p className="cv-small-note" style={{ marginBottom: 0, marginTop: 12 }}>
+              Searching for candidates does not change these saved BOMs. Record and apply any approved change in the relevant BOM workflow.
+            </p>
+          </section>
+        </>
       ) : null}
     </Shell>
   );
