@@ -207,7 +207,7 @@ function EvidenceReviewPageInner() {
                         : evidenceClass === "synthetic-preview"
                           ? "Synthetic preview"
                           : "Needs verification";
-                    return (                    return (
+                    return (
                       <tr key={`${mpn}-${index}`}>
                         <td>
                           <div className="cv-part-cell">
