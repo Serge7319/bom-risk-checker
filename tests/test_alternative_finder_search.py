@@ -1058,5 +1058,88 @@ class AlternativeFinderOutcomeTests(unittest.TestCase):
             1,
         )
 
+    def test_development_tool_listings_are_filtered_from_component_candidates(self):
+        development_tools = [
+            {
+                "manufacturer_part_number": "SEN0142",
+                "source": "Mouser",
+                "primary_category": "Multiple Function Sensor Development Tools",
+            },
+            {
+                "manufacturer_part_number": "3886",
+                "source": "Mouser",
+                "Product Type": "Multiple Function Sensor Development Tools",
+            },
+            {
+                "manufacturer_part_number": "MIKROE-3341",
+                "source": "Mouser",
+                "Category": "Development Tools / Click Board",
+            },
+        ]
+
+        for candidate in development_tools:
+            self.assertTrue(
+                self.classification.is_non_component_catalog_candidate(candidate)
+            )
+
+        self.assertFalse(
+            self.classification.is_non_component_catalog_candidate(
+                {
+                    "manufacturer_part_number": "MPU-6050A",
+                    "source": "DigiKey",
+                    "primary_category": "Integrated Circuits",
+                    "description": "3-axis accelerometer and gyroscope IC",
+                }
+            )
+        )
+        self.assertEqual(
+            self.classification.merge_discovery_candidates(
+                [],
+                development_tools,
+                original_mpn="MPU-6050",
+            ),
+            [],
+        )
+
+    def test_obsolete_or_conflicted_lifecycle_withholds_candidate_lead_time(self):
+        reason = self.classification.candidate_lead_time_block_reason
+        self.assertEqual(reason("Obsolete"), "obsolete")
+        self.assertEqual(
+            reason("Unknown", [{"status": "No longer manufactured"}]),
+            "obsolete",
+        )
+        self.assertEqual(
+            reason("Active", lifecycle_conflict=True),
+            "lifecycle-conflict",
+        )
+        self.assertEqual(reason("Active"), "")
+
+        from apps.api.legacy_supplier_workflow import _candidate_lead_time_fields
+
+        projected = _candidate_lead_time_fields(
+            {
+                "lead_time_weeks": 52,
+                "lead_time_source": "DigiKey",
+                "Supplier": "DigiKey",
+            },
+            exact_source=True,
+            lifecycle_status="Obsolete",
+            lifecycle_evidence=[],
+            lifecycle_conflict=False,
+        )
+        self.assertIsNone(projected["lead_time_weeks"])
+        self.assertEqual(projected["lead_time_source"], "")
+        self.assertEqual(projected["lead_time_status"], "withheld-obsolete")
+
+        active = _candidate_lead_time_fields(
+            {"lead_time_weeks": 8, "Supplier": "DigiKey"},
+            exact_source=True,
+            lifecycle_status="Active",
+            lifecycle_evidence=[],
+            lifecycle_conflict=False,
+        )
+        self.assertEqual(active["lead_time_weeks"], 8)
+        self.assertEqual(active["lead_time_status"], "reported")
+
 if __name__ == "__main__":
     unittest.main()
