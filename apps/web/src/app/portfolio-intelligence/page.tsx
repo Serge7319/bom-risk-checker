@@ -301,16 +301,18 @@ export default function PortfolioPage() {
               <div className="cv-portfolio-section-heading">
                 <div>
                   <h2 className="cv-card-title">Shared components</h2>
-                  <p className="cv-card-subtitle">Parts found in more than one saved BOM. Risk scores use current evidence; unverified lifecycle values are labeled.</p>
+                  <p className="cv-card-subtitle">Parts found in more than one saved BOM. Partial signal scores can appear while the overall risk rating still needs verification; lifecycle evidence is labeled separately.</p>
                 </div>
               </div>
               {shared.length ? <div className="cv-table-wrap cv-table-wrap--fit" style={{ marginTop: 12 }}>
                 <table className="cv-table cv-table--fit cv-table--mpn-safe cv-portfolio-table">
-                  <thead><tr><th>Part</th><th>Manufacturer</th><th>Lifecycle</th><th className="cv-num">BOMs</th><th className="cv-num" title="Highest risk score recalculated from current field-level evidence. Not assessed means required evidence is missing, stale, conflicting, or unverified.">Highest current risk score</th></tr></thead>
+                  <thead><tr><th>Part</th><th>Manufacturer</th><th>Lifecycle</th><th className="cv-num">BOMs</th><th className="cv-num" title="A partial signal score can be shown when only some risk factors are evidenced. Needs verification means an overall rating is not available.">Highest current risk score</th></tr></thead>
                   <tbody>{shared.slice(0, 20).map((row, i) => {
                     const mpn = userFacingLabel(row["Part Number"] || row.mpn, "Component");
                     const maker = userFacingLabel(row.Manufacturer || row.manufacturer, "Unknown");
                     const risk = numeric(row["Highest Risk Score"]);
+                    const riskAssessment = userFacingLabel(row["Risk Assessment"], risk === null ? "Not assessed" : "Needs verification");
+                    const riskNeedsVerification = /needs verification|not assessed|unassessed|unknown/i.test(riskAssessment);
                     const bomCount = numeric(row["BOMs Using Part"] ?? row["Projects Using Part"]);
                     const lifecycleLabel = userFacingLabel(row.Lifecycle, "Unknown");
                     const reportedLifecycle = userFacingLabel(row["Reported Lifecycle"], "");
@@ -323,7 +325,14 @@ export default function PortfolioPage() {
                       <td data-label="Manufacturer">{maker}</td>
                       <td data-label="Lifecycle"><div className="cv-portfolio-health-cell"><StatusChip label={lifecycleLabel} tone={lifecycleTone} />{lifecycleEvidence !== "live" && reportedLifecycle && reportedLifecycle !== lifecycleLabel ? <small className="cv-portfolio-health-note">Reported: {reportedLifecycle} · unverified</small> : null}</div></td>
                       <td className="cv-num" data-label="BOMs">{bomCount === null ? "Not reported" : bomCount}</td>
-                      <td className="cv-num" data-label="Highest current risk score"><StatusChip label={risk === null ? "Not assessed" : `${Math.round(risk)}/100`} tone={risk === null ? "gray" : risk >= 60 ? "red" : risk >= 30 ? "amber" : "green"} /></td>
+                      <td className="cv-num" data-label="Highest current risk score">
+                        {risk === null ? <StatusChip label="Not assessed" tone="gray" /> : riskNeedsVerification ? (
+                          <div className="cv-portfolio-health-cell">
+                            <StatusChip label="Needs verification" tone="amber" />
+                            <small className="cv-portfolio-health-note">Partial signals: {Math.round(risk)}/100</small>
+                          </div>
+                        ) : <StatusChip label={`${Math.round(risk)}/100`} tone={risk >= 60 ? "red" : risk >= 30 ? "amber" : "green"} />}
+                      </td>
                     </tr>;
                   })}</tbody>
                 </table>

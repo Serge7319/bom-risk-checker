@@ -44,3 +44,28 @@ def test_shared_portfolio_signals_drop_legacy_scores_without_current_evidence(mo
     assert shared["Lifecycle"] == "Needs verification"
     assert shared["Reported Lifecycle"] == "Obsolete"
     assert shared["Lifecycle Evidence"] == "unverified"
+
+
+def test_partial_risk_points_remain_unassessed_not_low():
+    analyses = [
+        {"id": "analysis-1", "project_name": "Project One", "filename": "one.csv"},
+        {"id": "analysis-2", "project_name": "Project Two", "filename": "two.csv"},
+    ]
+    parts = [
+        {
+            "analysis_id": analysis["id"],
+            "mpn": "RC0603FR-0710KL",
+            "manufacturer": "YAGEO",
+            "risk_score": 15,
+            "risk_level": "Needs verification",
+        }
+        for analysis in analyses
+    ]
+
+    result = build_portfolio_intelligence(analyses, parts, [])
+    shared = result["shared_components"][0]
+
+    assert shared["Highest Risk Score"] == 15
+    assert shared["Risk Assessment"] == "Needs verification"
+    assert result["risk_distribution"]["Low risk"] == 0
+    assert result["risk_distribution"]["Unassessed"] == 2
