@@ -216,16 +216,24 @@ export default function PortfolioPage() {
                 <h2 className="cv-card-title">Analyses</h2>
                 <p className="cv-card-subtitle">Latest saved reports, rechecked from the evidence attached to each BOM.</p>
               </div>
-              <span className="cv-portfolio-section-total">{reports.length.toLocaleString()} reports · {totalParts.toLocaleString()} parts · {highRiskTotal === null ? "Some high-risk counts unreported" : `${highRiskTotal.toLocaleString()} high-risk parts`}</span>
+              <span className="cv-portfolio-section-total">{reports.length.toLocaleString()} reports · {totalParts.toLocaleString()} parts · {highRiskTotal === null ? "Some high-risk counts unreported" : `${highRiskTotal.toLocaleString()} verified high-risk signals`}</span>
             </div>
             <div className="cv-table-wrap cv-table-wrap--fit" style={{ marginTop: 12 }}>
               <table className="cv-table cv-table--fit cv-table--mpn-safe cv-portfolio-table">
-                <thead><tr><th>Saved BOM</th><th>Project</th><th>Health</th><th className="cv-num">Parts</th><th className="cv-num">High-risk parts</th><th>Action</th></tr></thead>
+                <thead><tr><th>Saved BOM</th><th>Project</th><th>Health</th><th className="cv-num">Parts</th><th className="cv-num" title="Counts verified high-risk signals; unscored components are not counted as low-risk.">Verified high-risk</th><th>Action</th></tr></thead>
                 <tbody>
                   {reports.map((row, i) => {
                     const analysisId = String(row.analysis_id || row.id || "");
                     const score = numeric(row.health_score);
                     const highCount = numeric(row.high_risk_count);
+                    const highSignalLabel = highCount === null
+                      ? "Not reported"
+                      : highCount > 0
+                        ? `${Math.trunc(highCount)} ${highCount === 1 ? "part" : "parts"}`
+                        : score === null ? "0 · not scored" : "0 found";
+                    const highSignalTone = highCount === null
+                      ? "gray"
+                      : highCount > 0 ? "red" : score === null ? "gray" : "green";
                     const label = userFacingLabel(row.bom_name || row.filename, "Saved analysis");
                     return (
                       <tr key={analysisId || i}>
@@ -238,7 +246,7 @@ export default function PortfolioPage() {
                             : "Calculate health to check the saved evidence."))
                         ) : undefined} /></td>
                         <td className="cv-num" data-label="Parts">{displayCount(row.total_parts)}</td>
-                        <td className="cv-num" data-label="High-risk parts"><StatusChip label={highCount === null ? "Not reported" : highCount === 0 ? "None" : `${Math.trunc(highCount)} ${highCount === 1 ? "part" : "parts"}`} tone={highCount === null ? "gray" : highCount > 0 ? "red" : "green"} /></td>
+                        <td className="cv-num" data-label="Verified high-risk"><StatusChip label={highSignalLabel} tone={highSignalTone} /></td>
                         <td data-label="Action"><div className="cv-portfolio-row-actions">
                           <Link className="cv-button small" href={analysisId ? `/reports/${encodeURIComponent(analysisId)}` : "/reports"}>Open report</Link>
                           {analysisId ? <button className="cv-button small primary" type="button" disabled={Boolean(recalculating)} onClick={() => void calculateHealth(analysisId)}>{recalculating === analysisId ? "Checking…" : score === null ? "Calculate health" : "Recalculate health"}</button> : null}
@@ -261,18 +269,28 @@ export default function PortfolioPage() {
               </div>
               {projectRows.length ? <div className="cv-table-wrap cv-table-wrap--fit" style={{ marginTop: 12 }}>
                 <table className="cv-table cv-table--fit cv-table--mpn-safe cv-portfolio-table">
-                  <thead><tr><th>Project</th><th className="cv-num">BOMs</th><th>Health</th><th className="cv-num">Components</th><th className="cv-num">High-risk parts</th></tr></thead>
+                  <thead><tr><th>Project</th><th className="cv-num">BOMs</th><th>Health</th><th className="cv-num">Components</th><th className="cv-num" title="Counts verified high-risk signals; unscored components are not counted as low-risk.">Verified high-risk</th></tr></thead>
                   <tbody>{projectRows.map((row, i) => {
                     const partial = row.scoredBomCount > 0 && row.scoredBomCount < row.bomCount;
                     const tone = row.health === null ? "gray" : row.health >= 85 ? "green" : row.health >= 60 ? "amber" : "red";
                     const healthText = row.health === null ? "Not scored" : `${row.health}/100`;
                     const statusText = row.health === null ? "No scored BOMs" : partial ? `${row.scoredBomCount}/${row.bomCount} BOMs scored` : healthLabel(row.health, "");
+                    const highSignalLabel = row.highRisk === null
+                      ? "Not reported"
+                      : row.highRisk > 0
+                        ? `${row.highRisk} ${row.highRisk === 1 ? "part" : "parts"}`
+                        : row.scoredBomCount === 0
+                          ? "0 · not scored"
+                          : row.scoredBomCount < row.bomCount ? "0 · partial" : "0 found";
+                    const highSignalTone = row.highRisk === null
+                      ? "gray"
+                      : row.highRisk > 0 ? "red" : row.scoredBomCount < row.bomCount ? "gray" : "green";
                     return <tr key={`${row.project}-${i}`}>
                       <td data-label="Project"><Link className="cv-portfolio-row-link" href={row.analysisId ? `/reports/${encodeURIComponent(row.analysisId)}` : "/reports"}>{row.project}</Link></td>
                       <td className="cv-num" data-label="BOMs">{row.bomCount}</td>
                       <td data-label="Health"><div className="cv-portfolio-health-cell"><strong className={row.health === null ? "cv-portfolio-health-unscored" : "cv-portfolio-health-score"}>{healthText}</strong><StatusChip label={statusText} tone={partial ? "amber" : tone} /></div></td>
                       <td className="cv-num" data-label="Components">{row.components === null ? "Not reported" : row.components.toLocaleString()}</td>
-                      <td className="cv-num" data-label="High-risk parts"><StatusChip label={row.highRisk === null ? "Not reported" : row.highRisk === 0 ? "None" : `${row.highRisk} ${row.highRisk === 1 ? "part" : "parts"}`} tone={row.highRisk === null ? "gray" : row.highRisk > 0 ? "red" : "green"} /></td>
+                      <td className="cv-num" data-label="Verified high-risk"><StatusChip label={highSignalLabel} tone={highSignalTone} /></td>
                     </tr>;
                   })}</tbody>
                 </table>
