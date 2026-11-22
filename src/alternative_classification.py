@@ -88,7 +88,6 @@ _CATEGORY_FIELDS = (
     "Primary Category",
     "category_name",
     "CategoryName",
-    "Primary Category",
     "product_category",
     "ProductCategory",
     "Product Type",
