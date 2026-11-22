@@ -144,7 +144,10 @@ def build_cost_optimization(
         suppliers = len({str(offer.get("distributor") or "").casefold() for offer in quantity_offers})
         stock_value = _verified_stock(row, part_number)
         stock = int(stock_value) if stock_value is not None else None
-        risk_score = int(_number(row.get("risk_score"), 0))
+        from src.risk_engine import calculate_risk
+
+        scored_risk = calculate_risk(row).get("risk_score")
+        risk_score = int(scored_risk) if scored_risk is not None else None
         description = _text(
             _first(row, "description", "Description", "part_description", "product_description"),
             "",
@@ -212,7 +215,12 @@ def build_cost_optimization(
     currencies = {row["Currency"] for row in priced}
     current_cost_per_build = (
         sum(float(row["Extended Cost per Build"] or 0) for row in priced)
-        if priced and len(currencies) == 1 and all(row["Extended Cost per Build"] is not None for row in priced)
+        if (
+            priced
+            and len(priced) == len(normalized)
+            and len(currencies) == 1
+            and all(row["Extended Cost per Build"] is not None for row in priced)
+        )
         else None
     )
     production_run_cost = current_cost_per_build * max(1, build_quantity) if current_cost_per_build is not None else None
@@ -232,7 +240,8 @@ def build_cost_optimization(
         analysis_ids = {row["Analysis ID"] for row in rows if row["Analysis ID"]}
         total_qty_per_build = sum(row["Quantity per Build"] for row in rows)
         suppliers = max(row["Supplier Sources"] for row in rows)
-        risk_score = max(row["Risk Score"] for row in rows)
+        risk_scores = [row["Risk Score"] for row in rows if row["Risk Score"] is not None]
+        risk_score = max(risk_scores) if risk_scores else None
         stock_values = [row["Available Stock"] for row in rows if row["Available Stock"] is not None]
         stock = min(stock_values) if stock_values else None
         exact_offers = [offer for row in rows for offer in row["Verified Offers"]]
@@ -284,7 +293,10 @@ def build_cost_optimization(
         )
 
     opportunities.sort(
-        key=lambda row: (-row["Estimated Run Savings"], -row["Risk Score"])
+        key=lambda row: (
+            -row["Estimated Run Savings"],
+            -(row["Risk Score"] if row["Risk Score"] is not None else -1),
+        )
     )
 
     savings_currencies = {row["Currency"] for row in opportunities}
