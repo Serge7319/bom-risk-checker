@@ -667,9 +667,14 @@ function FindReplacementInner() {
                                   const price = offer.unit_price == null
                                     ? "Price not returned"
                                     : `${offer.currency ? `${String(offer.currency)} ` : ""}${Number(offer.unit_price).toFixed(4)} / unit`;
-                                  const leadTime = offer.lead_time_weeks == null
-                                    ? "Lead time not returned"
-                                    : `${String(offer.lead_time_weeks)} weeks`;
+                                  const leadTimeStatus = String(offer.lead_time_status || "");
+                                  const leadTime = leadTimeStatus === "withheld-obsolete"
+                                    ? "Lead time withheld — obsolete listing"
+                                    : leadTimeStatus === "withheld-lifecycle-conflict"
+                                      ? "Lead time withheld — lifecycle conflict"
+                                      : offer.lead_time_weeks == null
+                                        ? "Lead time not returned"
+                                        : `${String(offer.lead_time_weeks)} weeks`;
                                   return (
                                     <div key={`${String(offer.source || "supplier")}-${offerIndex}`} style={{ marginBottom: 6 }}>
                                       <strong>{String(offer.source || "Supplier")}</strong>
@@ -852,7 +857,7 @@ function FindReplacementInner() {
               </h3>
               <p className="cv-card-subtitle">
                 {providerRows.some((row) => providerHasRawCatalogMatches(row.outcome))
-                  ? "Providers returned raw catalog matches, but fewer (or none) were retained after manufacturer, lineage, family, and deduplication filters. Provider coverage does not imply compatibility. Review provider outcomes above and manufacturer documentation before changing the design."
+                  ? "Providers returned raw catalog matches, but fewer (or none) were retained after manufacturer, lineage, product-type, family, and duplicate filters. Provider coverage does not imply compatibility. Review provider outcomes above and manufacturer documentation before changing the design."
                   : "No qualified alternatives or catalog leads were returned in this search. That is not proof that no substitute exists — check manufacturer documentation and authorized distributors before changing the design."}
               </p>
               <div style={{ marginTop: 12 }}>
