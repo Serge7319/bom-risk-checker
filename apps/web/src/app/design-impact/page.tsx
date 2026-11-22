@@ -360,6 +360,9 @@ export default function DesignImpactPage() {
                       " · combined quantity " + cell(intel.total_quantity, "not recorded")
                     : "No matching BOM rows were returned for this component."}
                 </p>
+                <p className="cv-small-note" style={{ margin: "6px 0 0" }}>
+                  Each report keeps the lifecycle and risk snapshot from its own analysis date. “Unknown” means no lifecycle value was recorded then; “Conflicting supplier data” means the sources disagreed. Supplier refresh does not rewrite an existing report. Create a new BOM revision to save a refreshed analysis while preserving this history.
+                </p>
               </div>
             </div>
 
@@ -371,10 +374,10 @@ export default function DesignImpactPage() {
                       <th>Project</th>
                       <th>BOM</th>
                       <th className="cv-num">Quantity</th>
-                      <th>Recorded lifecycle</th>
+                      <th>Recorded lifecycle · saved snapshot</th>
                       <th>Recorded risk</th>
                       <th>Analysis updated</th>
-                      <th>Report</th>
+                      <th>Report actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -388,11 +391,16 @@ export default function DesignImpactPage() {
                           <td data-label="Recorded lifecycle">{cell(row.Lifecycle || row.lifecycle, "Not recorded")}</td>
                           <td data-label="Recorded risk">{cell(row["Risk Level"] || row.risk_level, "Not assessed")}</td>
                           <td data-label="Analysis updated">{formatAnalysisDate(row.Updated || row.updated_at)}</td>
-                          <td data-label="Report">
+                          <td data-label="Report actions">
                             {analysisId ? (
-                              <Link className="cv-table-open" href={"/reports/" + encodeURIComponent(analysisId)}>
-                                Open report
-                              </Link>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                <Link className="cv-table-open" href={"/reports/" + encodeURIComponent(analysisId)}>
+                                  Open report
+                                </Link>
+                                <Link className="cv-table-open" href={`/monitoring?analysis_id=${encodeURIComponent(analysisId)}`}>
+                                  Refresh suppliers
+                                </Link>
+                              </div>
                             ) : "Not available"}
                           </td>
                         </tr>

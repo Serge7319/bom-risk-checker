@@ -47,6 +47,42 @@ function providerExplicitSubstitutionCount(state: Record<string, unknown>): numb
   return Number.isFinite(explicit) && explicit >= 0 ? explicit : null;
 }
 
+function lifecycleBadgeTone(value: unknown, conflict = false): string {
+  if (conflict) return "amber";
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("replacement suggested")) return "green";
+  if (/(obsolete|discontinued|end of life|\beol\b)/.test(normalized)) return "red";
+  if (/(nrnd|not recommended)/.test(normalized)) return "amber";
+  if (normalized === "active") return "blue";
+  return "gray";
+}
+
+function fitBadgeTone(value: unknown): string {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (/(different component family|incompatible|known mismatch)/.test(normalized)) return "red";
+  if (/\bqualified\b/.test(normalized) && !/not qualified|qualification required/.test(normalized)) return "green";
+  if (/not qualified|qualification required|supplier-listed candidate/.test(normalized)) return "amber";
+  return "gray";
+}
+
+function isReportedConflict(value: unknown): boolean {
+  return value === true || ["1", "true", "yes"].includes(String(value || "").trim().toLowerCase());
+}
+
+function supplierLifecycleConflict(
+  row: Record<string, unknown>,
+  supplierOffers: Array<Record<string, unknown>>,
+): boolean {
+  if (isReportedConflict(row.lifecycle_conflict)) return true;
+  if (String(row.lifecycle_status || "").toLowerCase().includes("conflict")) return true;
+  const knownStatuses = new Set(
+    supplierOffers
+      .map((offer) => String(offer.lifecycle_status || "").trim().toLowerCase())
+      .filter((status) => status && !["unknown", "not stated", "not reported"].includes(status)),
+  );
+  return knownStatuses.size > 1;
+}
+
 const AUTHORITATIVE_FIT_MARKERS = [
   "manufacturer-datasheet",
   "uploaded-manufacturer-datasheet",
@@ -564,6 +600,19 @@ function FindReplacementInner() {
                 </p>
                 {candidates.length ? (
                   <div style={{ marginTop: 12 }}>
+                    <div className="cv-small-note" role="note" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                      <span>Lifecycle colors (supplier status only):</span>
+                      <span className="cv-badge green">Replacement suggested</span>
+                      <span className="cv-badge blue">Active</span>
+                      <span className="cv-badge amber">NRND / conflicting</span>
+                      <span className="cv-badge red">Discontinued / obsolete</span>
+                      <span className="cv-badge gray">Unknown</span>
+                      <span style={{ marginLeft: 6 }}>Fit:</span>
+                      <span className="cv-badge green">Qualified on reviewed evidence</span>
+                      <span className="cv-badge amber">Qualification required</span>
+                      <span className="cv-badge red">Known family mismatch</span>
+                      <span className="cv-badge gray">Not established</span>
+                    </div>
                     <div
                       style={{
                         display: "flex",
@@ -620,14 +669,17 @@ function FindReplacementInner() {
                         {candidates.map((row) => {
                           const cand = String(row.mpn || "");
                           const missingBits = ((row.missing_evidence || []) as string[]).filter(Boolean);
-                          const lifecycleConflict = Boolean(row.lifecycle_conflict);
                           const supplierOffers = Array.isArray(row.supplier_offers)
                             ? row.supplier_offers as Array<Record<string, unknown>>
                             : [];
+                          const lifecycleConflict = supplierLifecycleConflict(row, supplierOffers);
                           const lifecycleLabel = lifecycleConflict
-                            ? `${String(row.lifecycle_status || "Unknown")} · conflict`
+                            ? "Conflicting supplier data"
                             : String(row.lifecycle_status || "Unknown");
-                          const fitLabel = String(row.fit || "not qualified").replace(/_/g, " ");
+                          const lifecycleTone = lifecycleBadgeTone(lifecycleLabel, lifecycleConflict);
+                          const fitValue = String(row.fit || "not qualified");
+                          const fitLabel = fitValue.replace(/_/g, " ");
+                          const fitTone = fitBadgeTone(fitValue);
                           const checked = selectedCandidates.includes(cand);
                           return (
                             <tr key={cand}>
@@ -657,7 +709,10 @@ function FindReplacementInner() {
                                 <span className="cv-table-value">{String(row.manufacturer || "—")}</span>
                               </td>
                               <td data-label="Lifecycle">
-                                <span className={`cv-table-value cv-badge ${lifecycleConflict ? "amber" : "gray"}`}>
+                                <span
+                                  className={`cv-table-value cv-badge ${lifecycleTone}`}
+                                  title="Supplier lifecycle status is separate from electrical, package, and qualification fit."
+                                >
                                   {lifecycleLabel}
                                 </span>
                               </td>
@@ -675,10 +730,17 @@ function FindReplacementInner() {
                                       : offer.lead_time_weeks == null
                                         ? "Lead time not returned"
                                         : `${String(offer.lead_time_weeks)} weeks`;
+                                  const offerLifecycle = String(offer.lifecycle_status || "Unknown");
+                                  const offerLifecycleConflict = isReportedConflict(offer.lifecycle_conflict);
                                   return (
                                     <div key={`${String(offer.source || "supplier")}-${offerIndex}`} style={{ marginBottom: 6 }}>
                                       <strong>{String(offer.source || "Supplier")}</strong>
                                       <div className="cv-small-note">{stock} · {price} · {leadTime}</div>
+                                      <div className="cv-small-note">
+                                        Lifecycle: <span className={`cv-badge ${lifecycleBadgeTone(offerLifecycle, offerLifecycleConflict)}`}>
+                                          {offerLifecycleConflict ? "Conflicting supplier data" : offerLifecycle}
+                                        </span>
+                                      </div>
                                       <div className="cv-small-note">
                                         {offer.retrieved_at ? `Checked ${String(offer.retrieved_at)}` : "Check time not recorded"}
                                         {offer.product_url ? <> · <a href={String(offer.product_url)} target="_blank" rel="noreferrer">Open listing</a></> : " · Listing link unavailable"}
@@ -689,7 +751,7 @@ function FindReplacementInner() {
                                 {supplierOffers.length > 3 ? <span className="cv-small-note">+{supplierOffers.length - 3} more supplier listings</span> : null}
                               </td>
                               <td className="cv-fit-cell" data-label="Fit status">
-                                <span className="cv-table-value cv-badge gray">
+                                <span className={`cv-table-value cv-badge ${fitTone}`}>
                                   {fitLabel}
                                 </span>
                               </td>
