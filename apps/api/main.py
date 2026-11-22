@@ -1594,7 +1594,8 @@ async def decision_record_share_get(request: Request) -> JSONResponse:
     record = shared["record"]
     allowed = (
         "created_at", "project_name", "bom_name", "revision", "part_a",
-        "part_b", "manufacturer_a", "manufacturer_b", "decision",
+        "part_b", "decision_candidate_scope", "decision_candidate_mpns",
+        "manufacturer_a", "manufacturer_b", "decision",
         "decision_label", "reviewer", "rationale", "validation_checks",
         "follow_up_action", "follow_up_owner", "follow_up_due_date",
         "residual_risk", "verified_primary_evidence",
@@ -1614,6 +1615,15 @@ async def decision_record_share_get(request: Request) -> JSONResponse:
             for key in safe_snapshot_keys
             if isinstance(snapshot.get(key), (str, int, float, bool))
         }
+        candidate_brands = snapshot.get("multi_candidate_manufacturers")
+        if isinstance(candidate_brands, dict):
+            safe_brands = {
+                str(mpn): str(brand)
+                for mpn, brand in candidate_brands.items()
+                if str(mpn).strip() and str(brand).strip()
+            }
+            if safe_brands:
+                safe_snapshot["multi_candidate_manufacturers"] = safe_brands
         if safe_snapshot:
             projection["comparison_snapshot"] = safe_snapshot
     return JSONResponse(
@@ -1723,12 +1733,28 @@ async def decision_record_approver_get(request: Request) -> JSONResponse:
     record = invite["record"]
     allowed = (
         "created_at", "project_name", "bom_name", "revision", "part_a",
-        "part_b", "manufacturer_a", "manufacturer_b", "decision",
+        "part_b", "decision_candidate_scope", "decision_candidate_mpns",
+        "manufacturer_a", "manufacturer_b", "decision",
         "decision_label", "reviewer", "rationale", "validation_checks",
         "follow_up_action", "follow_up_owner", "follow_up_due_date",
         "residual_risk", "verified_primary_evidence", "qualification_note",
     )
     projection = {key: record[key] for key in allowed if key in record}
+    snapshot = record.get("comparison_snapshot")
+    candidate_brands = (
+        snapshot.get("multi_candidate_manufacturers")
+        if isinstance(snapshot, dict) and isinstance(snapshot.get("multi_candidate_manufacturers"), dict)
+        else {}
+    )
+    safe_brands = {
+        str(mpn): str(brand)
+        for mpn, brand in candidate_brands.items()
+        if str(mpn).strip() and str(brand).strip()
+    }
+    if safe_brands:
+        projection["comparison_snapshot"] = {
+            "multi_candidate_manufacturers": safe_brands,
+        }
     return JSONResponse(
         {
             "ok": True,
@@ -1784,6 +1810,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "decision", "reviewer", "rationale",
                 "validation_checks", "follow_up_action", "follow_up_owner",
                 "follow_up_due_date", "residual_risk", "comparison_snapshot",
+                "decision_candidate_scope",
             )}
             raw_checks = body.get("validation_checks")
             body["validation_checks"] = json.loads(raw_checks) if raw_checks else []
@@ -1971,6 +1998,24 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 comparison["snapshot_reused"] = False
         if not comparison.get("ok"):
             return _json({"detail": comparison.get("detail") or "Comparison unavailable."}, 400)
+        decision_candidate_scope = "primary"
+        decision_candidate_mpns = [part_b]
+        if str(body.get("decision_candidate_scope") or "").strip().lower() == "all_selected":
+            verified_candidates = comparison.get("candidate_snapshots")
+            if isinstance(verified_candidates, list) and len(verified_candidates) > 1:
+                seen_candidate_mpns: set[str] = set()
+                selected_mpns: list[str] = []
+                for candidate in verified_candidates:
+                    if not isinstance(candidate, dict):
+                        continue
+                    candidate_mpn = str(candidate.get("part_b") or candidate.get("mpn") or "").strip()
+                    key = candidate_mpn.casefold()
+                    if candidate_mpn and key not in seen_candidate_mpns:
+                        seen_candidate_mpns.add(key)
+                        selected_mpns.append(candidate_mpn)
+                if len(selected_mpns) > 1 and selected_mpns[0].casefold() == part_b.casefold():
+                    decision_candidate_scope = "all_selected"
+                    decision_candidate_mpns = selected_mpns
         analysis_id = str(comparison.get("analysis_id") or "").strip() or None
         report = (
             _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
@@ -2027,6 +2072,8 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "revision": (report or {}).get("revision"),
                 "part_a": part_a,
                 "part_b": part_b,
+                "decision_candidate_scope": decision_candidate_scope,
+                "decision_candidate_mpns": decision_candidate_mpns,
                 "manufacturer_a": manufacturer_a or comparison.get("manufacturer_a") or None,
                 "manufacturer_b": manufacturer_b or comparison.get("manufacturer_b") or None,
                 "decision": decision,

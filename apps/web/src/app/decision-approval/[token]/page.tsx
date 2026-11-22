@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { fetchDecisionApproval, respondToDecisionApproval, type DecisionRecord } from "@/lib/api";
+import { fetchDecisionApproval, getDecisionCandidates, respondToDecisionApproval, type DecisionRecord } from "@/lib/api";
 import { cleanUserText } from "@/lib/display";
 
 export default function DecisionApprovalPage() {
@@ -14,6 +14,7 @@ export default function DecisionApprovalPage() {
   const [rationale, setRationale] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const alternatives = getDecisionCandidates(record);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,8 +68,8 @@ export default function DecisionApprovalPage() {
             <dl className="cv-decision-share-grid">
               <div><dt>Decision</dt><dd>{cleanUserText(record.decision_label || record.decision || "—")}</dd></div>
               <div><dt>Reviewer</dt><dd>{cleanUserText(record.reviewer || "—")}</dd></div>
-              <div><dt>Parts reviewed</dt><dd>{cleanUserText(record.part_a || "—")} → {cleanUserText(record.part_b || "—")}</dd></div>
-              <div><dt>Manufacturers</dt><dd>{cleanUserText([record.manufacturer_a, record.manufacturer_b].filter(Boolean).join(" → ") || "Not recorded")}</dd></div>
+              <div><dt>Current part</dt><dd>{cleanUserText(record.part_a || "—")}{record.manufacturer_a ? ` · ${cleanUserText(record.manufacturer_a)}` : ""}</dd></div>
+              <div><dt>Replacement alternatives</dt><dd>{cleanUserText(alternatives.map((candidate) => candidate.manufacturer ? `${candidate.mpn} · ${candidate.manufacturer}` : candidate.mpn).join("; ") || "—")}</dd></div>
               <div><dt>Residual risk</dt><dd>{cleanUserText(record.residual_risk || "Not assessed")}</dd></div>
               <div><dt>Review status</dt><dd>{cleanUserText(status.replaceAll("_", " "))}</dd></div>
             </dl>

@@ -11,6 +11,7 @@ import {
   COMPARE_PARTS_TIMEOUT_MS,
   compareParts,
   fetchProfile,
+  getDecisionCandidates,
   listReports,
   recordDecision,
   type DecisionRecord,
@@ -664,7 +665,7 @@ function ComparePartsInner() {
         );
       }
       const primaryCandidate = multiColumns.length > 1
-        ? decisionPartB.trim()
+        ? decisionCandidateMpns[0]?.trim() || ""
         : decisionPartB.trim().split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean)[0]
           || String(result?.part_b || partB || "").trim();
       if (multiColumns.length > 1 && (!selectedMultiColumns.length || !selectedMultiColumns.some((column) => column.mpn === primaryCandidate))) {
@@ -789,6 +790,7 @@ function ComparePartsInner() {
         follow_up_owner: followUpOwner,
         follow_up_due_date: followUpDueDate || null,
         residual_risk: residualRisk,
+        decision_candidate_scope: multiSnapshot ? "all_selected" : "primary",
         // Reuse the on-screen comparison so the API skips a second full rebuild.
         comparison_snapshot: needsFreshCompare && !multiSnapshot ? null : {
           ...scopedComparison,
@@ -984,8 +986,8 @@ function ComparePartsInner() {
             <span className="cv-small-note" id="record-decision-help">
               {multiColumns.length > 1
                 ? hasDecisionCandidate
-                  ? `${selectedDecisionColumns.length} candidate${selectedDecisionColumns.length === 1 ? "" : "s"} selected for the record. Choose the candidate the decision applies to in the next step.`
-                  : "Compare the candidates, then select one or more candidates to attach to a decision record."
+                  ? `${selectedDecisionColumns.length} alternative${selectedDecisionColumns.length === 1 ? "" : "s"} selected. You can adjust the set in the decision form.`
+                  : "Compare the candidates, then choose one or more alternatives to include in a decision record."
                 : result
                   ? "The decision will apply to this candidate and include its comparison snapshot."
                   : "Compare two parts to enable decision recording."}
@@ -1050,14 +1052,18 @@ function ComparePartsInner() {
       {error ? <div className="cv-error" role="alert">The comparison could not complete. {error}</div> : null}
       {decisionSuccess ? (
         <div className="cv-success" role="status">
-          <span>Decision recorded for {decisionSuccess.part_a} → {decisionSuccess.part_b}.</span>
+          <span>
+            Decision recorded for {decisionSuccess.part_a} → {getDecisionCandidates(decisionSuccess)
+              .map((candidate) => candidate.manufacturer ? `${candidate.mpn} · ${candidate.manufacturer}` : candidate.mpn)
+              .join(", ")}.
+          </span>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {decisionSuccess.decision === "approve_alternate" && decisionSuccess.analysis_id ? (
               <Link
                 className="cv-button small primary"
                 href={`/reports/${encodeURIComponent(decisionSuccess.analysis_id)}?apply_decision=${encodeURIComponent(decisionSuccess.id)}`}
               >
-                Create updated BOM revision
+                {getDecisionCandidates(decisionSuccess).length > 1 ? "Choose a replacement for a new BOM revision" : "Create updated BOM revision"}
               </Link>
             ) : null}
             <Link href={decisionSuccess.analysis_id ? `/engineering-decisions?analysis_id=${encodeURIComponent(decisionSuccess.analysis_id)}` : "/engineering-decisions"}>
@@ -1065,7 +1071,11 @@ function ComparePartsInner() {
             </Link>
           </div>
           {decisionSuccess.decision === "approve_alternate" && decisionSuccess.analysis_id ? (
-            <span className="cv-small-note">This opens a new revision draft with the approved part applied. The original report stays unchanged.</span>
+            <span className="cv-small-note">
+              {getDecisionCandidates(decisionSuccess).length > 1
+                ? "This opens a new revision draft. Choose one of the approved alternatives for this BOM; the original report stays unchanged."
+                : "This opens a new revision draft with the approved part applied. The original report stays unchanged."}
+            </span>
           ) : null}
         </div>
       ) : null}
@@ -1172,9 +1182,9 @@ function ComparePartsInner() {
                   style={{ marginBottom: 12, borderColor: "#c9d8ec", background: "#f8fbff" }}
                   data-testid="decision-candidate-selection"
                 >
-                  <h3 className="cv-card-title">Choose candidates for the decision record</h3>
+                  <h3 className="cv-card-title">Select replacement options to include</h3>
                   <p className="cv-card-subtitle">
-                    Select the parts you want attached after reviewing the comparison. The decision applies to one candidate you choose in the next step; any other selected candidates remain comparison context only.
+                    Select every alternative you want included in this decision. The decision applies to all selected alternatives; candidates left unchecked are excluded from the record.
                   </p>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8, marginTop: 10 }}>
                     {multiColumns.map((column) => {
@@ -1206,7 +1216,7 @@ function ComparePartsInner() {
                   </div>
                   <p className="cv-small-note" style={{ margin: "10px 0 0" }}>
                     {selectedDecisionColumns.length
-                      ? `${selectedDecisionColumns.length} selected. The recorded disposition and BOM update apply only to the candidate chosen in the decision form.`
+                      ? `${selectedDecisionColumns.length} alternative${selectedDecisionColumns.length === 1 ? "" : "s"} selected. If you approve this set, complete the validation checks for every selected alternative.`
                       : "Choose at least one available candidate to enable “Record a decision.”"}
                   </p>
                 </div>
@@ -1549,34 +1559,64 @@ function ComparePartsInner() {
                     required
                   />
                 </label>
-                <label className="cv-field">
-                  <span>Candidate this decision applies to</span>
-                  <select
-                    value={decisionPartB}
-                    onChange={(event) => setDecisionPartB(event.target.value)}
-                    disabled={decisionBusy || decisionCandidateMpns.length <= 1}
-                    required
-                    aria-describedby="decision-candidate-scope-help"
-                  >
-                    {decisionCandidateMpns.map((mpn) => {
-                      const brand = manufacturerBByMpn[mpn]
-                        || multiColumns.find((column) => column.mpn === mpn)?.manufacturer
-                        || "";
-                      return <option key={mpn} value={mpn}>{mpn}{brand ? ` · ${brand}` : ""}</option>;
-                    })}
-                  </select>
+                <div className="cv-field" aria-describedby="decision-candidate-scope-help">
+                  <span>Replacement alternatives in this decision</span>
+                  {multiColumns.length > 1 ? (
+                    <div style={{ display: "grid", gap: 6, maxHeight: 180, overflowY: "auto", padding: 8, border: "1px solid #d6e1ef", borderRadius: 8, background: "#fff" }} data-testid="decision-form-candidate-selection">
+                      {multiColumns.map((column) => {
+                        const selectable = column.result.ok !== false && Boolean(String(column.result.snapshot_token || "").trim());
+                        const checked = decisionCandidateMpns.includes(column.mpn);
+                        const brand = column.manufacturer || manufacturerBByMpn[column.mpn] || candidateManufacturer(column);
+                        return (
+                          <label key={`decision-form-candidate-${column.mpn}`} style={{ display: "flex", gap: 8, alignItems: "flex-start", opacity: selectable ? 1 : 0.58 }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!selectable || decisionBusy}
+                              aria-label={`Include ${column.mpn} in this decision`}
+                              onChange={(event) => {
+                                const next = multiColumns
+                                  .filter((item) => item.result.ok !== false && Boolean(String(item.result.snapshot_token || "").trim()))
+                                  .filter((item) => event.target.checked
+                                    ? item.mpn === column.mpn || decisionCandidateMpns.includes(item.mpn)
+                                    : item.mpn !== column.mpn && decisionCandidateMpns.includes(item.mpn))
+                                  .map((item) => item.mpn);
+                                setDecisionCandidateMpns(next);
+                                setDecisionPartB(next[0] || "");
+                              }}
+                            />
+                            <span>
+                              <strong>{cleanUserText(column.mpn)}</strong>
+                              {brand ? <span className="cv-small-note" style={{ display: "block" }}>{cleanUserText(brand)}</span> : null}
+                              {!selectable ? <span className="cv-small-note" style={{ display: "block" }}>Comparison unavailable — rerun before recording.</span> : null}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minHeight: 42, alignItems: "center", padding: 8, border: "1px solid #d6e1ef", borderRadius: 8, background: "#fff" }}>
+                      {decisionCandidateMpns.map((mpn) => {
+                        const brand = manufacturerBByMpn[mpn]
+                          || multiColumns.find((column) => column.mpn === mpn)?.manufacturer
+                          || "";
+                        return <span className="cv-badge blue" key={mpn}>{cleanUserText(mpn)}{brand ? ` · ${cleanUserText(brand)}` : ""}</span>;
+                      })}
+                      {!decisionCandidateMpns.length ? <span className="cv-small-note">No alternative selected.</span> : null}
+                    </div>
+                  )}
                   <p className="cv-small-note" id="decision-candidate-scope-help" style={{ margin: "6px 0 0" }}>
                     {decisionCandidateMpns.length > 1
-                      ? "The disposition applies to this selected candidate. Other selected parts are saved only as comparison context."
+                      ? "This decision covers every selected alternative. To update a BOM, choose one of these parts for that revision."
                       : decisionCandidateMpns.length === 1
-                        ? "This is the candidate covered by the decision and any resulting BOM revision."
-                        : "Select an available candidate before recording the decision."}
+                        ? "This decision covers the selected alternative."
+                        : "Select at least one available alternative to record this decision."}
                   </p>
-                </label>
+                </div>
               </div>
               {decisionCandidateMpns.length > 1 && (datasheetA || datasheetB) ? (
                 <p className="cv-error" role="status" style={{ margin: "0 0 12px" }}>
-                  To keep the uploaded datasheet evidence attached, close this form and select one candidate. Multiple candidates can be attached together when no datasheets are uploaded.
+                  To keep the uploaded datasheet evidence attached, select one alternative. Multiple alternatives can be recorded together when no datasheets are uploaded.
                 </p>
               ) : null}
 
@@ -1626,7 +1666,7 @@ function ComparePartsInner() {
 
               <fieldset className="cv-modal-checklist">
                 <legend>Validation completed</legend>
-                <p>Select the engineering checks that were completed for this decision.</p>
+                <p>For an approval with multiple alternatives, complete these checks for every selected part.</p>
                 <div>
                   {VALIDATION_CHECKS.map(([value, label]) => (
                     <label key={value}>
