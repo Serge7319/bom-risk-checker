@@ -57,6 +57,47 @@ def _number(value: Any) -> Any:
     return None
 
 
+def _candidate_lead_time_fields(
+    candidate: Mapping[str, Any],
+    *,
+    exact_source: bool,
+    lifecycle_status: str,
+    lifecycle_evidence: list[Any],
+    lifecycle_conflict: bool,
+) -> dict[str, Any]:
+    """Keep a supplier lead time only when the listing can still be ordered."""
+    if not exact_source:
+        return {
+            "lead_time_weeks": None,
+            "lead_time_source": "",
+            "lead_time_status": "not-returned",
+        }
+    from src.alternative_classification import candidate_lead_time_block_reason
+
+    raw_value = candidate.get("lead_time_weeks")
+    if raw_value in (None, ""):
+        raw_value = candidate.get("Lead Time Weeks")
+    value = _number(raw_value)
+    reason = candidate_lead_time_block_reason(
+        lifecycle_status,
+        lifecycle_evidence,
+        lifecycle_conflict=lifecycle_conflict,
+    )
+    if reason:
+        status = f"withheld-{reason}"
+        value = None
+    else:
+        status = "reported" if value is not None else "not-returned"
+    return {
+        "lead_time_weeks": value,
+        "lead_time_source": (
+            str(candidate.get("lead_time_source") or candidate.get("Supplier") or "")
+            if value is not None else ""
+        ),
+        "lead_time_status": status,
+    }
+
+
 def _is_distributor_label(value: Any) -> bool:
     compact = "".join(char for char in str(value or "").casefold() if char.isalnum())
     return compact in {
@@ -687,6 +728,13 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
         if price_value is not None and price_value <= 0:
             price_value = None
         compliance = candidate.get("compliance_evidence")
+        lead_time_fields = _candidate_lead_time_fields(
+            candidate,
+            exact_source=exact_source,
+            lifecycle_status=lifecycle_status,
+            lifecycle_evidence=lifecycle_evidence,
+            lifecycle_conflict=lifecycle_conflict,
+        )
         return {
             "mpn": candidate_mpn,
             "manufacturer": str(candidate.get("Manufacturer") or ""),
@@ -710,8 +758,7 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
             "stock": stock_value if exact_source else None,
             "unit_price": price_value if exact_source else None,
             "currency": str(candidate.get("unit_price_currency") or candidate.get("currency") or candidate.get("Currency") or ""),
-            "lead_time_weeks": _number(candidate.get("lead_time_weeks", candidate.get("Lead Time Weeks"))) if exact_source else None,
-            "lead_time_source": str(candidate.get("lead_time_source") or candidate.get("Supplier") or "") if exact_source else "",
+            **lead_time_fields,
             "retrieved_at": str(candidate.get("Retrieved At") or candidate.get("retrieved_at") or ""),
             "field_sources": dict(candidate.get("field_sources") or {}) if isinstance(candidate.get("field_sources"), dict) else {},
             "compliance_evidence": dict(compliance or {}) if exact_source and isinstance(compliance, dict) else {},
@@ -753,6 +800,7 @@ def find_replacements(mpn: str, manufacturer: str = "") -> dict[str, Any]:
             "currency": projected.get("currency") or "",
             "lead_time_weeks": projected.get("lead_time_weeks"),
             "lead_time_source": projected.get("lead_time_source") or "",
+            "lead_time_status": projected.get("lead_time_status") or "not-returned",
             "retrieved_at": projected.get("retrieved_at") or "",
             "field_sources": dict(projected.get("field_sources") or {}),
             "compliance_evidence": dict(projected.get("compliance_evidence") or {}),
