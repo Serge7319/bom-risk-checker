@@ -31,6 +31,7 @@ from src.datasheet_qa import (
 from src.datasheet_comparison import verify_datasheet_identity
 from src.design_impact_analyzer import build_design_impact
 from apps.api.evidence_contract import (
+    EVIDENCE_LIVE,
     annotate_report_parts,
     classify_part_evidence,
     evidence_mode_and_gap,
@@ -2248,6 +2249,65 @@ def supply_risk_payload(
     )
 
 
+
+def _portfolio_parts_with_current_evidence(
+    analyses: list[dict[str, Any]], *, workspace_id: str
+) -> list[dict[str, Any]]:
+    """Use current field-level evidence for portfolio component signals.
+
+    Persisted risk, stock, price, and lifecycle fields can outlive the evidence
+    that produced them. Re-annotate each visible report and withhold fields
+    whose current evidence envelope is missing, stale, conflicting, or
+    unverified before aggregating shared-component signals.
+    """
+    current_parts: list[dict[str, Any]] = []
+    for analysis in analyses:
+        analysis_id = str(analysis.get("id") or analysis.get("analysis_id") or "").strip()
+        if not analysis_id:
+            continue
+        report = get_report(analysis_id, workspace_id=workspace_id)
+        if not report:
+            continue
+        annotated = annotate_report_parts(report)
+        for saved_part in annotated.get("parts") or []:
+            if not isinstance(saved_part, dict):
+                continue
+            part = dict(saved_part)
+            evidence = part.get("evidence") if isinstance(part.get("evidence"), dict) else {}
+            fields = evidence.get("fields") if isinstance(evidence.get("fields"), dict) else {}
+
+            lifecycle_value = str(
+                part.get("Lifecycle") or part.get("lifecycle_status") or "Unknown"
+            ).strip()
+            lifecycle_field = fields.get("lifecycle") if isinstance(fields.get("lifecycle"), dict) else {}
+            lifecycle_class = str(lifecycle_field.get("evidence_class") or "missing")
+            part["portfolio_lifecycle_reported"] = lifecycle_value
+            part["portfolio_lifecycle_evidence_class"] = lifecycle_class
+            safe_lifecycle = lifecycle_value if lifecycle_class == EVIDENCE_LIVE else "Needs verification"
+            part["Lifecycle"] = safe_lifecycle
+            part["lifecycle_status"] = safe_lifecycle
+
+            stock_field = fields.get("stock") if isinstance(fields.get("stock"), dict) else {}
+            if stock_field.get("evidence_class") != EVIDENCE_LIVE:
+                for key in ("Stock", "stock", "stock_available", "total_market_stock", "Total Market Stock"):
+                    part[key] = None
+
+            price_field = fields.get("price") if isinstance(fields.get("price"), dict) else {}
+            if price_field.get("evidence_class") != EVIDENCE_LIVE:
+                for key in ("price", "unit_price", "Unit Price"):
+                    part[key] = None
+
+            if not bool(evidence.get("identity_verified")):
+                part["supplier_count"] = None
+
+            part["analysis_id"] = analysis_id
+            if not part.get("project_name"):
+                part["project_name"] = analysis.get("project_name") or analysis.get("name") or ""
+            if not part.get("filename"):
+                part["filename"] = analysis.get("filename") or analysis.get("file_name") or ""
+            current_parts.append(part)
+    return current_parts
+
 def portfolio_payload(*, workspace_id: str) -> dict[str, Any]:
     analyses, parts = analyses_and_parts(workspace_id=workspace_id)
     monitoring = monitoring_payload(workspace_id=workspace_id)
@@ -2310,7 +2370,8 @@ def portfolio_payload(*, workspace_id: str) -> dict[str, Any]:
             "leadership_metrics": leadership_metrics,
             "reports": [],
         }
-    intelligence = build_portfolio_intelligence(analyses, parts, alerts)
+    current_parts = _portfolio_parts_with_current_evidence(analyses, workspace_id=workspace_id)
+    intelligence = build_portfolio_intelligence(analyses, current_parts, alerts)
     return _json_safe(
         {
             "ok": True,
