@@ -43,6 +43,7 @@ function formatAnalysisDate(value: unknown) {
 export default function DesignImpactPage() {
   const session = useRequireSession();
   const [mpn, setMpn] = useState("");
+  const [componentQuery, setComponentQuery] = useState("");
   const [suggestedMpn, setSuggestedMpn] = useState("");
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState("");
@@ -109,6 +110,20 @@ export default function DesignImpactPage() {
   const intel = intelligence;
   const rawCatalog = (intelligence.component_catalog || intelligence.catalog || []) as Array<Record<string, unknown>>;
   const catalog = Array.isArray(rawCatalog) ? rawCatalog.filter(isUsablePart) : [];
+  const normalizedQuery = componentQuery.trim().toLowerCase();
+  const filteredCatalog = normalizedQuery
+    ? catalog.filter((row) => {
+        const searchableText = [
+          partNumber(row),
+          cell(row.Manufacturer || row.manufacturer || row["Manufacturer Values"], ""),
+          cell(row.Description || row.description, ""),
+          cell(row.Category || row.category, ""),
+          cell(row.Lifecycle || row.lifecycle || row["Lifecycle Values"], ""),
+          cell(row["Risk Level"] || row.risk_level || row["Risk Level Values"], ""),
+        ].join(" ").toLowerCase();
+        return searchableText.includes(normalizedQuery);
+      })
+    : catalog;
   const selectedMpn = String(intelligence.selected_mpn || "").trim();
   const selected =
     catalog.find((row) => partNumber(row).toLowerCase() === selectedMpn.toLowerCase()) || {};
@@ -149,7 +164,7 @@ export default function DesignImpactPage() {
       return;
     }
     if (!catalog.some((row) => partNumber(row).toLowerCase() === requested.toLowerCase())) {
-      setError("Choose a component from the saved part suggestions.");
+      setError("Choose a component from the saved parts dropdown.");
       return;
     }
     load(requested, true);
@@ -175,7 +190,7 @@ export default function DesignImpactPage() {
               <div className="cv-eyebrow">Step 1</div>
               <h2 id="component-picker-title" className="cv-card-title">Choose a component</h2>
               <p className="cv-card-subtitle">
-                Search {catalog.length} parts found in saved BOM analyses.
+                Search and select from all {catalog.length} parts in your saved BOM analyses.
               </p>
             </div>
           </div>
@@ -183,44 +198,66 @@ export default function DesignImpactPage() {
           <form onSubmit={onSubmit}>
             <div className="cv-form-grid">
               <div className="cv-field">
-                <label htmlFor="mpn">Part number</label>
+                <label htmlFor="component-search">Search saved parts</label>
                 <input
-                  id="mpn"
-                  list="saved-component-options"
-                  value={mpn}
+                  id="component-search"
+                  type="search"
+                  value={componentQuery}
                   onChange={(event) => {
-                    setMpn(event.target.value);
+                    setComponentQuery(event.target.value);
+                    setMpn("");
                     setError("");
                     setNotice("");
                     setShowImpact(false);
                   }}
-                  placeholder="Type an MPN or choose a saved part"
+                  placeholder={"Search all " + catalog.length + " parts by MPN or manufacturer"}
                   autoComplete="off"
-                  aria-describedby="impact-data-note"
+                  aria-describedby="component-picker-help"
                 />
-                <datalist id="saved-component-options">
-                  {catalog.map((row, index) => (
-                    <option key={index} value={partNumber(row)}>
-                      {cell(row.Manufacturer || row.manufacturer || row["Manufacturer Values"], "Manufacturer not recorded")}
-                    </option>
-                  ))}
-                </datalist>
               </div>
-              <div style={{ display: "flex", alignItems: "end" }}>
-                <button type="submit" className="cv-button primary" disabled={busy || !mpn.trim()}>
-                  {busy
-                    ? "Loading…"
-                    : showImpact && mpn.toLowerCase() === selectedMpn.toLowerCase()
-                      ? "Refresh impact"
-                      : "View impact"}
-                </button>
+              <div className="cv-field">
+                <label htmlFor="component-select">Select a part</label>
+                <select
+                  id="component-select"
+                  value={mpn}
+                  onChange={(event) => {
+                    setMpn(event.target.value);
+                    setComponentQuery("");
+                    setError("");
+                    setNotice("");
+                    setShowImpact(false);
+                  }}
+                  disabled={busy || !filteredCatalog.length}
+                  aria-describedby="component-picker-help"
+                >
+                  <option value="" disabled>Choose a saved part</option>
+                  {filteredCatalog.map((row, index) => {
+                    const manufacturer = cell(
+                      row.Manufacturer || row.manufacturer || row["Manufacturer Values"],
+                      "Manufacturer not recorded",
+                    );
+                    return (
+                      <option key={partNumber(row) || index} value={partNumber(row)}>
+                        {partNumber(row) + " · " + manufacturer}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
+              <p id="component-picker-help" className="cv-small-note" style={{ margin: 0 }}>
+                {filteredCatalog.length + " of " + catalog.length + " saved parts match. Leave search blank to browse the full list."}
+              </p>
+              <button type="submit" className="cv-button primary" disabled={busy || !mpn.trim()}>
+                {busy ? "Loading…" : "Refresh impact"}
+              </button>
             </div>
           </form>
 
           {suggestedMpn && mpn.toLowerCase() === suggestedMpn.toLowerCase() ? (
             <p className="cv-small-note" style={{ marginTop: 12 }}>
-              Suggested starting point: <strong>{suggestedMpn}</strong>. Cadivor prioritizes saved parts with recorded risk, lifecycle, or sourcing signals. You can choose any part in the list.
+              Suggested starting point: <strong>{suggestedMpn}</strong>. Cadivor prioritizes saved parts with recorded risk, lifecycle, or sourcing signals. Search for any other part or choose it from the dropdown.
             </p>
           ) : null}
           {notice ? <p className="cv-small-note" role="status" style={{ marginTop: 12 }}>{notice}</p> : null}
@@ -257,7 +294,7 @@ export default function DesignImpactPage() {
         <section className="cv-card pad" style={{ marginTop: 14 }} aria-live="polite">
           <h2 className="cv-card-title">Step 2 · Review where it is used</h2>
           <p className="cv-card-subtitle" style={{ marginTop: 8 }}>
-            Choose a part above and select <strong>View impact</strong>. Cadivor will show the saved BOMs that contain it and the recorded risk and lifecycle signals. You decide whether those designs need review.
+            Choose a part above and select <strong>Refresh impact</strong>. Cadivor will show the saved BOMs that contain it and the recorded risk and lifecycle signals. You decide whether those designs need review.
           </p>
         </section>
       ) : null}
