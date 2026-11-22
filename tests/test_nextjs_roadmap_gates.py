@@ -1,6 +1,7 @@
 """Roadmap gate coverage for the Next.js migration API (synthetic / mocked)."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -82,7 +83,9 @@ def test_evidence_contract_separates_synthetic_from_live():
     assert synthetic["evidence_class"] == evidence_contract.EVIDENCE_SYNTHETIC
     assert synthetic["synthetic"] is True
 
-    live = evidence_contract.classify_part_evidence(
+    # A supplier name and exact MPN do not establish provenance when the URL
+    # belongs to an unrelated domain.
+    wrong_domain = evidence_contract.classify_part_evidence(
         {
             "MPN": "RES10K",
             "manufacturer_part_number": "RES10K",
@@ -92,6 +95,22 @@ def test_evidence_contract_separates_synthetic_from_live():
             "supplier_data_verified": True,
             "provider_status": "AVAILABLE",
             "retrieved_at": "2026-11-05T12:00:00+00:00",
+        }
+    )
+    assert wrong_domain["evidence_class"] == evidence_contract.EVIDENCE_UNVERIFIED
+
+    # Controlled fixture-shaped evidence only; this test does not call a
+    # supplier or represent a real listing or price.
+    live = evidence_contract.classify_part_evidence(
+        {
+            "MPN": "RES10K",
+            "manufacturer_part_number": "RES10K",
+            "source": "DigiKey",
+            "evidence_source": "live-authorized-supplier",
+            "product_url": "https://www.digikey.com/en/products/detail/test/RES10K",
+            "supplier_data_verified": True,
+            "provider_status": "AVAILABLE",
+            "retrieved_at": datetime.now(timezone.utc).isoformat(),
         }
     )
     assert live["evidence_class"] == evidence_contract.EVIDENCE_LIVE
