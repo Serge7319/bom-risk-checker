@@ -69,7 +69,9 @@ def _risk_bucket(score: float | None, raw_level: Any) -> str:
         return "High"
     if level in {"medium", "moderate", "watch"}:
         return "Medium"
-    if level in {"low", "minimal"} or (score is not None and score > 0):
+    if any(term in level for term in ("needs verification", "not assessed", "unassessed", "unknown")):
+        return "Unknown"
+    if level in {"low", "minimal"}:
         return "Low"
     return "Unknown"
 
@@ -351,6 +353,7 @@ def build_portfolio_intelligence(
                 "Risk Score": risk_score,
                 "Risk Score Recorded": risk_score_value is not None,
                 "Risk Level": risk_level,
+                "Risk Assessment": _text(raw_risk_level, "Not assessed"),
                 "Quantity": int(_number(_first(row, "quantity", "qty", "required_quantity"), 1)),
             }
         )
@@ -388,6 +391,7 @@ def build_portfolio_intelligence(
                 "Highest Risk Score": max(
                     (row["Risk Score"] for row in scored_rows), default=None
                 ),
+                "Risk Assessment": worst["Risk Assessment"],
                 "Lowest Stock": min(
                     (row["Available Stock"] for row in stock_rows), default=None
                 ),
@@ -677,7 +681,7 @@ def build_portfolio_intelligence(
             "description": "Parts recorded in more than one saved project.",
             "headers": [
                 "Part Number", "Manufacturer", "Projects Using Part",
-                "Highest Risk Score", "Lowest Stock", "Minimum Supplier Sources",
+                "Highest Risk Score", "Risk Assessment", "Lowest Stock", "Minimum Supplier Sources",
                 "Lifecycle", "Reported Lifecycle", "Lifecycle Evidence",
             ],
             "rows": shared_components,
