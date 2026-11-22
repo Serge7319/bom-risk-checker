@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AskCadivorPanel } from "@/components/AskCadivorPanel";
 import { AnalysisStageNavigation } from "@/components/AnalysisStageNavigation";
 import { Shell } from "@/components/Shell";
@@ -188,12 +188,15 @@ function reportLifecycleDisplay(part: Record<string, unknown>): ReportLifecycleD
   };
 }
 
-export default function ReportPage() {
+function ReportPageInner() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const session = useRequireSession();
+  const requestedApplyDecisionId = (searchParams.get("apply_decision") || "").trim();
   const [report, setReport] = useState<Report | null>(null);
   const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
+  const [decisionHistoryLoaded, setDecisionHistoryLoaded] = useState(false);
   const [decisionError, setDecisionError] = useState("");
   const [error, setError] = useState("");
   const [exportError, setExportError] = useState("");
@@ -214,13 +217,19 @@ export default function ReportPage() {
   const [usedDecisionIds, setUsedDecisionIds] = useState<string[]>([]);
   const [revisionBusy, setRevisionBusy] = useState(false);
   const [revisionError, setRevisionError] = useState("");
+  const openedDecisionRequest = useRef("");
 
   useEffect(() => {
     if (!session) return;
+    let active = true;
     const analysisKey = String(params.id || "");
+    setReport(null);
+    setError("");
+    setDecisionHistoryLoaded(false);
     setReview(readReviewProgress(analysisKey, session));
     fetchReport(params.id, session.access_token)
       .then((data) => {
+        if (!active) return;
         setReport(data);
         const riskCounts = getReportRiskCounts(data);
         if (riskCounts.high > 0) {
@@ -245,14 +254,23 @@ export default function ReportPage() {
           filename: data.filename,
         }, session);
       })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : "Failed to load report"),
-      );
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : "Failed to load report");
+      });
     listDecisionRecords(session.access_token, params.id)
       .then(({ records }) => {
-        setDecisions(records || []);
+        if (active) {
+          setDecisions(records || []);
+          setDecisionHistoryLoaded(true);
+        }
       })
-      .catch((err) => setDecisionError(err instanceof Error ? err.message : "Decision history could not load."));
+      .catch((err) => {
+        if (active) {
+          setDecisionError(err instanceof Error ? err.message : "Decision history could not load.");
+          setDecisionHistoryLoaded(true);
+        }
+      });
+    return () => { active = false; };
   }, [params.id, session]);
 
   async function onDownload(format: ReportExportFormat) {
@@ -309,7 +327,7 @@ export default function ReportPage() {
     }
   }
 
-  async function openBomEditor() {
+  const openBomEditor = useCallback(async (applyDecisionId?: string) => {
     if (!session || !report) return;
     setRevisionError("");
     try {
@@ -327,17 +345,58 @@ export default function ReportPage() {
       const projectName = projects.find(
         (project) => String(project.id || "") === String(report.project_id || ""),
       )?.name;
+      let initialRows = editableRows(report.parts || []);
+      const selectedDecision = applyDecisionId
+        ? decisions.find((decision) => decision.id === applyDecisionId)
+        : undefined;
+      let initialAppliedDecisionIds: string[] = [];
+      let initialUsedDecisionIds: string[] = [];
+      if (applyDecisionId) {
+        if (!selectedDecision || selectedDecision.decision !== "approve_alternate") {
+          throw new Error("This approved replacement is not available in the selected BOM report.");
+        }
+        const currentMpn = selectedDecision.part_a.trim().toLowerCase();
+        const candidateMpn = selectedDecision.part_b.trim();
+        if (!candidateMpn || candidateMpn.toLowerCase() === currentMpn) {
+          throw new Error("This decision does not contain a distinct replacement part number.");
+        }
+        if (!initialRows.some((row) => row.mpn.trim().toLowerCase() === currentMpn)) {
+          throw new Error(`The current part ${selectedDecision.part_a} is not present in this saved BOM report.`);
+        }
+        if (initialRows.some((row) => row.mpn.trim().toLowerCase() === candidateMpn.toLowerCase())) {
+          throw new Error(`The candidate ${candidateMpn} is already in this BOM. Review the existing line before creating a revision.`);
+        }
+        initialRows = initialRows.map((row) => row.mpn.trim().toLowerCase() !== currentMpn
+          ? row
+          : {
+              ...row,
+              mpn: candidateMpn,
+              manufacturer: String(selectedDecision.manufacturer_b || ""),
+            });
+        initialAppliedDecisionIds = [selectedDecision.id];
+        initialUsedDecisionIds = [selectedDecision.id];
+      }
       setProjectNameDraft(userFacingLabel(projectName || String(report.project_name || "").split(" — ")[0], "General"));
       setBomNameDraft(userFacingLabel(report.bom_name || report.filename, "Saved BOM"));
       setRevisionDraft(revisionCandidate(String(report.revision || "A"), used));
-      setBomEditorRows(editableRows(report.parts || []));
-      setAppliedDecisionIds([]);
-      setUsedDecisionIds([]);
+      setBomEditorRows(initialRows);
+      setAppliedDecisionIds(initialAppliedDecisionIds);
+      setUsedDecisionIds(initialUsedDecisionIds);
       setBomEditorOpen(true);
     } catch (err) {
       setRevisionError(err instanceof Error ? err.message : "Saved BOM details could not be loaded.");
     }
-  }
+  }, [decisions, report, session]);
+
+  useEffect(() => {
+    const reportMatchesRoute = report
+      && String(report.analysis_id || report.id || "") === String(params.id || "");
+    if (!requestedApplyDecisionId || !session || !reportMatchesRoute || !decisionHistoryLoaded) return;
+    const requestKey = `${String(params.id || "")}:${requestedApplyDecisionId}`;
+    if (openedDecisionRequest.current === requestKey) return;
+    openedDecisionRequest.current = requestKey;
+    void openBomEditor(requestedApplyDecisionId);
+  }, [decisionHistoryLoaded, openBomEditor, params.id, report, requestedApplyDecisionId, session]);
 
   function applyDecisionCandidate(decision: DecisionRecord) {
     const currentMpn = decision.part_a.trim().toLowerCase();
@@ -355,7 +414,7 @@ export default function ReportPage() {
       : {
           ...row,
           mpn: candidateMpn,
-          manufacturer: String(decision.manufacturer_b || row.manufacturer),
+          manufacturer: String(decision.manufacturer_b || ""),
         }));
     setRevisionError("");
     const decisionsForPart = new Set(
@@ -486,6 +545,11 @@ export default function ReportPage() {
           This saved report could not be opened. {error} <Link href="/reports">Return to saved reports</Link>
         </div>
       ) : null}
+      {revisionError && !bomEditorOpen ? (
+        <div className="cv-error" role="alert" style={{ marginBottom: 14 }}>
+          The revision draft could not be prepared. {revisionError} You can open “Edit BOM / new revision” to review it manually.
+        </div>
+      ) : null}
 
       <AnalysisStageNavigation
         analysisId={String(report?.analysis_id || report?.id || params.id)}
@@ -517,7 +581,7 @@ export default function ReportPage() {
               <div>
                 <div className="cv-eyebrow">BOM revision editor</div>
                 <h2 id="bom-editor-title">Edit BOM and create a new revision</h2>
-                <p>The current saved report stays unchanged. Cadivor validates and re-analyzes the edited part list as a new revision on this saved BOM.</p>
+                <p>The current saved report stays unchanged. Cadivor validates and re-analyzes the edited part list as a new revision on this saved BOM{usedDecisionIds.length ? "; the selected approved replacement is already applied in this draft" : ""}.</p>
               </div>
               <span className="cv-badge blue">New revision</span>
             </div>
@@ -543,7 +607,7 @@ export default function ReportPage() {
               {decisions.some((decision) => decision.decision !== "reject_alternate") ? (
                 <section className="cv-card pad" style={{ margin: "14px 0", background: "#f8fbff" }}>
                   <h3 className="cv-card-title">Replacement candidates from this BOM</h3>
-                  <p className="cv-card-subtitle">Use a candidate in the draft to update the new report. This does not modify the source report or qualify the part; only an approved decision is linked as approval evidence.</p>
+                  <p className="cv-card-subtitle">Apply approved replacements directly to this new revision. You can also add a non-rejected candidate for evaluation; it will not count as approval. Apply candidates for different source parts in one revision, but choose only one candidate for each source part. The source report stays unchanged, and the draft does not independently qualify a part.</p>
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     {decisions
                       .filter((decision) => decision.decision !== "reject_alternate")
@@ -1187,6 +1251,14 @@ export default function ReportPage() {
         </button>
       )}
     </Shell>
+  );
+}
+
+export default function ReportPage() {
+  return (
+    <Suspense fallback={<div className="cv-loading">Loading saved report…</div>}>
+      <ReportPageInner />
+    </Suspense>
   );
 }
 

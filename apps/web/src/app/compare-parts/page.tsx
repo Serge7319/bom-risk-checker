@@ -136,10 +136,12 @@ function ComparePartsInner() {
   const [progress, setProgress] = useState<CompareProgress | null>(null);
   const [result, setResult] = useState<Row | null>(null);
   const [multiColumns, setMultiColumns] = useState<MultiCompareColumn[]>([]);
+  const [selectedDecisionCandidateMpns, setSelectedDecisionCandidateMpns] = useState<string[]>([]);
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [decisionAnalysisId, setDecisionAnalysisId] = useState("");
   const [decisionPartA, setDecisionPartA] = useState("");
   const [decisionPartB, setDecisionPartB] = useState("");
+  const [decisionCandidateMpns, setDecisionCandidateMpns] = useState<string[]>([]);
   const [decision, setDecision] = useState("hold_for_review");
   const [reviewer, setReviewer] = useState("");
   const [reviewerName, setReviewerName] = useState("");
@@ -263,6 +265,7 @@ function ComparePartsInner() {
     setProgress(null);
     setResult(null);
     setMultiColumns([]);
+    setSelectedDecisionCandidateMpns([]);
     setDecisionSuccess(null);
     try {
       // Explicit BOM selection only — never fall back to last-analysis localStorage.
@@ -448,11 +451,14 @@ function ComparePartsInner() {
     const scopedId = analysisId.trim();
     setDecisionAnalysisId(scopedId);
     setDecisionPartA(String(result?.part_a || partA || ""));
-    setDecisionPartB(
-      multiColumns.length > 1
-        ? multiColumns.map((column) => column.mpn).join(", ")
-        : String(result?.part_b || partB || ""),
-    );
+    const selectedColumns = multiColumns.length > 1
+      ? multiColumns.filter((column) => selectedDecisionCandidateMpns.includes(column.mpn) && column.result.ok !== false)
+      : [];
+    const candidatesForDecision = multiColumns.length > 1
+      ? selectedColumns.map((column) => column.mpn)
+      : [String(result?.part_b || partB || "").trim()].filter(Boolean);
+    setDecisionCandidateMpns(candidatesForDecision);
+    setDecisionPartB(candidatesForDecision[0] || "");
     setDecision("hold_for_review");
     reviewerTouched.current = false;
     setReviewer(reviewerName);
@@ -464,10 +470,9 @@ function ComparePartsInner() {
     setResidualRisk("unknown");
     setDecisionError("");
     setDecisionSuccess(null);
-    const multiReady =
-      multiColumns.length <= 1
-      || multiColumns.every((column) => columnMatchesScope(column, scopedId));
-    setDecisionScopeStale(!multiReady);
+    const multiReady = selectedColumns.length > 0
+      && selectedColumns.every((column) => columnMatchesScope(column, scopedId));
+    setDecisionScopeStale(multiColumns.length > 1 && !multiReady);
     setDecisionScopeProgress("");
     setDecisionOpen(true);
   }
@@ -650,10 +655,21 @@ function ComparePartsInner() {
     setDecisionBusy(true);
     setDecisionError("");
     try {
-      const primaryCandidate =
-        multiColumns[0]?.mpn ||
-        decisionPartB.trim().split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean)[0] ||
-        decisionPartB.trim();
+      const selectedMultiColumns = multiColumns.length > 1
+        ? multiColumns.filter((column) => decisionCandidateMpns.includes(column.mpn))
+        : [];
+      if (selectedMultiColumns.length > 1 && (datasheetA || datasheetB)) {
+        throw new Error(
+          "Uploaded datasheets can be attached to a decision for one candidate at a time. Close this form and select one candidate, or remove the uploads to save multiple candidates as comparison context.",
+        );
+      }
+      const primaryCandidate = multiColumns.length > 1
+        ? decisionPartB.trim()
+        : decisionPartB.trim().split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean)[0]
+          || String(result?.part_b || partB || "").trim();
+      if (multiColumns.length > 1 && (!selectedMultiColumns.length || !selectedMultiColumns.some((column) => column.mpn === primaryCandidate))) {
+        throw new Error("Select one or more candidates to include, then choose which candidate this decision applies to.");
+      }
       const resolvedManufacturerA =
         manufacturerA.trim()
         || String(result?.manufacturer_a || "").trim()
@@ -669,10 +685,10 @@ function ComparePartsInner() {
       if (multiColumns.length > 1) {
         if (decisionScopeStale) {
           throw new Error(
-            "Wait for every candidate to finish refreshing under the selected Project / BOM before recording this decision.",
+            "Wait for the selected candidates to finish refreshing under the selected Project / BOM before recording this decision.",
           );
         }
-        const incomplete = multiColumns.filter(
+        const incomplete = selectedMultiColumns.filter(
           (column) => !columnMatchesScope(column, scopedKey),
         );
         if (incomplete.length) {
@@ -681,7 +697,13 @@ function ComparePartsInner() {
           );
         }
       }
-      const columnsForSnapshot = multiColumns.map((column) => ({
+      const orderedSelectedColumns = multiColumns.length > 1
+        ? [
+            ...selectedMultiColumns.filter((column) => column.mpn === primaryCandidate),
+            ...selectedMultiColumns.filter((column) => column.mpn !== primaryCandidate),
+          ]
+        : [];
+      const columnsForSnapshot = orderedSelectedColumns.map((column) => ({
         ...column,
         manufacturer:
           column.manufacturer
@@ -690,7 +712,7 @@ function ComparePartsInner() {
           || undefined,
       }));
       const multiSnapshot: Record<string, unknown> | null =
-        columnsForSnapshot.length > 1
+        columnsForSnapshot.length > 1 && !datasheetA && !datasheetB
           ? {
               ...buildMultiDecisionSnapshot(
                 decisionPartA.trim() || partA.trim(),
@@ -711,28 +733,34 @@ function ComparePartsInner() {
               analysis_id: scopedAnalysisId,
             }
           : null;
+      const singleSelectedSnapshot = columnsForSnapshot.length === 1 && !datasheetA && !datasheetB
+        ? columnsForSnapshot[0].result as Record<string, unknown>
+        : null;
+      const comparisonForDraft = singleSelectedSnapshot || result;
       const resultMatchesDraft =
-        result &&
-        String(result.part_a || "").trim().toLowerCase() === decisionPartA.trim().toLowerCase() &&
-        String(result.part_b || "").trim().toLowerCase() === primaryCandidate.toLowerCase() &&
-        String(result.analysis_id || "") === String(scopedAnalysisId || "");
+        comparisonForDraft &&
+        String(comparisonForDraft.part_a || "").trim().toLowerCase() === decisionPartA.trim().toLowerCase() &&
+        String(comparisonForDraft.part_b || "").trim().toLowerCase() === primaryCandidate.toLowerCase() &&
+        String(comparisonForDraft.analysis_id || "") === String(scopedAnalysisId || "");
       const needsFreshCompare =
-        !multiSnapshot && (Boolean(datasheetA || datasheetB) || !resultMatchesDraft);
+        !multiSnapshot && !singleSelectedSnapshot && (Boolean(datasheetA || datasheetB) || !resultMatchesDraft);
       const comparison: Record<string, unknown> = multiSnapshot
         ? multiSnapshot
-        : needsFreshCompare
-          ? await compareParts(
-              session.access_token,
-              decisionPartA.trim(),
-              primaryCandidate,
-              scopedAnalysisId || undefined,
-              { a: datasheetA, b: datasheetB },
-              {
-                manufacturerA: resolvedManufacturerA || undefined,
-                manufacturerB: resolvedManufacturerB || undefined,
-              },
-            )
-          : (result as Record<string, unknown>);
+        : singleSelectedSnapshot
+          ? singleSelectedSnapshot
+          : needsFreshCompare
+            ? await compareParts(
+                session.access_token,
+                decisionPartA.trim(),
+                primaryCandidate,
+                scopedAnalysisId || undefined,
+                { a: datasheetA, b: datasheetB },
+                {
+                  manufacturerA: resolvedManufacturerA || undefined,
+                  manufacturerB: resolvedManufacturerB || undefined,
+                },
+              )
+            : (result as Record<string, unknown>);
       const scopedComparison: Record<string, unknown> = {
         ...comparison,
         analysis_id: scopedAnalysisId,
@@ -808,6 +836,12 @@ function ComparePartsInner() {
       ? buildMultiSourceRecords(partA.trim() || text(result?.part_a), multiColumns)
       : [];
   const isMultiCompare = multiMatrix.length > 0;
+  const selectedDecisionColumns = multiColumns.filter(
+    (column) => selectedDecisionCandidateMpns.includes(column.mpn) && column.result.ok !== false,
+  );
+  const hasDecisionCandidate = multiColumns.length > 1
+    ? selectedDecisionColumns.length > 0
+    : Boolean(result && String(result.part_b || partB || "").trim());
 
   return (
     <Shell session={session}>
@@ -835,6 +869,7 @@ function ComparePartsInner() {
               className="cv-button primary"
               onClick={openDecisionDialog}
               aria-describedby="record-decision-help"
+              disabled={!hasDecisionCandidate}
             >
               +&nbsp; Record a decision
             </button>
@@ -947,7 +982,13 @@ function ComparePartsInner() {
               </p>
             </div>
             <span className="cv-small-note" id="record-decision-help">
-              {result ? "The recorded decision will include this comparison snapshot." : "Compare two parts to enable decision recording."}
+              {multiColumns.length > 1
+                ? hasDecisionCandidate
+                  ? `${selectedDecisionColumns.length} candidate${selectedDecisionColumns.length === 1 ? "" : "s"} selected for the record. Choose the candidate the decision applies to in the next step.`
+                  : "Compare the candidates, then select one or more candidates to attach to a decision record."
+                : result
+                  ? "The decision will apply to this candidate and include its comparison snapshot."
+                  : "Compare two parts to enable decision recording."}
             </span>
           </div>
           <button className="cv-button primary" type="submit" disabled={busy || !partA.trim() || !partB.trim()}>
@@ -1010,9 +1051,22 @@ function ComparePartsInner() {
       {decisionSuccess ? (
         <div className="cv-success" role="status">
           <span>Decision recorded for {decisionSuccess.part_a} → {decisionSuccess.part_b}.</span>
-          <Link href={decisionSuccess.analysis_id ? `/engineering-decisions?analysis_id=${encodeURIComponent(decisionSuccess.analysis_id)}` : "/engineering-decisions"}>
-            Open Engineering Decisions →
-          </Link>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {decisionSuccess.decision === "approve_alternate" && decisionSuccess.analysis_id ? (
+              <Link
+                className="cv-button small primary"
+                href={`/reports/${encodeURIComponent(decisionSuccess.analysis_id)}?apply_decision=${encodeURIComponent(decisionSuccess.id)}`}
+              >
+                Create updated BOM revision
+              </Link>
+            ) : null}
+            <Link href={decisionSuccess.analysis_id ? `/engineering-decisions?analysis_id=${encodeURIComponent(decisionSuccess.analysis_id)}` : "/engineering-decisions"}>
+              Open Engineering Decisions →
+            </Link>
+          </div>
+          {decisionSuccess.decision === "approve_alternate" && decisionSuccess.analysis_id ? (
+            <span className="cv-small-note">This opens a new revision draft with the approved part applied. The original report stays unchanged.</span>
+          ) : null}
         </div>
       ) : null}
 
@@ -1113,6 +1167,49 @@ function ComparePartsInner() {
                   Each column keeps its own source, units/class, conditions, and unknown/conflict assessment.
                   This matrix does not imply drop-in compatibility or auto-approve any candidate.
                 </p>
+                <div
+                  className="cv-card pad"
+                  style={{ marginBottom: 12, borderColor: "#c9d8ec", background: "#f8fbff" }}
+                  data-testid="decision-candidate-selection"
+                >
+                  <h3 className="cv-card-title">Choose candidates for the decision record</h3>
+                  <p className="cv-card-subtitle">
+                    Select the parts you want attached after reviewing the comparison. The decision applies to one candidate you choose in the next step; any other selected candidates remain comparison context only.
+                  </p>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8, marginTop: 10 }}>
+                    {multiColumns.map((column) => {
+                      const selectable = column.result.ok !== false && Boolean(String(column.result.snapshot_token || "").trim());
+                      const checked = selectedDecisionCandidateMpns.includes(column.mpn);
+                      const brand = column.manufacturer || manufacturerBByMpn[column.mpn] || candidateManufacturer(column);
+                      return (
+                        <label
+                          key={`decision-candidate-${column.mpn}`}
+                          style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: 10, border: "1px solid #d6e1ef", borderRadius: 8, background: "#fff", opacity: selectable ? 1 : 0.58 }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={!selectable}
+                            onChange={(event) => setSelectedDecisionCandidateMpns((current) => event.target.checked
+                              ? [...current.filter((mpn) => mpn !== column.mpn), column.mpn]
+                              : current.filter((mpn) => mpn !== column.mpn))}
+                            aria-label={`Include ${column.mpn} in decision comparison`}
+                          />
+                          <span>
+                            <strong>{cleanUserText(column.mpn)}</strong>
+                            {brand ? <span className="cv-small-note" style={{ display: "block" }}>{cleanUserText(brand)}</span> : null}
+                            {!selectable ? <span className="cv-small-note" style={{ display: "block" }}>Comparison unavailable — rerun before recording.</span> : null}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p className="cv-small-note" style={{ margin: "10px 0 0" }}>
+                    {selectedDecisionColumns.length
+                      ? `${selectedDecisionColumns.length} selected. The recorded disposition and BOM update apply only to the candidate chosen in the decision form.`
+                      : "Choose at least one available candidate to enable “Record a decision.”"}
+                  </p>
+                </div>
                 <table className="cv-table cv-compare-multi-table">
                   <thead>
                     <tr>
@@ -1453,17 +1550,35 @@ function ComparePartsInner() {
                   />
                 </label>
                 <label className="cv-field">
-                  <span>Candidate part</span>
-                  <input
+                  <span>Candidate this decision applies to</span>
+                  <select
                     value={decisionPartB}
                     onChange={(event) => setDecisionPartB(event.target.value)}
-                    maxLength={160}
-                    placeholder="Candidate manufacturer part number"
-                    autoComplete="off"
+                    disabled={decisionBusy || decisionCandidateMpns.length <= 1}
                     required
-                  />
+                    aria-describedby="decision-candidate-scope-help"
+                  >
+                    {decisionCandidateMpns.map((mpn) => {
+                      const brand = manufacturerBByMpn[mpn]
+                        || multiColumns.find((column) => column.mpn === mpn)?.manufacturer
+                        || "";
+                      return <option key={mpn} value={mpn}>{mpn}{brand ? ` · ${brand}` : ""}</option>;
+                    })}
+                  </select>
+                  <p className="cv-small-note" id="decision-candidate-scope-help" style={{ margin: "6px 0 0" }}>
+                    {decisionCandidateMpns.length > 1
+                      ? "The disposition applies to this selected candidate. Other selected parts are saved only as comparison context."
+                      : decisionCandidateMpns.length === 1
+                        ? "This is the candidate covered by the decision and any resulting BOM revision."
+                        : "Select an available candidate before recording the decision."}
+                  </p>
                 </label>
               </div>
+              {decisionCandidateMpns.length > 1 && (datasheetA || datasheetB) ? (
+                <p className="cv-error" role="status" style={{ margin: "0 0 12px" }}>
+                  To keep the uploaded datasheet evidence attached, close this form and select one candidate. Multiple candidates can be attached together when no datasheets are uploaded.
+                </p>
+              ) : null}
 
               <div className="cv-form-grid cv-form-grid-two cv-modal-grid">
                 <label className="cv-field">
