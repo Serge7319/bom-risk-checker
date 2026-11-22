@@ -206,15 +206,15 @@ export default function PortfolioPage() {
 
           <div className="cv-portfolio-explainer">
             <strong>How portfolio health is calculated</strong>
-            <p>Health scores use saved component risk and verification data. Older reports may have no score. Select <b>Calculate health</b> to recheck saved evidence; if required evidence is missing, the score stays unscored. This action does not query suppliers.</p>
-            <p><b>High-risk parts</b> is a count of components classified High in the saved analysis, not a count of alerts. Zero means no High-rated component was recorded; “Not reported” means the saved summary did not provide that count.</p>
+            <p>Health is recalculated from each saved component’s current evidence when this page loads. A score is withheld if any required supplier checks are missing or stale. <b>Calculate health</b> saves the same evidence-only assessment; it does not query suppliers or check checkout inventory.</p>
+            <p><b>High-risk parts</b> counts components with a currently verified High-risk signal. Zero means no verified High signal was found; it does not mean missing or unverified components are risk-free.</p>
           </div>
 
           <section className="cv-card pad cv-card--table cv-portfolio-table-card" id="analyses">
             <div className="cv-portfolio-section-heading">
               <div>
                 <h2 className="cv-card-title">Analyses</h2>
-                <p className="cv-card-subtitle">Latest saved reports, with health and high-risk part counts.</p>
+                <p className="cv-card-subtitle">Latest saved reports, rechecked from the evidence attached to each BOM.</p>
               </div>
               <span className="cv-portfolio-section-total">{reports.length.toLocaleString()} reports · {totalParts.toLocaleString()} parts · {highRiskTotal === null ? "Some high-risk counts unreported" : `${highRiskTotal.toLocaleString()} high-risk parts`}</span>
             </div>
@@ -241,7 +241,7 @@ export default function PortfolioPage() {
                         <td className="cv-num" data-label="High-risk parts"><StatusChip label={highCount === null ? "Not reported" : highCount === 0 ? "None" : `${Math.trunc(highCount)} ${highCount === 1 ? "part" : "parts"}`} tone={highCount === null ? "gray" : highCount > 0 ? "red" : "green"} /></td>
                         <td data-label="Action"><div className="cv-portfolio-row-actions">
                           <Link className="cv-button small" href={analysisId ? `/reports/${encodeURIComponent(analysisId)}` : "/reports"}>Open report</Link>
-                          {score === null && analysisId ? <button className="cv-button small primary" type="button" disabled={Boolean(recalculating)} onClick={() => void calculateHealth(analysisId)}>{recalculating === analysisId ? "Checking…" : "Calculate health"}</button> : null}
+                          {analysisId ? <button className="cv-button small primary" type="button" disabled={Boolean(recalculating)} onClick={() => void calculateHealth(analysisId)}>{recalculating === analysisId ? "Checking…" : score === null ? "Calculate health" : "Recalculate health"}</button> : null}
                         </div></td>
                       </tr>
                     );

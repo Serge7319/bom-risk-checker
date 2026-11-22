@@ -31,32 +31,18 @@ def _analysis_name(row: Dict[str, Any]) -> str:
     )
 
 
-def _analysis_health(row: Dict[str, Any]) -> int:
-    return int(
-        max(
-            0,
-            min(
-                100,
-                _number(
-                    row.get("health_score")
-                    or row.get("health")
-                    or row.get("bom_health"),
-                    0,
-                ),
-            ),
-        )
-    )
+def _linked_assessment(analysis_id: str, part_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Recompute current evidence from linked parts; saved aggregates are historical."""
+    from src.risk_engine import calculate_risk
 
-
-def _analysis_risk(row: Dict[str, Any]) -> int:
-    return int(
-        _number(
-            row.get("high_risk_count")
-            or row.get("high_risk_parts")
-            or row.get("high_risk"),
-            0,
-        )
-    )
+    linked = [row for row in part_rows if _text(row.get("analysis_id")) == analysis_id]
+    assessments = [calculate_risk(row) for row in linked]
+    high = sum(item.get("risk_level") == "High" for item in assessments)
+    needs_verification = sum(item.get("risk_level") == "Needs verification" for item in assessments)
+    health = None
+    if assessments and not needs_verification and all(item.get("risk_score") is not None for item in assessments):
+        health = round(100 - sum(float(item["risk_score"]) for item in assessments) / len(assessments))
+    return {"parts": len(linked), "high": high, "needs_verification": needs_verification, "health": health}
 
 
 def _decision_is_open(decision: Dict[str, Any]) -> bool:
@@ -93,34 +79,27 @@ def build_mission_control(
 
     projects: List[Dict[str, Any]] = []
     for row in analysis_rows:
-        health = _analysis_health(row)
-        high_risk = _analysis_risk(row)
-        if health >= 90 and high_risk == 0:
-            readiness = "Production Ready"
-            tone = "good"
-        elif health >= 75 and high_risk <= 1:
-            readiness = "Focused Review"
-            tone = "warn"
-        else:
-            readiness = "Blocked"
-            tone = "bad"
+        analysis_id = _text(row.get("id"))
+        assessment = _linked_assessment(analysis_id, part_rows)
+        health = assessment["health"]
+        high_risk = assessment["high"]
+        readiness = (
+            "Needs verification" if assessment["needs_verification"] or not assessment["parts"]
+            else "Supplier risk signal" if high_risk
+            else "Engineering review required"
+        )
+        tone = "warn" if readiness != "Supplier risk signal" else "bad"
 
         projects.append(
             {
-                "analysis_id": _text(row.get("id")),
+                "analysis_id": analysis_id,
                 "project": _analysis_name(row),
                 "health": health,
                 "high_risk": high_risk,
-                "parts": int(
-                    _number(
-                        row.get("total_parts")
-                        or row.get("parts_count")
-                        or row.get("part_count"),
-                        0,
-                    )
-                ),
+                "parts": assessment["parts"],
                 "readiness": readiness,
                 "tone": tone,
+                "needs_verification": assessment["needs_verification"],
                 "updated": _text(
                     row.get("updated_at") or row.get("created_at"),
                     "Unknown",
@@ -130,8 +109,8 @@ def build_mission_control(
 
     projects.sort(
         key=lambda item: (
-            item["readiness"] == "Production Ready",
-            item["health"],
+            item["readiness"] == "Supplier risk signal",
+            -(item["health"] if item["health"] is not None else -1),
         )
     )
 
@@ -169,7 +148,7 @@ def build_mission_control(
                     or decision.get("recommended_action"),
                     "Review engineering decision",
                 ),
-                "due": _text(decision.get("due_date"), "This week"),
+                "due": _text(decision.get("due_date"), "Not scheduled"),
                 "part": _text(decision.get("part_number"), "BOM"),
                 "decision_id": _text(decision.get("decision_id")),
                 "analysis_id": _text(decision.get("analysis_id")),
@@ -190,7 +169,7 @@ def build_mission_control(
                     item.get("Recommended Action"),
                     item.get("Recommendation"),
                 ),
-                "due": _text(item.get("Urgency"), "This week"),
+                "due": _text(item.get("Urgency"), "Not scheduled"),
                 "part": _text(item.get("Part Number"), "Component"),
                 "decision_id": "",
                 "analysis_id": "",
@@ -281,63 +260,55 @@ def build_mission_control(
         )
     recent_activity = recent_activity[:10]
 
-    production_ready = sum(
-        1 for project in projects if project["readiness"] == "Production Ready"
-    )
+    production_ready = sum(1 for decision in decision_rows if _text(decision.get("status")) == "Production Approved")
     critical_components = sum(project["high_risk"] for project in projects)
-    estimated_hours = sum(
-        int(_number(decision.get("estimated_effort_hours"), 0))
+    effort_values = [
+        _number(decision.get("estimated_effort_hours"), None)
         for decision in open_decisions
-    )
+        if decision.get("estimated_effort_hours") is not None
+    ]
+    estimated_hours = sum(effort_values) if effort_values else None
 
     average_health = (
         round(sum(project["health"] for project in projects) / len(projects))
         if projects
-        else 0
+        and all(project["health"] is not None for project in projects)
+        else None
     )
-    projected_gain = min(
-        15,
-        sum(
-            int(_number(decision.get("health_gain"), 0))
-            for decision in open_decisions[:5]
-        ),
-    )
-    projected_health = min(100, average_health + projected_gain)
 
     if critical_decisions or urgent_procurement:
-        posture = "Action Required Today"
-        tone = "bad"
+        posture = "High-priority review queue"
+        tone = "warn"
         executive_summary = (
-            f"Cadivor found {len(critical_decisions)} critical engineering "
-            f"decision(s) and {len(urgent_procurement)} urgent procurement "
-            "action(s). Address the highest-ranked lifecycle and supply risks "
-            "before production approval."
+            f"The queue contains {len(critical_decisions)} high-priority engineering "
+            f"decision(s) and {len(urgent_procurement)} procurement item(s) "
+            "with a high triage score. Priority is an ordering aid, not a deadline "
+            "or production approval."
         )
     elif open_decisions or alert_rows:
-        posture = "Focused Review Recommended"
+        posture = "Open review items"
         tone = "warn"
         executive_summary = (
             f"{len(open_decisions)} engineering decision(s) and "
-            f"{len(alert_rows)} monitoring alert(s) remain open. "
-            "No immediate production blocker dominates, but ownership and "
-            "deadlines should be confirmed."
+            f"{len(alert_rows)} monitoring alert(s) are recorded. "
+            "Confirm ownership, source freshness, and required engineering disposition."
         )
     else:
-        posture = "Workspace Healthy"
-        tone = "good"
+        posture = "No open actions recorded"
+        tone = "info"
         executive_summary = (
-            "No urgent engineering or procurement exception is recorded. "
-            "Continue routine monitoring and release-readiness review."
+            "No open engineering or procurement action is recorded. This does not "
+            "establish supplier coverage or release readiness."
         )
 
     recommendations: List[str] = []
     if critical_decisions:
         recommendations.append(
-            "Resolve the highest-priority engineering decision before the next release gate."
+            "Review the highest-triage engineering decision and record its evidence and disposition."
         )
     if urgent_procurement:
         recommendations.append(
-            "Secure critical inventory or approve an alternate source before purchasing coverage closes."
+            "Verify the supplier inventory snapshot and qualify any alternate before purchasing."
         )
     if lifecycle_changes:
         recommendations.append(
@@ -366,7 +337,7 @@ def build_mission_control(
         "estimated_hours": estimated_hours,
         "parts_tracked": len(part_rows),
         "average_health": average_health,
-        "projected_health": projected_health,
+        "projected_health": None,
         "projects": projects,
         "top_actions": top_actions,
         "workload": workload,

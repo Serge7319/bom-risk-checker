@@ -92,7 +92,8 @@ function DetailedRiskPageInner() {
             const live = Number(summary.live_count || 0);
             const synthetic = Number(summary.synthetic_count || 0);
             const missing = Number(summary.missing_count || 0);
-            return `Row evidence for this analysis: live-authorized ${live}; synthetic/preview ${synthetic}; no supplier match ${missing}. Mode: ${String(data.mode || "not reported")}.`;
+            const unverified = Number(summary.unverified_count || 0);
+            return `Row evidence for this analysis: exact supplier identity verified ${live}; unverified supplier identity ${unverified}; synthetic/preview ${synthetic}; no supplier match ${missing}. Identity matches do not verify price, stock, or lifecycle fields. Mode: ${String(data.mode || "not reported")}.`;
           })()}
         </p>
       ) : null}
@@ -117,7 +118,7 @@ function DetailedRiskPageInner() {
           <section className="cv-card pad">
             <h3 className="cv-card-title">Component risk detail</h3>
             <p className="cv-small-note" style={{ marginTop: 6 }}>
-              Lead time is shown with its supplier and retrieval time. Stock may be summed across the listed matched suppliers; open the source listing to confirm current availability. “Not reported” means the connected source did not return that field.
+              Lifecycle, stock, and price each show their own evidence status. Supplier API observations are point-in-time snapshots tied to exact MPN listings; stock totals may sum those listings. They are not authenticated checkout inventory, reservations, or purchase quotes. “Not reported” means the source did not return that field.
             </p>
             <div className="cv-table-wrap" style={{ marginTop: 12 }}>
               <table className="cv-table">
@@ -155,7 +156,24 @@ function DetailedRiskPageInner() {
                     <tr key={i}>
                       <td><strong>{cell(row.MPN ?? row.mpn ?? row["Part number"])}</strong></td>
                       <td>{cell(row.Manufacturer ?? row.manufacturer)}</td>
-                      <td><StatusPill kind="lifecycle" value={cell(row.Lifecycle ?? row.lifecycle ?? row["Lifecycle status"], "Unknown")} /></td>
+                      <td>
+                        <StatusPill kind="lifecycle" value={cell(row.Lifecycle ?? row.lifecycle ?? row["Lifecycle status"], "Unknown")} />
+                        <div style={{ marginTop: 4 }}>
+                          <StatusPill
+                            kind="verification"
+                            value={cell(row["Lifecycle evidence status"], "missing") === "live-authorized-supplier"
+                              ? "API snapshot"
+                              : cell(row["Lifecycle evidence status"], "missing") === "reported-unverified"
+                                ? "Unverified"
+                                : cell(row["Lifecycle evidence status"], "missing") === "synthetic-preview"
+                                  ? "Preview estimate"
+                                  : "Not reported"}
+                          />
+                        </div>
+                        {row["Lifecycle evidence note"] ? (
+                          <div className="cv-small-note">{cell(row["Lifecycle evidence note"])}</div>
+                        ) : null}
+                      </td>
                       <td>
                         <strong>{cell(row["Lead time (weeks)"], "Not reported")}</strong>
                         <div className="cv-small-note">
@@ -166,10 +184,47 @@ function DetailedRiskPageInner() {
                       <td><StatusPill kind="risk" value={cell(row.Risk ?? row["Risk level"] ?? row["Risk Level"] ?? row.risk_level, "Unknown")} /></td>
                       <td>
                         {cell(row.Stock ?? row.stock)}
+                        <div style={{ marginTop: 4 }}>
+                          <StatusPill
+                            kind="verification"
+                            value={cell(row["Stock evidence status"], "missing") === "live-authorized-supplier"
+                              ? "API snapshot"
+                              : cell(row["Stock evidence status"], "missing") === "reported-unverified"
+                                ? "Unverified"
+                                : cell(row["Stock evidence status"], "missing") === "synthetic-preview"
+                                  ? "Preview estimate"
+                                  : "Not reported"}
+                          />
+                        </div>
                         <div className="cv-small-note">{cell(row["Stock evidence"], "No per-supplier stock detail")}</div>
+                        {row["Stock evidence note"] ? (
+                          <div className="cv-small-note">{cell(row["Stock evidence note"])}</div>
+                        ) : null}
                       </td>
                       <td>
                         {cell(row["Unit price"] ?? row.unit_price)} {cell(row["Unit price currency"], "")}
+                        <div style={{ marginTop: 4 }}>
+                          <StatusPill
+                            kind="verification"
+                            value={cell(row["Price evidence status"], "missing") === "live-authorized-supplier"
+                              ? "API snapshot"
+                              : cell(row["Price evidence status"], "missing") === "reported-unverified"
+                                ? "Unverified"
+                                : cell(row["Price evidence status"], "missing") === "synthetic-preview"
+                                  ? "Preview estimate"
+                                  : "Not reported"}
+                          />
+                        </div>
+                        <div className="cv-small-note">
+                          {cell(row["Price source"], "Source not recorded")}
+                          {row["Price checked at"] ? " · checked " + cell(row["Price checked at"]) : ""}
+                          {row["Price break quantity"] && row["Price break quantity"] !== "Not reported"
+                            ? " · break " + cell(row["Price break quantity"])
+                            : " · quantity break not returned"}
+                        </div>
+                        {row["Price evidence note"] ? (
+                          <div className="cv-small-note">{cell(row["Price evidence note"])}</div>
+                        ) : null}
                       </td>
                       <td>
                         {supplierLinks.length ? supplierLinks.slice(0, 4).map((link, linkIndex) => (

@@ -21,12 +21,20 @@ COMPONENT_COLUMNS = (
     "Quantity per Parent",
     "Effective Quantity",
     "Lifecycle",
+    "Lifecycle Evidence Status",
+    "Lifecycle Evidence Note",
     "Risk Level",
     "Risk Score",
     "Risk Reasons",
     "Stock",
+    "Stock Evidence Status",
+    "Stock Evidence Note",
     "Unit Price",
     "Currency",
+    "Price Evidence Status",
+    "Price Evidence Note",
+    "Price Break Quantity",
+    "Price Quantity Applicability",
     "Evidence Class",
     "Evidence Source",
     "Supplier Sources Checked",
@@ -200,22 +208,24 @@ def _export_line_type(row: dict[str, Any]) -> str:
 
 
 def _export_risk_level(row: dict[str, Any]) -> str:
-    """Never present an unscored part as low risk."""
-    level = _text(_first(row, "Risk Level", "risk_level", default="")).strip()
-    score = _first(row, "Risk Score", "risk_score", default=None)
-    scored = score not in (None, "", "None", "Not assessed", "not assessed", "Not scored")
-    if not scored:
-        if not level or level.casefold() in {"low", "healthy", "unknown", "none"}:
-            return "Not assessed"
-        return level
-    return level or "Not assessed"
+    """Calculate risk from field evidence instead of trusting a saved label."""
+    from src.risk_engine import calculate_risk
+
+    return str(calculate_risk(row).get("risk_level") or "Needs verification")
 
 
 def _export_risk_score(row: dict[str, Any]) -> str:
-    score = _first(row, "Risk Score", "risk_score", default=None)
-    if score in (None, "", "None"):
-        return "Not assessed"
-    return _text(score)
+    from src.risk_engine import calculate_risk
+
+    score = calculate_risk(row).get("risk_score")
+    return _text(score) if score is not None else "Not assessed"
+
+
+def _export_risk_reasons(row: dict[str, Any]) -> str:
+    from src.risk_engine import calculate_risk
+
+    reasons = calculate_risk(row).get("risk_reasons") or []
+    return "; ".join(str(item).strip() for item in reasons if str(item).strip())
 
 
 def _field_from_evidence(evidence: dict[str, Any], field: str, key: str, default: Any = "") -> Any:
@@ -291,18 +301,24 @@ def _compliance_source_details(row: dict[str, Any], kind: str) -> str:
 
 def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
     from src.bom_intake import clean_text
+    from apps.api.evidence_contract import classify_part_evidence
 
     output = []
     for source in report.get("parts") or []:
         if not isinstance(source, dict):
             continue
         row = dict(source)
-        evidence = row.get("evidence") if isinstance(row.get("evidence"), dict) else {}
+        # Rebuild from the saved raw supplier records. Older evidence envelopes
+        # may have been created before exact-MPN/provenance checks were strict.
+        evidence = classify_part_evidence(row)
         rohs_value, rohs_source = _compliance_value(row, "rohs")
         reach_value, reach_source = _compliance_value(row, "reach")
         pfas_value, pfas_source = _compliance_value(row, "pfas")
         lead_time_evidence = row.get("lead_time_evidence") or row.get("Lead Time Evidence") or []
         stock_evidence = row.get("stock_evidence") or row.get("Stock Evidence") or []
+        stock_evidence = _field_from_evidence(
+            evidence, "stock", "sources", default=stock_evidence
+        ) or stock_evidence
         supplier_offers = row.get("supplier_offers") or row.get("Supplier Offers") or []
         component = {
             "MPN": clean_text(_first(row, "MPN", "mpn", "manufacturer_part_number", "part_number")),
@@ -317,12 +333,24 @@ def _component_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             "Quantity per Parent": _first(row, "quantity_per_parent", "Quantity per parent", "Quantity", "quantity", "qty"),
             "Effective Quantity": _first(row, "effective_quantity", "Effective Quantity", "Quantity", "quantity", "qty"),
             "Lifecycle": _first(row, "Lifecycle", "lifecycle_status", "Lifecycle Status"),
+            "Lifecycle Evidence Status": _field_from_evidence(evidence, "lifecycle", "evidence_class", default="missing"),
+            "Lifecycle Evidence Note": _field_from_evidence(evidence, "lifecycle", "gap", default=""),
             "Risk Level": _export_risk_level(row),
             "Risk Score": _export_risk_score(row),
-            "Risk Reasons": _first(row, "Risk Reasons", "risk_reasons", "reasons"),
+            "Risk Reasons": _export_risk_reasons(row),
             "Stock": _first(row, "Stock", "stock_available", "stock"),
+            "Stock Evidence Status": _field_from_evidence(evidence, "stock", "evidence_class", default="missing"),
+            "Stock Evidence Note": _field_from_evidence(evidence, "stock", "gap", default=""),
             "Unit Price": _first(row, "Unit Price", "unit_price"),
             "Currency": _first(row, "unit_price_currency", "currency"),
+            "Price Evidence Status": _field_from_evidence(evidence, "price", "evidence_class", default="missing"),
+            "Price Evidence Note": _field_from_evidence(evidence, "price", "gap", default=""),
+            "Price Break Quantity": _field_from_evidence(evidence, "price", "price_break_quantity", default=""),
+            "Price Quantity Applicability": (
+                "Applies"
+                if _field_from_evidence(evidence, "price", "quantity_break_applies") is True
+                else "Not established"
+            ),
             "Evidence Class": _first(evidence, "evidence_class", default=_first(row, "evidence_source", "source", default="not recorded")),
             "Evidence Source": _first(evidence, "source", default=_first(row, "identity_source", "evidence_source", "source")),
             "Supplier Sources Checked": _first(
@@ -475,8 +503,9 @@ def _synthetic_disclaimer(report: dict[str, Any]) -> str:
         return (
             f"Evidence labels: {summary.get('live_count', 0)} live-authorized, "
             f"{summary.get('synthetic_count', 0)} synthetic, "
+            f"{summary.get('unverified_count', 0)} unverified, "
             f"{summary.get('missing_count', 0)} missing. Review the source and retrieval "
-            "date for each component before acting."
+            "date for each component before acting. Supplier API readings are point-in-time snapshots, not authenticated checkout inventory, reservations, or purchase quotes."
         )
     return "Review each component's evidence source and retrieval date before acting."
 

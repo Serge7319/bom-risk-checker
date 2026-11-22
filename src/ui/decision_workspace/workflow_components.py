@@ -27,11 +27,8 @@ STATUS_BADGES: tuple[str, ...] = (
 
 FILTER_DEFINITIONS: tuple[tuple[str, str], ...] = (
     ("all", "All"),
-    ("high-confidence", "High Confidence"),
-    ("highest-roi", "Highest ROI"),
-    ("quick-wins", "Quick Wins"),
-    ("production-blockers", "Production Blockers"),
-    ("low-effort", "Low Effort"),
+    ("high-risk", "Verified risk signals"),
+    ("needs-verification", "Needs verification"),
     ("awaiting-review", "Awaiting Review"),
 )
 
@@ -78,23 +75,14 @@ def status_badge_class(status: str) -> str:
 
 
 def card_filter_attributes(action: Mapping[str, Any], *, index: int) -> str:
-    confidence = _confidence_percent(action)
-    roi = _roi_score(action)
-    effort = _effort_hours(action)
     priority = text(action.get("priority")).lower()
-    bucket = text(action.get("priority_bucket")).lower()
     status = infer_status_badge(action)
-    quick_win = roi >= 1.0 and effort <= 4
-    production_blocker = priority in {"critical", "high"} or "before production" in bucket
     return (
         f'data-cv70-index="{index}" '
-        f'data-confidence="{confidence}" '
-        f'data-roi="{roi:g}" '
-        f'data-effort="{effort}" '
         f'data-priority="{esc(priority)}" '
         f'data-status="{esc(status.lower())}" '
-        f'data-quick-win="{"1" if quick_win else "0"}" '
-        f'data-production-blocker="{"1" if production_blocker else "0"}" '
+        f'data-high-risk="{"1" if priority == "high" else "0"}" '
+        f'data-needs-verification="{"1" if "verification" in priority else "0"}" '
         f'data-awaiting-review="{"1" if status == "Awaiting Review" else "0"}"'
     )
 
@@ -102,48 +90,22 @@ def card_filter_attributes(action: Mapping[str, Any], *, index: int) -> str:
 def decision_health_meter(action: Mapping[str, Any]) -> str:
     breakdown = list(action.get("confidence_breakdown") or [])
     available = sum(1 for row in breakdown if row.get("available"))
-    total = len(breakdown) or 1
-    evidence_pct = int(round(available / total * 100))
-
-    dep = action.get("dependency") or {}
-    validation_count = len(dep.get("validation_required") or [])
-    validation_pct = min(100, validation_count * 14)
-
-    confidence_pct = _confidence_percent(action)
-    supplier_pct = 72
-    impact = action.get("decision_impact") or {}
-    single = impact.get("single_source_exposure") or {}
-    before = number(single.get("before"), 1)
-    after = number(single.get("after"), before)
-    if before:
-        supplier_pct = int(max(35, min(100, (after / before) * 100)))
-
-    review_pct = 55
-    dimensions = [
-        ("Confidence", confidence_pct),
-        ("Evidence", evidence_pct),
-        ("Validation", validation_pct),
-        ("Supplier coverage", supplier_pct),
-        ("Review readiness", review_pct),
-    ]
-    overall = int(round(sum(score for _, score in dimensions) / len(dimensions)))
-
-    bars = "".join(
-        f'<div class="cv70-health-dim">'
-        f"<span>{esc(label)}</span>"
-        f'<div class="cv70-health-track"><i style="width:{score}%"></i></div>'
-        f"<strong>{score}%</strong></div>"
-        for label, score in dimensions
+    total = len(breakdown)
+    label = f"{available} of {total} evidence categories present" if total else "Evidence status unavailable"
+    items = "".join(
+        f'<li class="cv69-confidence-item cv69-confidence-item--{"available" if row.get("available") else "missing"}">'
+        f'{"✓" if row.get("available") else "•"} {esc(row.get("label"))}</li>'
+        for row in breakdown
     )
-    tone = "high" if overall >= 75 else "medium" if overall >= 55 else "low"
+    tone = "medium" if available else "low"
     return f"""
     <section class="cv70-decision-health cv70-decision-health--{tone}">
       <div class="cv70-section-head">
-        <h4>Decision health</h4>
-        <strong>{overall}%</strong>
+        <h4>Evidence checks</h4>
+        <strong>{esc(label)}</strong>
       </div>
-      <div class="cv70-health-meter"><i style="width:{overall}%"></i></div>
-      <div class="cv70-health-grid">{bars}</div>
+      <p>Evidence presence only; no confidence percentage is assigned.</p>
+      <ul class="cv69-confidence-breakdown">{items}</ul>
     </section>
     """
 
@@ -151,21 +113,10 @@ def decision_health_meter(action: Mapping[str, Any]) -> str:
 def impact_summary(action: Mapping[str, Any], brief: Mapping[str, Any]) -> str:
     impact = action.get("decision_impact") or {}
     dep = action.get("dependency") or {}
-    health = impact.get("health") or dep.get("projected_bom_health") or {}
-    supply = impact.get("supply_risk") or {}
     cards = [
-        (
-            "Engineering",
-            f"Health {int(number(health.get('before'), 0))} → {int(number(health.get('after'), 0))}",
-        ),
-        (
-            "Supply chain",
-            f"Risk {int(number(supply.get('before'), 0))} → {int(number(supply.get('after'), 0))}",
-        ),
-        (
-            "Manufacturing",
-            esc(impact.get("manufacturing_readiness"), "Maintains current readiness"),
-        ),
+        ("Engineering", "Impact not estimated"),
+        ("Supply chain", "Impact not estimated"),
+        ("Manufacturing", "Engineering review required"),
         (
             "Documentation",
             "Update required" if any(
@@ -175,7 +126,7 @@ def impact_summary(action: Mapping[str, Any], brief: Mapping[str, Any]) -> str:
         ),
         (
             "Schedule",
-            f"~{int(number(impact.get('schedule_improvement_weeks'), 0))} week improvement",
+            "Not estimated",
         ),
     ]
     business = brief.get("business_impact") or {}
@@ -211,8 +162,8 @@ def decision_header(action: Mapping[str, Any], *, index: int) -> str:
           <span><em>Owner</em>{esc(action.get('owner'))}</span>
           <span><em>Confidence</em>{esc(action.get('confidence'))}</span>
           <span><em>Effort</em>{esc(dep.get('estimated_effort') or action.get('effort'))}</span>
-          <span><em>ROI</em>{esc(roi.get('label'))} ({number(roi.get('score'), 0):g})</span>
-          <span><em>Projected health</em>{int(number(health.get('before'), 0))} → {int(number(health.get('after'), 0))}</span>
+          <span><em>ROI</em>{esc(roi.get('label'), 'Not assessed')}</span>
+          <span><em>Projected health</em>{f"{health.get('before')} → {health.get('after')}" if health.get('before') is not None and health.get('after') is not None else 'Not estimated'}</span>
         </div>
       </div>
     </header>
@@ -297,10 +248,10 @@ def comparison_view(actions: Sequence[Mapping[str, Any]]) -> str:
                 "index": index,
                 "part_number": text(action.get("part_number")),
                 "title": text(action.get("action")),
-                "confidence": _confidence_percent(action),
-                "roi": _roi_score(action),
-                "health_gain": int(number(health.get("gain"), 0)),
-                "effort": _effort_hours(action),
+                "confidence": _confidence_percent(action) if action.get("confidence") is not None else None,
+                "roi": (dep.get("engineering_roi") or {}).get("score"),
+                "health_gain": health.get("gain"),
+                "effort": dep.get("effort_hours"),
                 "validation": [
                     text(item.get("step"))
                     for item in (dep.get("validation_required") or [])

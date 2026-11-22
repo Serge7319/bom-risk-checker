@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 import pandas as pd
+from tests.evidence_fixtures import live_supplier_part
 
 from src.procurement_advisor import (
     apply_sourcing_override,
@@ -199,12 +200,12 @@ class ProcurementAdvisorTests(unittest.TestCase):
             ],
         )
         row = advisor["recommendations"][0]
-        self.assertEqual(row["Recommendation"], "Check an authorized source")
+        self.assertEqual(row["Recommendation"], "Check a configured source")
         self.assertIsNone(row["Available Stock"])
         self.assertIsNone(row["Supplier Sources"])
         self.assertEqual(row["Evidence Status"], "Incomplete")
         self.assertEqual(advisor["urgent_count"], 0)
-        self.assertIn("authorized source check", advisor["summary"])
+        self.assertIn("source check", advisor["summary"])
 
     def test_unverified_numeric_zeroes_are_blank_in_the_editor(self):
         values = sourcing_editor_values(
@@ -225,17 +226,7 @@ class ProcurementAdvisorTests(unittest.TestCase):
     def test_verified_zero_stock_creates_a_real_supply_gap_action(self):
         row = build_procurement_advisor(
             analyses=[],
-            parts=[
-                {
-                    "mpn": "TPS54331D",
-                    "quantity": 100,
-                    "stock_available": 0,
-                    "supplier_count": 2,
-                    "lead_time_weeks": 8,
-                    "unit_price": 1.2,
-                    "supplier_data_verified": True,
-                }
-            ],
+            parts=[live_supplier_part("TPS54331D", stock=0, quantity=100)],
         )["recommendations"][0]
         self.assertEqual(row["Recommendation"], "Resolve supply gap")
         self.assertEqual(row["Available Stock"], 0)
@@ -313,7 +304,7 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertEqual(sourcing_editor_values(part)["annual_demand"], 50000)
         self.assertEqual(sourcing_editor_values(part)["required_by"], "Q3 2026")
 
-    def test_context_only_override_does_not_hide_legacy_supplier_evidence(self):
+    def test_context_only_override_does_not_turn_a_saved_supplier_label_into_live_evidence(self):
         part = apply_sourcing_override(
             {
                 "mpn": "TPS54331D",
@@ -325,7 +316,8 @@ class ProcurementAdvisorTests(unittest.TestCase):
             }
         )
         current = normalize_supplier_offer_records(part)[0]
-        self.assertTrue(current["is_current"])
+        self.assertFalse(current["is_current"])
+        self.assertFalse(current["price_verified"])
         self.assertEqual(current["unit_price"], 1.25)
 
     def test_target_price_requires_its_own_currency(self):
@@ -353,7 +345,8 @@ class ProcurementAdvisorTests(unittest.TestCase):
         )
         self.assertIn("Step-down regulator", html)
         self.assertIn("Power management", html)
-        self.assertIn("1.2 USD", html)
+        self.assertNotIn("1.2 USD", html)
+        self.assertIn("Not recorded", html)
         self.assertIn("Oct 11, 2026", html)
         self.assertIn("BOM analysis", html)
         self.assertNotIn("Last updated</span><strong>Not recorded", html)
@@ -389,8 +382,9 @@ class ProcurementAdvisorTests(unittest.TestCase):
         )
         self.assertEqual(frame.loc[0, "Selected"], "● Selected")
         self.assertEqual(frame.loc[0, "Available stock"], "Not recorded")
-        self.assertEqual(frame.loc[1, "Available stock"], "25,000")
-        self.assertEqual(frame.loc[1, "Price vs current"], "-10.0%")
+        self.assertIn("25,000", frame.loc[1, "Available stock"])
+        self.assertIn("Unverified", frame.loc[1, "Available stock"])
+        self.assertEqual(frame.loc[1, "Price vs current"], "—")
         # Stock and selection labels must stay display text (never numeric NaN).
         for column in ("Selected", "Available stock", "Price vs current", "Supplier"):
             if column in frame.columns:
@@ -430,8 +424,8 @@ class ProcurementAdvisorTests(unittest.TestCase):
         self.assertIn("is-selected", markup)
         self.assertIn("&lt;script&gt;", markup)
         self.assertNotIn("<script>", markup)
-        self.assertIn("Short by 25 for BOM", markup)
-        self.assertIn("Lowest quote", markup)
+        self.assertIn("Recorded value lacks exact-part source verification", markup)
+        self.assertNotIn("Lowest quote", markup)
         self.assertIn("Not assessed", markup)
         self.assertIn("Total cost index", markup)
 
@@ -616,9 +610,10 @@ class ProcurementAdvisorTests(unittest.TestCase):
                 ],
             }
         )
-        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows), 2)
         self.assertIn("Mouser", rows.loc[0, "Supplier"])
-        self.assertNotIn("Legacy supplier", rows.loc[0, "Supplier"])
+        self.assertTrue(rows["Supplier"].str.contains("Legacy supplier").any())
+        self.assertTrue(rows["Unit price"].str.contains("Unverified").any())
 
     def test_summary_cards_do_not_invent_annual_savings_or_blended_risk(self):
         html = procurement_summary_cards_html(
@@ -656,8 +651,8 @@ class ProcurementAdvisorTests(unittest.TestCase):
             },
             {"Recommendation": "Add a second source", "Next Step": "Qualify DigiKey."},
         )
-        self.assertIn("10,000.00 USD", html)
-        self.assertIn("Entered landed costs vs current source", html)
+        self.assertIn("Calculation unavailable", html)
+        self.assertIn("Annual demand and comparable same-currency supplier quotes are required", html)
 
     def test_sourcing_recommendation_header_uses_annual_demand_and_target_fields(self):
         html = procurement_part_summary_html(

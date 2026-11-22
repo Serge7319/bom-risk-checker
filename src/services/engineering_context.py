@@ -86,15 +86,9 @@ def _query_optional(
 
 
 def _risk_level(row: dict[str, Any]) -> str:
-    raw = _text(_first(row, "risk_level", "risk", "Risk Level"), "")
-    if raw:
-        return raw.title()
-    score = _number(_first(row, "risk_score", "Risk Score"), 0)
-    if score >= 70:
-        return "High"
-    if score >= 35:
-        return "Medium"
-    return "Low"
+    from src.risk_engine import calculate_risk
+
+    return str(calculate_risk(row).get("risk_level") or "Needs verification")
 
 
 @dataclass(slots=True)
@@ -231,7 +225,7 @@ class EngineeringContextService:
 
         high = sum(1 for row in normalized_parts if row["risk_level"].lower() == "high")
         medium = sum(1 for row in normalized_parts if row["risk_level"].lower() == "medium")
-        no_stock = sum(1 for row in normalized_parts if row["stock_available"] <= 0)
+        no_stock = sum(1 for row in normalized_parts if row["stock_available"] == 0)
         lifecycle_exposed = sum(
             1
             for row in normalized_parts
@@ -240,11 +234,20 @@ class EngineeringContextService:
                 for token in ("obsolete", "eol", "end of life", "replacement", "nrnd", "not recommended")
             )
         )
-        limited_sources = sum(1 for row in normalized_parts if row["supplier_count"] <= 1)
+        limited_sources = sum(
+            1
+            for row in normalized_parts
+            if row["supplier_count"] is not None and row["supplier_count"] <= 1
+        )
         top_risks = [row for row in normalized_parts if row["risk_level"].lower() in {"high", "medium"}][:5]
 
-        health = _integer(_first(analysis, "health_score", "bom_health_score"), 0)
-        total_parts = _integer(_first(analysis, "total_parts"), len(normalized_parts)) or len(normalized_parts)
+        scored = [row["risk_score"] for row in normalized_parts]
+        complete_assessment = bool(normalized_parts) and all(
+            row.get("evidence_coverage_complete") and row.get("risk_score") is not None
+            for row in normalized_parts
+        )
+        health = round(100 - sum(scored) / len(scored)) if complete_assessment else None
+        total_parts = len(normalized_parts)
         summary = {
             "health_score": health,
             "total_parts": total_parts,
@@ -257,15 +260,15 @@ class EngineeringContextService:
             "saved_alternatives": len(normalized_alternatives),
             "engineering_decisions": len(normalized_decisions),
             "top_risks": top_risks,
-            "release_posture": self._release_posture(health, high, lifecycle_exposed, no_stock),
+            "release_posture": self._release_posture(health, high, lifecycle_exposed, no_stock, len(normalized_parts), sum(row["risk_level"] == "Needs verification" for row in normalized_parts)),
         }
 
         coverage = ContextCoverage(
             analysis=bool(analysis_id),
             components=bool(normalized_parts),
             lifecycle=bool(normalized_parts) and any(row["lifecycle_status"] not in ("", "Unknown") for row in normalized_parts),
-            inventory=bool(normalized_parts) and any(row["stock_available"] > 0 for row in normalized_parts),
-            suppliers=bool(normalized_parts) and any(row["supplier_count"] > 0 for row in normalized_parts),
+            inventory=bool(normalized_parts) and any(row["stock_available"] is not None for row in normalized_parts),
+            suppliers=bool(normalized_parts) and any(row["supplier_count"] is not None for row in normalized_parts),
             monitoring=bool(normalized_alerts),
             alternatives=bool(normalized_alternatives),
             decisions=bool(normalized_decisions),
@@ -307,16 +310,42 @@ class EngineeringContextService:
 
     @staticmethod
     def _normalize_part(row: dict[str, Any]) -> dict[str, Any]:
+        from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+        from src.risk_engine import calculate_risk, _coverage_complete
+
+        evidence = classify_part_evidence(row).get("fields") or {}
+        assessment = calculate_risk(row)
+        lifecycle_field = evidence.get("lifecycle") or {}
+        stock_field = evidence.get("stock") or {}
+        lead_field = evidence.get("lead_time") or {}
+        supplier_coverage_complete, _ = _coverage_complete(row)
+        lifecycle = (
+            _text(_first(row, "lifecycle_status", "lifecycle", "Lifecycle Status"), "Unknown")
+            if lifecycle_field.get("evidence_class") == EVIDENCE_LIVE else "Unknown"
+        )
+        stock = (
+            stock_field.get("observed_total")
+            if stock_field.get("evidence_class") == EVIDENCE_LIVE and stock_field.get("complete") else None
+        )
+        supplier_count = (
+            _integer(_first(row, "supplier_count", "Supplier Count"), 0)
+            if supplier_coverage_complete else None
+        )
+        lead = (
+            _number(_first(row, "lead_time_weeks", "Lead Time Weeks"), 0)
+            if lead_field.get("evidence_class") == EVIDENCE_LIVE else None
+        )
         return {
             "part_number": _text(_first(row, "mpn", "part_number", "manufacturer_part_number", "MPN"), "Unknown part"),
             "manufacturer": _text(_first(row, "manufacturer", "Manufacturer"), "Unknown manufacturer"),
-            "risk_level": _risk_level(row),
-            "risk_score": _integer(_first(row, "risk_score", "Risk Score"), 0),
-            "risk_reasons": _text(_first(row, "risk_reasons", "risk_reason", "Risk Reasons")),
-            "lifecycle_status": _text(_first(row, "lifecycle_status", "lifecycle", "Lifecycle Status"), "Unknown"),
-            "stock_available": _integer(_first(row, "stock_available", "available_stock", "Stock Available"), 0),
-            "supplier_count": _integer(_first(row, "supplier_count", "Supplier Count"), 0),
-            "lead_time_weeks": _number(_first(row, "lead_time_weeks", "Lead Time Weeks"), 0),
+            "risk_level": str(assessment.get("risk_level") or "Needs verification"),
+            "risk_score": assessment.get("risk_score"),
+            "evidence_coverage_complete": bool(assessment.get("evidence_coverage_complete")),
+            "risk_reasons": "; ".join(assessment.get("risk_reasons") or []),
+            "lifecycle_status": lifecycle,
+            "stock_available": stock,
+            "supplier_count": supplier_count,
+            "lead_time_weeks": lead,
             "best_source": _text(_first(row, "best_source", "supplier", "Best Source")),
         }
 
@@ -351,7 +380,7 @@ class EngineeringContextService:
             "part_number": _text(_first(row, "part_number", "original_part", "mpn"), "Component"),
             "decision": _text(_first(row, "decision", "status", "decision_status"), "Review"),
             "rationale": _text(_first(row, "rationale", "reason", "notes")),
-            "confidence": _number(_first(row, "confidence", "confidence_score"), 0),
+            "confidence": _number(_first(row, "confidence", "confidence_score"), None),
             "updated_at": _text(_first(row, "updated_at", "created_at")),
         }
 
@@ -389,12 +418,12 @@ class EngineeringContextService:
         return timeline
 
     @staticmethod
-    def _release_posture(health: int, high: int, lifecycle: int, no_stock: int) -> str:
-        if high >= 3 or health < 55 or no_stock >= 3:
-            return "Release hold recommended"
-        if high > 0 or health < 80 or lifecycle > 0 or no_stock > 0:
-            return "Focused engineering review"
-        return "Controlled release"
+    def _release_posture(health: int | None, high: int, lifecycle: int, no_stock: int, total: int, needs_verification: int) -> str:
+        if not total or needs_verification or health is None:
+            return "Supplier evidence requires verification"
+        if high > 0 or lifecycle > 0 or no_stock > 0:
+            return "Verified supplier risk requires engineering review"
+        return "No elevated supplier signal recorded; engineering release decision required"
 
 
 def build_engineering_context(**kwargs: Any) -> EngineeringContext:

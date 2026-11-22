@@ -17,6 +17,7 @@ from src.ui.detailed_risk_export import (
     detailed_risk_excel_bytes,
     report_exposure_summary,
 )
+from tests.evidence_fixtures import live_supplier_part, retrieved_now
 
 
 PARTS = [
@@ -87,15 +88,15 @@ def _check_excel_export_has_summary_details_and_high_risk_views_without_private_
     assert summary["B5"].value == "flight-controller.csv"
     metrics = {row[0]: row[1] for row in summary.iter_rows(min_row=10, max_row=50, values_only=True)}
     assert metrics["Total components"] == 2
-    assert metrics["Parts with matched supplier evidence"] == 2
-    assert metrics["Risk assessed"] == 2
-    assert metrics["Risk coverage"] == "100%"
-    assert "Risk ratings are recorded for all 2 parts" in summary["A7"].value
-    assert metrics["High risk"] == 1
-    assert metrics["Low risk"] == 1
-    assert metrics["Stock not reported"] == 1
-    assert metrics["Stock coverage incomplete"] == 1
-    assert metrics["Stock coverage unavailable"] == 0
+    assert metrics["Exact current supplier identity matches"] == 0
+    assert metrics["Risk assessed"] == 0
+    assert metrics["Risk coverage"] == "0%"
+    assert "Risk was assessed for 0 of 2 parts" in summary["A7"].value
+    assert metrics["High risk"] == 0
+    assert metrics["Low risk"] == 0
+    assert metrics["Stock not reported"] == 2
+    assert metrics["Stock coverage incomplete"] == 0
+    assert metrics["Stock coverage unavailable"] == 2
 
     details = workbook["Component Details"]
     headers = [cell.value for cell in details[1]]
@@ -111,16 +112,17 @@ def _check_excel_export_has_summary_details_and_high_risk_views_without_private_
     assert first["Stock"] == "Not reported"
     assert first["Description"] == "Dual operational amplifier"
     assert first["Evidence source"] == "—"
-    assert first["Recorded supplier"] == "Mouser"
-    assert first["Stock coverage"] == "Incomplete"
+    assert first["Recorded supplier"] == "—"
+    assert first["Stock coverage"] == "Unavailable"
     assert "No stock available" not in first["Why"]
-    assert "source-backed stock evidence was not saved" in first["Why"]
+    assert "lacks verified exact-part supplier provenance" in first["Why"]
     assert "Mouser: Obsolete" in first["Lifecycle evidence"]
-    assert second["Stock"] == 0
-    assert second["Evidence source"] == "DigiKey"
+    assert second["Stock"] == "Not reported"
+    assert second["Evidence source"] == "—"
     why_cell = details.cell(3, headers.index("Why") + 1)
     assert why_cell.data_type == "s"
-    assert why_cell.value.startswith("'=HYPERLINK")
+    assert not why_cell.value.startswith("=")
+    assert "HYPERLINK" not in why_cell.value
     assert workbook["High Risk Parts"].max_row == 2
 
     exported_values = " ".join(str(cell.value) for sheet in workbook.worksheets for row in sheet for cell in row)
@@ -136,9 +138,10 @@ def _check_csv_export_matches_stress_free_audit_columns_and_marks_unknown_stock(
     assert rows[0]["MPN"] == "LM358N"
     assert rows[0]["Stock"] == "Not reported"
     assert rows[0]["Evidence source"] == "—"
-    assert rows[1]["Stock"] == "0"
-    assert rows[1]["Evidence source"] == "DigiKey"
-    assert rows[1]["Why"].startswith("'=")
+    assert rows[1]["Stock"] == "Not reported"
+    assert rows[1]["Evidence source"] == "—"
+    assert not rows[1]["Why"].startswith("=")
+    assert "HYPERLINK" not in rows[1]["Why"]
 
 
 class DetailedRiskExportTests(unittest.TestCase):
@@ -176,7 +179,7 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertIn("not evidence of low risk", summary["A7"].value)
         self.assertIn("These counts can refer to the same part", summary["A7"].value)
         self.assertNotIn("1 were not risk-rated and 1", summary["A7"].value)
-        self.assertEqual(metrics["Parts with matched supplier evidence"], 0)
+        self.assertEqual(metrics["Exact current supplier identity matches"], 0)
         self.assertEqual(metrics["Risk assessed"], 0)
         self.assertEqual(metrics["Risk coverage"], "0%")
         detail = workbook["Component Details"]
@@ -184,7 +187,7 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertEqual(detail[f'{detail_headers["Risk"]}2'].value, "Not assessed")
         self.assertEqual(detail[f'{detail_headers["Risk score"]}2'].value, "Not assessed")
         self.assertIn(
-            "Verify the full manufacturer part number and rerun",
+            "Verify the manufacturer part number and rerun",
             detail[f'{detail_headers["Why"]}2'].value,
         )
         self.assertEqual(detail[f'{detail_headers["Risk"]}2'].fill.fgColor.rgb[-6:], "E2E8F0")
@@ -203,12 +206,24 @@ class DetailedRiskExportTests(unittest.TestCase):
         )[0]
         self.assertEqual(row["Risk"], "Not assessed")
         self.assertEqual(row["Risk score"], "Not assessed")
-        self.assertIn("stock, lifecycle, and lead-time risk remain unknown", row["Why"])
+        self.assertIn("Supplier concentration is not assessed", row["Why"])
 
     def test_legacy_kicad_fields_are_cleaned_and_supplier_coverage_and_links_survive(self):
+        timestamp = retrieved_now()
         row = component_rows([{
             "mpn": "BoardText(value=2N3904, position=Vector2(27000000, 61000000), layer=BL_F_Fab)",
             "manufacturer": "BoardText(value=onsemi, position=Vector2(27000000, 61000000), layer=BL_F_Fab)",
+            "manufacturer_part_number": "2N3904",
+            "source": "Mouser",
+            "identity_source": "live-authorized-supplier",
+            "supplier_data_verified": True,
+            "provider_status": "AVAILABLE",
+            "retrieved_at": timestamp,
+            "product_url": "https://www.mouser.com/ProductDetail/2N3904",
+            "Lifecycle": "Active",
+            "Stock": 120,
+            "stock_data_complete": True,
+            "stock_data_sources": ["Mouser"],
             "risk_level": "Needs verification",
             "risk_score": 0,
             "supplier_count": 1,
@@ -219,14 +234,17 @@ class DetailedRiskExportTests(unittest.TestCase):
             ],
             "stock_evidence": [{
                 "source": "Mouser",
+                "mpn": "2N3904",
                 "stock": 120,
-                "product_url": "https://supplier.example/2N3904",
-                "retrieved_at": "2026-11-21T12:00:00Z",
+                "product_url": "https://www.mouser.com/ProductDetail/2N3904",
+                "retrieved_at": timestamp,
             }],
             "lifecycle_evidence": [{
                 "source": "Mouser",
+                "mpn": "2N3904",
                 "status": "Active",
-                "product_url": "https://supplier.example/2N3904",
+                "product_url": "https://www.mouser.com/ProductDetail/2N3904",
+                "retrieved_at": timestamp,
             }],
         }])[0]
 
@@ -235,8 +253,10 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertIn("2/2 supplier queries responded", row["supplier_sources_checked"])
         self.assertEqual(len(row["supplier_query_details"]), 2)
         self.assertEqual(row["supplier_links"][0]["source"], "Mouser")
-        self.assertEqual(row["supplier_links"][0]["url"], "https://supplier.example/2N3904")
-        self.assertEqual(row["Supplier product URL"], "https://supplier.example/2N3904")
+        self.assertEqual(row["supplier_links"][0]["url"], "https://www.mouser.com/ProductDetail/2N3904")
+        self.assertEqual(row["Supplier product URL"], "https://www.mouser.com/ProductDetail/2N3904")
+        self.assertEqual(row["Lifecycle"], "Active")
+        self.assertEqual(row["Stock"], 120)
 
     def test_related_legacy_catalog_lead_is_explained_without_rating_original(self):
         row = component_rows([{
@@ -255,41 +275,60 @@ class DetailedRiskExportTests(unittest.TestCase):
 
         self.assertEqual(row["Risk"], "Not assessed")
         self.assertIn("PCF8574P,112 (DigiKey)", row["Why"])
-        self.assertIn("this BOM part remains unassessed", row["Why"])
+        self.assertIn("the part remains unassessed", row["Why"].casefold())
+
+    def test_export_does_not_link_a_source_url_on_another_distributor_domain(self):
+        timestamp = retrieved_now()
+        part = live_supplier_part(
+            "LM317DCYR", lifecycle="Active", stock=20, quantity=2,
+            unit_price=None, sources=("DigiKey",), retrieved_at=timestamp,
+        )
+        part["product_url"] = "https://www.mouser.com/ProductDetail/LM317DCYR"
+        rows = component_rows([part])
+        self.assertEqual(rows[0]["Supplier product URL"], "—")
+        self.assertEqual(rows[0]["supplier_links"], [])
 
     def test_cost_exposure_and_longest_lead_time_use_recorded_evidence_only(self):
+        timestamp = retrieved_now()
         parts = [
-            {
-                "mpn": "LM358N", "description": "Recommended Alt LM358DR2G",
-                "quantity": 10, "unit_price": 2.0, "primary_supplier": "Mouser",
-                "supplier_offers": [{
-                    "mpn": "LM358N", "distributor": "Mouser", "unit_price": 2.0,
-                    "currency": "USD",
-                }],
-                "risk_level": "High", "lifecycle_status": "Obsolete",
-                "lead_time_weeks": 3, "lead_time_source": "Mouser",
-            },
-            {
-                "mpn": "1N4148", "quantity": 50, "unit_price": 0.5,
-                "primary_supplier": "DigiKey", "supplier_offers": [{
-                    "mpn": "1N4148", "distributor": "DigiKey", "unit_price": 0.5,
-                    "currency": "EUR",
-                }],
-                "risk_level": "Low", "lifecycle_status": "Active",
-                "lead_time_weeks": 62, "lead_time_source": "DigiKey",
-            },
-            {
-                "mpn": "UNPRICED-CURRENCY", "quantity": 4, "unit_price": 1.25,
-                "primary_supplier": "Newark", "risk_level": "High",
-                "lifecycle_status": "Active",
-            },
+            live_supplier_part(
+                "LM358N", lifecycle="Obsolete", stock=0, quantity=10,
+                unit_price=2.0, sources=("Mouser",), retrieved_at=timestamp,
+            ),
+            live_supplier_part(
+                "1N4148", lifecycle="Active", stock=2000, quantity=50,
+                unit_price=0.5, sources=("DigiKey",), retrieved_at=timestamp,
+            ),
+            live_supplier_part(
+                "UNPRICED-CURRENCY", lifecycle="Active", stock=100, quantity=4,
+                unit_price=None, sources=("Newark",), retrieved_at=timestamp,
+            ),
         ]
+        parts[0]["description"] = "Recommended Alt LM358DR2G"
+        parts[1]["supplier_offers"][0]["currency"] = "EUR"
+        parts[1]["unit_price_currency"] = "EUR"
+        for row, source, lead in zip(parts[:2], ("Mouser", "DigiKey"), (3, 62)):
+            row.update({
+                "lead_time_weeks": lead,
+                "lead_time_source": source,
+                "lead_time_evidence": [{
+                    "source": source,
+                    "mpn": row["MPN"],
+                    "weeks": lead,
+                    "product_url": row["product_url"],
+                    "retrieved_at": timestamp,
+                }],
+            })
+        # A saved amount without a source quote, currency, quantity break, and
+        # retrieval date remains visible only as an unverified record.
+        parts[2]["unit_price"] = 1.25
+        parts[2]["Unit Price"] = 1.25
         rows = component_rows(parts)
 
         self.assertEqual(rows[0]["Extended cost"], 20)
         self.assertEqual(rows[0]["Unit price currency"], "USD")
         self.assertEqual(rows[0]["Description-mentioned alternatives"], "LM358DR2G")
-        self.assertEqual(rows[2]["Extended cost"], 5)
+        self.assertEqual(rows[2]["Extended cost"], "—")
         self.assertEqual(rows[2]["Unit price currency"], "Not reported")
 
         workbook = load_workbook(
@@ -307,7 +346,7 @@ class DetailedRiskExportTests(unittest.TestCase):
             "USD 20.00",
         )
         self.assertEqual(metrics["High-risk / lifecycle rows without extended cost"], 0)
-        self.assertEqual(metrics["Priced high-risk rows missing currency"], 1)
+        self.assertEqual(metrics["Priced high-risk rows missing currency"], 0)
         self.assertEqual(metrics["Longest reported part lead time"], "62 weeks — 1N4148 (DigiKey)")
         self.assertEqual(metrics["Components with lead-time data"], 2)
         summary_text = " ".join(str(cell.value) for row in workbook["Summary"] for cell in row if cell.value)
@@ -316,17 +355,21 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertIn("not total exposure", summary_text)
 
     def test_candidate_and_source_evidence_are_saved_in_the_export_without_certifying_fit(self):
+        timestamp = retrieved_now()
         parts = [{
             "mpn": "LM317DCYR",
             "description": "Adjustable voltage regulator",
             "manufacturer": "Texas Instruments",
-            "risk_level": "Medium",
-            "risk_score": 35,
-            "risk_reasons": "Reported manufacturer lead time is 26 weeks or longer",
+            "manufacturer_part_number": "LM317DCYR",
+            "source": "DigiKey",
+            "identity_source": "live-authorized-supplier",
+            "supplier_data_verified": True,
+            "provider_status": "AVAILABLE",
+            "retrieved_at": timestamp,
             "lifecycle_status": "Active",
-            "product_url": "https://supplier.example/LM317DCYR",
-            "datasheet_url": "https://ti.example/lm317.pdf",
-            "sourcing_updated_at": "2026-10-21T12:00:00Z",
+            "product_url": "https://www.digikey.com/en/products/detail/ti/LM317DCYR/123",
+            "datasheet_url": "https://www.ti.com/lit/ds/symlink/lm317.pdf",
+            "sourcing_updated_at": timestamp,
             "alternate_search_status": "Candidates returned",
             "alternate_candidates": [{
                 "Alternative Part": "LM317BS-TR",
@@ -337,16 +380,16 @@ class DetailedRiskExportTests(unittest.TestCase):
                 "package": "SOT-223",
                 "pin_count": 3,
                 "Lifecycle": "Active",
-                "Product URL": "https://supplier.example/LM317BS-TR",
-                "Datasheet URL": "https://st.example/lm317bs.pdf",
-                "Retrieved At": "2026-10-21T12:00:00Z",
+                "Product URL": "https://www.digikey.com/en/products/detail/stmicroelectronics/LM317BS-TR/456",
+                "Datasheet URL": "https://www.st.com/resource/en/datasheet/lm317bs.pdf",
+                "Retrieved At": timestamp,
             }],
         }]
 
         rows = component_rows(parts)
         self.assertEqual(rows[0]["Candidate MPNs"], "LM317BS-TR")
-        self.assertEqual(rows[0]["Supplier product URL"], "https://supplier.example/LM317DCYR")
-        self.assertEqual(rows[0]["Datasheet URL"], "https://ti.example/lm317.pdf")
+        self.assertEqual(rows[0]["Supplier product URL"], "https://www.digikey.com/en/products/detail/ti/LM317DCYR/123")
+        self.assertEqual(rows[0]["Datasheet URL"], "https://www.ti.com/lit/ds/symlink/lm317.pdf")
 
         workbook = load_workbook(BytesIO(detailed_risk_excel_bytes(parts, bom_name="Regulator")))
         self.assertEqual(workbook.sheetnames[-1], "Alternative Candidates")
@@ -358,12 +401,12 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertEqual(candidate["Relationship label"], "Supplier-listed similar")
         self.assertIn("not established", candidate["Approval status"])
         self.assertEqual(sheet.cell(5, headers.index("Supplier product URL") + 1).hyperlink.target,
-                         "https://supplier.example/LM317BS-TR")
+                         "https://www.digikey.com/en/products/detail/stmicroelectronics/LM317BS-TR/456")
         details_headers = [cell.value for cell in workbook["Component Details"][1]]
         supplier_url_column = details_headers.index("Supplier product URL") + 1
         self.assertEqual(
             workbook["Component Details"].cell(2, supplier_url_column).hyperlink.target,
-            "https://supplier.example/LM317DCYR",
+            "https://www.digikey.com/en/products/detail/ti/LM317DCYR/123",
         )
         summary_text = " ".join(
             str(cell.value) for row in workbook["Summary"] for cell in row if cell.value
@@ -376,11 +419,11 @@ class DetailedRiskExportTests(unittest.TestCase):
             detailed_risk_csv_bytes(parts).decode("utf-8-sig")
         )))
         self.assertEqual(csv_rows[0]["Candidate MPNs"], "LM317BS-TR")
-        self.assertEqual(csv_rows[0]["Risk score"], "35")
-        self.assertEqual(csv_rows[0]["Datasheet URL"], "https://ti.example/lm317.pdf")
+        self.assertEqual(csv_rows[0]["Risk score"], "Not assessed")
+        self.assertEqual(csv_rows[0]["Datasheet URL"], "https://www.ti.com/lit/ds/symlink/lm317.pdf")
 
-    def test_saved_unit_price_currency_drives_financial_rollup(self):
-        parts = [{
+    def test_saved_unit_price_needs_fresh_matching_supplier_offer_for_financial_rollup(self):
+        legacy_parts = [{
             "mpn": "BC547B",
             "quantity": 150,
             "unit_price": 0.13,
@@ -389,6 +432,13 @@ class DetailedRiskExportTests(unittest.TestCase):
             "risk_level": "Low",
             "lifecycle_status": "Active",
         }]
+        legacy_row = component_rows(legacy_parts)[0]
+        self.assertEqual(legacy_row["Unit price currency"], "Not reported")
+        self.assertEqual(legacy_row["Extended cost"], "—")
+
+        parts = [live_supplier_part(
+            "BC547B", quantity=150, unit_price=0.13, sources=("DigiKey",)
+        )]
         rows = component_rows(parts)
         self.assertEqual(rows[0]["Unit price currency"], "USD")
         self.assertEqual(rows[0]["Extended cost"], 19.5)
@@ -439,15 +489,13 @@ class DetailedRiskExportTests(unittest.TestCase):
         self.assertEqual(rows[0]["Approved alternatives"], "LM358DR2G")
 
     def test_approved_alternative_updates_mitigation_and_open_cost_without_erasing_source_risk(self):
-        parts = [{
-            "mpn": "MC68HC11E1CFNE2",
-            "quantity": 4,
-            "unit_price": 3.5,
-            "unit_price_currency": "USD",
-            "risk_level": "High",
-            "risk_score": 88,
-            "lifecycle_status": "Obsolete",
-        }]
+        parts = [live_supplier_part(
+            "MC68HC11E1CFNE2",
+            quantity=4,
+            unit_price=3.5,
+            lifecycle="Obsolete",
+            stock=0,
+        )]
         approval = {
             "original_part": "MC68HC11E1CFNE2",
             "alternative_part": "MC68HC11E1CFNE3",
@@ -458,7 +506,7 @@ class DetailedRiskExportTests(unittest.TestCase):
 
         row = component_rows(parts, [approval])[0]
         self.assertEqual(row["Risk"], "High")
-        self.assertEqual(row["Risk score"], 88)
+        self.assertEqual(row["Risk score"], 100)
         self.assertEqual(row["Mitigation status"], "Approved alternative (BOM update pending)")
         self.assertEqual(row["Approved alternatives"], "MC68HC11E1CFNE3")
 
@@ -508,7 +556,12 @@ class DetailedRiskExportTests(unittest.TestCase):
         with patch.dict(sys.modules, {"streamlit": fake_streamlit}), patch.object(
             ei_bom_report, "render_detailed_risk_rows"
         ):
-            ei_bom_report.render_engineering_intelligence_report(
+            renderer = getattr(
+                ei_bom_report.render_engineering_intelligence_report,
+                "__wrapped__",
+                ei_bom_report.render_engineering_intelligence_report,
+            )
+            renderer(
                 analysis={
                     "id": "private-analysis-id",
                     "project_name": "Flight Controller Rev B",

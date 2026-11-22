@@ -39,7 +39,7 @@ DIFFICULTY_LEVELS: tuple[str, ...] = (
     "Major Redesign",
 )
 
-ENGINEERING_RISK_LEVELS: tuple[str, ...] = ("Low", "Medium", "High", "Critical")
+ENGINEERING_RISK_LEVELS: tuple[str, ...] = ("Low", "Medium", "High", "Critical", "Needs verification")
 SCHEDULE_IMPACT_LEVELS: tuple[str, ...] = ("Low", "Medium", "High")
 ROI_LABELS: tuple[str, ...] = ("Low", "Medium", "High")
 
@@ -66,13 +66,13 @@ def _number(value: Any, default: float = 0.0) -> float:
 
 def compute_engineering_roi(
     *,
-    health_gain: float = 0.0,
-    effort_hours: float = 1.0,
-    supply_risk_reduction: float = 0.0,
-    lifecycle_issues_removed: float = 0.0,
-    sourcing_issues_removed: float = 0.0,
-    schedule_improvement_weeks: float = 0.0,
-    procurement_effort_reduction_hours: float = 0.0,
+    health_gain: float | None = None,
+    effort_hours: float | None = None,
+    supply_risk_reduction: float | None = None,
+    lifecycle_issues_removed: float | None = None,
+    sourcing_issues_removed: float | None = None,
+    schedule_improvement_weeks: float | None = None,
+    procurement_effort_reduction_hours: float | None = None,
 ) -> Dict[str, Any]:
     """Compute engineering ROI with a stable public API.
 
@@ -80,6 +80,24 @@ def compute_engineering_roi(
     capture future factors (lifecycle, supply chain, procurement, schedule)
     without changing the function signature.
     """
+    if health_gain is None or effort_hours is None:
+        return {
+            "label": "Not assessed",
+            "score": None,
+            "risk_removed": None,
+            "effort_hours": None,
+            "formula": None,
+            "components": {
+                "health_gain": health_gain,
+                "effort_hours": effort_hours,
+                "supply_risk_reduction": supply_risk_reduction,
+                "lifecycle_issues_removed": lifecycle_issues_removed,
+                "sourcing_issues_removed": sourcing_issues_removed,
+                "schedule_improvement_weeks": schedule_improvement_weeks,
+                "procurement_effort_reduction_hours": procurement_effort_reduction_hours,
+            },
+        }
+
     effort = max(1.0, _number(effort_hours, 1.0))
     risk_removed = _number(health_gain, 0.0)
 
@@ -150,43 +168,18 @@ def _impact_level(value: Any) -> str:
 
 
 def _infer_change_difficulty(action: Mapping[str, Any]) -> str:
-    effort_hours = int(_number(action.get("effort_hours"), 1))
-    route = _text(action.get("action_route")).lower()
-    score = int(_number(action.get("score"), 0))
-    why = _text(action.get("why")).lower()
-
-    if effort_hours >= 24 or (route == "alternative" and score >= 80):
-        return "Major Redesign"
-    if effort_hours >= 12 or any(term in why for term in ("obsolete", "eol", "nrnd")):
-        return "High"
-    if effort_hours >= 6:
-        return "Moderate"
-    if effort_hours >= 3:
-        return "Easy"
-    return "Very Easy"
+    return "Not estimated"
 
 
 def _infer_schedule_impact(action: Mapping[str, Any]) -> str:
-    schedule = _text(action.get("schedule")).lower()
-    impacts = action.get("impacts") or {}
-    schedule_level = _impact_level(impacts.get("schedule"))
-
-    if "before production" in schedule or schedule_level in {"high", "critical"}:
-        return "High"
-    if "this week" in schedule or schedule_level == "medium":
-        return "Medium"
-    return "Low"
+    return "Not assessed"
 
 
 def _infer_engineering_risk(action: Mapping[str, Any]) -> str:
-    score = int(_number(action.get("score"), 0))
-    if score >= 85:
-        return "Critical"
-    if score >= 65:
-        return "High"
-    if score >= 40:
-        return "Medium"
-    return "Low"
+    priority = _text(action.get("business_priority"))
+    if priority in {"High", "Medium", "Low", "Needs verification"}:
+        return priority
+    return "Needs verification"
 
 
 def _projected_bom_health(action: Mapping[str, Any]) -> Dict[str, Any]:
@@ -195,21 +188,19 @@ def _projected_bom_health(action: Mapping[str, Any]) -> Dict[str, Any]:
     health_block = decision_impact.get("health") or {}
 
     if health_block:
-        before = int(_number(health_block.get("before"), improvement.get("health_before", 0)))
-        after = int(_number(health_block.get("after"), improvement.get("health_after", 0)))
-        gain = int(_number(health_block.get("gain"), after - before if after >= before else 0))
-        if not gain:
-            gain = int(_number(improvement.get("health_gain"), max(0, after - before)))
+        before = health_block.get("before", improvement.get("health_before"))
+        after = health_block.get("after", improvement.get("health_after"))
+        gain = health_block.get("gain", improvement.get("health_gain"))
         return {
-            "before": before,
-            "after": after,
-            "gain": gain,
+            "before": int(before) if before is not None else None,
+            "after": int(after) if after is not None else None,
+            "gain": int(gain) if gain is not None else None,
             "source": "decision_impact",
         }
     return {
-        "before": int(_number(improvement.get("health_before"), 0)),
-        "after": int(_number(improvement.get("health_after"), 0)),
-        "gain": int(_number(improvement.get("health_gain"), 0)),
+        "before": int(improvement["health_before"]) if improvement.get("health_before") is not None else None,
+        "after": int(improvement["health_after"]) if improvement.get("health_after") is not None else None,
+        "gain": int(improvement["health_gain"]) if improvement.get("health_gain") is not None else None,
         "source": "improvement",
     }
 
@@ -373,11 +364,11 @@ def analyze_action_dependency(
 
     roi = compute_engineering_roi(
         health_gain=projected["gain"],
-        effort_hours=_number(action.get("effort_hours"), 1),
-        supply_risk_reduction=_number(improvement.get("supply_risk_reduction"), 0),
-        lifecycle_issues_removed=_number(improvement.get("lifecycle_issues_removed"), 0),
-        sourcing_issues_removed=_number(improvement.get("sourcing_issues_removed"), 0),
-        schedule_improvement_weeks=_number(decision_impact.get("schedule_improvement_weeks"), 0),
+        effort_hours=_number(action.get("effort_hours"), 0) or None,
+        supply_risk_reduction=improvement.get("supply_risk_reduction"),
+        lifecycle_issues_removed=improvement.get("lifecycle_issues_removed"),
+        sourcing_issues_removed=improvement.get("sourcing_issues_removed"),
+        schedule_improvement_weeks=decision_impact.get("schedule_improvement_weeks"),
     )
 
     part_number = _text(action.get("part_number"), f"action_{action_index}")
@@ -395,7 +386,7 @@ def analyze_action_dependency(
         "schedule_impact": _infer_schedule_impact(action),
         "engineering_risk": _infer_engineering_risk(action),
         "estimated_effort": _text(action.get("effort")),
-        "effort_hours": int(_number(action.get("effort_hours"), 1)),
+        "effort_hours": int(_number(action.get("effort_hours"), 0)) if action.get("effort_hours") is not None else None,
         "projected_bom_health": projected,
         "engineering_roi": roi,
     }
@@ -432,11 +423,10 @@ def build_engineering_dependency_report(
         by_key[item["recommendation_key"]] = idx
 
     if items:
-        highest_roi = max(
-            items,
-            key=lambda row: _number(row["engineering_roi"].get("score"), 0),
-        )
-        lowest_effort = min(items, key=lambda row: _number(row.get("effort_hours"), 999))
+        roi_items = [row for row in items if row["engineering_roi"].get("score") is not None]
+        effort_items = [row for row in items if row.get("effort_hours") is not None]
+        highest_roi = max(roi_items, key=lambda row: _number(row["engineering_roi"].get("score"), 0)) if roi_items else None
+        lowest_effort = min(effort_items, key=lambda row: _number(row.get("effort_hours"), 999)) if effort_items else None
         firmware_items = [
             row
             for row in items
@@ -445,6 +435,7 @@ def build_engineering_dependency_report(
     else:
         highest_roi = None
         lowest_effort = None
+        effort_items = []
         firmware_items = []
 
     return {
@@ -452,10 +443,8 @@ def build_engineering_dependency_report(
         "items": items,
         "summary": {
             "action_count": len(items),
-            "total_effort_hours": sum(int(_number(row.get("effort_hours"), 0)) for row in items),
-            "combined_health_gain": sum(
-                int(_number(row["projected_bom_health"].get("gain"), 0)) for row in items
-            ),
+            "total_effort_hours": sum(int(_number(row.get("effort_hours"), 0)) for row in items) if effort_items else None,
+            "combined_health_gain": sum(int(_number(row["projected_bom_health"].get("gain"), 0)) for row in items) if any(row["projected_bom_health"].get("gain") is not None for row in items) else None,
             "highest_roi": highest_roi,
             "lowest_effort": lowest_effort,
             "firmware_action_count": len(firmware_items),
@@ -506,17 +495,15 @@ def query_dependency_report(report: Mapping[str, Any], question: str) -> Dict[st
         return {"answer": None, "reason": "No dependency items in report."}
 
     if "highest roi" in q or "best roi" in q:
-        item = summary.get("highest_roi") or max(
-            items,
-            key=lambda row: _number(row["engineering_roi"].get("score"), 0),
-        )
+        item = summary.get("highest_roi")
+        if item is None:
+            return {"answer": None, "reason": "ROI is not assessed; validated impact and effort estimates are unavailable."}
         return {"answer": item, "metric": "engineering_roi"}
 
     if "lowest effort" in q or "easiest" in q:
-        item = summary.get("lowest_effort") or min(
-            items,
-            key=lambda row: _number(row.get("effort_hours"), 999),
-        )
+        item = summary.get("lowest_effort")
+        if item is None:
+            return {"answer": None, "reason": "Effort is not estimated for these actions."}
         return {"answer": item, "metric": "effort_hours"}
 
     if "firmware" in q:

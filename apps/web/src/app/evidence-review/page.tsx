@@ -85,8 +85,8 @@ function EvidenceReviewPageInner() {
     : verifiedParts === totalParts
       ? { label: "All matched", tone: "green" as const }
       : verifiedParts > 0
-        ? { label: "Partially verified", tone: "amber" as const }
-        : { label: "No matches", tone: "gray" as const };
+        ? { label: "Some exact matches", tone: "amber" as const }
+        : { label: "No exact matches", tone: "gray" as const };
 
   return (
     <Shell session={session}>
@@ -106,7 +106,7 @@ function EvidenceReviewPageInner() {
 
       {report ? (
         <p className="cv-evidence-context" role="note">
-          Evidence for <strong>{userFacingLabel(report.bom_name || report.filename, "Saved analysis")}</strong>. Source labels describe what was recorded with the analysis; missing fields remain unverified.
+          Evidence for <strong>{userFacingLabel(report.bom_name || report.filename, "Saved analysis")}</strong>. An exact match confirms part identity only; price, stock, lifecycle, and compliance are checked separately. Missing fields remain unverified.
         </p>
       ) : null}
       {report && legacyKiCadMetadataCount > 0 ? (
@@ -127,8 +127,8 @@ function EvidenceReviewPageInner() {
         <>
           <div className="cv-kpis" aria-label="Evidence summary">
             <KpiCard icon="box" tone="blue" label="Components assessed" value={totalParts} status={{ label: "In this report", tone: totalParts > 0 ? "blue" : "gray" }} detail="Parts available for review" />
-            <KpiCard icon="check" tone={verificationTone} label="Verified supplier data" value={verifiedParts} status={verificationStatus} detail="Exact supplier matches recorded" />
-            <KpiCard icon="shield" tone={unverifiedParts > 0 ? "amber" : "green"} label="Needs verification" value={unverifiedParts} status={unverifiedParts > 0 ? { label: "Review needed", tone: "amber" } : { label: "All verified", tone: "green" }} detail="Supplier records to review" />
+            <KpiCard icon="check" tone={verificationTone} label="Exact part matches" value={verifiedParts} status={verificationStatus} detail="MPN and manufacturer identity only" />
+            <KpiCard icon="shield" tone={unverifiedParts > 0 ? "amber" : "green"} label="No exact match" value={unverifiedParts} status={unverifiedParts > 0 ? { label: "Review needed", tone: "amber" } : { label: "All matched", tone: "green" }} detail="Supplier records to review" />
           </div>
           <section className="cv-card pad" aria-labelledby="evidence-review-title">
             <div className="cv-section-heading cv-section-heading--card">
@@ -153,7 +153,7 @@ function EvidenceReviewPageInner() {
                     <th>Lifecycle</th>
                     <th>Risk</th>
                     <th>Evidence source</th>
-                    <th>Supplier verification</th>
+                    <th>Part identity match</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -176,7 +176,7 @@ function EvidenceReviewPageInner() {
                         <td><StatusPill kind="lifecycle" value={part.Lifecycle || part.lifecycle || "Unknown"} /></td>
                         <td><StatusPill kind="risk" value={part["Risk Level"] || part.risk_level || "Unknown"} /></td>
                         <td><span className="cv-source-label">{evidenceSourceLabel(rawSource, sourceFallback)}</span></td>
-                        <td><StatusPill kind="verification" value={verified ? "Verified" : "Not verified"} /></td>
+                        <td><StatusPill kind="verification" value={verified ? "Exact match" : "No exact match"} /></td>
                       </tr>
                     );
                   })}

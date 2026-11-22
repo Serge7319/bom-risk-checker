@@ -1,6 +1,6 @@
 """Compact procurement intelligence used by Cadivor's overview and Procurement Advisor."""
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import math
 import re
@@ -400,12 +400,12 @@ def procurement_header_html(
         size=64,
         part=dict(part),
     )
-    action = html_escape(str((recommendation or {}).get("Recommendation") or "Check an authorized source"))
+    action = html_escape(str((recommendation or {}).get("Recommendation") or "Check a configured source"))
     next_step = html_escape(str((recommendation or {}).get("Next Step") or "Confirm the current supplier, stock, and lead time before making a purchasing decision."))
     missing = str((recommendation or {}).get("Missing Sourcing Data") or "").strip()
     evidence_note = (
         f"<p class='cv-pa-evidence-gap'><strong>Still needed:</strong> {html_escape(missing)}. "
-        "Cadivor leaves missing evidence unscored; confirm it with an authorized source or enter a verified quote.</p>"
+        "Cadivor leaves missing supplier evidence unscored; confirm it with a source your team uses or record a clearly labeled manual quote.</p>"
         if missing
         else "<p class='cv-pa-evidence-ok'>Based on the sourcing fields recorded for this component.</p>"
     )
@@ -452,7 +452,7 @@ def procurement_page_header_html() -> str:
         "<div class='cv-pa-page-head'><div class='cv-pa-breadcrumb'>Procurement Advisor"
         "<span aria-hidden='true'>›</span>Sourcing Recommendation</div>"
         "<h1>Procurement advisor</h1>"
-        "<p>AI-powered supplier insights and sourcing recommendations to reduce risk, ensure supply continuity, and optimize total cost.</p></div>"
+        "<p>Review exact-part supplier snapshots and identify gaps in stock, price, lead time, and lifecycle evidence. Confirm availability and quotes with the distributor before purchasing.</p></div>"
     )
 
 
@@ -549,7 +549,7 @@ def procurement_part_summary_html(
     bom_label = first("bom_name", "filename", "project_name", default="Not recorded")
     revision = first("bom_revision", "revision", "rev", default="")
     bom_value = f"BOM: Rev {revision}" if revision and revision != "Not recorded" else f"BOM: {bom_label}"
-    action = _t(recommendation.get("Recommendation"), "Check an authorized source")
+    action = _t(recommendation.get("Recommendation"), "Check a configured source")
     lifecycle_key = lifecycle.casefold()
     lifecycle_tone = (
         "good"
@@ -603,45 +603,133 @@ def procurement_part_summary_html(
 
 
 def _trusted_sourcing_values(part: Mapping[str, Any]) -> dict[str, Any]:
-    """Return only fields supported by a verified row or an explicit override."""
+    """Return only current field evidence, plus explicit user-entered overrides.
+
+    Reuse the report evidence contract so Procurement cannot accept a supplier
+    identity or field snapshot that reports mark stale, future-dated, incomplete,
+    or unverified.
+    """
     raw_part = dict(part or {})
     override = _parse_override(raw_part.get("sourcing_override"))
-    raw_verified = _first(raw_part, "supplier_data_verified", "Supplier Data Verified")
-    has_source_override = any(field in override for field in SOURCING_OVERRIDE_FIELDS)
-    if _truthy(raw_verified) or (raw_verified is None and not has_source_override):
-        normalized = _recommend(apply_sourcing_override(raw_part))
-        return {
-            "primary_supplier": _t(
-                _first(
-                    raw_part,
-                    "primary_supplier",
-                    "best_source",
-                    "Best Source",
-                    "supplier",
-                    "source",
-                    "Source",
-                    default="",
-                )
-            ) or None,
-            "unit_price": normalized.get("Unit Price"),
-            "currency": _part_currency(raw_part) or None,
-            "stock_available": normalized.get("Available Stock"),
-            "supplier_count": normalized.get("Supplier Sources"),
-            "lead_time_weeks": normalized.get("Lead Time (Weeks)"),
-            "lifecycle_status": (
-                normalized.get("Lifecycle Status")
-                if str(normalized.get("Lifecycle Status") or "").casefold() not in {"unknown", "not recorded"}
-                else None
-            ),
-        }
-    return {field: override.get(field) for field in SOURCING_OVERRIDE_FIELDS}
+    manual_fields = set(override)
+    requested_mpn = _t(_first(raw_part, "mpn", "MPN", "part_number", "manufacturer_part_number"))
+    values = {
+        field: override.get(field) if field in manual_fields else None
+        for field in SOURCING_OVERRIDE_FIELDS
+    }
+    if not requested_mpn:
+        return values
+
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+
+    evidence = classify_part_evidence(raw_part)
+    fields = evidence.get("fields") if isinstance(evidence.get("fields"), Mapping) else {}
+    identity = fields.get("identity") if isinstance(fields.get("identity"), Mapping) else {}
+    if identity.get("evidence_class") != EVIDENCE_LIVE:
+        return values
+
+    price = fields.get("price") if isinstance(fields.get("price"), Mapping) else {}
+    if (
+        "unit_price" not in manual_fields
+        and price.get("evidence_class") == EVIDENCE_LIVE
+        and price.get("current") is True
+        and price.get("quantity_break_applies") is True
+    ):
+        values["unit_price"] = _maybe_n(price.get("reported_value"))
+        values["currency"] = _t(price.get("currency")).upper() or None
+
+    stock = fields.get("stock") if isinstance(fields.get("stock"), Mapping) else {}
+    if (
+        "stock_available" not in manual_fields
+        and stock.get("evidence_class") == EVIDENCE_LIVE
+        and stock.get("current") is True
+        and stock.get("complete") is True
+    ):
+        from integrations.stock_coercion import parse_stock_total
+
+        values["stock_available"] = parse_stock_total(stock.get("observed_total"))
+
+    from src.risk_engine import _coverage_complete as risk_coverage_complete
+
+    coverage_complete, configured_count = risk_coverage_complete(raw_part)
+    if "supplier_count" not in manual_fields and coverage_complete:
+        supplier_count = _maybe_n(_first(raw_part, "supplier_count", "Supplier Count", "Supplier Sources"))
+        if (
+            supplier_count is not None
+            and supplier_count >= 0
+            and supplier_count.is_integer()
+            and supplier_count <= configured_count
+        ):
+            values["supplier_count"] = int(supplier_count)
+
+    supplier = _t(_first(raw_part, "Best Source", "primary_supplier", "best_source", "supplier", "source"))
+    if "primary_supplier" not in manual_fields and _authorized_distributor_name(supplier):
+        values["primary_supplier"] = supplier
+
+    lead_time = fields.get("lead_time") if isinstance(fields.get("lead_time"), Mapping) else {}
+    if (
+        "lead_time_weeks" not in manual_fields
+        and lead_time.get("evidence_class") == EVIDENCE_LIVE
+        and lead_time.get("current") is True
+    ):
+        values["lead_time_weeks"] = _maybe_n(
+            _first(raw_part, "Lead Time Weeks", "lead_time_weeks", "Lead Time (Weeks)")
+        )
+
+    lifecycle = fields.get("lifecycle") if isinstance(fields.get("lifecycle"), Mapping) else {}
+    if (
+        "lifecycle_status" not in manual_fields
+        and lifecycle.get("evidence_class") == EVIDENCE_LIVE
+        and lifecycle.get("current") is True
+    ):
+        values["lifecycle_status"] = _t(
+            _first(raw_part, "Lifecycle", "lifecycle_status", "Lifecycle Status")
+        ) or None
+    return values
+
+
+def _authorized_distributor_name(value: Any) -> bool:
+    from src.supplier_source_identity import is_supported_distributor
+
+    return is_supported_distributor(value)
+
+
+def _aware_timestamp(value: Any) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value or "").strip().replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _supplier_product_url_matches_supplier(supplier: Any, value: Any) -> bool:
+    """Require an HTTPS listing link on the named distributor's own domain."""
+    from src.supplier_source_identity import supplier_listing_url_is_valid
+
+    return supplier_listing_url_is_valid(supplier, value)
+
+
+def _is_exact_mpn(candidate: Any, requested: Any) -> bool:
+    try:
+        from src.normalizer import normalize_part_number
+
+        return bool(candidate and requested and normalize_part_number(str(candidate)) == normalize_part_number(str(requested)))
+    except Exception:  # noqa: BLE001
+        return bool(str(candidate or "").strip().casefold() == str(requested or "").strip().casefold())
 
 
 def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Read saved distributor quotes and the current source as comparison rows."""
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence, is_current_supplier_snapshot
+
     raw_part = dict(part or {})
     trusted_values = _trusted_sourcing_values(raw_part)
     part = apply_sourcing_override(raw_part)
+    requested_mpn = _t(_first(part, "mpn", "MPN", "part_number", "manufacturer_part_number"))
+    bom_quantity = _first(part, "effective_quantity", "Effective Quantity", "quantity", "Quantity", "qty")
+    from src.saved_bom_cost import normalize_saved_offers, select_supplier_offer
     # The preserved Streamlit analysis rows use "Supplier Offers" while the
     # Next.js/Postgres rows use "supplier_offers". Accept both shapes so the
     # migration does not silently discard saved distributor quotes.
@@ -707,11 +795,50 @@ def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, 
         if key in seen:
             continue
         seen.add(key)
+        offered_mpn = _t(
+            _first(raw, "offered_mpn", "mpn", "part_number", "manufacturer_part_number", default="")
+        )
+        normalized_offer = normalize_saved_offers([raw])
+        comparable_offer = None
+        if normalized_offer and requested_mpn:
+            comparable_offer = select_supplier_offer(
+                normalized_offer,
+                mpn=requested_mpn,
+                supplier=supplier,
+                unit_price=price,
+                currency=currency,
+                quantity=bom_quantity,
+            )
+        retrieved_at = _first(raw, "retrieved_at", "updated_at")
+        identity_evidence = classify_part_evidence(raw_part)
+        identity_live = identity_evidence.get("fields", {}).get("identity", {}).get("evidence_class") == EVIDENCE_LIVE
+        exact_offer = bool(offered_mpn and _is_exact_mpn(offered_mpn, requested_mpn))
+        listing_url = _first(raw, "product_url", "product_detail_url", "source_url", default="")
+        exact_listing = bool(
+            identity_live
+            and exact_offer
+            and _authorized_distributor_name(supplier)
+            and _supplier_product_url_matches_supplier(supplier, listing_url)
+        )
+        current_price = bool(
+            exact_listing
+            and comparable_offer
+            and comparable_offer.get("quantity_break_applies") is True
+            and is_current_supplier_snapshot("price", retrieved_at)
+        )
+        current_stock = bool(
+            exact_listing
+            and stock is not None
+            and is_current_supplier_snapshot("stock", retrieved_at)
+        )
+        current_lead_time = bool(
+            exact_listing
+            and lead is not None
+            and is_current_supplier_snapshot("lead_time", retrieved_at)
+        )
         rows.append({
             "supplier": supplier,
-            "offered_mpn": _t(
-                _first(raw, "offered_mpn", "mpn", "part_number", "manufacturer_part_number", default="")
-            ),
+            "offered_mpn": offered_mpn,
             "offered_manufacturer": _t(
                 _first(raw, "offered_manufacturer", "manufacturer", "brand", default="")
             ),
@@ -733,18 +860,100 @@ def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, 
             "quote_reference": _t(_first(raw, "quote_reference", "quote_number", default="")),
             "region": _t(_first(raw, "region", "ship_from", "country", default="")),
             "supply_risk": _t(_first(raw, "supply_risk", "risk_level", default="")),
-            "product_url": _t(_first(raw, "product_url", "product_detail_url", "source_url", default="")),
-            "retrieved_at": _t(_first(raw, "retrieved_at", "updated_at", default="")),
-            "is_current": False,
+            "product_url": _t(listing_url),
+            "retrieved_at": _t(retrieved_at),
+            "is_current": bool(exact_listing and (current_price or current_stock or current_lead_time)),
+            "price_verified": current_price,
+            "stock_verified": current_stock,
+            "lead_time_verified": current_lead_time,
         })
 
-    current_supplier = _t(trusted_values.get("primary_supplier"))
+    # Keep older/top-level source fields visible for review, but never let them
+    # inherit trusted flags. They may lack exact MPN lineage or field-level
+    # timestamps; the comparison UI will label those values unverified.
+    live_identity_source = _t(trusted_values.get("primary_supplier"))
+    current_supplier = live_identity_source or _t(
+        _first(part, "primary_supplier", "best_source", "Best Source", "supplier", "source")
+    )
     if current_supplier.casefold() in {"unknown", "not recorded", "no supplier match", "—", "-"}:
         current_supplier = ""
-    current_price = _maybe_n(trusted_values.get("unit_price"))
-    current_currency = _t(trusted_values.get("currency")).upper()
-    current_stock = _maybe_n(trusted_values.get("stock_available"))
+    current_price = _maybe_n(
+        trusted_values.get("unit_price")
+        if trusted_values.get("unit_price") is not None
+        else _first(part, "unit_price", "Unit Price", "price")
+    )
+    current_currency = _t(
+        trusted_values.get("currency")
+        or _first(part, "unit_price_currency", "Unit Price Currency", "currency", "Currency")
+    ).upper()
+    classified = classify_part_evidence(raw_part)
+    classified_fields = classified.get("fields") if isinstance(classified.get("fields"), Mapping) else {}
+    price_evidence = classified_fields.get("price") if isinstance(classified_fields.get("price"), Mapping) else {}
+    price_source = _t(
+        price_evidence.get("source")
+        or _first(part, "price_source", "Unit Price Source", default="")
+    )
+    price_url = price_evidence.get("product_url") or _first(part, "product_url", "Product URL", default="")
+    current_price_verified = bool(
+        trusted_values.get("unit_price") is not None
+        and "unit_price" not in set(_parse_override(dict(part or {}).get("sourcing_override")))
+        and price_source
+        and price_source.casefold() == current_supplier.casefold()
+        and price_evidence.get("evidence_class") == EVIDENCE_LIVE
+        and price_evidence.get("current") is True
+        and price_evidence.get("quantity_break_applies") is True
+        and _authorized_distributor_name(price_source)
+        and _supplier_product_url_matches_supplier(price_source, price_url)
+    )
+    current_stock = None
+    manual_fields = set(_parse_override(dict(part or {}).get("sourcing_override")))
+    matching_stock = []
+    if "stock_available" in manual_fields:
+        current_stock = _maybe_n(trusted_values.get("stock_available"))
+    else:
+        # stock_available can be a total across several distributors. Attach a
+        # count to a supplier row only when that supplier has its own exact,
+        # timestamped observation; never copy an aggregate into the primary
+        # supplier's row.
+        stock_rows = _first(part, "stock_evidence", "Stock Evidence", default=[]) or []
+        if isinstance(stock_rows, Mapping):
+            stock_rows = [stock_rows]
+        try:
+            from src.normalizer import normalize_part_number
+            from integrations.stock_coercion import parse_stock_total
+
+            for item in stock_rows if isinstance(stock_rows, (list, tuple)) else []:
+                if not isinstance(item, Mapping):
+                    continue
+                item_source = _t(_first(item, "source", "supplier"))
+                item_mpn = _t(item.get("mpn"))
+                retrieved = _aware_timestamp(item.get("retrieved_at"))
+                source_url = _first(item, "product_url", "source_url", "url", default="")
+                stock_amount = parse_stock_total(_first(item, "stock", "stock_total"))
+                if (
+                    bool(live_identity_source)
+                    and item_source.casefold() == current_supplier.casefold()
+                    and item_mpn
+                    and normalize_part_number(item_mpn) == normalize_part_number(requested_mpn)
+                    and _authorized_distributor_name(item_source)
+                    and _supplier_product_url_matches_supplier(item_source, source_url)
+                    and retrieved is not None
+                    and is_current_supplier_snapshot("stock", retrieved.isoformat())
+                    and stock_amount is not None
+                ):
+                    matching_stock.append((retrieved, stock_amount))
+        except Exception:  # noqa: BLE001
+            matching_stock = []
+        if matching_stock:
+            current_stock = max(matching_stock, key=lambda row: row[0])[1]
     current_lead = _maybe_n(trusted_values.get("lead_time_weeks"))
+    lead_source = _t(_first(part, "lead_time_source", "Lead Time Source"))
+    if (
+        "lead_time_weeks" not in manual_fields
+        and current_supplier
+        and lead_source.casefold() != current_supplier.casefold()
+    ):
+        current_lead = None
     if current_supplier:
         match = next((row for row in rows if row["supplier"].casefold() == current_supplier.casefold()), None)
         if match is None:
@@ -766,18 +975,29 @@ def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, 
                 "supply_risk": "",
                 "product_url": _t(_first(part, "product_url", "source_url", default="")),
                 "retrieved_at": _updated_at(part),
-                "is_current": True,
+                "is_current": bool(live_identity_source and current_supplier == live_identity_source),
+                "price_verified": current_price_verified,
+                "stock_verified": current_stock is not None and (
+                    "stock_available" in manual_fields or bool(matching_stock)
+                ),
+                "lead_time_verified": current_lead is not None,
             })
         else:
-            match["is_current"] = True
+            match["is_current"] = bool(
+                match.get("is_current")
+                or (live_identity_source and current_supplier == live_identity_source)
+            )
             if match.get("unit_price") is None:
                 match["unit_price"] = current_price
             if not match.get("currency"):
                 match["currency"] = current_currency
-            if match.get("stock") is None:
+            if match.get("stock") is None and current_stock is not None:
                 match["stock"] = int(current_stock) if current_stock is not None and current_stock.is_integer() else current_stock
             if match.get("lead_time_weeks") is None:
                 match["lead_time_weeks"] = current_lead
+            match["price_verified"] = bool(match.get("price_verified") or current_price_verified)
+            match["stock_verified"] = bool(match.get("stock_verified") or (current_stock is not None and ("stock_available" in manual_fields or matching_stock)))
+            match["lead_time_verified"] = bool(match.get("lead_time_verified") or current_lead is not None)
     return rows
 
 
@@ -824,7 +1044,8 @@ def supplier_comparison_dataframe(
     current_price = _maybe_n(trusted_values.get("unit_price"))
     prices = [
         row["unit_price"] for row in offers
-        if row.get("unit_price") is not None and currency and row.get("currency") == currency
+        if row.get("price_verified") and row.get("unit_price") is not None
+        and currency and row.get("currency") == currency
     ]
     best_price = min(prices) if prices else None
     columns = ["Selected", "Supplier", "Unit price", "Price vs current", "Available stock", "Lead time", "Region", "Supply risk", "Unit price index"]
@@ -835,28 +1056,41 @@ def supplier_comparison_dataframe(
         price = row.get("unit_price")
         row_currency = row.get("currency")
         same_currency = bool(currency and row_currency == currency)
-        if price is not None:
+        if price is not None and row.get("price_verified"):
             price_label = money_label(price, row_currency)
+        elif price is not None:
+            price_label = f"Unverified · {money_label(price, row_currency)}"
         else:
             price_label = "Not reported by supplier"
         delta = "—"
-        if price is not None and current_price is not None and same_currency and current_price > 0:
+        if row.get("price_verified") and price is not None and current_price is not None and same_currency and current_price > 0:
             pct = (price / current_price - 1) * 100
             delta = f"{pct:+.1f}%" if abs(pct) >= .05 else "Current price"
         stock = row.get("stock")
         lead = row.get("lead_time_weeks")
         price_break = row.get("price_break_quantity")
         index = "—"
-        if best_price and price and same_currency:
+        if best_price and price and same_currency and row.get("price_verified"):
             # A unit-price index is explicitly normalized to the cheapest quote.
             index = f"{round(best_price / price * 100):d}"
         item = {
             "Selected": "● Selected" if row["supplier"].casefold() == str(selected_supplier).casefold() else "○ Select row",
-            "Supplier": row["supplier"] + (" · Current source" if row.get("is_current") else " · Offer recorded"),
+            "Supplier": row["supplier"] + (
+                " · Fresh distributor snapshot" if row.get("is_current")
+                else " · Saved, not verified"
+            ),
             "Unit price": price_label,
             "Price vs current": delta,
-            "Available stock": f"{stock:,}" if isinstance(stock, (int, float)) else "Not recorded",
-            "Lead time": f"{lead:g} weeks" if lead is not None else "Not recorded",
+            "Available stock": (
+                f"{stock:,}" if row.get("stock_verified") and isinstance(stock, (int, float))
+                else f"Unverified · {stock:,}" if isinstance(stock, (int, float))
+                else "Not recorded"
+            ),
+            "Lead time": (
+                f"{lead:g} weeks" if row.get("lead_time_verified") and lead is not None
+                else f"Unverified · {lead:g} weeks" if lead is not None
+                else "Not recorded"
+            ),
             "Region": row.get("region") or "Not recorded",
             "Supply risk": row.get("supply_risk") or "Not recorded",
             "Unit price index": index,
@@ -900,6 +1134,7 @@ def supplier_comparison_table_html(
     comparable_prices = [
         _maybe_n(row.get("unit_price"))
         for row in offers
+        if row.get("price_verified")
         if _maybe_n(row.get("unit_price")) is not None
         and comparison_currency
         and _t(row.get("currency")).upper() == comparison_currency
@@ -915,7 +1150,11 @@ def supplier_comparison_table_html(
         if len(values) >= 2 and min(values) > 0
     }
     fastest_lead = min(
-        (float(row["lead_time_weeks"]) for row in offers if row.get("lead_time_weeks") is not None),
+        (
+            float(row["lead_time_weeks"])
+            for row in offers
+            if row.get("lead_time_verified") and row.get("lead_time_weeks") is not None
+        ),
         default=None,
     )
 
@@ -945,15 +1184,21 @@ def supplier_comparison_table_html(
         price = _maybe_n(row.get("unit_price"))
         currency = _t(row.get("currency")).upper()
         is_lowest = (
+            bool(row.get("price_verified"))
+            and
             price is not None
             and lowest_price is not None
             and currency == comparison_currency
             and math.isclose(price, lowest_price, rel_tol=1e-9, abs_tol=1e-12)
         )
         badge = (
-            "<span class='cv-pa-quote-badge current'>Current source</span>"
+            "<span class='cv-pa-quote-badge current'>Fresh distributor snapshot</span>"
             if row.get("is_current")
-            else "<span class='cv-pa-quote-badge'>Quote recorded</span>"
+            else (
+                "<span class='cv-pa-quote-badge'>Exact-part API snapshot</span>"
+                if row.get("price_verified")
+                else "<span class='cv-pa-quote-badge'>Recorded, not verified</span>"
+            )
         )
         if is_lowest:
             badge += "<span class='cv-pa-quote-badge best'>Lowest quote</span>"
@@ -961,7 +1206,7 @@ def supplier_comparison_table_html(
         quote_copy = "Current sourcing record" if row.get("is_current") else f"Quote updated {quote_date}"
 
         price_delta = ""
-        if current_price is not None and price is not None and current_currency and currency == current_currency and current_price > 0:
+        if row.get("price_verified") and current_price is not None and price is not None and current_currency and currency == current_currency and current_price > 0:
             pct = (price / current_price - 1) * 100
             if abs(pct) >= 0.05:
                 tone = "good" if pct < 0 else "warn"
@@ -974,6 +1219,9 @@ def supplier_comparison_table_html(
         stock = _maybe_n(row.get("stock"))
         if stock is None:
             stock_value, stock_detail, stock_tone = "Not reported by supplier", "The saved quote has no stock figure", "neutral"
+        elif not row.get("stock_verified"):
+            stock_text = f"{stock:,.0f}" if stock.is_integer() else f"{stock:,.2f}".rstrip("0").rstrip(".")
+            stock_value, stock_detail, stock_tone = f"{stock_text} units", "Recorded value lacks exact-part source verification", "neutral"
         else:
             stock_text = f"{stock:,.0f}" if stock.is_integer() else f"{stock:,.2f}".rstrip("0").rstrip(".")
             if stock <= 0:
@@ -989,6 +1237,8 @@ def supplier_comparison_table_html(
         lead = _maybe_n(row.get("lead_time_weeks"))
         if lead is None:
             lead_value, lead_detail, lead_tone = "Not recorded", "Confirm with supplier", "neutral"
+        elif not row.get("lead_time_verified"):
+            lead_value, lead_detail, lead_tone = f"{lead:g} weeks", "Recorded value lacks exact-part source verification", "neutral"
         else:
             lead_value = f"{lead:g} weeks"
             if current_lead is not None and lead < current_lead:
@@ -1093,11 +1343,14 @@ def procurement_supplier_insight_context(
     quote_rows = [
         {
             "supplier": row["supplier"],
-            "source_role": "current source" if row.get("is_current") else "saved quote; qualification not recorded",
-            "unit_price": row.get("unit_price"),
-            "currency": row.get("currency") or None,
-            "stock": row.get("stock"),
-            "lead_time_weeks": row.get("lead_time_weeks"),
+            "source_role": "fresh distributor snapshot" if row.get("is_current") else "saved supplier record; freshness or identity not verified",
+            "unit_price": row.get("unit_price") if row.get("price_verified") else None,
+            "currency": row.get("currency") or None if row.get("price_verified") else None,
+            "price_evidence_status": "exact-part timestamped API snapshot" if row.get("price_verified") else "unverified; excluded from comparison",
+            "stock": row.get("stock") if row.get("stock_verified") else None,
+            "stock_evidence_status": "exact-part timestamped reading" if row.get("stock_verified") else "unverified; excluded from comparison",
+            "lead_time_weeks": row.get("lead_time_weeks") if row.get("lead_time_verified") else None,
+            "lead_time_evidence_status": "exact-part timestamped reading" if row.get("lead_time_verified") else "unverified; excluded from comparison",
             "region": row.get("region") or None,
             "supply_risk": row.get("supply_risk") or None,
             "retrieved_at": row.get("retrieved_at") or None,
@@ -1184,7 +1437,7 @@ def _procurement_evidence_summary(context: Mapping[str, Any]) -> str:
         lines.append(
             f"- {len(offers)} saved supplier quote/source record(s) are available; a quote does not establish authorization or engineering qualification."
         )
-        priced = [row for row in offers if _maybe_n(row.get("unit_price")) is not None and _t(row.get("currency"))]
+        priced = [row for row in offers if row.get("price_evidence_status") == "exact-part timestamped API snapshot" and _maybe_n(row.get("unit_price")) is not None and _t(row.get("currency"))]
         priced_currencies = {str(row.get("currency")).upper() for row in priced}
         if priced and len(priced_currencies) == 1:
             cheapest = min(priced, key=lambda row: _maybe_n(row.get("unit_price")))
@@ -1193,7 +1446,7 @@ def _procurement_evidence_summary(context: Mapping[str, Any]) -> str:
             )
         else:
             lines.append("- Comparable unit pricing is incomplete or spans currencies; no cost winner is calculated.")
-        stock_records = [row for row in offers if _maybe_n(row.get("stock")) is not None]
+        stock_records = [row for row in offers if row.get("stock_evidence_status") == "exact-part timestamped reading" and _maybe_n(row.get("stock")) is not None]
         if stock_records:
             lines.append(f"- Availability is recorded for {len(stock_records)} of {len(offers)} listed supplier record(s); confirm it with the supplier before placing an order.")
         else:
@@ -1226,7 +1479,7 @@ def _procurement_evidence_summary(context: Mapping[str, Any]) -> str:
         [
             "",
             "### Sourcing recommendation",
-            f"- {component.get('recommendation') or 'Check an authorized source'}: {component.get('recommended_next_step') or 'Confirm current supplier evidence before buying.'}",
+            f"- {component.get('recommendation') or 'Check a configured source'}: {component.get('recommended_next_step') or 'Confirm current supplier evidence before buying.'}",
             "",
             "### Data needed",
         ]
@@ -1373,13 +1626,13 @@ def procurement_recommendation_html(
 
     lead = _maybe_n(recommendation.get("Lead Time (Weeks)"))
     lead_value = f"{lead:g} weeks" if lead is not None else "Not recorded"
-    lead_detail = "Current sourcing record" if lead is not None else "Confirm with an authorized supplier"
+    lead_detail = "Current field evidence" if lead is not None else "Confirm lead time with your source"
     callouts = (
         ("Supplier coverage", coverage_value, coverage_detail, "shield"),
         ("Price comparison", price_value, price_detail, "chart"),
         ("Lead-time evidence", lead_value, lead_detail, "clock"),
     )
-    action = _t(recommendation.get("Recommendation"), "Check an authorized source")
+    action = _t(recommendation.get("Recommendation"), "Check a configured source")
     action_title = {
         "Add a second source": "Add a second source to improve supply coverage",
         "Qualify a replacement": "Qualify a replacement for lifecycle continuity",
@@ -1387,8 +1640,8 @@ def procurement_recommendation_html(
         "Buy now": "Secure the units needed for the next build",
         "Order earlier": "Move procurement ahead of the long lead time",
         "Monitor closely": "Monitor supply before the next build",
-        "Check an authorized source": "Confirm current authorized sourcing evidence",
-        "Complete sourcing data": "Confirm current authorized sourcing evidence",
+        "Check a configured source": "Confirm exact-part sourcing evidence",
+        "Complete sourcing data": "Confirm exact-part sourcing evidence",
         "No immediate action": "Continue routine supplier monitoring",
     }.get(action, action)
     next_step = _t(recommendation.get("Next Step"), "Confirm current sourcing evidence before ordering.")
@@ -1476,7 +1729,7 @@ def procurement_summary_cards_html(
     risk = _t(_first(part, "blended_supply_risk", "supply_risk", default=""))
     risk_value = risk if risk else "Not assessed"
     risk_detail = "Recorded supply-risk assessment" if risk else "No blended supplier-risk evidence"
-    action = _t(recommendation.get("Recommendation"), "Check an authorized source")
+    action = _t(recommendation.get("Recommendation"), "Check a configured source")
     cards = (
         ("Sourcing coverage", coverage_value, coverage_detail, "coverage", "layers"),
         ("Estimated annual savings", annual_savings_value, annual_savings_detail, "cost", "calculator"),
@@ -1557,11 +1810,13 @@ def sourcing_editor_values(part: Mapping[str, Any]) -> Dict[str, Any]:
     row = apply_sourcing_override(part or {})
     normalized = _recommend(row)
     manual_fields = set(row.get("_sourcing_override_fields") or ())
-    supplier_known = (
-        "primary_supplier" in manual_fields
-        or row.get("supplier_data_verified") is not False
+    trusted = _trusted_sourcing_values(row)
+    sourcing_override = _parse_override(row.get("sourcing_override"))
+    supplier = _t(
+        sourcing_override.get("primary_supplier")
+        if "primary_supplier" in manual_fields
+        else trusted.get("primary_supplier")
     )
-    supplier = _t(_first(row, "primary_supplier", "best_source", "supplier", default=""))
     return {
         "description": _t(_first(row, "description", "Description", "part_description", "product_description")),
         "category": _t(_first(row, "category", "Category", "component_category", "device_type", "component_type", "part_type", "architecture")),
@@ -1570,7 +1825,7 @@ def sourcing_editor_values(part: Mapping[str, Any]) -> Dict[str, Any]:
         "target_currency": _t(_first(row, "target_currency", "target_price_currency", default="")).upper(),
         "required_by": _t(_first(row, "required_by", "required_date", "need_by_date", "required_at", default="")),
         "supplier_landed_costs": normalize_supplier_landed_costs(row.get("supplier_landed_costs")),
-        "primary_supplier": supplier if supplier_known else "",
+        "primary_supplier": supplier,
         "unit_price": normalized.get("Unit Price"),
         "currency": _part_currency(row),
         "stock_available": normalized.get("Available Stock"),
@@ -1590,68 +1845,24 @@ def _recommend(row: Dict[str, Any]) -> Dict[str, Any]:
     row = apply_sourcing_override(row)
     part = _t(_first(row, "mpn", "MPN", "part_number", default="Component"), "Component")
     manufacturer = _t(_first(row, "manufacturer", "Manufacturer", default="Unknown"), "Unknown")
-    raw_stock = _maybe_n(
-        _first(row, "stock_available", "Stock Available", "Total Market Stock", "stock", "Stock")
-    )
+    trusted = _trusted_sourcing_values(row)
     qty_value = _maybe_n(
         _first(row, "effective_quantity", "Effective Quantity", "quantity", "Quantity", "qty")
     )
     qty = int(qty_value) if qty_value is not None and qty_value > 0 else None
-    raw_suppliers = _maybe_n(_first(row, "supplier_count", "Supplier Count", "Supplier Sources"))
-    raw_lead = _maybe_n(
-        _first(row, "lead_time_weeks", "Lead Time Weeks", "Lead Time (Weeks)", "lead_time")
-    )
-    lifecycle = _t(_first(row, "lifecycle_status", "Lifecycle Status", "Lifecycle", default="Unknown"), "Unknown")
-    risk_value = _maybe_n(_first(row, "risk_score", "Risk Score"))
-    risk = int(risk_value or 0)
-    supplier_name = _t(
-        _first(row, "primary_supplier", "best_source", "Best Source", "supplier", "Supplier", "source", "Source", default="")
-    )
-    manual_fields = set(row.get("_sourcing_override_fields") or ())
-    has_verification_flag = row.get("supplier_data_verified") is not None
-    verified = _truthy(row.get("supplier_data_verified"))
-    if has_verification_flag and not verified and "lifecycle_status" not in manual_fields:
-        lifecycle = "Unknown"
-    offers = _first(row, "supplier_offers", "Supplier Offers", default=[]) or []
-    offer_stock_recorded = False
-    if isinstance(offers, str):
-        try:
-            offers = json.loads(offers)
-        except (TypeError, ValueError):
-            offers = []
-    if isinstance(offers, Mapping):
-        offers = [offers]
-    if isinstance(offers, (list, tuple)):
-        offer_stock_recorded = any(
-            isinstance(offer, Mapping)
-            and _maybe_n(_first(offer, "stock", "stock_total", "available_stock")) is not None
-            for offer in offers
-        )
-    if "stock_available" in manual_fields or (has_verification_flag and verified):
-        stock = raw_stock
-    elif has_verification_flag:
-        stock = None
-    elif raw_stock is not None and raw_stock > 0:
-        stock = raw_stock
-    elif raw_stock == 0 and (raw_suppliers is not None and raw_suppliers > 0 or supplier_name or offer_stock_recorded):
-        stock = raw_stock
-    else:
-        stock = None
-    if "supplier_count" in manual_fields or (has_verification_flag and verified):
-        suppliers_value = raw_suppliers
-    elif has_verification_flag:
-        suppliers_value = None
-    else:
-        suppliers_value = raw_suppliers if raw_suppliers is not None and raw_suppliers > 0 else None
-    if "lead_time_weeks" in manual_fields or (has_verification_flag and verified):
-        lead = raw_lead
-    elif has_verification_flag:
-        lead = None
-    else:
-        lead = raw_lead if raw_lead is not None and raw_lead > 0 else None
-    price_value = _maybe_n(_first(row, "unit_price", "Unit Price", "price"))
-    if "unit_price" not in manual_fields and has_verification_flag and not verified:
-        price_value = None
+    stock = _maybe_n(trusted.get("stock_available"))
+    suppliers_value = _maybe_n(trusted.get("supplier_count"))
+    lead = _maybe_n(trusted.get("lead_time_weeks"))
+    lifecycle = _t(trusted.get("lifecycle_status"), "Unknown")
+    # A saved score is historical display data, not current evidence. Recompute
+    # from the shared evidence contract so stale/unverified rows cannot seed
+    # current procurement priority.
+    from src.risk_engine import calculate_risk
+
+    risk_assessment = calculate_risk(row)
+    risk_value = _maybe_n(risk_assessment.get("risk_score"))
+    score = int(risk_value or 0)
+    price_value = _maybe_n(trusted.get("unit_price"))
     if price_value is not None and price_value <= 0:
         price_value = None
     if stock is not None and stock < 0:
@@ -1665,28 +1876,18 @@ def _recommend(row: Dict[str, Any]) -> Dict[str, Any]:
         qty = None
     lower = lifecycle.lower()
 
-    score = risk
-    if stock is not None:
-        score += 40 if stock <= 0 else 30 if qty is not None and stock < qty else 18 if qty is not None and stock < max(100, qty * 3) else 0
-    if suppliers is not None:
-        score += 20 if suppliers <= 1 else 8 if suppliers == 2 else 0
-    if lead is not None:
-        score += 18 if lead >= 16 else 9 if lead >= 10 else 0
-    score += 35 if any(x in lower for x in ("obsolete", "eol", "end of life")) else 20 if any(x in lower for x in ("replacement", "nrnd", "not recommended")) else 0
-    score = min(100, score)
-
     if any(x in lower for x in ("obsolete", "eol", "end of life")):
         recommendation = "Qualify a replacement"
         next_step = "Avoid a long-term purchase and secure only bridge inventory."
     elif stock is not None and stock <= 0:
         recommendation = "Resolve supply gap"
-        next_step = "Find authorized stock or approve a substitute before the next build."
+        next_step = "Check current stock with a distributor your team approves, or assess a substitute before the next build."
     elif stock is not None and qty is not None and stock < qty:
         recommendation = "Buy now"
         next_step = f"Secure at least {qty:,} units for the next scheduled build."
     elif suppliers is not None and suppliers <= 1:
         recommendation = "Add a second source"
-        next_step = "Approve another authorized supplier or compatible alternate."
+        next_step = "Review another distributor or compatible alternate for qualification."
     elif lead is not None and lead >= 16:
         recommendation = "Order earlier"
         next_step = "Move the purchase date forward or establish safety stock."
@@ -1694,8 +1895,8 @@ def _recommend(row: Dict[str, Any]) -> Dict[str, Any]:
         recommendation = "Monitor closely"
         next_step = "Review stock weekly and prepare a sourcing fallback."
     elif stock is None or suppliers is None or lead is None:
-        recommendation = "Check an authorized source"
-        next_step = "Confirm current stock, authorized supplier coverage, and lead time before making a buy decision."
+        recommendation = "Check a configured source"
+        next_step = "Confirm exact-part identity, current stock, lead time, and supplier coverage before a buy decision."
     else:
         recommendation = "No immediate action"
         next_step = "Continue routine stock, price, and lifecycle monitoring."
@@ -1721,11 +1922,16 @@ def _recommend(row: Dict[str, Any]) -> Dict[str, Any]:
         "Recommendation": recommendation,
         "Next Step": next_step,
         "Priority Score": score,
+        "Priority Basis": (
+            "Current evidence-backed risk factors"
+            if risk_value is not None
+            else "Not assessed: no qualifying current supplier field evidence"
+        ),
         "Available Stock": int(stock) if stock is not None else None,
         "Required Quantity": qty,
         "Supplier Sources": suppliers,
         "Unit Price": price_value,
-        "Currency": _part_currency(row),
+        "Currency": trusted.get("currency") or None,
         "Lead Time (Weeks)": lead,
         "Lifecycle Status": lifecycle,
         "Evidence Status": evidence_status,
@@ -1753,12 +1959,12 @@ def build_procurement_advisor(*, analyses: Iterable[Dict[str, Any]], parts: Iter
     df = pd.DataFrame(rows)
     urgent = [
         r for r in rows
-        if r["Priority Score"] >= 75 and r["Recommendation"] != "Check an authorized source"
+        if r["Priority Score"] >= 75 and r["Recommendation"] != "Check a configured source"
     ]
     monitor = [r for r in rows if r["Recommendation"] == "Monitor closely"]
     second_source = [r for r in rows if r["Recommendation"] == "Add a second source"]
     replace = [r for r in rows if r["Recommendation"] == "Qualify a replacement"]
-    needs_source = sum(1 for r in rows if r["Recommendation"] == "Check an authorized source")
+    needs_source = sum(1 for r in rows if r["Recommendation"] == "Check a configured source")
     return {
         "recommendations": rows,
         "recommendation_df": df,
@@ -1770,7 +1976,7 @@ def build_procurement_advisor(*, analyses: Iterable[Dict[str, Any]], parts: Iter
             f"{len(urgent)} component(s) have evidence-backed purchasing actions, "
             f"{len(second_source)} need another source, and {len(monitor)} should be monitored."
             + (
-                f" {needs_source} need an authorized source check before Cadivor can prioritize a purchase."
+                f" {needs_source} need a source check before Cadivor can prioritize a purchase."
                 if needs_source
                 else ""
             )

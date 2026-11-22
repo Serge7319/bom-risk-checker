@@ -197,6 +197,8 @@ def _resolve_lifecycle(results: list[dict]) -> tuple[str, list[dict], bool]:
         if canonical:
             evidence.append({
                 "source": str(result.get("source") or "Supplier"),
+                "mpn": str(result.get("manufacturer_part_number") or ""),
+                "product_url": str(result.get("product_detail_url") or ""),
                 "status": raw,
                 "normalized_status": canonical,
                 "retrieved_at": result.get("retrieved_at"),
@@ -719,10 +721,14 @@ def get_best_part_data(part_number: str, manufacturer: str = "") -> dict:
         except TypeError:
             supplier_results = get_supplier_results(part_number)
 
+    requested_mpn_key = normalize_part_number(str(part_number or "").strip())
     valid_results = sorted([
         result for result in supplier_results
         if result.get("provider_status") == PROVIDER_AVAILABLE
         and result.get("manufacturer_part_number")
+        and requested_mpn_key
+        and normalize_part_number(str(result.get("manufacturer_part_number") or "").strip())
+        == requested_mpn_key
     ], key=lambda result: str(result.get("source") or ""))
     unfiltered_valid_results = list(valid_results)
 
@@ -1061,7 +1067,20 @@ def get_best_part_data(part_number: str, manufacturer: str = "") -> dict:
         str(result.get("source") or "") for result in stock_known_results
         if result.get("source")
     })
-    best_result["stock_data_complete"] = len(stock_known_results) == len(valid_results)
+    # Completeness means all configured lookups responded and every exact
+    # matching listing supplied a usable count and timestamp. A provider outage
+    # must not make a partial sum look like full market coverage.
+    all_lookups_responded = int(provider_health.get("failed_count") or 0) == 0
+    stock_rows_have_timestamps = all(
+        str(result.get("retrieved_at") or "").strip()
+        for result in stock_known_results
+    )
+    best_result["stock_data_complete"] = bool(
+        valid_results
+        and all_lookups_responded
+        and len(stock_known_results) == len(valid_results)
+        and stock_rows_have_timestamps
+    )
     best_result["stock_evidence"] = [
         {
             "source": str(result.get("source") or "Supplier"),
@@ -1892,8 +1911,50 @@ def default_aggregated_result(part_number: str, supplier_results: list) -> dict:
     }
 
 
+def _compliance_reading(kind: str, value: str) -> tuple[str, str]:
+    """Map common distributor wording to a cautious semantic result.
+
+    The raw supplier wording is preserved on every reading. This key only
+    decides whether two declarations are contradictory; it is not a Cadivor
+    compliance determination.
+    """
+    import re
+
+    text = " ".join(str(value or "").strip().casefold().split())
+    compact = re.sub(r"[^a-z0-9]+", "", text)
+    unknown = {
+        "", "unknown", "tba", "tbd", "not stated", "not reported",
+        "not provided", "not available", "pending", "n/a", "na",
+    }
+    if text in unknown or compact in {"unknown", "tba", "tbd", "pending", "na"}:
+        return "unknown", ""
+
+    if kind == "rohs":
+        if "compliant" in compact and "exempt" in compact:
+            return "compliant", "exemption"
+        if any(term in compact for term in ("noncompliant", "notcompliant", "notrohscompliant", "notcompliance")):
+            return "noncompliant", ""
+        if compact in {"no", "false"}:
+            return "noncompliant", ""
+        if "compliant" in compact or compact in {"yes", "true"}:
+            return "compliant", ""
+    elif kind == "reach":
+        if "unaffected" in compact or "notaffected" in compact:
+            return "unaffected", ""
+        if "affected" in compact or "present" in compact:
+            return "affected", ""
+        # Generic "compliant" and yes/no declarations do not establish REACH
+        # SVHC affected/unaffected status. Preserve them without inferring it.
+    elif kind == "pfas":
+        if any(term in compact for term in ("pfasfree", "nopfas", "notdetected", "nonepresent")):
+            return "not_reported_present", ""
+        if any(term in compact for term in ("pfasdetected", "containspfas", "pfaspresent")):
+            return "reported_present", ""
+    return f"unclassified:{compact}", ""
+
+
 def _aggregate_compliance_evidence(results: list[dict]) -> dict[str, dict]:
-    """Preserve per-supplier declarations and expose disagreements explicitly."""
+    """Preserve raw supplier declarations and distinguish gaps from conflicts."""
     output: dict[str, dict] = {}
     for kind in ("rohs", "reach", "pfas"):
         readings = []
@@ -1918,10 +1979,25 @@ def _aggregate_compliance_evidence(results: list[dict]) -> dict[str, dict]:
             readings.append(evidence)
         if not readings:
             continue
-        values_by_key: dict[str, str] = {}
-        for reading in readings:
-            value = str(reading.get("reported_value") or reading.get("status") or "").strip()
-            values_by_key.setdefault(" ".join(value.casefold().split()), value)
+        semantic_readings = [
+            _compliance_reading(
+                kind,
+                str(reading.get("reported_value") or reading.get("status") or ""),
+            )
+            for reading in readings
+        ]
+        claims = {
+            key for key, _qualifier in semantic_readings
+            if key != "unknown" and not key.startswith("unclassified:")
+        }
+        qualifiers = {
+            qualifier for key, qualifier in semantic_readings
+            if key in claims and qualifier
+        }
+        has_unknown = any(key == "unknown" for key, _qualifier in semantic_readings)
+        has_unclassified = any(
+            key.startswith("unclassified:") for key, _qualifier in semantic_readings
+        )
         sources = list(dict.fromkeys(
             str(reading.get("source") or "").strip()
             for reading in readings
@@ -1932,11 +2008,44 @@ def _aggregate_compliance_evidence(results: list[dict]) -> dict[str, dict]:
             default="",
         )
         primary = readings[0]
-        if len(values_by_key) > 1:
+        conflict = len(claims) > 1
+        partial = not conflict and bool(
+            (has_unknown and claims)
+            or has_unclassified
+            or qualifiers
+        )
+        if conflict:
+            reported_value = "Conflicting supplier declarations"
+        elif partial and claims:
+            reported_value = "Supplier declarations are partial; review the source values"
+        elif len(qualifiers) == 1 and "exemption" in qualifiers:
+            reported_value = "Supplier reports RoHS compliance; an exemption is noted"
+        elif claims == {"compliant"}:
+            reported_value = "Supplier reports RoHS compliant"
+        elif claims == {"unaffected"}:
+            reported_value = "Supplier reports REACH unaffected"
+        elif claims == {"affected"}:
+            reported_value = "Supplier reports REACH affected"
+        elif claims == {"not_reported_present"}:
+            reported_value = "Supplier reports no PFAS detected/present"
+        elif claims == {"reported_present"}:
+            reported_value = "Supplier reports PFAS detected/present"
+        elif len(claims) == 1:
+            reported_value = str(readings[0].get("reported_value") or readings[0].get("status") or "").strip()
+        else:
+            reported_value = str(readings[0].get("reported_value") or readings[0].get("status") or "").strip()
+
+        if conflict or partial:
             output[kind] = {
                 **primary,
-                "reported_value": "Conflicting supplier data",
-                "conflict": True,
+                "reported_value": reported_value,
+                "conflict": conflict,
+                "partial": partial,
+                "review_note": (
+                    f"Supplier records make opposing {kind.upper()} declarations; review the raw values."
+                    if conflict
+                    else f"Supplier {kind.upper()} coverage is partial or qualified; review the raw values."
+                ),
                 "reported_values": readings,
                 "sources": readings,
                 "source": ", ".join(sources),
@@ -1946,7 +2055,9 @@ def _aggregate_compliance_evidence(results: list[dict]) -> dict[str, dict]:
         else:
             output[kind] = {
                 **primary,
-                "reported_value": next(iter(values_by_key.values())),
+                "reported_value": reported_value,
+                "conflict": False,
+                "partial": False,
                 "sources": readings,
                 "source": ", ".join(sources) or str(primary.get("source") or ""),
                 "retrieved_at": retrieved_at,

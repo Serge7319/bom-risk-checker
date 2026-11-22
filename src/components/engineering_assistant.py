@@ -562,9 +562,9 @@ def _humanize_posture(value: str) -> str:
         "focused_review": "Focused review",
         "release_hold": "Release hold recommended",
         "release hold recommended": "Release hold recommended",
-        "ready": "Ready for release",
-        "conditional": "Conditional release",
-        "not_ready": "Not ready for release",
+        "ready": "Engineering release decision required",
+        "conditional": "Engineering release decision required",
+        "not_ready": "Engineering review required",
     }
     key = text.lower().replace("-", "_")
     if key in mapped:
@@ -576,8 +576,10 @@ def _humanize_posture(value: str) -> str:
 
 def _render_context_header(context: dict[str, Any]) -> None:
     summary = context.get("summary") or {}
-    health = html.escape(str(summary.get("health_score") or "—"))
-    parts = html.escape(str(summary.get("total_parts") or "—"))
+    health_value = summary.get("health_score")
+    health = html.escape(f"{health_value}/100" if isinstance(health_value, (int, float)) else "Not scored")
+    parts_value = summary.get("total_parts")
+    parts = html.escape(str(parts_value) if parts_value is not None else "—")
     posture = html.escape(_humanize_posture(str(summary.get("release_posture") or "Engineering review")))
     _render_presentation_html(
         f"""
@@ -914,18 +916,12 @@ def _priority_component(context: dict[str, Any], evidence: str = "") -> str:
 
 
 def _confidence_data(confidence: str, context: dict[str, Any]) -> tuple[str, int, str]:
-    plain = _plain_markdown(confidence)
-    label_match = re.match(r"(High|Medium|Limited|Low)", plain, re.IGNORECASE)
-    label = (label_match.group(1).title() if label_match else "Medium")
-    percent_match = re.search(r"(\d{1,3})%", plain)
-    if percent_match:
-        score = max(0, min(100, int(percent_match.group(1))))
-    else:
-        score = int((context.get("coverage") or {}).get("score") or 0)
-    detail = plain
-    if detail.lower().startswith(label.lower()):
-        detail = detail[len(label):].lstrip(". ")
-    return label, score, detail
+    return (
+        "Not scored",
+        0,
+        "Cadivor does not calculate a calibrated probability that this recommendation is correct. "
+        "Review the source, retrieval time, and applicability of each cited field.",
+    )
 
 
 def _href(page: str, **params: Any) -> str:
@@ -1008,9 +1004,10 @@ def _confidence_drivers(context: dict[str, Any], evidence: str) -> list[tuple[st
         drivers.append(("Missing", "No saved decision history", "No prior approval or risk-acceptance evidence"))
     if not alternatives:
         drivers.append(("Missing", "No saved qualified alternatives", "Replacement and second-source confidence remains limited"))
-    score = int(coverage.get("score") or 0)
-    if score < 75:
-        drivers.append(("Coverage", f"Overall evidence coverage is {score}%", "Additional verified fields would raise confidence"))
+    available_areas = sum(bool(value) for key, value in coverage.items() if key != "score") if isinstance(coverage, dict) else 0
+    area_count = max(0, len([key for key in coverage if key != "score"])) if isinstance(coverage, dict) else 0
+    if area_count:
+        drivers.append(("Context", f"{available_areas} of {area_count} context areas have records", "Record availability does not establish correctness or approval"))
     return drivers[:6]
 
 
@@ -1042,17 +1039,35 @@ def _assessment_kpis(context: dict[str, Any], confidence_score: int) -> list[tup
     summary = context.get("summary") or {}
     risk = context.get("risk_summary") or context.get("risk") or {}
     components = list(context.get("components") or [])
-    health = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score") or "—"
-    posture = summary.get("release_posture") or analysis.get("release_posture") or context.get("release_posture") or "Focused review"
+    health = summary.get("health_score")
+    posture = summary.get("release_posture") or "Engineering review required"
     high = risk.get("high") if isinstance(risk, dict) else None
     if high is None:
         high = sum(1 for row in components if str(row.get("risk_level") or "").lower() == "high")
     return [
-        ("BOM health", f"{health}/100" if str(health).isdigit() else str(health), "Current analysis score"),
-        ("Release status", str(posture).replace("_", " ").title(), "Current engineering posture"),
-        ("Priority risks", str(high or 0), "High-risk components"),
-        ("Confidence", f"{confidence_score}%", "Evidence-supported review"),
+        ("BOM health", f"{health}/100" if isinstance(health, (int, float)) else "Not scored", "Requires complete current supplier evidence"),
+        ("Release status", str(posture).replace("_", " ").title(), "Supplier evidence does not approve engineering release"),
+        ("Verified high-risk signals", str(high if high is not None else "Not assessed"), "Other components may still need verification"),
+        ("Confidence", "Not scored", "No calibrated correctness probability is calculated"),
     ]
+
+
+def _known_int_value(value: Any) -> int | None:
+    try:
+        if value is None or str(value).strip() == "":
+            return None
+        return int(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _known_float_value(value: Any) -> float | None:
+    try:
+        if value is None or str(value).strip() == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 
@@ -1062,71 +1077,53 @@ def _intent_kpis(context: dict[str, Any], *, intent: str, priority_part: str, co
     decisions = list(context.get("decisions") or context.get("engineering_decisions") or [])
     monitoring = list(context.get("monitoring") or [])
     priority = next((r for r in components if str(r.get("part_number") or r.get("mpn") or "").upper() == str(priority_part).upper()), {})
-    suppliers = int(priority.get("supplier_count") or 0) if priority else 0
-    stock = int(priority.get("stock_available") or 0) if priority else 0
-    lead = float(priority.get("lead_time_weeks") or 0) if priority else 0
+    suppliers = _known_int_value(priority.get("supplier_count")) if priority else None
+    stock = _known_int_value(priority.get("stock_available")) if priority else None
+    lead = _known_float_value(priority.get("lead_time_weeks")) if priority else None
+    stock_label = f"{stock:,}" if stock is not None else "Not recorded"
+    lead_label = f"{lead:g} weeks" if lead is not None else "Not recorded"
+    supplier_label = f"{suppliers} source(s)" if suppliers is not None else "Not recorded"
     lifecycle = str(priority.get("lifecycle_status") or priority.get("lifecycle") or "Unknown") if priority else "Unknown"
-    low_source = sum(1 for r in components if int(r.get("supplier_count") or 0) <= 1)
+    low_source = sum(1 for r in components if _known_int_value(r.get("supplier_count")) is not None and _known_int_value(r.get("supplier_count")) <= 1)
     lifecycle_exposed = sum(1 for r in components if any(x in str(r.get("lifecycle_status") or r.get("lifecycle") or "").lower() for x in ("obsolete","eol","nrnd","replacement","not recommended")))
     long_lead = sum(1 for r in components if float(r.get("lead_time_weeks") or 0) >= 12)
-    no_stock = sum(1 for r in components if int(r.get("stock_available") or 0) <= 0)
+    no_stock = sum(1 for r in components if _known_int_value(r.get("stock_available")) == 0)
+    unknown_sources = sum(1 for r in components if r.get("supplier_count") is None)
+    unknown_stock = sum(1 for r in components if r.get("stock_available") is None)
     maps = {
-        "procurement": [("Purchasing priority", priority_part or "Evidence required"), ("Recorded stock", f"{stock:,}"), ("Lead time", f"{lead:g} weeks"), ("Source coverage", f"{suppliers} source(s)")],
-        "supplier_qualification": [("Qualification target", priority_part or "No candidate"), ("Candidate sources", str(suppliers)), ("Qualified alternatives", str(len(alternatives))), ("Supplier confidence", f"{confidence_score}%")],
-        "single_source": [("Highest exposure", priority_part or "Evidence required"), ("Single-source parts", str(low_source)), ("Source coverage", f"{suppliers} source(s)"), ("Mitigation confidence", f"{confidence_score}%")],
-        "schedule_resilience": [("Critical-path part", priority_part or "Evidence required"), ("Lead time", f"{lead:g} weeks"), ("Long-lead parts", str(long_lead)), ("Schedule confidence", f"{confidence_score}%")],
-        "lifecycle": [("Migration priority", priority_part or "Evidence required"), ("Lifecycle status", lifecycle), ("Exposed parts", str(lifecycle_exposed)), ("Lifecycle confidence", f"{confidence_score}%")],
-        "inventory": [("Lowest-coverage part", priority_part or "Evidence required"), ("Recorded stock", f"{stock:,}"), ("No-stock parts", str(no_stock)), ("Inventory confidence", f"{confidence_score}%")],
-        "production_readiness": [("Leading blocker", priority_part or "Evidence required"), ("Open decisions", str(max(0, len(components)-len(decisions)))), ("Evidence coverage", f"{confidence_score}%"), ("Release checks", f"{complete} of {total}")],
-        "evidence_sensitivity": [("Decision affected", priority_part or "BOM release"), ("Evidence coverage", f"{confidence_score}%"), ("Saved decisions", str(len(decisions))), ("Active monitoring", str(len(monitoring)))],
-        "evidence_gap_priority": [("Evidence target", priority_part or "BOM evidence"), ("Evidence coverage", f"{confidence_score}%"), ("Qualified alternatives", str(len(alternatives))), ("Saved decisions", str(len(decisions)))],
+        "procurement": [("Purchasing priority", priority_part or "Evidence required"), ("Recorded stock", stock_label), ("Lead time", lead_label), ("Source coverage", supplier_label)],
+        "supplier_qualification": [("Qualification target", priority_part or "No candidate"), ("Candidate sources", str(suppliers) if suppliers is not None else "Not recorded"), ("Qualified alternatives", str(len(alternatives))), ("Supplier confidence", "Not scored")],
+        "single_source": [("Highest exposure", priority_part or "Evidence required"), ("Verified single-source parts", str(low_source)), ("Source coverage", supplier_label), ("Unverified source counts", str(unknown_sources))],
+        "schedule_resilience": [("Critical-path part", priority_part or "Evidence required"), ("Lead time", lead_label), ("Long-lead parts", str(long_lead)), ("Schedule confidence", "Not scored")],
+        "lifecycle": [("Migration priority", priority_part or "Evidence required"), ("Lifecycle status", lifecycle), ("Exposed parts", str(lifecycle_exposed)), ("Lifecycle confidence", "Not scored")],
+        "inventory": [("Lowest-coverage part", priority_part or "Evidence required"), ("Recorded stock", stock_label), ("Verified no-stock parts", str(no_stock)), ("Unverified stock counts", str(unknown_stock))],
+        "production_readiness": [("Leading blocker", priority_part or "Evidence required"), ("Open decisions", str(max(0, len(components)-len(decisions)))), ("Evidence confidence", "Not scored"), ("Evidence-complete components", f"{complete} of {total}")],
+        "evidence_sensitivity": [("Decision affected", priority_part or "BOM release"), ("Evidence confidence", "Not scored"), ("Saved decisions", str(len(decisions))), ("Active monitoring", str(len(monitoring)))],
+        "evidence_gap_priority": [("Evidence target", priority_part or "BOM evidence"), ("Evidence confidence", "Not scored"), ("Qualified alternatives", str(len(alternatives))), ("Saved decisions", str(len(decisions)))],
     }
-    return maps.get(intent, [("Priority component", priority_part or "No priority component"), ("BOM components", str(len(components))), ("Decision confidence", f"{confidence_score}%"), ("Review progress", f"{complete} of {total}")])
+    return maps.get(intent, [("Priority component", priority_part or "No priority component"), ("BOM components", str(len(components))), ("Decision confidence", "Not scored"), ("Evidence-complete components", f"{complete} of {total}")])
 
 
 def _decision_summary(context: dict[str, Any], assessment: str, confidence_score: int, priority_part: str, *, intent: str = "general", preferred_status: str = "") -> dict[str, str]:
-    analysis = context.get("analysis") or {}
     summary = context.get("summary") or {}
     risk = context.get("risk_summary") or context.get("risk") or {}
     components = list(context.get("components") or [])
     high = int(risk.get("high") or 0) if isinstance(risk, dict) else 0
     medium = int(risk.get("medium") or 0) if isinstance(risk, dict) else 0
-    lifecycle_exposed = sum(1 for row in components if str(row.get("lifecycle") or row.get("lifecycle_status") or "").lower() not in {"", "active", "production", "unknown"})
-    status = preferred_status or ("Action required" if high else "Review before release" if medium or lifecycle_exposed else "Ready for controlled release")
-    tone = "critical" if high else "review" if medium or lifecycle_exposed else "ready"
-    health = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score") or "—"
-    return {"status": status, "tone": tone, "risk": "High" if high else "Medium" if medium or lifecycle_exposed else "Low", "priority": priority_part or "No priority component", "confidence": f"{confidence_score}%", "health": f"{health}/100" if str(health).isdigit() else str(health), "assessment": _plain_markdown(assessment), "intent": intent}
+    incomplete = any(not row.get("evidence_coverage_complete") for row in components)
+    status = "Verified risk requires review" if high else "Engineering review required"
+    if not components or incomplete:
+        status = "Needs verification"
+    tone = "critical" if high else "review"
+    health = summary.get("health_score")
+    risk_label = "High" if high else "Medium" if medium else "Needs verification"
+    health_label = f"{health}/100" if isinstance(health, (int, float)) else "Not scored"
+    return {"status": status, "tone": tone, "risk": risk_label, "priority": priority_part or "No priority component", "confidence": "Not scored", "health": health_label, "assessment": _plain_markdown(assessment), "intent": intent}
 
 def _projected_impact(context: dict[str, Any], priority_part: str, *, intent: str = "general") -> list[tuple[str, str, str]]:
-    analysis = context.get("analysis") or {}; summary = context.get("summary") or {}
-    components = list(context.get("components") or [])
-    priority = next((row for row in components if str(row.get("part_number") or row.get("mpn") or "").upper() == str(priority_part).upper()), {})
-    score = int(priority.get("risk_score") or 0) if priority else 0
-    suppliers = int(priority.get("supplier_count") or priority.get("suppliers") or 0) if priority else 0
-    lead = float(priority.get("lead_time_weeks") or 0) if priority else 0
-    stock = int(priority.get("stock_available") or 0) if priority else 0
-    if intent in {"schedule", "schedule_resilience"}:
-        if intent == "schedule_resilience":
-            return [("Source paths", f"{suppliers} → {max(suppliers + 1, 2)}", "After a qualified second source is approved"), ("Replenishment continuity", "Single path → Dual path", "Reduces dependency on one supplier route"), ("Lead-time exposure", f"{lead:g} weeks → Diversified", "Alternate commercial lead time provides recovery capacity"), ("Schedule posture", "Exposed → More resilient", "After capacity, compatibility, and quality validation")]
-        return [("Replenishment exposure", f"{lead:g} weeks → Validate", "Confirm with authorized suppliers"), ("Schedule risk", "Elevated → Reduced", "After allocation or alternate qualification"), ("Inventory coverage", f"{stock:,} recorded", "Compare against production demand"), ("Source resilience", f"{suppliers} source(s) → Improve", "Qualify an alternate or second source")]
-    if intent == "supplier":
-        return [("Supplier coverage", f"{suppliers} → {max(suppliers+1,2)}", "If a second source is qualified"), ("Concentration risk", "Current → Reduced", "After authorized-source validation"), ("Priority risk", f"{score}/100 → Reduced", "After mitigation or acceptance")]
-    if intent == "second_source":
-        target_sources = max(suppliers + 1, 2)
-        return [("Approved-source coverage", f"{suppliers} → {target_sources}", "After alternate supplier qualification"), ("Supply continuity", "Exposed → Resilient", "After dual-source approval"), ("Lead-time exposure", f"{lead:g} weeks → Diversified", "Compare alternate replenishment windows"), ("Procurement confidence", "Conditional → Improved", "After authorization and commercial validation")]
-    if intent == "second_source_validation":
-        return [("Electrical equivalence", "Unverified → Documented", "Approved datasheet comparison"), ("Footprint compatibility", "Unverified → Confirmed", "Package and PCB review"), ("Authorized sourcing", "Pending → Approved", "Traceability and supplier authorization"), ("Production validation", "Pending → Complete", "Prototype and manufacturing evidence")]
-    if intent == "compatibility":
-        return [("Electrical equivalence", "Unverified → Documented", "Approved datasheet comparison"), ("Footprint compatibility", "Unverified → Confirmed", "PCB and package review"), ("Validation status", "Pending → Complete", "Bench or prototype evidence")]
-    health_raw = summary.get("health_score") or analysis.get("health_score") or context.get("health_score") or context.get("score")
-    try: health=int(float(health_raw))
-    except Exception: health=None
-    impact=[]
-    if health is not None: impact.append(("BOM health", f"{health} → {min(100,health+max(2,min(7,round(score/10))))}", "Projected after mitigation"))
-    impact.append(("Release readiness", "Focused review → Ready", "Expected after evidence closure"))
-    if priority_part: impact.append(("Priority risk", f"{score}/100 → Reduced", "After qualification or acceptance"))
-    if suppliers: impact.append(("Supplier coverage", f"{suppliers} → {suppliers+1}", "If a second source is qualified"))
-    return impact[:4]
+    # Cadivor has no validated counterfactual model for the downstream effect
+    # of a sourcing or engineering action. Do not fabricate projected scores.
+    return []
 
 def _workflow_steps(actions: str, priority_part: str, *, intent: str = "general") -> list[tuple[str, str]]:
     base = _action_steps(actions)
@@ -1149,9 +1146,11 @@ def _workflow_steps(actions: str, priority_part: str, *, intent: str = "general"
     return steps
 
 def _review_progress(context: dict[str, Any]) -> tuple[int, int, int]:
-    coverage = int((context.get("coverage") or {}).get("score") or 0)
-    complete = max(1, min(10, round(coverage / 10)))
-    return complete, 10, complete * 10
+    components = list(context.get("components") or [])
+    total = len(components)
+    complete = sum(bool(row.get("evidence_coverage_complete")) for row in components)
+    progress = round(complete * 100 / total) if total else 0
+    return complete, total, progress
 
 def _render_evidence_cards(evidence: str) -> None:
     items = _evidence_items(evidence)
@@ -1196,8 +1195,8 @@ def _build_decision_summary_html(
           </div>
           <div class="cv722-summary-item" data-field="confidence" style="{CV722_SUMMARY_ITEM_STYLE}">
             <div class="cv722-summary-label" style="{CV722_SUMMARY_LABEL_STYLE}">Confidence</div>
-            <div class="cv722-summary-value" style="{CV722_SUMMARY_VALUE_STYLE}">{confidence_score}%</div>
-            <div class="cv722-summary-note" style="{CV722_SUMMARY_NOTE_STYLE}">{html.escape(confidence_label)}</div>
+            <div class="cv722-summary-value" style="{CV722_SUMMARY_VALUE_STYLE}">{html.escape(confidence_label or "Not scored")}</div>
+            <div class="cv722-summary-note" style="{CV722_SUMMARY_NOTE_STYLE}">No calibrated correctness probability is calculated</div>
           </div>
         </section>
         """
@@ -1316,20 +1315,12 @@ def _build_engineering_assessment_html(
 
     show_progress = detailed or intent in {"production_readiness", "evidence_sensitivity", "evidence_gap_priority"}
     if show_progress:
-        progress_label = {
-            "production_readiness": "Release-readiness review",
-            "procurement": "Procurement review",
-            "supplier_qualification": "Supplier qualification review",
-            "schedule_resilience": "Schedule-resilience review",
-            "lifecycle": "Lifecycle review",
-            "inventory": "Inventory review",
-            "evidence_sensitivity": "Evidence-confidence review",
-        }.get(intent, "Engineering review progress")
+        progress_label = "Components with complete current supplier evidence"
         sections.append(
             f'<div class="cv724-progress-card">'
             f'<div class="cv39-progress-header">'
             f'<div class="cv39-progress-label">{html.escape(progress_label)}</div>'
-            f'<div class="cv39-progress-value">{progress}%</div>'
+            f'<div class="cv39-progress-value">{complete} of {total}</div>'
             f"</div>"
             f'<div class="cv39-progress"><i style="width:{progress}%"></i></div>'
             f"</div>"
@@ -2391,8 +2382,8 @@ def _render_compact_decision_summary(
           </div>
           <div class="cv722-summary-item" data-field="confidence">
             <div class="cv722-summary-label">Confidence</div>
-            <div class="cv722-summary-value">{confidence_score}%</div>
-            <div class="cv722-summary-note">{html.escape(confidence_label)}</div>
+            <div class="cv722-summary-value">{html.escape(confidence_label or "Not scored")}</div>
+            <div class="cv722-summary-note">No calibrated correctness probability is calculated</div>
           </div>
         </section>
         """
@@ -2496,8 +2487,8 @@ def _render_conversational_answer(*, intent: str, assessment: str, priority_part
               <ul>{reasons_html}</ul>
             </div>
             <aside class="cv49-answer-side">
-              <span class="cv49-side-label">Confidence</span><strong class="cv49-side-value">{confidence_score}%</strong>
-              <div class="cv49-answer-track"><i style="width:{max(0,min(100,confidence_score))}%"></i></div>
+              <span class="cv49-side-label">Confidence</span><strong class="cv49-side-value">Not scored</strong>
+              <p class="cv-assistant-preline">Evidence coverage is shown separately; it is not a probability of correctness.</p>
               <span class="cv49-side-label">Recommended next action</span><p class="cv-assistant-preline">{html.escape(next_action)}</p>
             </aside>
           </div>

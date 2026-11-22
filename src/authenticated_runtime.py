@@ -5244,7 +5244,7 @@ def run_authenticated_app() -> None:
             return semantic_priority_label(score)
 
         def _monitor_confidence(score):
-            return max(65, min(98, int(round(float(score or 0) * 0.92 + 8))))
+            return "Not scored"
 
         monitor_focus = _safe_text(_resolved_qp_value("monitor_focus", ""), "").strip().lower()
         monitor_focus_defaults = {
@@ -5542,7 +5542,7 @@ def run_authenticated_app() -> None:
                 )
                 expected_impact = _monitor_display(
                     row.get("Expected Impact"),
-                    "Confirm whether redesign, sourcing, or qualification action is required.",
+                    "Outcome not quantified; record the engineering disposition and evidence.",
                 )
                 confidence = _monitor_confidence(score)
                 current_value = _monitor_display(
@@ -5598,7 +5598,7 @@ def run_authenticated_app() -> None:
                               <div class="cv320-impact"><b>Why it matters:</b> {html.escape(expected_impact)}</div>
                             </div>
                             <div class="cv320-confidence">
-                              <span>Confidence</span><strong>{confidence}%</strong>
+                              <span>Confidence</span><strong>{confidence}</strong>
                             </div>
                           </div>
                           <div class="cv-monitor-detail-evidence">
@@ -10522,7 +10522,7 @@ def run_authenticated_app() -> None:
                         with workflow_cols[2]:
                             st.text_input(
                                 "Target date",
-                                value=str(selected_decision.get("due_date") or "This week"),
+                                value=str(selected_decision.get("due_date") or "Not scheduled"),
                                 key=f"decision_due_{decision_id}",
                                 disabled=True,
                             )
@@ -10697,8 +10697,8 @@ def run_authenticated_app() -> None:
                                 icon="package",
                             ),
                             MetricCard(label="Priority", value=f"{selected_decision['priority_score']}/100", tone="warning", icon="triangle-alert"),
-                            MetricCard(label="Confidence", value=f"{selected_decision['confidence']}%", tone="confidence", icon="gauge"),
-                            MetricCard(label="Estimated Effort", value=f"{selected_decision['estimated_effort_hours']} hrs", tone="monitoring", icon="clock-3"),
+                            MetricCard(label="Confidence", value="Not scored", tone="neutral", icon="gauge"),
+                            MetricCard(label="Estimated Effort", value=f"{selected_decision['estimated_effort_hours']} hrs" if selected_decision.get("estimated_effort_hours") is not None else "Not estimated", tone="monitoring", icon="clock-3"),
                         ],
                         columns=4,
                     )
@@ -10886,7 +10886,7 @@ def run_authenticated_app() -> None:
                             "The alert stays open until its outcome is explicitly recorded."
                         )
 
-                    st.markdown("### Decision Priority Matrix")
+                    st.markdown("### Queue triage score")
                     priority_breakdown = selected_decision.get("priority_breakdown", {})
                     st.markdown(
                         """
@@ -10900,11 +10900,11 @@ def run_authenticated_app() -> None:
                         unsafe_allow_html=True,
                     )
 
-                    st.markdown("### AI Confidence")
+                    st.markdown("### Evidence basis")
                     confidence_cols = st.columns([1, 3])
                     confidence_cols[0].metric(
-                        "Decision Confidence",
-                        f"{selected_decision['confidence']}%",
+                        "Decision confidence",
+                        "Not scored",
                     )
                     with confidence_cols[1]:
                         for reason in selected_decision.get("confidence_reasons", []):
@@ -10914,11 +10914,11 @@ def run_authenticated_app() -> None:
                     st.markdown(
                         f"""
                         <div class="cv130-impact">
-                          <div><span>Current Health</span><strong>{impact['current_health']}/100</strong></div>
-                          <div><span>Projected Health</span><strong>{impact['projected_health']}/100</strong></div>
-                          <div><span>Health Improvement</span><strong>+{impact['health_gain']}</strong></div>
-                          <div><span>Supply Risk Reduction</span><strong>-{impact['supply_risk_reduction']}</strong></div>
-                          <div><span>Lifecycle Issues Removed</span><strong>{impact['lifecycle_exposure_reduction']}</strong></div>
+                          <div><span>Current Health</span><strong>{f"{impact['current_health']}/100" if impact.get('current_health') is not None else "Not assessed"}</strong></div>
+                          <div><span>Projected Health</span><strong>{f"{impact['projected_health']}/100" if impact.get('projected_health') is not None else "Not estimated"}</strong></div>
+                          <div><span>Health Improvement</span><strong>{f"+{impact['health_gain']}" if impact.get('health_gain') is not None else "Not estimated"}</strong></div>
+                          <div><span>Supply Risk Reduction</span><strong>{f"-{impact['supply_risk_reduction']}" if impact.get('supply_risk_reduction') is not None else "Not estimated"}</strong></div>
+                          <div><span>Lifecycle Issues Removed</span><strong>{impact['lifecycle_exposure_reduction'] if impact.get('lifecycle_exposure_reduction') is not None else "Not estimated"}</strong></div>
                         </div>
                         """,
                         unsafe_allow_html=True,
@@ -11233,7 +11233,7 @@ def run_authenticated_app() -> None:
                     )
                     expected_impact = _decision_text(
                         decision.get("expected_impact"),
-                        "Closing this decision removes unresolved release risk from the queue.",
+                        "No engineering outcome is recorded yet. Closing this item only changes its workflow status; it does not verify or reduce release risk.",
                     )
                     next_action = _decision_text(
                         decision.get("next_required_action"),
@@ -11243,7 +11243,7 @@ def run_authenticated_app() -> None:
                         decision.get("source"),
                         "Cadivor engineering evidence",
                     )
-                    confidence = _decision_int(decision.get("confidence"))
+                    confidence = "Not scored"
                     safe_key = re.sub(
                         r"[^a-zA-Z0-9_-]+", "_", str(key_prefix)
                     )[:90]
@@ -11322,7 +11322,7 @@ def run_authenticated_app() -> None:
                               <div class="cv-ed-queue-detail__signals">
                                 <div><span>Why this is open</span><strong>{html.escape(reason)}</strong></div>
                                 <div><span>Next engineering action</span><strong>{html.escape(next_action)}</strong></div>
-                                <div><span>Evidence confidence</span><strong>{confidence}%</strong><small>{html.escape(source)}</small></div>
+                                <div><span>Confidence</span><strong>{confidence}</strong><small>{html.escape(source)}</small></div>
                               </div>
                             </div>
                             """,
@@ -11564,7 +11564,9 @@ def run_authenticated_app() -> None:
                                                 decision.get("due_date"), "Not scheduled"
                                             ),
                                             "Effort": (
-                                                f"{int(decision.get('estimated_effort_hours', 0) or 0):,} hrs"
+                                                f"{int(decision['estimated_effort_hours']):,} hrs"
+                                                if decision.get("estimated_effort_hours") is not None
+                                                else "Not estimated"
                                             ),
                                         }
                                         for decision in visible_decisions
@@ -11694,25 +11696,22 @@ def run_authenticated_app() -> None:
                                             1 for decision in owner_decisions
                                             if decision["priority_score"] >= 85
                                         ),
-                                        "Estimated Hours": sum(
-                                            decision["estimated_effort_hours"]
-                                            for decision in owner_decisions
+                                        "Estimated Hours": (
+                                            sum(int(decision["estimated_effort_hours"]) for decision in owner_decisions if decision.get("estimated_effort_hours") is not None)
+                                            if any(decision.get("estimated_effort_hours") is not None for decision in owner_decisions)
+                                            else "Not estimated"
                                         ),
-                                        "Average Confidence": round(
-                                            sum(decision["confidence"] for decision in owner_decisions)
-                                            / len(owner_decisions)
-                                        ),
+                                        "Confidence": "Not scored",
                                     }
                                 )
                             cadivor_table(
                                 pd.DataFrame(workload_rows),
                                 caption="Team workload by owner",
-                                numeric_columns=["Open Decisions", "Critical", "Estimated Hours", "Average Confidence"],
+                                numeric_columns=["Open Decisions", "Critical"],
                                 align={
                                     "Open Decisions": "right",
                                     "Critical": "right",
                                     "Estimated Hours": "right",
-                                    "Average Confidence": "right",
                                 },
                             )
     
@@ -11744,9 +11743,15 @@ def run_authenticated_app() -> None:
                                 for decision in analytics_open_decisions
                             }
                         )
-                        analytics_hours = sum(
-                            int(decision.get("estimated_effort_hours", 0) or 0)
+                        analytics_effort_values = [
+                            int(decision["estimated_effort_hours"])
                             for decision in analytics_open_decisions
+                            if decision.get("estimated_effort_hours") is not None
+                        ]
+                        analytics_hours = (
+                            f"{sum(analytics_effort_values)} estimated hours"
+                            if analytics_effort_values
+                            else "effort not estimated"
                         )
                         analytics_age = float(decision_center.get("average_age_days", 0) or 0)
                         analytics_age_label = f"{analytics_age:.1f}".rstrip("0").rstrip(".")
@@ -11775,7 +11780,7 @@ def run_authenticated_app() -> None:
                                 "Cadivor's critical threshold."
                             )
                             analytics_workload = (
-                                f"The queue represents {analytics_hours} estimated engineering hours across "
+                                f"The queue has {analytics_hours} across "
                                 f"{analytics_owner_count} assigned owner"
                                 f"{'s' if analytics_owner_count != 1 else ''}. The average open decision has "
                                 f"waited {analytics_age_label} days.{analytics_approval_note}"
@@ -11791,7 +11796,7 @@ def run_authenticated_app() -> None:
                                 f"({analytics_critical_share}%) require immediate engineering attention."
                             )
                             analytics_workload = (
-                                f"The queue represents {analytics_hours} estimated engineering hours across "
+                                f"The queue has {analytics_hours} across "
                                 f"{analytics_owner_count} assigned owner"
                                 f"{'s' if analytics_owner_count != 1 else ''}. The average open decision has "
                                 f"waited {analytics_age_label} days.{analytics_approval_note}"
@@ -11903,15 +11908,13 @@ def run_authenticated_app() -> None:
                                     for decision in decisions
                                     if int(decision.get("priority_score", 0)) >= 85
                                 )
-                                driver_estimated_hours = sum(
-                                    int(
-                                        decision.get(
-                                            "estimated_effort_hours",
-                                            0,
-                                        )
-                                        or 0
-                                    )
+                                known_effort_values = [
+                                    int(decision["estimated_effort_hours"])
                                     for decision in decisions
+                                    if decision.get("estimated_effort_hours") not in (None, "")
+                                ]
+                                driver_estimated_hours = (
+                                    sum(known_effort_values) if known_effort_values else None
                                 )
                                 driver_rows.append(
                                     {
@@ -11940,7 +11943,7 @@ def run_authenticated_app() -> None:
                             driver_table = pd.DataFrame(driver_rows)
                             driver_table["Effort (hrs)"] = driver_table[
                                 "Effort (hrs)"
-                            ].map(lambda value: f"{int(value):,} hrs")
+                            ].map(lambda value: f"{int(value):,} hrs" if value is not None and not pd.isna(value) else "Not estimated")
 
                             def _render_driver_queue_intelligence(
                                 row: pd.Series,
@@ -12167,7 +12170,7 @@ def run_authenticated_app() -> None:
                                         "Owner": decision["assigned_owner"],
                                         "Decision Type": decision["decision_type"],
                                         "Outcome": decision["status"],
-                                        "Confidence": f"{decision['confidence']}%",
+                                        "Confidence": "Not scored",
                                     }
                                     for decision in archived
                                 ]
@@ -14209,8 +14212,8 @@ def run_authenticated_app() -> None:
                       <strong>{html.escape(ai_report['readiness'])}</strong>
                     </div>
                     <div class="cv-r9-selected-cell">
-                      <span>Health opportunity</span>
-                      <strong>{ai_report['health']} → {ai_report['projected_health']}/100</strong>
+                      <span>BOM health score</span>
+                      <strong>{f"{ai_report['health']}/100" if ai_report['health'] is not None else "Not scored"}</strong>
                     </div>
                     <div class="cv-r9-selected-cell">
                       <span>Risk requiring review</span>
@@ -14252,8 +14255,9 @@ def run_authenticated_app() -> None:
                             <br><br>{html.escape(ai_report['executive_summary'])}
                             <br><br><b>Management decision:</b>
                             {html.escape(ai_report['executive_decision'])}
-                            <br><br><b>Projected health:</b>
-                            {ai_report['health']}/100 → {ai_report['projected_health']}/100
+                            <br><br><b>BOM health:</b>
+                            {f"{ai_report['health']}/100" if ai_report['health'] is not None else "Not scored"}
+                            <br><br>Remediation impact is not estimated. Supplier snapshots do not authorize production release.
                           </div>
                         </div>
                         """,
@@ -14301,8 +14305,7 @@ def run_authenticated_app() -> None:
                             {html.escape(ai_report['procurement_summary'])}
                             <br><br><b>Priority actions</b>
                             <ul>{procurement_items}</ul>
-                            <b>Estimated procurement effort:</b>
-                            {ai_report['procurement_hours']} hour(s)
+                            <b>Procurement effort:</b> Not estimated; assign an owner to size the work.
                           </div>
                         </div>
                         """,
@@ -19765,7 +19768,7 @@ def run_authenticated_app() -> None:
             )
 
             if classification == CLASS_VERIFIED_DIRECT:
-                return "★ Verified direct substitute"
+                return "★ Supplier-listed direct candidate · qualify before use"
             if classification == CLASS_SUPPLIER_UPGRADE:
                 return "★ Supplier-listed upgrade"
             if classification == CLASS_SUPPLIER_SIMILAR:
@@ -20012,11 +20015,14 @@ def run_authenticated_app() -> None:
                     score = max(0, min(100, int(round(float(value or 0)))))
                 except (TypeError, ValueError):
                     score = 0
-                if score >= 75:
-                    return f"🟢 {score} · Strong"
-                if score >= 55:
-                    return f"🟡 {score} · Review"
-                return f"🔴 {score} · Weak"
+                return f"Rule rank {score}/100"
+
+            from src.alternative_candidate_intelligence import build_alternative_candidate_insight
+
+            candidate_insights = [
+                build_alternative_candidate_insight(row)
+                for row in alternatives_df.to_dict("records")
+            ]
 
             candidate_scores = pd.to_numeric(
                 _candidate_series(["Recommendation Score"], 0),
@@ -20028,26 +20034,23 @@ def run_authenticated_app() -> None:
                     "Relationship": _candidate_series(
                         ["Classification", "Category", "Substitute Type"],
                         "Supplier candidate",
-                    ).fillna("Supplier candidate"),
+                    ).fillna("Supplier candidate").map(
+                        lambda value: (
+                            "Supplier-listed direct candidate · qualify before use"
+                            if str(value).strip().casefold() == "verified direct substitute"
+                            else value
+                        )
+                    ),
                     "Recommendation": candidate_scores.map(
                         _candidate_score_label
                     ),
-                    "Lifecycle": _candidate_series(
-                        ["Lifecycle", "Lifecycle Status"],
-                        "Unknown",
-                    ).fillna("Unknown"),
-                    "Stock": pd.to_numeric(
-                        _candidate_series(["Stock", "Total Market Stock"], 0),
-                        errors="coerce",
-                    ).fillna(0).map(lambda value: f"{int(value):,}"),
+                    "Lifecycle": [item["lifecycle"] for item in candidate_insights],
+                    "Stock": [item["stock_label"] for item in candidate_insights],
                     "Supplier": _candidate_series(
                         ["Sources Available", "Supplier", "Best Source", "Source"],
                         "Not listed",
                     ).fillna("Not listed"),
-                    "Unit Price": pd.to_numeric(
-                        _candidate_series(["Unit Price", "Price"], 0),
-                        errors="coerce",
-                    ).fillna(0).map(lambda value: f"${float(value):,.4f}"),
+                    "Unit Price": [item["price_label"] for item in candidate_insights],
                 }
             )
             candidate_request_id = str(
@@ -20075,7 +20078,7 @@ def run_authenticated_app() -> None:
                         "Relationship", "Relationship", width=1.3, min_width=165
                     ),
                     ExpandableTableColumn(
-                        "Recommendation", "Recommendation", width=1.05,
+                        "Recommendation", "Rule rank", width=1.05,
                         min_width=140, kind="priority",
                     ),
                     ExpandableTableColumn(
@@ -20097,8 +20100,8 @@ def run_authenticated_app() -> None:
                 initial_row_id=candidate_initial_row,
                 context_title="Ranked replacement candidates",
                 context_detail=(
-                    "Open a candidate to see why it ranks here, what still needs "
-                    "verification, and the next qualification action."
+                    "The rule-based rank orders candidates for review; it is not a compatibility probability or approval. "
+                    "Supplier fields show only current, exact-part evidence. Open a candidate to review gaps and qualification actions."
                 ),
                 count_label=f"{len(candidate_table):,} ranked candidates",
                 context_tone="success",
@@ -20154,6 +20157,9 @@ def run_authenticated_app() -> None:
                 # row and detail panel cannot show conflicting supplier facts.
                 st.rerun()
             selected_row = pd.Series(enriched_candidate)
+            from src.alternative_candidate_intelligence import build_alternative_candidate_insight
+
+            selected_evidence_insight = build_alternative_candidate_insight(enriched_candidate)
 
             if candidate_table_result.detail_slot is not None:
                 candidate_insight = build_alternative_candidate_insight(enriched_candidate)
@@ -20176,16 +20182,18 @@ def run_authenticated_app() -> None:
                     f'<h4>{html.escape(selected_alternative)}</h4>'
                     f'<p>{html.escape(str(candidate_insight["rank_explanation"]))}</p>'
                     '</div>'
-                    f'<strong>{int(candidate_insight["score"])}/100</strong></div>'
+                    f'<strong>Rule rank {int(candidate_insight["score"])}/100</strong></div>'
                     '<div class="cv-alt-candidate-detail__signals">'
-                    '<div><span>Engineering confidence</span>'
+                    '<div><span>Compared attributes</span>'
                     f'<strong>{html.escape(str(candidate_insight["engineering_confidence_label"]))}</strong></div>'
                     '<div><span>Supplier relationship</span>'
                     f'<strong>{html.escape(str(candidate_insight["supplier_confidence_label"]))}</strong></div>'
                     '<div><span>Lifecycle</span>'
                     f'<strong>{html.escape(str(candidate_insight["lifecycle"]))}</strong></div>'
-                    '<div><span>Confirmed stock</span>'
+                    '<div><span>Reported supplier inventory</span>'
                     f'<strong>{html.escape(str(candidate_insight["stock_label"]))}</strong></div>'
+                    '<div><span>Price</span>'
+                    f'<strong>{html.escape(str(candidate_insight["price_label"]))}</strong></div>'
                     f'</div>{supplier_markup}'
                     '<div class="cv-alt-candidate-detail__review"><div>'
                     f'<span>Verification focus</span><ul>{gaps_markup}</ul></div>'
@@ -20235,15 +20243,33 @@ def run_authenticated_app() -> None:
             recommendation_evidence = selected_row.get("Recommendation Score Evidence", {})
             if not isinstance(recommendation_evidence, dict):
                 recommendation_evidence = {}
-            lifecycle_value = _af62b_value(selected_row, ["Lifecycle"], "Unknown")
-            risk_value = _af62b_value(selected_row, ["Estimated Risk"], "Unknown")
+            lifecycle_value = str(selected_evidence_insight.get("lifecycle") or "Needs verification")
+            assessment_counts = selected_evidence_insight.get("comparison_counts") or {}
+            comparison_matches = int(assessment_counts.get("matches") or 0)
+            comparison_differences = int(assessment_counts.get("differences") or 0)
+            comparison_needs_data = int(assessment_counts.get("needs_data") or 0)
+            comparison_fields = int(assessment_counts.get("compared_fields") or 0)
+            risk_value = (
+                "Differences found" if comparison_differences
+                else "Incomplete comparison" if comparison_needs_data or not comparison_fields
+                else "No differences observed in compared fields"
+            )
             supplier_value = _af62b_value(
                 selected_row,
                 ["Sources Available", "Supplier", "Best Source", "Source"],
                 "Supplier not listed",
             )
-            stock_value = float(coerce_stock_total(selected_row.get("Stock", 0)))
-            price_value = float(selected_row.get("Unit Price", 0) or 0)
+            stock_value = (
+                float(selected_evidence_insight["stock"])
+                if selected_evidence_insight.get("stock_verified")
+                and selected_evidence_insight.get("stock") is not None
+                else None
+            )
+            price_value = (
+                float(selected_row.get("Unit Price", 0) or 0)
+                if selected_evidence_insight.get("price_verified")
+                else None
+            )
             package_value = _af62b_value(selected_row, ["Package"], "Not verified")
             recommendation_copy = _af62b_value(
                 selected_row,
@@ -20310,33 +20336,45 @@ def run_authenticated_app() -> None:
                     source=supplier_value,
                 )
 
-            original_stock = float(coerce_stock_total(original_data.get("stock_total", 0)))
+            from src.alternative_candidate_intelligence import build_alternative_candidate_insight
+
+            original_evidence_insight = build_alternative_candidate_insight(original_data)
+            original_stock = (
+                float(original_evidence_insight["stock"])
+                if original_evidence_insight.get("stock_verified")
+                and original_evidence_insight.get("stock") is not None
+                else None
+            )
             alternative_stock = stock_value
 
-            original_price = float(original_data.get("unit_price", 0.0) or 0.0)
+            original_price = (
+                float(original_data.get("unit_price", 0.0) or 0.0)
+                if original_evidence_insight.get("price_verified")
+                else None
+            )
             alternative_price = price_value
 
-            if original_stock > 0 and alternative_stock > 0:
+            if original_stock is not None and alternative_stock is not None and original_stock > 0 and alternative_stock > 0:
                 stock_ratio = alternative_stock / original_stock
                 if stock_ratio > 1:
-                    stock_delta = f"🟢 {stock_ratio:.0f}× more stock available"
+                    stock_delta = f"{stock_ratio:.0f}× more supplier API inventory reported"
                 else:
-                    stock_delta = f"🔴 {(1 / stock_ratio):.1f}× less stock available"
-            elif original_stock > 0 and alternative_stock == 0:
-                stock_delta = "🔴 No stock available"
+                    stock_delta = f"{(1 / stock_ratio):.1f}× less supplier API inventory reported"
+            elif original_stock is not None and alternative_stock is not None and original_stock > 0 and alternative_stock == 0:
+                stock_delta = "Candidate supplier API reported zero inventory"
             else:
-                stock_delta = "N/A"
+                stock_delta = "Not compared: current exact-part inventory evidence is incomplete"
 
-            if original_price > 0 and alternative_price > 0:
+            if original_price is not None and alternative_price is not None and original_price > 0 and alternative_price > 0:
                 price_pct = (
                     (alternative_price - original_price) / original_price
                 ) * 100
                 if price_pct < 0:
-                    price_delta = f"🟢 {abs(price_pct):.1f}% lower cost"
+                    price_delta = f"{abs(price_pct):.1f}% lower listed price at the recorded quantity break"
                 else:
-                    price_delta = f"🔴 {price_pct:.1f}% higher cost"
+                    price_delta = f"{price_pct:.1f}% higher listed price at the recorded quantity break"
             else:
-                price_delta = "N/A"
+                price_delta = "Not compared: no verified price applicable to the required quantity"
 
             drop_in_reasons = str(
                 selected_row.get("Drop-In Reasons", "") or ""
@@ -20367,54 +20405,25 @@ def run_authenticated_app() -> None:
                 else:
                     recommendation_points.append(reason)
 
-            if stock_delta != "N/A":
+            if not stock_delta.startswith("Not compared"):
                 if "more stock" in stock_delta.lower():
                     advantage_points.append(stock_delta)
                 else:
                     tradeoff_points.append(stock_delta)
 
-            if price_delta != "N/A":
+            if not price_delta.startswith("Not compared"):
                 if "lower cost" in price_delta.lower():
                     advantage_points.append(price_delta)
                 else:
                     tradeoff_points.append(price_delta)
 
-            recommendation_label = (
-                "Strong" if recommendation_score >= 75
-                else "Review" if recommendation_score >= 55
-                else "Weak"
-            )
-            recommendation_label_class = (
-                "" if recommendation_score >= 75
-                else "medium" if recommendation_score >= 55
-                else "low"
-            )
+            recommendation_label = "Rule-based screening rank"
+            recommendation_label_class = ""
             from src.alternative_classification import (
-                SUITABILITY_LIFECYCLE_VERIFY,
-                SUITABILITY_PREFERRED,
-                SUITABILITY_SOURCE_DISCONTINUATION,
-                SUITABILITY_SUSTAINING,
-                SUITABILITY_SUPPLIER_VALIDATE,
                 build_recommendation_score_drivers,
-                format_engineering_compatibility_headline,
-                resolve_presentation_suitability,
             )
-            review_suitabilities = {
-                SUITABILITY_LIFECYCLE_VERIFY,
-                SUITABILITY_SUSTAINING,
-                SUITABILITY_SOURCE_DISCONTINUATION,
-                SUITABILITY_SUPPLIER_VALIDATE,
-            }
-            if suitability_value in review_suitabilities:
-                # Review/warning-state candidates must not present as equal to active Strong picks.
-                if recommendation_score >= 75:
-                    recommendation_label = "Review"
-                    recommendation_label_class = "medium"
-                suitability_badge = suitability_value
-            else:
-                suitability_badge = suitability_value or SUITABILITY_LIFECYCLE_VERIFY
-            lifecycle_class = "good" if lifecycle_value.lower() == "active" else "warn"
-            risk_class_62b = "good" if risk_value.lower() == "low" else "warn"
+            lifecycle_class = "good" if selected_evidence_insight.get("lifecycle_verified") else "warn"
+            risk_class_62b = "warn" if comparison_differences or comparison_needs_data or not comparison_fields else "good"
 
             alternative_reasoning = build_alternative_reasoning(
                 original_part=original_part,
@@ -20462,21 +20471,16 @@ def run_authenticated_app() -> None:
                 ["engineering_evidence_status"],
                 _af62b_value(selected_row, ["Engineering Evidence Status"], ""),
             )
-            suitability_badge = resolve_presentation_suitability(
-                suitability_value,
-                engineering_status=engineering_status_value,
-                engineering_confidence=engineering_comparison_confidence,
-                comparison_rows=selected_row.get("Comparison Rows") or [],
-            )
+            if not selected_evidence_insight.get("lifecycle_verified"):
+                suitability_badge = "Lifecycle needs verification"
+            elif comparison_differences:
+                suitability_badge = "Differences require review"
+            elif comparison_needs_data or not comparison_fields:
+                suitability_badge = "Comparison incomplete"
+            else:
+                suitability_badge = "Qualification required"
             suitability_value = suitability_badge
-            if suitability_badge in review_suitabilities and recommendation_score >= 75:
-                recommendation_label = "Review"
-                recommendation_label_class = "medium"
-            engineering_compatibility_headline = format_engineering_compatibility_headline(
-                engineering_status=engineering_status_value,
-                engineering_confidence=engineering_comparison_confidence,
-                comparison_rows=selected_row.get("Comparison Rows") or [],
-            )
+            engineering_compatibility_headline = compared_summary
             score_drivers = build_recommendation_score_drivers(
                 comparison_rows=selected_row.get("Comparison Rows") or [],
                 tradeoffs=tradeoff_points,
@@ -20485,23 +20489,17 @@ def run_authenticated_app() -> None:
                 recommendation_score=recommendation_score,
                 comparison_family=_af62b_value(selected_row, ["Comparison Family"], ""),
             )
-            confidence_label = (
-                "High" if engineering_comparison_confidence >= 75
-                else "Medium" if engineering_comparison_confidence >= 50
-                else "Low"
-            )
-            confidence_class = (
-                "good" if confidence_label == "High"
-                else "warn" if confidence_label == "Medium"
-                else ""
-            )
+            confidence_label = "Comparison counts only"
+            confidence_class = "warn" if comparison_differences or comparison_needs_data or not comparison_fields else "good"
             supplier_confidence_label = (
-                "High" if supplier_relationship_confidence >= 75 else "Medium"
-            ) if supplier_relationship_confidence else "Not classified"
-            compatibility_metric_label = (
-                "Engineering Compatibility"
-                if is_passive_family
-                else "Compatibility Confidence"
+                "Exact relationship recorded" if supplier_relationship_confidence
+                else "No exact relationship recorded"
+            )
+            compatibility_metric_label = "Comparison findings"
+            compared_summary = (
+                f"{comparison_matches} match · {comparison_differences} differ · "
+                f"{comparison_needs_data} need verification"
+                if comparison_fields else "Insufficient comparison data"
             )
 
             from src.part_images import part_image_markup
@@ -20523,8 +20521,7 @@ def run_authenticated_app() -> None:
                       </div>
                       <div class="af62b-score">
                         <strong>{recommendation_score}/100</strong>
-                        <span>Recommendation score</span>
-                        <div class="af63-score-label {recommendation_label_class}">{recommendation_label}</div>
+                        <span>Rule-based screening rank · not approval</span>
                       </div>
                     </div>
 
@@ -20534,12 +20531,12 @@ def run_authenticated_app() -> None:
                         <strong>{html.escape(lifecycle_value)}</strong>
                       </div>
                       <div class="af62b-metric {risk_class_62b}">
-                        <span>Estimated Risk</span>
+                        <span>Comparison screening</span>
                         <strong>{html.escape(risk_value)}</strong>
                       </div>
                       <div class="af62b-metric">
-                        <span>Available Stock</span>
-                        <strong>{int(stock_value):,}</strong>
+                        <span>Reported supplier API inventory</span>
+                        <strong>{html.escape(str(selected_evidence_insight['stock_label']))}</strong>
                       </div>
                       <div class="af62b-metric">
                         <span>Supplier</span>
@@ -20547,18 +20544,18 @@ def run_authenticated_app() -> None:
                       </div>
                       <div class="af62b-metric {confidence_class}">
                         <span>{html.escape(compatibility_metric_label)}</span>
-                        <strong>{engineering_comparison_confidence}% · {confidence_label}</strong>
+                        <strong>{html.escape(compared_summary)}</strong>
                       </div>
                       <div class="af62b-metric {'good' if supplier_relationship_confidence >= 75 else 'warn' if supplier_relationship_confidence else ''}">
                         <span>Supplier Relationship</span>
-                        <strong>{f"{supplier_relationship_confidence}% · {supplier_confidence_label}" if supplier_relationship_confidence else "Not classified"}</strong>
+                        <strong>{html.escape(supplier_confidence_label)}</strong>
                       </div>
                     </div>
 
                     <div class="af62b-metrics" style="margin-top:10px;grid-template-columns:repeat(2,minmax(0,1fr));">
                       <div class="af62b-metric">
-                        <span>Engineering compatibility</span>
-                        <strong>{html.escape(engineering_compatibility_headline)}</strong>
+                        <span>Comparison result</span>
+                        <strong>{html.escape(engineering_compatibility_headline)}. This is screening evidence, not drop-in qualification.</strong>
                       </div>
                       <div class="af62b-metric">
                         <span>Supplier relationship</span>
@@ -20573,13 +20570,13 @@ def run_authenticated_app() -> None:
                       </div>
                       <div class="af62b-metric">
                         <span>Unit Price</span>
-                        <strong>{"$" + format(price_value, ".4g") if price_value > 0 else "Not available"}</strong>
+                        <strong>{html.escape(str(selected_evidence_insight['price_label']))}</strong>
                       </div>
                       <div class="af62b-metric">
                         <span>Classification</span>
                         <strong>{html.escape(classification_value)}</strong>
                       </div>
-                      <div class="af62b-metric {'good' if suitability_badge == SUITABILITY_PREFERRED else 'warn'}">
+                      <div class="af62b-metric warn">
                         <span>Recommendation suitability</span>
                         <strong>{html.escape(suitability_badge)}</strong>
                       </div>
@@ -20595,103 +20592,26 @@ def run_authenticated_app() -> None:
                     """,
                     unsafe_allow_html=True,
                 )
-            # Milestone 7.0 — Explainable Engineering Intelligence
-            lifecycle_strength = (
-                100 if lifecycle_value.lower() == "active"
-                else 55 if lifecycle_value.lower() in {"nrnd", "not recommended for new designs"}
-                else 25
-            )
-            risk_strength = (
-                92 if risk_value.lower() == "low"
-                else 58 if risk_value.lower() == "medium"
-                else 24
-            )
-            supply_strength = (
-                96 if stock_value >= 50000
-                else 82 if stock_value >= 10000
-                else 62 if stock_value >= 1000
-                else 30
-            )
-
-            if original_price > 0 and alternative_price > 0:
-                cost_strength = max(
-                    10,
-                    min(
-                        100,
-                        int(
-                            70
-                            + ((original_price - alternative_price) / original_price) * 55
-                        ),
-                    ),
-                )
-            else:
-                cost_strength = 50
-
+            # The values below are screening findings, not calibrated probabilities.
             warning_count = len(warning_points)
-            if engineering_comparison_confidence >= 75:
-                intelligence_summary = (
-                    f"{selected_alternative} shows strong engineering compatibility with the original "
-                    f"component and is suitable for focused engineering validation."
-                )
-            elif engineering_comparison_confidence >= 50:
-                intelligence_summary = (
-                    f"{selected_alternative} is a plausible replacement, but Cadivor identified "
-                    f"{warning_count} verification item{'s' if warning_count != 1 else ''} "
-                    f"that should be resolved before production release."
-                )
-            elif supplier_relationship_confidence >= 75 and classification_value == "Verified direct substitute":
-                intelligence_summary = (
-                    f"{selected_alternative} is a supplier-listed direct substitute, but retrieved "
-                    f"engineering comparison evidence is incomplete. Confirm family-relevant fields "
-                    f"before treating this as a validated drop-in replacement."
-                )
-            else:
-                intelligence_summary = (
-                    f"{selected_alternative} should not be treated as a drop-in replacement. "
-                    f"The available evidence supports comparison and testing only, with "
-                    f"additional electrical and package verification required."
-                )
-
-            if "lower cost" in price_delta.lower():
-                intelligence_summary += " The candidate also improves estimated unit cost."
-            elif "higher cost" in price_delta.lower():
-                intelligence_summary += " The candidate introduces a sourcing cost increase."
-
-            if "more stock" in stock_delta.lower():
-                intelligence_summary += " Current supplier inventory is stronger than the original."
-
-            compatibility_detail = (
-                f"{engineering_comparison_confidence}% engineering compatibility"
-                if engineering_comparison_confidence > 0
-                else "Not verified"
+            intelligence_summary = (
+                f"{selected_alternative}: {compared_summary}. Resolve every difference and unknown field, "
+                "then review the manufacturer datasheet, footprint, and prototype results before approval."
             )
             lifecycle_detail = (
-                "Active lifecycle supports continued sourcing."
-                if lifecycle_value.lower() == "active"
-                else f"Lifecycle status: {lifecycle_value}."
-            )
-            risk_detail = (
-                "Few material engineering risks detected."
-                if risk_value.lower() == "low"
-                else "Requires additional engineering review."
+                "Timestamped exact-part supplier lifecycle evidence is shown."
+                if selected_evidence_insight.get("lifecycle_verified")
+                else "No current exact-part supplier lifecycle evidence is available."
             )
             supply_detail = (
-                f"{int(stock_value):,} units currently identified."
-                if stock_value > 0
-                else "Inventory was not confirmed."
+                "Distributor API snapshot; it can differ from checkout inventory."
+                if selected_evidence_insight.get("stock_verified")
+                else "No current exact-part inventory snapshot is verified."
             )
             cost_detail = (
-                price_delta.replace("🟢", "").replace("🔴", "").strip()
-                if price_delta != "N/A"
-                else "Cost comparison unavailable."
+                price_delta if not price_delta.startswith("Not compared")
+                else "No quantity-applicable price comparison is verified."
             )
-
-            def _af7_meter_class(value):
-                if value >= 75:
-                    return "good"
-                if value >= 50:
-                    return "warn"
-                return "bad"
 
             st.markdown(
                 f"""
@@ -20699,47 +20619,42 @@ def run_authenticated_app() -> None:
                   <div class="af7-intelligence-top">
                     <div>
                       <div class="af7-intelligence-eyebrow">Cadivor engineering intelligence</div>
-                      <div class="af7-intelligence-title">{html.escape("Why this score is limited" if (recommendation_score < 55 or suitability_badge == SUITABILITY_SUPPLIER_VALIDATE) else "Why Cadivor recommends this part")}</div>
+                      <div class="af7-intelligence-title">Rule-based screening explanation</div>
                       <div class="af7-intelligence-summary">{html.escape(intelligence_summary)}</div>
                     </div>
-                    <div class="af7-confidence-badge">{recommendation_score}/100 recommendation</div>
+                    <div class="af7-confidence-badge">Rule rank {recommendation_score}/100</div>
                   </div>
 
                   <div class="af7-factor-grid">
                     <div class="af7-factor">
                       <span>Compatibility</span>
-                      <strong>{html.escape(compatibility_detail)}</strong>
-                      <p>{len(recommendation_points)} verified match signal{'s' if len(recommendation_points) != 1 else ''}; {warning_count} warning{'s' if warning_count != 1 else ''}.</p>
-                      <div class="af7-meter {_af7_meter_class(engineering_comparison_confidence)}"><i style="width:{max(2, min(100, engineering_comparison_confidence))}%"></i></div>
+                      <strong>{html.escape(compared_summary)}</strong>
+                      <p>Count of compared fields; not a compatibility probability.</p>
                     </div>
                     <div class="af7-factor">
                       <span>Lifecycle</span>
                       <strong>{html.escape(lifecycle_value)}</strong>
                       <p>{html.escape(lifecycle_detail)}</p>
-                      <div class="af7-meter {_af7_meter_class(lifecycle_strength)}"><i style="width:{lifecycle_strength}%"></i></div>
                     </div>
                     <div class="af7-factor">
-                      <span>Engineering Risk</span>
+                      <span>Comparison screening</span>
                       <strong>{html.escape(risk_value)}</strong>
-                      <p>{html.escape(risk_detail)}</p>
-                      <div class="af7-meter {_af7_meter_class(risk_strength)}"><i style="width:{risk_strength}%"></i></div>
+                      <p>Differences or missing fields need engineering review.</p>
                     </div>
                     <div class="af7-factor">
                       <span>Supply Position</span>
-                      <strong>{int(stock_value):,} units</strong>
+                      <strong>{html.escape(str(selected_evidence_insight['stock_label']))}</strong>
                       <p>{html.escape(supply_detail)}</p>
-                      <div class="af7-meter {_af7_meter_class(supply_strength)}"><i style="width:{supply_strength}%"></i></div>
                     </div>
                     <div class="af7-factor">
                       <span>Cost Impact</span>
-                      <strong>{"$" + format(price_value, ".4g") if price_value > 0 else "Not available"}</strong>
+                      <strong>{html.escape(str(selected_evidence_insight['price_label']))}</strong>
                       <p>{html.escape(cost_detail)}</p>
-                      <div class="af7-meter {_af7_meter_class(cost_strength)}"><i style="width:{cost_strength}%"></i></div>
                     </div>
                   </div>
 
                   <div class="af7-explain-note">
-                    Score basis: {engineering_comparison_confidence}% engineering compatibility, {int(recommendation_evidence.get('evidence_quality', 0) or 0)}% retrieved-evidence quality, and {int(recommendation_evidence.get('sourcing_signal', 0) or 0)}% sourcing signal. Supplier relationship evidence is reported separately from engineering comparison coverage.
+                    The 0–100 rank is a rule-based screening order built from comparison signals, evidence completeness, and sourcing signals. It is not a probability, qualification result, or approval. Reported stock is a distributor API snapshot and is not checkout inventory.
                     {("<br/>Score drivers: " + html.escape(" · ".join(score_drivers))) if score_drivers else ""}
                   </div>
                 </div>
@@ -20765,19 +20680,19 @@ def run_authenticated_app() -> None:
                       <div class="af122-title">{html.escape(alternative_reasoning['disposition'])}</div>
                       <div class="af122-copy">{html.escape(alternative_reasoning['approval_guidance'])}</div>
                     </div>
-                    <div class="af122-badge {html.escape(alternative_reasoning['disposition_tone'])}">
-                      {alternative_reasoning['decision_confidence']}% decision confidence
+                    <div class="af122-badge warn">
+                      Rule-based guidance · human qualification required
                     </div>
                   </div>
 
                   <div class="af122-grid">
                     <div class="af122-metric">
-                      <span>Recommended Use</span>
-                      <strong>{html.escape(alternative_reasoning['use_case'])}</strong>
+                      <span>Screening disposition</span>
+                      <strong>{html.escape(alternative_reasoning['disposition'])}</strong>
                     </div>
                     <div class="af122-metric">
-                      <span>Estimated Engineering Effort</span>
-                      <strong>{alternative_reasoning['estimated_effort_hours']} hours</strong>
+                      <span>Engineering qualification</span>
+                      <strong>Required before approval</strong>
                     </div>
                     <div class="af122-metric">
                       <span>Open Review Items</span>
@@ -20789,7 +20704,7 @@ def run_authenticated_app() -> None:
 
                 <div class="af122-lists">
                   <div class="af122-list good">
-                    <h4>Confirmed Evidence</h4>
+                    <h4>Comparison observations</h4>
                     {_af122_items(alternative_reasoning['confirmed_matches'], 'No compatibility evidence has been confirmed.')}
                   </div>
                   <div class="af122-list warn">
@@ -20813,7 +20728,7 @@ def run_authenticated_app() -> None:
                   </div>
                   <div class="af122-list">
                     <h4>Decision Rule</h4>
-                    <div>Qualification approval requires compatibility evidence, no unresolved hard blockers, and a completed engineering review record.</div>
+                    <div>These rule-based comparisons support triage only. Qualification requires full datasheet, footprint, electrical, circuit, and prototype review by an engineer.</div>
                   </div>
                 </div>
                 """,
@@ -20832,8 +20747,8 @@ def run_authenticated_app() -> None:
                 f"""
                 <div class="af62b-analysis-grid">
                   <div class="af62b-analysis-card good">
-                    <div class="af62b-analysis-title">Engineering Matches</div>
-                    {_af62b_items(recommendation_points, "No verified compatibility matches were returned.")}
+                    <div class="af62b-analysis-title">Comparison observations</div>
+                    {_af62b_items(recommendation_points, "No matching fields were reported in the comparison.")}
                   </div>
                   <div class="af62b-analysis-card warning">
                     <div class="af62b-analysis-title">Warnings</div>
@@ -20855,8 +20770,8 @@ def run_authenticated_app() -> None:
             comparison_rows = [
                 {
                     "Attribute": "Lifecycle",
-                    "Original": original_data.get("lifecycle_status", "Unknown"),
-                    "Selected Alternative": selected_row.get("Lifecycle", "Unknown"),
+                    "Original": original_evidence_insight.get("lifecycle", "Needs verification"),
+                    "Selected Alternative": selected_evidence_insight.get("lifecycle", "Needs verification"),
                 },
                 {
                     "Attribute": "Supplier",
@@ -20865,13 +20780,13 @@ def run_authenticated_app() -> None:
                 },
                 {
                     "Attribute": "Stock",
-                    "Original": original_data.get("stock_total", 0),
-                    "Selected Alternative": selected_row.get("Stock", 0),
+                    "Original": original_evidence_insight.get("stock_label", "Not verified"),
+                    "Selected Alternative": selected_evidence_insight.get("stock_label", "Not verified"),
                 },
                 {
                     "Attribute": "Unit Price",
-                    "Original": original_data.get("unit_price", 0.0),
-                    "Selected Alternative": selected_row.get("Unit Price", 0.0),
+                    "Original": original_evidence_insight.get("price_label", "Not verified"),
+                    "Selected Alternative": selected_evidence_insight.get("price_label", "Not verified"),
                 },
                 {
                     "Attribute": "Stock Delta",
@@ -20914,11 +20829,9 @@ def run_authenticated_app() -> None:
             comparison_rows.extend(
                 [
                     {
-                        "Attribute": "Engineering Compatibility",
+                        "Attribute": "Comparison findings",
                         "Original": "—",
-                        "Selected Alternative": (
-                            f"{engineering_comparison_confidence}% · {confidence_label}"
-                        ),
+                        "Selected Alternative": compared_summary,
                     },
                 ]
             )
@@ -21181,12 +21094,8 @@ def run_authenticated_app() -> None:
                       <strong>{html.escape(str(selected_alternative))}</strong>
                     </div>
                     <div class="af63-decision-metric">
-                      <span>Compatibility</span>
-                      <strong>{engineering_comparison_confidence}% · {confidence_label}</strong>
-                    </div>
-                    <div class="af63-decision-metric">
-                      <span>Engineering Risk</span>
-                      <strong>{html.escape(risk_value)}</strong>
+                      <span>Compared attributes</span>
+                      <strong>{html.escape(compared_summary)}</strong>
                     </div>
                     <div class="af63-decision-metric">
                       <span>Cost Impact</span>
@@ -21241,18 +21150,18 @@ def run_authenticated_app() -> None:
                 "decision": current_decision,
                 "engineering_note": engineering_note,
                 "recommendation_score": recommendation_score,
-                "recommendation_rating": recommendation_label,
-                "compatibility_confidence": engineering_comparison_confidence,
-                "compatibility_rating": confidence_label,
+                "recommendation_rating": "Rule-based screening rank",
+                "compatibility_confidence": None,
+                "compatibility_rating": "Not scored",
                 "copilot_disposition": alternative_reasoning.get("disposition"),
-                "copilot_decision_confidence": alternative_reasoning.get("decision_confidence"),
+                "copilot_decision_confidence": None,
                 "copilot_approval_blockers": alternative_reasoning.get("blockers"),
                 "copilot_verification_required": alternative_reasoning.get("verification_required"),
-                "copilot_estimated_effort_hours": alternative_reasoning.get("estimated_effort_hours"),
+                "engineering_comparison_counts": assessment_counts,
                 "lifecycle": lifecycle_value,
                 "risk": risk_value,
                 "supplier": supplier_value,
-                "stock": int(stock_value),
+                "stock": int(stock_value) if stock_value is not None else None,
                 "unit_price": price_value,
                 "package": package_value,
                 "stock_delta": stock_delta,

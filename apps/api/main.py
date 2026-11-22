@@ -44,6 +44,7 @@ from apps.api.report_visibility import (
 from apps.api.synthetic_analyze import (  # noqa: E402
     PersistenceVerifyError,
     analyze_upload,
+    current_priority_items,
     delete_project as delete_project_record,
     delete_report,
     get_report,
@@ -111,6 +112,47 @@ def _get_visible_report(analysis_id: str, *, workspace_id: str) -> dict[str, Any
     if report and is_production_runtime() and is_internal_test_fixture_analysis(report):
         return None
     return report
+
+
+def _refresh_project_report_summaries(
+    projects: list[dict[str, Any]], reports: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Overlay evidence-recalculated report summaries on saved project views."""
+    report_by_id = {
+        str(row.get("id") or row.get("analysis_id") or ""): row
+        for row in reports
+        if isinstance(row, dict)
+    }
+    refreshed: list[dict[str, Any]] = []
+    for project in projects:
+        project_copy = dict(project)
+        boms = []
+        for bom in project.get("boms") or []:
+            if not isinstance(bom, dict):
+                continue
+            bom_copy = dict(bom)
+            analysis_id = str(
+                bom.get("latest_analysis_id")
+                or (bom.get("latest_analysis") or {}).get("id")
+                or ""
+            )
+            report = report_by_id.get(analysis_id)
+            if report:
+                bom_copy.update({
+                    "latest_analysis": report,
+                    "health_score": report.get("health_score"),
+                    "health_status": report.get("health_status"),
+                    "summary_message": report.get("summary_message"),
+                    "needs_verification_count": report.get("needs_verification_count"),
+                    "high_risk_count": report.get("high_risk_count"),
+                    "medium_risk_count": report.get("medium_risk_count"),
+                    "low_risk_count": report.get("low_risk_count"),
+                    "has_hierarchy": report.get("has_hierarchy"),
+                })
+            boms.append(bom_copy)
+        project_copy["boms"] = boms
+        refreshed.append(project_copy)
+    return refreshed
 
 # Demo passwords are not shipped in the API. Tests import
 # tests.fixtures.sandbox_auth_accounts; operators seed via
@@ -1076,6 +1118,7 @@ async def projects_list(request: Request) -> JSONResponse:
         projects = customer_visible_projects(
             projects, reports, production=is_production_runtime()
         )
+        projects = _refresh_project_report_summaries(projects, reports)
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
     return _json(
@@ -1195,12 +1238,43 @@ async def workspace_home(request: Request) -> JSONResponse:
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
-        return _json(
-            get_store().home_dashboard(
-                workspace_id=ctx["workspace_id"],
-                production=is_production_runtime(),
-            )
+        workspace_id = ctx["workspace_id"]
+        store = get_store()
+        payload = store.home_dashboard(
+            workspace_id=workspace_id,
+            production=is_production_runtime(),
         )
+        reports = customer_visible_analyses(
+            list_reports(workspace_id=workspace_id),
+            production=is_production_runtime(),
+        )
+        payload = dict(payload)
+        payload["projects"] = _refresh_project_report_summaries(
+            list(payload.get("projects") or []), reports
+        )
+        payload["recent_analyses"] = reports[:12]
+        current_priorities = []
+        for summary in reports[:8]:
+            analysis_id = str(summary.get("id") or summary.get("analysis_id") or "")
+            report = get_report(analysis_id, workspace_id=workspace_id) if analysis_id else None
+            if report:
+                current_priorities.extend(current_priority_items(report, summary)[:3])
+        payload["priority_risks"] = current_priorities
+        counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "needs_verification": 0}
+        for item in current_priorities:
+            level = str(item.get("risk_level") or "").casefold()
+            bucket = "high" if level == "critical" else next(
+                (candidate for candidate in ("high", "medium", "low") if candidate in level),
+                "needs_verification",
+            )
+            counts[bucket] += 1
+        payload["priority_severity_counts"] = counts
+        metrics = dict(payload.get("metrics") or {})
+        metrics["saved_analyses"] = len(reports)
+        metrics["priority_items"] = len(current_priorities)
+        metrics["open_blockers"] = counts["critical"] + counts["high"]
+        payload["metrics"] = metrics
+        return _json(payload)
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
 

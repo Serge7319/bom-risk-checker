@@ -18,6 +18,7 @@ from apps.api.migration_tools import detailed_risk_payload
 from apps.api.report_exports import build_csv, build_pdf, build_xlsx
 from src.portfolio_intelligence import build_portfolio_intelligence
 from src.procurement_advisor import build_procurement_advisor
+from tests.evidence_fixtures import live_supplier_part
 
 
 class FieldProvenanceTests(unittest.TestCase):
@@ -46,24 +47,22 @@ class FieldProvenanceTests(unittest.TestCase):
         self.assertIn("synthetic", (fields["price"].get("gap") or "").casefold())
 
     def test_live_offer_price_keeps_distinct_retrieval_and_type(self):
+        part = live_supplier_part("LIVE-PRICE", quantity=150, unit_price=0.12)
+        part["supplier_offers"][0]["price_break_quantity"] = 100
+        part["supplier_offers"][0]["retrieved_at"] = part["retrieved_at"]
         evidence = classify_part_evidence(
             {
-                "MPN": "LIVE-PRICE",
-                "manufacturer_part_number": "LIVE-PRICE",
-                "Manufacturer": "Acme",
-                "supplier_data_verified": True,
-                "evidence_source": "live-authorized-supplier",
-                "source": "DigiKey",
-                "product_url": "https://www.digikey.com/product/LIVE-PRICE",
-                "retrieved_at": "2026-11-01T12:00:00Z",
-                "Unit Price": 0.12,
+                **part,
                 "supplier_offers": [
                     {
+                        "mpn": "LIVE-PRICE",
+                        "distributor": "DigiKey",
                         "supplier": "DigiKey",
                         "unit_price": 0.12,
                         "currency": "USD",
                         "price_break_quantity": 100,
-                        "retrieved_at": "2026-11-01T12:05:00Z",
+                        "product_url": "https://www.digikey.com/product/LIVE-PRICE",
+                        "retrieved_at": part["retrieved_at"],
                     }
                 ],
             }
@@ -71,7 +70,7 @@ class FieldProvenanceTests(unittest.TestCase):
         price = evidence["fields"]["price"]
         self.assertEqual(price["evidence_class"], "live-authorized-supplier")
         self.assertEqual(price["price_type"], "quantity-break")
-        self.assertEqual(price["retrieved_at"], "2026-11-01T12:05:00Z")
+        self.assertEqual(price["retrieved_at"], part["retrieved_at"])
 
     def test_annotate_summary_counts_price_classes_separately(self):
         report = annotate_report_parts(

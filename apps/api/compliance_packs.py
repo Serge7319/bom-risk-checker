@@ -9,7 +9,11 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from typing import Any
 
-from apps.api.evidence_contract import EVIDENCE_LIVE
+from apps.api.evidence_contract import (
+    EVIDENCE_LIVE,
+    _has_aware_timestamp,
+    _is_authorized_supplier_source,
+)
 
 
 EVIDENCE_PACK_TYPES = ("rohs", "reach", "pfas", "conflict_minerals", "pcn")
@@ -32,54 +36,39 @@ def _first(*values: Any) -> Any:
 
 
 def _part_evidence(part: dict[str, Any], kind: str) -> dict[str, Any]:
-    evidence = part.get("evidence") if isinstance(part.get("evidence"), dict) else {}
-    compliance_root = part.get("compliance_evidence")
-    if not isinstance(compliance_root, dict):
-        compliance_root = evidence.get("compliance") if isinstance(evidence.get("compliance"), dict) else {}
-    node = compliance_root.get(kind) if isinstance(compliance_root.get(kind), dict) else {}
-    value = _first(
-        node.get("reported_value"), node.get("status"),
-        part.get(f"{kind}_status"), part.get(f"{kind}_reported"),
-        part.get("PFAS status") if kind == "pfas" else None,
-        part.get("RoHS status") if kind == "rohs" else None,
-        part.get("REACH status") if kind == "reach" else None,
-    )
-    source_url = _first(
-        node.get("source_url"), node.get("url"), node.get("document_url"),
-        part.get(f"{kind}_source_url"), part.get(f"{kind}_evidence_url"),
-        part.get(f"{kind}_url"),
-    )
-    source = _first(node.get("source"), part.get(f"{kind}_source"))
-    evidence_class = str(
-        _first(node.get("evidence_class"), part.get(f"{kind}_evidence_class")) or ""
-    ).strip()
-    retrieved_at = _first(node.get("retrieved_at"), part.get(f"{kind}_retrieved_at"))
-    from src.normalizer import normalize_part_number
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_compliance_fields, classify_part_evidence
 
-    part_mpn = str(
-        part.get("MPN") or part.get("mpn") or part.get("manufacturer_part_number") or ""
-    ).strip()
-    evidence_mpn = str(node.get("mpn") or part_mpn).strip()
-    identity_matches = bool(
-        part_mpn
-        and evidence_mpn
-        and normalize_part_number(part_mpn) == normalize_part_number(evidence_mpn)
+    identity = classify_part_evidence(part)
+    identity_fields = identity.get("fields") if isinstance(identity.get("fields"), dict) else {}
+    identity_live = bool(
+        (identity_fields.get("identity") or {}).get("evidence_class") == EVIDENCE_LIVE
     )
-    conflict = bool(node.get("conflict"))
+    normalized = classify_compliance_fields(
+        part,
+        identity_live=identity_live,
+        requested_mpn=str(part.get("MPN") or part.get("mpn") or part.get("manufacturer_part_number") or ""),
+    ).get(kind, {})
+    value = normalized.get("reported_value")
+    source_url = normalized.get("source_url")
+    source = normalized.get("source")
+    evidence_class = str(normalized.get("evidence_class") or "missing").strip()
+    retrieved_at = normalized.get("retrieved_at")
+    conflict = bool(normalized.get("conflict"))
+    partial = bool(normalized.get("partial"))
     normalized_value = str(value or "").strip().casefold()
     source_reports_unknown = normalized_value in {
         "unknown", "not stated", "not reported", "not provided", "not available",
         "reach unknown", "rohs unknown", "pfas unknown",
     }
-    evidence_linked = bool(
-        value is not None
-        and source_url
-        and evidence_class == EVIDENCE_LIVE
-        and identity_matches
-    )
-    if conflict:
+    evidence_linked = evidence_class == EVIDENCE_LIVE and bool(value is not None and source_url)
+    if conflict and evidence_linked:
         status = "conflicting_evidence"
         reason = f"Supplier records disagree on {kind.upper()}; review each source before relying on the declaration."
+    elif partial and evidence_linked:
+        status = "partial_evidence"
+        reason = str(normalized.get("gap") or (
+            f"Some supplier records returned a declaration while others were unknown or qualified; review each linked source."
+        ))
     elif evidence_linked and source_reports_unknown:
         status = "supplier_reports_unknown"
         reason = f"The supplier source returned “{value}”; no {kind.upper()} compliance conclusion is available."
@@ -88,11 +77,7 @@ def _part_evidence(part: dict[str, Any], kind: str) -> dict[str, Any]:
         reason = "Supplier catalog declaration linked to this exact part."
     elif value is not None:
         status = "reported_unverified"
-        reason = (
-            "The declaration could not be tied to the exact BOM part number."
-            if not identity_matches
-            else "A value was recorded, but its source is not verified."
-        )
+        reason = str(normalized.get("gap") or "A value was recorded, but its source is not verified.")
     else:
         status = "missing_evidence"
         reason = f"No {kind.upper()} declaration was returned by the supplier lookup; status is unknown."
@@ -105,7 +90,8 @@ def _part_evidence(part: dict[str, Any], kind: str) -> dict[str, Any]:
         "retrieved_at": str(retrieved_at or "") if retrieved_at is not None else "",
         "reason": reason,
         "conflict": conflict,
-        "sources": node.get("sources") if isinstance(node.get("sources"), list) else [],
+        "partial": partial,
+        "sources": normalized.get("sources") if isinstance(normalized.get("sources"), list) else [],
     }
 
 
@@ -174,7 +160,7 @@ def build_compliance_record(part: dict[str, Any], pack_type: str) -> dict[str, A
         "gap": None if evidence["status"] == "evidence_linked" else (
             f"No source-verified {kind.upper()} declaration is attached."
             if evidence["status"] == "missing_evidence"
-            else f"A {kind.upper()} value is reported without verifiable supporting evidence."
+            else evidence["reason"]
         ),
     }
 
@@ -184,9 +170,11 @@ def build_pack(report: dict[str, Any] | None, pack_type: str) -> dict[str, Any]:
     if kind not in EVIDENCE_PACK_TYPES:
         return {"ok": False, "detail": f"Unknown pack type: {pack_type}", "allowed": list(EVIDENCE_PACK_TYPES)}
     records = [build_compliance_record(part, kind) for part in _part_rows(report)]
-    counts = {status: sum(1 for row in records if row["status"] == status) for status in (
-        "evidence_linked", "reported_unverified", "missing_evidence"
-    )}
+    statuses = (
+        "evidence_linked", "partial_evidence", "conflicting_evidence",
+        "reported_unverified", "supplier_reports_unknown", "missing_evidence",
+    )
+    counts = {status: sum(1 for row in records if row["status"] == status) for status in statuses}
     return {
         "ok": True,
         "pack_type": kind,
@@ -194,8 +182,13 @@ def build_pack(report: dict[str, Any] | None, pack_type: str) -> dict[str, Any]:
         "generated_at": _utc_now(),
         "analysis_id": (report or {}).get("id"),
         "records": records,
-        "summary": {"total": len(records), **counts, "compliance_claimed": False},
-        "gap": "Evidence is shown only when a component-specific source is attached. Missing records are unknown, not compliant or noncompliant.",
+        "summary": {
+            "total": len(records),
+            **counts,
+            "unknown": counts["supplier_reports_unknown"] + counts["missing_evidence"],
+            "compliance_claimed": False,
+        },
+        "gap": "Supplier declarations are source-reported working evidence only. Unknown and missing records are not compliant or noncompliant; conflicts and partial coverage require review.",
     }
 
 

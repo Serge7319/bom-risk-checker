@@ -11,8 +11,11 @@ import json
 import math
 import re
 from decimal import Decimal
+from datetime import datetime, timezone
 from numbers import Integral, Real
 from typing import Any, Mapping
+
+from src.normalizer import normalize_part_number
 
 OPTIONAL_SAVED_PART_COLUMNS = (
     "image_url",
@@ -35,6 +38,7 @@ OPTIONAL_SAVED_PART_COLUMNS = (
 )
 
 _MISSING_TEXT = {"", "nan", "none", "null", "no supplier match", "unknown"}
+SUPPLIER_PRICE_MAX_AGE_SECONDS = 24 * 60 * 60
 
 def json_safe_value(value: Any) -> Any:
     """Recursively convert supplier and analysis values to strict JSON values."""
@@ -162,12 +166,12 @@ def analysis_part_cost_fields(row: Mapping[str, Any]) -> dict[str, Any]:
     ) or _currency_from_price_text(raw_price)
     if not price_currency and price is not None and supplier:
         wanted_mpn = _mpn_key(mpn)
-        wanted_supplier = str(supplier).strip().casefold()
+        wanted_supplier = _supplier_key(supplier)
         matching_currencies = {
             _currency(offer.get("currency"))
             for offer in saved_offers
             if _mpn_key(offer.get("mpn")) == wanted_mpn
-            and str(offer.get("distributor") or "").strip().casefold() == wanted_supplier
+            and _supplier_key(offer.get("distributor")) == wanted_supplier
             and price_number(offer.get("unit_price")) is not None
             and math.isclose(
                 float(offer["unit_price"]), price, rel_tol=1e-8, abs_tol=1e-8
@@ -236,7 +240,130 @@ def _offer_list(value: Any) -> list[Any]:
 
 
 def _mpn_key(value: Any) -> str:
-    return "".join(character for character in str(value or "").casefold() if character.isalnum())
+    # Keep ordering-significant suffixes such as '+' and '/' intact.
+    return normalize_part_number(str(value or "").strip())
+
+
+def _supplier_key(value: Any) -> str:
+    from src.supplier_source_identity import canonical_supplier_key
+
+    return canonical_supplier_key(value)
+
+
+def _retrieval_time(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def supplier_offer_is_current(
+    offer: Mapping[str, Any],
+    *,
+    now: datetime | None = None,
+    max_age_seconds: int = SUPPLIER_PRICE_MAX_AGE_SECONDS,
+) -> bool:
+    """Whether a saved supplier price snapshot is recent enough for current use."""
+    retrieved = _retrieval_time(offer.get("retrieved_at"))
+    if retrieved is None:
+        return False
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        return False
+    age_seconds = (current.astimezone(timezone.utc) - retrieved).total_seconds()
+    return 0 <= age_seconds <= max(0, int(max_age_seconds))
+
+
+_AUTHORIZED_DISTRIBUTORS = {"digikey", "mouser", "newark", "nexarsupply"}
+
+def supplier_listing_url_is_valid(offer: Mapping[str, Any]) -> bool:
+    """Require a safe listing URL on the named distributor's own domain."""
+    from src.supplier_source_identity import supplier_listing_url_is_valid as valid_listing_url
+
+    supplier = offer.get("distributor") or offer.get("source") or offer.get("supplier")
+    url = offer.get("product_url") or offer.get("product_detail_url")
+    return valid_listing_url(supplier, url)
+
+
+def select_supplier_offer(
+    offers: Any,
+    *,
+    mpn: str,
+    supplier: str = "",
+    unit_price: Any = None,
+    currency: Any = "",
+    quantity: Any = None,
+    require_current: bool = True,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    """Find an exact-part supplier API offer backing a report price.
+
+    The supplier, MPN, amount, currency, and retrieval timestamp must match.
+    When a BOM quantity and a price break are provided, the break must apply
+    to that quantity. This identifies a supplier API snapshot, not a checkout
+    confirmation.
+    """
+    wanted_mpn = _mpn_key(mpn)
+    wanted_supplier = _supplier_key(supplier) if supplier else ""
+    wanted_price = price_number(unit_price) if unit_price is not None else None
+    if unit_price is not None and wanted_price is None:
+        return None
+    wanted_currency = _currency(currency)
+    bom_quantity = positive_number(quantity)
+    if not wanted_mpn:
+        return None
+
+    candidates: list[dict[str, Any]] = []
+    for item in _offer_list(offers):
+        if not isinstance(item, dict) or _mpn_key(item.get("mpn")) != wanted_mpn:
+            continue
+        distributor = _supplier_key(item.get("distributor") or item.get("source") or item.get("supplier"))
+        if distributor not in _AUTHORIZED_DISTRIBUTORS or (wanted_supplier and distributor != wanted_supplier):
+            continue
+        if not supplier_listing_url_is_valid(item):
+            continue
+        amount = price_number(item.get("unit_price", item.get("price")))
+        offer_currency = _currency(item.get("currency"))
+        retrieved = _retrieval_time(item.get("retrieved_at"))
+        if amount is None or not offer_currency or retrieved is None:
+            continue
+        if require_current and not supplier_offer_is_current(item, now=now):
+            continue
+        if wanted_price is not None and not math.isclose(amount, wanted_price, rel_tol=1e-8, abs_tol=1e-8):
+            continue
+        if wanted_currency and offer_currency != wanted_currency:
+            continue
+        break_quantity = _break_quantity(item.get("price_break_quantity"))
+        if bom_quantity is not None and break_quantity is not None and break_quantity > bom_quantity:
+            continue
+        candidates.append({
+            **item,
+            "distributor": str(item.get("distributor") or item.get("source") or item.get("supplier") or "").strip(),
+            "unit_price": amount,
+            "currency": offer_currency,
+            "price_break_quantity": break_quantity,
+            "retrieved_at": str(item.get("retrieved_at") or "").strip(),
+            "quantity_break_applies": (
+                break_quantity is None
+                or (bom_quantity is not None and break_quantity <= bom_quantity)
+            ),
+        })
+    if len({row["currency"] for row in candidates}) != 1:
+        return None
+    candidates.sort(
+        key=lambda row: (
+            float(row["price_break_quantity"] or 0),
+            _retrieval_time(row["retrieved_at"]) or datetime.min.replace(tzinfo=timezone.utc),
+        ),
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
 
 
 def _currency(value: Any) -> str:
@@ -365,8 +492,13 @@ def normalize_saved_offers(offers: Any, *, mpn: str = "") -> list[dict[str, Any]
     for item in _offer_list(offers):
         if not isinstance(item, dict):
             continue
+        if _blank(item.get("mpn") or item.get("part_number") or item.get("manufacturer_part_number")):
+            continue
         offer = _offer(
-            mpn=str(item.get("mpn") or mpn or ""),
+            # A saved offer without its own MPN cannot be assigned to the
+            # requested BOM line. ``mpn`` remains in the signature for
+            # compatibility with callers, but is never used to fill identity.
+            mpn=str(item.get("mpn") or item.get("part_number") or item.get("manufacturer_part_number") or ""),
             distributor=item.get("distributor") or item.get("source") or item.get("supplier"),
             unit_price=item.get("unit_price"),
             currency=item.get("currency"),
@@ -383,16 +515,34 @@ def normalize_saved_offers(offers: Any, *, mpn: str = "") -> list[dict[str, Any]
 def collect_supplier_offers(results: Any, *, mpn: str) -> list[dict[str, Any]]:
     """One saved row per real priced offer. Unpriced supplier rows are omitted."""
     offers: list[dict[str, Any]] = []
+    from src.normalizer import normalize_part_number
+
+    requested_mpn = normalize_part_number(str(mpn or "").strip())
     for result in results or []:
         if not isinstance(result, dict):
             continue
         status = str(result.get("provider_status") or "").strip().casefold()
         if status and status not in {"available", "ok"}:
             continue
+        returned_mpn = str(
+            result.get("manufacturer_part_number")
+            or result.get("mpn")
+            or result.get("part_number")
+            or ""
+        ).strip()
+        # Only inherit the exact identity from a supplier result which itself
+        # returned that identity. The query string alone is not proof.
+        if not requested_mpn or normalize_part_number(returned_mpn) != requested_mpn:
+            continue
         retrieved_at = result.get("retrieved_at")
         seller_offers = result.get("seller_offers")
         if isinstance(seller_offers, list) and seller_offers:
-            added = normalize_saved_offers(seller_offers, mpn=mpn)
+            with_identity = [
+                {**offer, "mpn": offer.get("mpn") or returned_mpn}
+                for offer in seller_offers
+                if isinstance(offer, dict)
+            ]
+            added = normalize_saved_offers(with_identity)
             if not _blank(retrieved_at):
                 for offer in added:
                     if not offer["retrieved_at"]:
@@ -422,7 +572,7 @@ def collect_supplier_offers(results: Any, *, mpn: str) -> list[dict[str, Any]]:
             if not isinstance(item, dict):
                 continue
             offer = _offer(
-                mpn=mpn,
+                mpn=returned_mpn,
                 distributor=distributor,
                 unit_price=item.get("unit_price"),
                 currency=(
@@ -443,21 +593,19 @@ def collect_supplier_offers(results: Any, *, mpn: str) -> list[dict[str, Any]]:
 def _same_part(offer: Mapping[str, Any], mpn: str) -> bool:
     offer_mpn = _mpn_key(offer.get("mpn"))
     part_mpn = _mpn_key(mpn)
-    if not offer_mpn or not part_mpn:
-        return True
-    return offer_mpn == part_mpn
+    return bool(offer_mpn and part_mpn and offer_mpn == part_mpn)
 
 
 def _applicable_offer(offers: list[dict[str, Any]], bom_quantity: float) -> dict[str, Any] | None:
     eligible = [
         offer
         for offer in offers
-        if offer.get("price_break_quantity") is not None
-        and float(offer["price_break_quantity"]) <= bom_quantity
+        if offer.get("price_break_quantity") is None
+        or float(offer["price_break_quantity"]) <= bom_quantity
     ]
     if not eligible:
         return None
-    return max(eligible, key=lambda offer: float(offer["price_break_quantity"]))
+    return max(eligible, key=lambda offer: float(offer.get("price_break_quantity") or 0))
 
 
 def distributor_comparison(
@@ -465,8 +613,10 @@ def distributor_comparison(
     *,
     mpn: str,
     bom_quantity: Any,
+    require_current: bool = True,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Savings only for the same MPN, the same currency, and a break that covers the BOM quantity."""
+    """Compare current exact-MPN prices in one currency at the saved BOM quantity."""
     unavailable = {
         "savings_per_unit": None,
         "message": "A distributor comparison is unavailable.",
@@ -493,6 +643,42 @@ def distributor_comparison(
                 "The saved prices do not apply to the BOM quantity."
             ),
         }
+    quantity_blocked = any(
+        offer.get("price_break_quantity") is not None
+        and float(offer["price_break_quantity"]) > quantity
+        for offer in saved
+    )
+    verified_saved = []
+    for offer in saved:
+        matched = select_supplier_offer(
+            [offer],
+            mpn=mpn,
+            supplier=str(offer.get("distributor") or ""),
+            unit_price=offer.get("unit_price"),
+            currency=offer.get("currency"),
+            quantity=quantity,
+            require_current=require_current,
+            now=now,
+        )
+        if matched is not None and matched.get("quantity_break_applies") is True:
+            verified_saved.append(matched)
+    saved = verified_saved
+    if len(saved) < 2:
+        if quantity_blocked:
+            return {
+                **unavailable,
+                "message": (
+                    "A distributor comparison is unavailable. "
+                    "The saved prices do not apply to the BOM quantity."
+                ),
+            }
+        return {
+            **unavailable,
+            "message": (
+                "A current distributor comparison is unavailable. "
+                "Refresh supplier prices and confirm exact-part offers, currency, and applicable quantity breaks."
+            ),
+        }
     by_currency: dict[str, dict[str, list[dict[str, Any]]]] = {}
     missing_currency = False
     for offer in saved:
@@ -503,7 +689,6 @@ def distributor_comparison(
             continue
         by_currency.setdefault(currency, {}).setdefault(distributor.casefold(), []).append(offer)
     comparable: list[tuple[str, dict[str, Any]]] = []
-    quantity_blocked = False
     for currency, grouped in by_currency.items():
         chosen: list[dict[str, Any]] = []
         for rows in grouped.values():

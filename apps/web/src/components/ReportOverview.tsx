@@ -108,6 +108,7 @@ function evidenceLine(report: Report): string {
   const parts = [
     evidence.live_count == null ? null : `${countValue(evidence.live_count) ?? 0} live authorized-supplier identity match${Number(evidence.live_count) === 1 ? "" : "es"}`,
     evidence.synthetic_count == null ? null : `${countValue(evidence.synthetic_count) ?? 0} synthetic/preview row${Number(evidence.synthetic_count) === 1 ? "" : "s"}`,
+    evidence.unverified_count == null ? null : `${countValue(evidence.unverified_count) ?? 0} rows with unverified supplier identity`,
     evidence.missing_count == null ? null : `${countValue(evidence.missing_count) ?? 0} rows without a supplier match`,
   ].filter((value): value is string => Boolean(value));
   return parts.length

@@ -91,6 +91,79 @@ def parse_bom_bytes(filename: str, payload: bytes, **intake_options: Any) -> pd.
     return result.dataframe()
 
 
+def assess_saved_report(report: dict[str, Any] | None) -> dict[str, Any]:
+    """Derive customer-facing summary fields from row-level saved evidence.
+
+    Persisted risk/health labels are snapshots from the analysis run. They can
+    outlive supplier evidence or older scoring rules, so report reads recompute
+    these summary fields using the same strict evidence contract as a health
+    recalculation. This never contacts a supplier and never writes to storage.
+    """
+    parts = [
+        row for row in ((report or {}).get("parts") or [])
+        if isinstance(row, dict)
+    ]
+    assessments = [calculate_risk(part) for part in parts]
+    health = calculate_bom_health_score(pd.DataFrame(parts))
+    needs_verification = sum(
+        not bool(item.get("evidence_coverage_complete")) for item in assessments
+    )
+    return {
+        "health_score": health.get("health_score"),
+        "health_status": health.get("health_status") or "Not scored",
+        "summary_message": health.get("summary_message")
+        or "Health could not be calculated from saved evidence.",
+        "assessment_coverage": health.get("assessment_coverage"),
+        "needs_verification_count": needs_verification,
+        "high_risk_count": sum(item.get("risk_level") == "High" for item in assessments),
+        "medium_risk_count": sum(item.get("risk_level") == "Medium" for item in assessments),
+        "low_risk_count": sum(item.get("risk_level") == "Low" for item in assessments),
+        "total_parts": len(parts),
+        "health_source": "saved-evidence",
+    }
+
+
+def _report_with_current_assessment(report: dict[str, Any]) -> dict[str, Any]:
+    """Return a report whose summary cannot inherit stale stored score labels."""
+    return {**report, **assess_saved_report(report)}
+
+
+def current_priority_items(
+    report: dict[str, Any], analysis: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """Build home-page review items from current row evidence, never saved labels."""
+    from apps.api.evidence_contract import classify_part_evidence
+
+    context = analysis or report or {}
+    items: list[dict[str, Any]] = []
+    rank = {"High": 0, "Medium": 1, "Needs verification": 2}
+    for part in (report.get("parts") or []):
+        if not isinstance(part, dict):
+            continue
+        assessment = calculate_risk(part)
+        level = str(assessment.get("risk_level") or "Needs verification")
+        if level == "Low":
+            continue
+        envelope = classify_part_evidence(part)
+        reasons = [str(item).strip() for item in assessment.get("risk_reasons") or [] if str(item).strip()]
+        items.append({
+            "analysis_id": str(context.get("id") or context.get("analysis_id") or report.get("id") or ""),
+            "project_name": context.get("project_name") or report.get("project_name"),
+            "bom_name": context.get("bom_name") or report.get("bom_name"),
+            "mpn": str(part.get("MPN") or part.get("mpn") or part.get("manufacturer_part_number") or "Component"),
+            "risk_level": level,
+            "bom_path": part.get("bom_path_display") or part.get("bom_path"),
+            "why": "; ".join(reasons) or "Current supplier evidence is insufficient to assess this component.",
+            "evidence_source": str(envelope.get("evidence_class") or "missing"),
+            "action": "Open the report and review the component evidence",
+            "risk_score": assessment.get("risk_score"),
+        })
+    return sorted(
+        items,
+        key=lambda item: (rank.get(str(item.get("risk_level") or ""), 3), -(float(item.get("risk_score") or 0))),
+    )
+
+
 def _attach_intake(report: dict[str, Any], result: IntakeResult) -> None:
     """Keep each raw input value beside its normalized value on the saved report."""
     by_part = result.source_rows_by_part()
@@ -295,7 +368,7 @@ def get_report(analysis_id: str, *, workspace_id: str) -> dict[str, Any] | None:
         raise
     if report:
         _REPORTS[analysis_id] = report
-        return report
+        return _report_with_current_assessment(report)
     # Store is authoritative — do not resurrect deleted analyses from memory.
     _REPORTS.pop(analysis_id, None)
     return None
@@ -309,19 +382,7 @@ def recalculate_report_health(
     if not report:
         return None
 
-    saved_parts = [row for row in (report.get("parts") or []) if isinstance(row, dict)]
-    results = pd.DataFrame(saved_parts)
-    aliases = {
-        "Risk Level": "risk_level",
-        "Risk Score": "risk_score",
-        "Supplier Data Verified": "supplier_data_verified",
-        "Stock Data Complete": "stock_data_complete",
-    }
-    for target, source in aliases.items():
-        if target not in results.columns and source in results.columns:
-            results[target] = results[source]
-
-    calculated = calculate_bom_health_score(results)
+    calculated = assess_saved_report(report)
     recalculated_at = datetime.now(timezone.utc).isoformat()
     health = {
         "health_score": calculated.get("health_score"),
@@ -329,6 +390,9 @@ def recalculate_report_health(
         "summary_message": calculated.get("summary_message") or "Health could not be calculated from saved evidence.",
         "assessment_coverage": calculated.get("assessment_coverage"),
         "needs_verification_count": int(calculated.get("needs_verification_count") or 0),
+        "high_risk_count": int(calculated.get("high_risk_count") or 0),
+        "medium_risk_count": int(calculated.get("medium_risk_count") or 0),
+        "low_risk_count": int(calculated.get("low_risk_count") or 0),
         "health_recalculated_at": recalculated_at,
         "health_source": "saved-evidence",
     }
@@ -385,7 +449,39 @@ def delete_project(project_id: str, *, workspace_id: str) -> bool:
 def list_reports(*, workspace_id: str) -> list[dict[str, Any]]:
     """Newest-first summaries for one workspace only."""
     store = get_store()
-    stored = {row["id"]: row for row in store.list_reports(workspace_id=workspace_id)}
+    reports = store.list_reports(workspace_id=workspace_id)
+    # Fetch rows in one store operation so all report summaries are recalculated
+    # from row-level provenance without N+1 detail requests.
+    try:
+        _analyses, saved_parts = store.analyses_and_parts(workspace_id=workspace_id)
+    except Exception:  # noqa: BLE001 - fall back to workspace-scoped report reads below
+        saved_parts = []
+    parts_by_analysis: dict[str, list[dict[str, Any]]] = {}
+    for part in saved_parts:
+        if not isinstance(part, dict):
+            continue
+        analysis_key = str(part.get("analysis_id") or "")
+        if analysis_key:
+            parts_by_analysis.setdefault(analysis_key, []).append(part)
+
+    stored: dict[str, dict[str, Any]] = {}
+    for row in reports:
+        analysis_key = str(row.get("id") or row.get("analysis_id") or "")
+        detail = _REPORTS.get(analysis_key) or {}
+        if not detail.get("parts") and analysis_key:
+            try:
+                detail = store.get_report(analysis_key, workspace_id=workspace_id) or {}
+            except Exception:  # noqa: BLE001
+                detail = {}
+        detail_parts = detail.get("parts") if isinstance(detail.get("parts"), list) else []
+        assessment_source = {
+            **detail,
+            "parts": detail_parts or parts_by_analysis.get(analysis_key, []),
+        }
+        stored[analysis_key] = {
+            **row,
+            **assess_saved_report(assessment_source),
+        }
     for report in _REPORTS.values():
         if report.get("workspace_id") != workspace_id:
             continue
@@ -397,12 +493,7 @@ def list_reports(*, workspace_id: str) -> list[dict[str, Any]]:
                 "workspace_id": workspace_id,
                 "filename": report.get("filename") or "bom.csv",
                 "created_at": report.get("created_at"),
-                "total_parts": report.get("total_parts"),
-                "health_score": report.get("health_score"),
-                "health_status": report.get("health_status"),
-                "high_risk_count": report.get("high_risk_count"),
-                "medium_risk_count": report.get("medium_risk_count"),
-                "low_risk_count": report.get("low_risk_count"),
+                **assess_saved_report(report),
                 "mode": report.get("mode"),
                 "project_name": report.get("project_name"),
                 "bom_name": report.get("bom_name"),
@@ -431,7 +522,18 @@ def analyses_and_parts(
     except WorkspaceAccessError:
         raise
     if analyses:
-        return analyses, parts
+        parts_by_analysis: dict[str, list[dict[str, Any]]] = {}
+        for part in parts:
+            if isinstance(part, dict):
+                parts_by_analysis.setdefault(
+                    str(part.get("analysis_id") or ""), []
+                ).append(part)
+        refreshed_analyses = []
+        for analysis in analyses:
+            key = str(analysis.get("id") or analysis.get("analysis_id") or "")
+            assessment = assess_saved_report({"parts": parts_by_analysis.get(key, [])})
+            refreshed_analyses.append({**analysis, **assessment})
+        return refreshed_analyses, parts
     if analysis_id:
         report = get_report(analysis_id, workspace_id=workspace_id)
         selected = [report] if report else []
@@ -457,8 +559,7 @@ def analyses_and_parts(
                 or "Synthetic BOM",
                 "created_at": report.get("created_at"),
                 "updated_at": report.get("created_at"),
-                "health_score": report.get("health_score"),
-                "high_risk_count": report.get("high_risk_count"),
+                **assess_saved_report(report),
                 "total_parts": report.get("total_parts"),
                 "mode": report.get("mode"),
             }

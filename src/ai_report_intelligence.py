@@ -48,87 +48,88 @@ def build_ai_report_intelligence(
     analysis: Dict[str, Any],
     parts_df: pd.DataFrame,
 ) -> Dict[str, Any]:
+    """Create a report from the current per-field supplier evidence.
+
+    Saved aggregate labels are not evidence. Recompute risk and health from
+    component records, and leave projections, effort and release approval
+    unscored because the inputs needed to support them are not available here.
+    """
+    from apps.api.evidence_contract import EVIDENCE_LIVE, classify_part_evidence
+    from integrations.stock_coercion import parse_stock_total
+    from src.health_score import calculate_bom_health_score
+    from src.risk_engine import _coverage_complete, calculate_risk
+
     parts_df = parts_df.copy() if isinstance(parts_df, pd.DataFrame) else pd.DataFrame()
 
     project = _text(analysis.get("project_name") or analysis.get("name"), "Saved BOM")
-    health = int(_num(analysis.get("health_score"), 0))
-    high = int(_num(analysis.get("high_risk_count") or analysis.get("high_risk_parts"), 0))
-    medium = int(_num(analysis.get("medium_risk_count") or analysis.get("medium_risk_parts"), 0))
-    part_count = int(
-        _num(
-            analysis.get("part_count")
-            or analysis.get("total_parts")
-            or analysis.get("parts_count"),
-            len(parts_df),
-        )
-    )
+    records = parts_df.to_dict("records") if not parts_df.empty else []
+    part_count = len(records)
+    assessments = []
+    lifecycle_concerns = no_stock = limited_sources = long_lead = needs_verification = 0
+    procurement_actions: list[str] = []
+    for part in records:
+        assessment = calculate_risk(part)
+        assessments.append(assessment)
+        fields = classify_part_evidence(part).get("fields") or {}
+        lifecycle = fields.get("lifecycle") if isinstance(fields.get("lifecycle"), dict) else {}
+        stock = fields.get("stock") if isinstance(fields.get("stock"), dict) else {}
+        identity = fields.get("identity") if isinstance(fields.get("identity"), dict) else {}
+        lead = fields.get("lead_time") if isinstance(fields.get("lead_time"), dict) else {}
+        coverage_complete, _ = _coverage_complete(part)
+        if assessment.get("risk_level") == "Needs verification":
+            needs_verification += 1
+        lifecycle_value = str(part.get("Lifecycle") or part.get("lifecycle_status") or part.get("Lifecycle Status") or "").casefold()
+        if lifecycle.get("evidence_class") == EVIDENCE_LIVE and any(
+            token in lifecycle_value for token in ("obsolete", "end of life", "eol", "discontinued", "nrnd", "not recommended")
+        ):
+            lifecycle_concerns += 1
+        stock_total = parse_stock_total(stock.get("observed_total", stock.get("reported_value")))
+        if stock.get("evidence_class") == EVIDENCE_LIVE and stock.get("complete") and stock_total == 0:
+            no_stock += 1
+        supplier_count = _num(part.get("Supplier Count", part.get("supplier_count")), float("nan"))
+        if identity.get("evidence_class") == EVIDENCE_LIVE and coverage_complete and pd.notna(supplier_count) and supplier_count <= 1:
+            limited_sources += 1
+        lead_value = _num(part.get("Lead Time Weeks", part.get("lead_time_weeks")), float("nan"))
+        if lead.get("evidence_class") == EVIDENCE_LIVE and pd.notna(lead_value) and lead_value >= 12:
+            long_lead += 1
 
-    lifecycle = _column(parts_df, "lifecycle_status", "Lifecycle Status").astype(str).str.lower()
-    risk = _column(parts_df, "risk_level", "Risk Level").astype(str).str.lower()
-    stock = pd.to_numeric(
-        _column(parts_df, "stock_available", "Stock Available", "stock"),
-        errors="coerce",
-    ).fillna(0)
-    suppliers = pd.to_numeric(
-        _column(parts_df, "supplier_count", "Supplier Count"),
-        errors="coerce",
-    ).fillna(0)
-    lead = pd.to_numeric(
-        _column(parts_df, "lead_time_weeks", "Lead Time Weeks", "lead_time"),
-        errors="coerce",
-    ).fillna(0)
-
-    lifecycle_concerns = int(
-        lifecycle.str.contains(
-            "obsolete|eol|end of life|replacement|nrnd|not recommended",
-            regex=True,
-            na=False,
-        ).sum()
-    )
-    no_stock = int((stock <= 0).sum()) if len(stock) else 0
-    limited_sources = int((suppliers <= 1).sum()) if len(suppliers) else 0
-    long_lead = int((lead >= 12).sum()) if len(lead) else 0
-
-    blockers = no_stock + int((risk == "high").sum())
+    risk_levels = [assessment.get("risk_level") for assessment in assessments]
+    high = sum(level == "High" for level in risk_levels)
+    medium = sum(level == "Medium" for level in risk_levels)
+    health_result = calculate_bom_health_score(parts_df) if not parts_df.empty else {"health_score": None}
+    health = health_result.get("health_score")
     readiness = (
-        "Blocked for production"
-        if blockers >= 2
-        else "Production approval required"
-        if blockers or lifecycle_concerns
-        else "Production ready with monitoring"
-    )
-
-    engineering_hours = high * 5 + medium * 2 + lifecycle_concerns * 3
-    procurement_hours = no_stock * 2 + limited_sources * 1 + long_lead * 1
-    projected_health = min(
-        100,
-        health
-        + min(12, high * 4 + medium * 2 + lifecycle_concerns * 2 + no_stock * 2),
+        "Supplier evidence requires verification"
+        if needs_verification
+        else "Supplier checks complete; engineering release review required"
     )
 
     executive_summary = (
-        f"{project} contains {part_count} components and currently scores {health}/100. "
-        f"The BOM is classified as {readiness.lower()}. "
-        f"Cadivor identified {high} high-risk, {medium} medium-risk, "
-        f"{lifecycle_concerns} lifecycle-exposed, {no_stock} no-stock, and "
-        f"{limited_sources} limited-source components. "
-        f"Completing the priority engineering and sourcing actions is projected to improve "
-        f"BOM health to approximately {projected_health}/100."
+        f"{project} contains {part_count} component(s). BOM health is "
+        f"{f'{health}/100' if health is not None else 'not scored'} because it is calculated only when evidence coverage is complete. "
+        f"Current verified supplier signals include {high} high-risk, {medium} medium-risk, "
+        f"{lifecycle_concerns} lifecycle concerns, {no_stock} complete checks reporting zero inventory, "
+        f"and {limited_sources} single-source or unmatched parts after completed checks. "
+        f"{needs_verification} component(s) need evidence verification. This report does not approve design fit or production release."
     )
 
     executive_decision = (
-        "Do not authorize unrestricted production purchasing until the listed blockers are resolved."
-        if blockers
-        else "Authorize the next build with controlled lifecycle and supplier monitoring."
+        "Review the exact source records, resolve evidence gaps, and complete your organization’s engineering, quality, and procurement release approvals. "
+        "A supplier catalog match is not checkout confirmation or design qualification."
     )
 
     procurement_summary = (
-        f"Procurement should prioritize {no_stock} immediate availability issue(s), "
-        f"{limited_sources} limited-source component(s), and {long_lead} long-lead component(s). "
-        f"Estimated procurement review effort is approximately {procurement_hours} hour(s)."
+        f"Verified supplier signals: {no_stock} complete checks reported zero inventory, "
+        f"{limited_sources} components had at most one exact source after complete checks, "
+        f"and {long_lead} components had verified lead time of at least 12 weeks. "
+        f"{needs_verification} component(s) need supplier evidence verification. Procurement effort is not estimated."
     )
 
     procurement_actions = []
+    if needs_verification:
+        procurement_actions.append(
+            f"Refresh exact-part supplier checks and verify source coverage and field timestamps for {needs_verification} component(s)."
+        )
     if no_stock:
         procurement_actions.append(
             f"Secure inventory or an approved substitute for {no_stock} no-stock component(s)."
@@ -146,12 +147,12 @@ def build_ai_report_intelligence(
             f"Avoid new long-term commitments on {lifecycle_concerns} lifecycle-exposed component(s)."
         )
     if not procurement_actions:
-        procurement_actions.append("Continue routine supplier and stock monitoring.")
+        procurement_actions.append("Review supplier source records before making a purchase commitment.")
 
     return {
         "project": project,
         "health": health,
-        "projected_health": projected_health,
+        "projected_health": None,
         "part_count": part_count,
         "high": high,
         "medium": medium,
@@ -160,8 +161,8 @@ def build_ai_report_intelligence(
         "executive_decision": executive_decision,
         "procurement_summary": procurement_summary,
         "procurement_actions": procurement_actions,
-        "engineering_hours": engineering_hours,
-        "procurement_hours": procurement_hours,
+        "engineering_hours": None,
+        "procurement_hours": None,
         "lifecycle_concerns": lifecycle_concerns,
         "no_stock": no_stock,
         "limited_sources": limited_sources,
@@ -209,8 +210,8 @@ def _metric_table(report: Dict[str, Any]) -> Table:
     data = [
         ["Health", "Projected Health", "High Risk", "Medium Risk"],
         [
-            f"{report['health']}/100",
-            f"{report['projected_health']}/100",
+            f"{report['health']}/100" if report.get("health") is not None else "Not scored",
+            "Not estimated",
             str(report["high"]),
             str(report["medium"]),
         ],
@@ -284,10 +285,10 @@ def build_ai_executive_pdf(
                 Paragraph(report["executive_summary"], styles["CadivorBody"]),
                 Paragraph("Recommended Management Decision", styles["CadivorSection"]),
                 Paragraph(report["executive_decision"], styles["CadivorBody"]),
-                Paragraph("Estimated Resolution Effort", styles["CadivorSection"]),
+                Paragraph("Resolution Effort", styles["CadivorSection"]),
                 Paragraph(
-                    f"Engineering: approximately {report['engineering_hours']} hours. "
-                    f"Procurement: approximately {report['procurement_hours']} hours.",
+                    "Effort has not been estimated. Assign engineering and procurement owners "
+                    "to size the work for the specific component and release plan.",
                     styles["CadivorBody"],
                 ),
             ]
@@ -338,7 +339,7 @@ def build_ai_procurement_pdf(report: Dict[str, Any]) -> bytes:
         action_table,
         Paragraph("Exposure Summary", styles["CadivorSection"]),
         Paragraph(
-            f"No-stock components: {report['no_stock']}<br/>"
+            f"Verified zero-stock components: {report['no_stock']}<br/>"
             f"Limited-source components: {report['limited_sources']}<br/>"
             f"Long-lead components: {report['long_lead']}<br/>"
             f"Lifecycle-exposed components: {report['lifecycle_concerns']}",

@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 
 from src.saved_bom_cost import (
     analysis_part_cost_fields,
@@ -133,6 +134,7 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
         self.assertEqual(extended_cost(1.2, 10), 12)
 
     def _offers(self, *, mouser_currency="USD", mouser_qty=1, digikey_qty=1, digikey_currency="USD", mouser_mpn="TPS54331D"):
+        retrieved_at = datetime.now(timezone.utc).isoformat()
         return [
             {
                 "mpn": "TPS54331D",
@@ -142,7 +144,7 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
                 "price_break_quantity": digikey_qty,
                 "stock": 1200,
                 "product_url": "https://www.digikey.com/en/products/detail/ti/TPS54331D/1",
-                "retrieved_at": "2026-10-09T14:00:00+00:00",
+                "retrieved_at": retrieved_at,
             },
             {
                 "mpn": mouser_mpn,
@@ -152,7 +154,7 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
                 "price_break_quantity": mouser_qty,
                 "stock": 80,
                 "product_url": "https://www.mouser.com/ProductDetail/TPS54331D",
-                "retrieved_at": "2026-10-09T14:00:00+00:00",
+                "retrieved_at": retrieved_at,
             },
         ]
 
@@ -162,10 +164,11 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
                 {
                     "provider_status": "AVAILABLE",
                     "source": "DigiKey",
+                    "manufacturer_part_number": "TPS54331D",
                     "unit_price": 1.2,
                     "stock_total": 1200,
                     "product_detail_url": "https://www.digikey.com/en/products/detail/ti/TPS54331D/1",
-                    "retrieved_at": "2026-10-09T14:00:00+00:00",
+                    "retrieved_at": datetime.now(timezone.utc).isoformat(),
                     "price_breaks": [
                         {"unit_price": 1.2, "price_break_quantity": 1, "currency": "USD"}
                     ],
@@ -173,10 +176,11 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
                 {
                     "provider_status": "AVAILABLE",
                     "source": "Mouser",
+                    "manufacturer_part_number": "TPS54331D",
                     "unit_price": 1.0,
                     "stock_total": 80,
                     "product_detail_url": "https://www.mouser.com/ProductDetail/TPS54331D",
-                    "retrieved_at": "2026-10-09T14:00:00+00:00",
+                    "retrieved_at": datetime.now(timezone.utc).isoformat(),
                     "price_breaks": [
                         {"unit_price": 1.0, "price_break_quantity": 1, "currency": "USD"}
                     ],
@@ -207,6 +211,73 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
         self.assertEqual(comparison["savings_per_unit"], 0.2)
         self.assertEqual(comparison["lower_distributor"], "Mouser")
         self.assertEqual(comparison["currency"], "USD")
+
+    def test_old_price_snapshots_are_visible_but_excluded_from_current_comparison(self):
+        from datetime import timedelta
+
+        old = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        stale_offers = [dict(offer, retrieved_at=old) for offer in self._offers()]
+        comparison = distributor_comparison(
+            stale_offers, mpn="TPS54331D", bom_quantity=10,
+        )
+        self.assertIsNone(comparison["savings_per_unit"])
+        self.assertIn("current distributor comparison is unavailable", comparison["message"])
+        html = engineering_intelligence_html(
+            bom_name="Stale-price BOM",
+            part_count=1,
+            tab="Cost Insights",
+            parts=[{
+                "mpn": "TPS54331D",
+                "manufacturer": "Texas Instruments",
+                "unit_price": 1.2,
+                "quantity": 10,
+                "primary_supplier": "DigiKey",
+                "supplier_offers": stale_offers,
+            }],
+        )
+        self.assertIn("Stale snapshot", html)
+        self.assertIn("excluded from current extended cost", html)
+        self.assertNotIn("$12.00", html)
+
+    def test_saved_offer_without_its_own_mpn_is_not_assigned_to_bom_part(self):
+        saved = analysis_part_cost_fields({
+            "MPN": "TPS54331D",
+            "Best Source": "DigiKey",
+            "Unit Price": 1.2,
+            "Quantity": 10,
+            "Supplier Offers": [{
+                "distributor": "DigiKey",
+                "unit_price": 1.2,
+                "currency": "USD",
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            }],
+        })
+        self.assertEqual(saved["supplier_offers"], [])
+        comparison = distributor_comparison(
+            [{
+                "distributor": "DigiKey",
+                "unit_price": 1.2,
+                "currency": "USD",
+                "price_break_quantity": 1,
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            }, *self._offers()[1:]],
+            mpn="TPS54331D",
+            bom_quantity=10,
+        )
+        self.assertIsNone(comparison["savings_per_unit"])
+
+    def test_offer_collection_requires_exact_mpn_from_supplier_result(self):
+        rejected = collect_supplier_offers(
+            [{
+                "provider_status": "AVAILABLE",
+                "source": "DigiKey",
+                "unit_price": 1.2,
+                "retrieved_at": "2026-10-09T14:00:00+00:00",
+                "price_breaks": [{"unit_price": 1.2, "price_break_quantity": 1, "currency": "USD"}],
+            }],
+            mpn="TPS54331D",
+        )
+        self.assertEqual(rejected, [])
 
     def test_one_saved_offer_has_no_distributor_comparison(self):
         comparison = distributor_comparison(self._offers()[:1], mpn="TPS54331D", bom_quantity=10)
@@ -295,9 +366,9 @@ class SavedBomCostPersistenceTests(unittest.TestCase):
         self.assertIn("Not calculated", html)
         self.assertNotIn("$0.00", html)
         self.assertIn("DigiKey", html)
-        self.assertIn("$12", html)
+        self.assertIn("USD 12", html)
         self.assertIn("https://www.digikey.com/en/products/detail/ti/TPS54331D/1", html)
-        self.assertIn("Mouser is $0.2 / unit lower", html)
+        self.assertIn("Mouser is USD 0.2 / unit lower", html)
         self.assertIn("Price applies from 1 unit; BOM quantity 10", html)
         self.assertNotIn("Savings of $0.2 per unit versus DigiKey", html)
         self.assertNotIn("best", html.casefold())
