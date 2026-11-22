@@ -945,7 +945,7 @@ export default function ReportPage() {
                     <tr>
                       <th>Assembly</th>
                       <th>Path</th>
-                      <th>Eff. qty</th>
+                      <th title="Total quantity after multiplying quantities through parent assemblies.">Effective qty</th>
                       <th>Rolled risk</th>
                       <th>High / Med leaves</th>
                     </tr>
@@ -992,7 +992,7 @@ export default function ReportPage() {
                           <th>Part</th>
                           <th>Path</th>
                           <th>Eff. qty</th>
-                          <th>Risk</th>
+                          <th title="Evidence-based risk classification; incomplete, stale, or conflicting records show Needs verification.">Risk status</th>
                           <th>Evidence</th>
                         </tr>
                       </thead>
@@ -1033,10 +1033,9 @@ export default function ReportPage() {
 
           <section className="cv-card pad" id="report-evidence">
             <div style={{ marginBottom: 12 }}>
-              <h3 className="cv-card-title">Component signals</h3>
+              <h3 className="cv-card-title">BOM line risk and evidence</h3>
               <p className="cv-card-subtitle">
-                Part-level rows with quantity-per-parent and effective quantity
-                when hierarchy is present. Evidence labels appear with each risk signal.
+                One row per BOM line. Parent assembly is the assembly containing the line; “—” means no parent hierarchy was provided. Qty / parent is the line quantity under that assembly, while effective quantity multiplies quantities through the hierarchy. Risk is recalculated from available field-level evidence; insufficient or conflicting verification is shown as Needs verification.
               </p>
               {!review?.evidenceReviewedAt ? (
                 <button
@@ -1062,7 +1061,7 @@ export default function ReportPage() {
                 <thead>
                   <tr>
                     <th>MPN</th>
-                    <th>Parent</th>
+                    <th title="The assembly containing this BOM line; — means no parent hierarchy was provided.">Parent assembly</th>
                     <th>Qty / parent</th>
                     <th>Eff. qty</th>
                     <th>Lifecycle</th>
@@ -1114,7 +1113,7 @@ export default function ReportPage() {
                               className="cv-table-open"
                               href={`/find-replacement?mpn=${encodeURIComponent(mpn)}&analysis_id=${encodeURIComponent(String(report.analysis_id || report.id))}&manufacturer=${encodeURIComponent(cleanKiCadFieldText(part.Manufacturer || part.manufacturer || ""))}`}
                             >
-                              Replace
+                              Find replacement
                             </Link>
                           ) : (
                             "—"

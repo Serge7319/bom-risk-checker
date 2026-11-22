@@ -197,8 +197,8 @@ export function ReportOverview({ report }: { report: Report }) {
         <p className="cv-card-subtitle">
           {profile.rowsAvailable
             ? report.hierarchy?.has_hierarchy
-              ? "Each saved BOM row is counted once; assembly rows are included, with child risks also summarized in the hierarchy section."
-              : "Each saved BOM row is counted once using its saved risk label."
+              ? "Each BOM line is assessed once from its current field-level evidence; unverified lines are shown as Needs verification. Assembly rows are included, with child risks also summarized in the hierarchy section."
+              : "Each BOM line is assessed from its current field-level evidence; lines without enough current, exact evidence are shown as Needs verification."
             : "Only saved summary counts are available for this report."}
         </p>
         {profile.total > 0 ? (
