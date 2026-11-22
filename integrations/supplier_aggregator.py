@@ -42,7 +42,11 @@ except ImportError:
         additional_search_terms: list[str] | None = None,
     ) -> list[dict]:
         return []
-from src.alternative_classification import merge_discovery_candidates, utc_now_iso
+from src.alternative_classification import (
+    is_non_component_catalog_candidate,
+    merge_discovery_candidates,
+    utc_now_iso,
+)
 from src.secrets import get_secret
 from src.part_images import normalize_supplier_image_url
 from src.normalizer import normalize_part_number
@@ -1416,6 +1420,8 @@ def discover_alternative_candidates(
         "catalog_raw_count": 0,
         "catalog_retained_count": 0,
         "manufacturer_filtered_count": 0,
+        "non_component_catalog_filtered_count": 0,
+        "non_component_explicit_filtered_count": 0,
         "catalog_filter_summary": "",
         "provider_failures": [],
         "candidates": [],
@@ -1746,6 +1752,20 @@ def discover_alternative_candidates(
             manufacturer_filtered_explicit
         )
 
+    non_component_catalog_filtered = sum(
+        1 for row in catalog_candidates
+        if isinstance(row, dict) and is_non_component_catalog_candidate(row)
+    )
+    non_component_explicit_filtered = sum(
+        1 for row in explicit_substitutes
+        if isinstance(row, dict) and is_non_component_catalog_candidate(row)
+    )
+    discovery["non_component_catalog_filtered_count"] = non_component_catalog_filtered
+    discovery["non_component_explicit_filtered_count"] = non_component_explicit_filtered
+    if non_component_catalog_filtered or non_component_explicit_filtered:
+        discovery["has_incomplete_evidence"] = True
+        discovery["component_filter_applied"] = True
+
     # Per-provider retained after manufacturer/lineage filter (pre-dedup),
     # catalog channel only — never mix in explicit substitutions.
     catalog_retained_by_source = _count_by_source(catalog_candidates)
@@ -1811,10 +1831,23 @@ def discover_alternative_candidates(
             f"{manufacturer_filtered_catalog} catalog leads removed by "
             "manufacturer/lineage filter"
         )
-    catalog_dedup_removed = max(0, len(catalog_candidates) - catalog_retained)
+    if non_component_catalog_filtered:
+        filter_bits.append(
+            f"{non_component_catalog_filtered} catalog development tools, boards, "
+            "modules, breakouts, or kits excluded as non-component listings"
+        )
+    if non_component_explicit_filtered:
+        filter_bits.append(
+            f"{non_component_explicit_filtered} supplier substitution leads excluded "
+            "because they are development tools, boards, modules, breakouts, or kits"
+        )
+    catalog_dedup_removed = max(
+        0,
+        len(catalog_candidates) - non_component_catalog_filtered - catalog_retained,
+    )
     if catalog_dedup_removed:
         filter_bits.append(
-            f"{catalog_dedup_removed} catalog leads removed by deduplication"
+            f"{catalog_dedup_removed} duplicate or incomplete-MPN catalog leads removed"
         )
     if catalog_raw_total and catalog_retained < catalog_raw_total:
         filter_bits.append(
