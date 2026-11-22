@@ -1177,10 +1177,18 @@ def evidence_mode_and_gap(
 
 
 def annotate_report_parts(report: dict[str, Any] | None) -> dict[str, Any]:
-    """Attach evidence envelopes to each part without mutating live claims."""
+    """Attach evidence and recalculate customer-facing risk from current evidence.
+
+    Saved rows can carry risk labels from an older scoring contract. Expose a
+    fresh label and matching aggregates so report summaries, component signals,
+    detailed-risk views, and exports do not disagree.
+    """
     payload = dict(report or {})
     parts = []
     report_is_synthetic = _is_synthetic_label(payload.get("mode"))
+    risk_counts = {"high": 0, "medium": 0, "low": 0}
+    from src.risk_engine import calculate_risk
+
     for part in payload.get("parts") or []:
         row = dict(part) if isinstance(part, dict) else {"value": part}
         if report_is_synthetic:
@@ -1188,8 +1196,36 @@ def annotate_report_parts(report: dict[str, Any] | None) -> dict[str, Any]:
             row["identity_source"] = EVIDENCE_SYNTHETIC
             row["evidence_source"] = EVIDENCE_SYNTHETIC
         row["evidence"] = classify_part_evidence(row)
+
+        # Historical risk fields are display snapshots, not inputs. Rebuild
+        # them from the same field-level evidence contract used by detailed
+        # risk and report exports.
+        assessment = calculate_risk(row)
+        risk_level = str(assessment.get("risk_level") or "Needs verification")
+        risk_score = assessment.get("risk_score")
+        risk_reasons = assessment.get("risk_reasons") or []
+        normalized_level = risk_level.casefold()
+        if normalized_level in {"high", "critical"}:
+            risk_counts["high"] += 1
+        elif normalized_level == "medium":
+            risk_counts["medium"] += 1
+        elif normalized_level in {"low", "healthy"}:
+            risk_counts["low"] += 1
+        row["Risk Level"] = risk_level
+        row["risk_level"] = risk_level
+        row["risk_level_display"] = risk_level
+        row["Risk Score"] = risk_score
+        row["risk_score"] = risk_score
+        row["Risk Reasons"] = "; ".join(
+            str(item).strip() for item in risk_reasons if str(item).strip()
+        )
+        row["risk_reasons"] = risk_reasons
         parts.append(row)
+
     payload["parts"] = parts
+    payload["high_risk_count"] = risk_counts["high"]
+    payload["medium_risk_count"] = risk_counts["medium"]
+    payload["low_risk_count"] = risk_counts["low"]
     live_count = sum(
         1 for p in parts if (p.get("evidence") or {}).get("evidence_class") == EVIDENCE_LIVE
     )
