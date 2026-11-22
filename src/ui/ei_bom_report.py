@@ -466,6 +466,14 @@ def _drivers(part: dict[str, Any]) -> list[str]:
 
     assessment = calculate_risk(part)
     reasons = [str(item).strip() for item in assessment.get("risk_reasons", []) if str(item).strip()]
+    coverage = str(_first(part, "supplier_coverage", "Supplier Coverage", fallback="") or "").strip()
+    coverage_key = coverage.casefold()
+    if "no configured supplier returned" in coverage_key or "no supplier match" in coverage_key:
+        reasons.append(
+            "No configured distributor returned a matching record; verify the exact MPN and supplier setup"
+        )
+    elif coverage and not assessment.get("supplier_coverage_complete"):
+        reasons.append(f"Supplier lookup coverage is incomplete: {coverage}")
     if assessment.get("risk_level") == "Needs verification" or not reasons:
         reasons.append(
             "Verify exact-part identity, source coverage, lifecycle, and inventory evidence before making a sourcing decision"
@@ -1006,7 +1014,13 @@ def engineering_intelligence_html(
     ]
     no_stock = [row for row in rows if row["stock"] == 0]
     single = [row for row in rows if row["suppliers"] == 1]
-    health_display = f"{_esc(health_score)}/100" if health_score is not None else "Not calculated"
+    # A persisted number is not a current health result when any row cannot
+    # be risk-rated from exact, current supplier evidence.
+    health_display = (
+        f"{_esc(health_score)}/100"
+        if health_score is not None and not unassessed
+        else "Not calculated"
+    )
     active = tab if tab in EI_TABS else "BOM Risk"
     banner = ""
     if active == "BOM Risk":
@@ -1063,7 +1077,7 @@ def engineering_intelligence_html(
         banner += textwrap.dedent(
             f"""
             <section class="cv-ei-kpis">
-              <div class="cv-ei-kpi"><div class="cv-ei-icon health">♡</div><div><span>{'Risk coverage' if unassessed else 'Health'}</span><strong>{f'{len(rows) - len(unassessed)}/{len(rows)}' if unassessed else health_display}</strong></div></div>
+              <div class="cv-ei-kpi"><div class="cv-ei-icon health">♡</div><div><span>Health</span><strong>{health_display}</strong>{f'<small>Risk coverage {len(rows) - len(unassessed)}/{len(rows)}</small>' if unassessed else ''}</div></div>
               <div class="cv-ei-kpi"><div class="cv-ei-icon review">▣</div><div><span>Needs review</span><strong>{len(open_high) + len(open_medium) + len(open_unassessed)}</strong></div></div>
               <div class="cv-ei-kpi"><div class="cv-ei-icon stock">▢</div><div><span>No-stock parts</span><strong>{len(no_stock)}</strong></div></div>
               <div class="cv-ei-kpi"><div class="cv-ei-icon source">⚭</div><div><span>Single-source</span><strong>{len(single)}</strong></div></div>
@@ -1350,7 +1364,7 @@ def _tab_body(
                 )
                 + f"<small>{row['action_detail']}</small>"
             )
-        if approvals:
+        if approvals and row["level"] != "Needs verification":
             original_risk = row["level"]
             score_note = (
                 f" · score {row['score_display']}/100"
@@ -1360,6 +1374,11 @@ def _tab_body(
             risk_cell = (
                 "<span class='cv-pill low'>Mitigated</span>"
                 f"<small>Original BOM risk: {original_risk}{score_note}</small>"
+            )
+        elif approvals:
+            risk_cell = (
+                "<span class='cv-pill verification'>Decision recorded</span>"
+                "<small>Original BOM risk: Needs verification. An approval record does not replace missing supplier evidence.</small>"
             )
         else:
             risk_cell = (

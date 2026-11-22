@@ -25,6 +25,7 @@ def live_supplier_part(
     stock: int = 1000,
     quantity: int = 10,
     unit_price: float | None = None,
+    lead_time_weeks: float | None = None,
     sources: tuple[str, ...] = ("DigiKey", "Mouser"),
     retrieved_at: str | None = None,
 ) -> dict:
@@ -101,4 +102,16 @@ def live_supplier_part(
             }
             for index, source in enumerate(sources)
         ]
+    if lead_time_weeks is not None and sources:
+        row["Lead Time Weeks"] = lead_time_weeks
+        row["lead_time_weeks"] = lead_time_weeks
+        row["lead_time_source"] = sources[0]
+        row["lead_time_retrieved_at"] = retrieved
+        row["lead_time_evidence"] = [{
+            "source": sources[0],
+            "mpn": mpn,
+            "weeks": lead_time_weeks,
+            "product_url": supplier_url(sources[0], mpn),
+            "retrieved_at": retrieved,
+        }]
     return row
