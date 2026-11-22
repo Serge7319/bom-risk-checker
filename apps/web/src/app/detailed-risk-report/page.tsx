@@ -63,15 +63,18 @@ function DetailedRiskPageInner() {
     : healthScoreNumber >= 80 ? "green" : healthScoreNumber >= 60 ? "amber" : "red";
   const highRiskValue = data?.high_risk_count ?? summary.high_risk_component_count;
   const highRiskNumber = Number(highRiskValue);
+  const assessmentScored = healthScore != null && Number.isFinite(healthScoreNumber);
   const highRiskTone = highRiskValue == null || !Number.isFinite(highRiskNumber)
     ? "blue"
-    : highRiskNumber > 0 ? "red" : "green";
+    : highRiskNumber > 0 ? "red" : assessmentScored ? "green" : "blue";
   const healthStatusLabel = userFacingLabel(data?.health_status, healthScore == null ? "Not scored" : "Health reported");
   const highRiskStatus = highRiskValue == null || !Number.isFinite(highRiskNumber)
     ? { label: "Not reported", tone: "gray" as const }
     : highRiskNumber > 0
       ? { label: "Needs review", tone: "red" as const }
-      : { label: "None found", tone: "green" as const };
+      : assessmentScored
+        ? { label: "None in rated rows", tone: "green" as const }
+        : { label: "Risk not scored", tone: "gray" as const };
 
   return (
     <Shell session={session}>
@@ -107,12 +110,12 @@ function DetailedRiskPageInner() {
             <KpiCard
               icon="risk"
               tone={highRiskTone}
-              label="High-risk components"
+              label="High-risk signals"
               value={String(
                 highRiskValue ?? "Not reported",
               )}
               status={highRiskStatus}
-              detail="Priority findings to review"
+              detail={assessmentScored ? "Verified priority findings to review" : "Not scored; zero does not mean risk-free"}
             />
           </div>
           <section className="cv-card pad">
