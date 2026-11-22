@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import re
 import unittest
+import csv
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,6 +13,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from apps.api.main import app
+from apps.api.decision_record_exports import build_decision_record_export
 from apps.api.sandbox_auth import reset_auth_store_for_tests
 from apps.api.workspace_store import reset_store_for_tests
 from src.parts_compare import (
@@ -32,6 +35,13 @@ FIND_REPLACEMENT = ROOT / "apps/web/src/app/find-replacement/page.tsx"
 
 
 class UiContractTests(unittest.TestCase):
+    def test_decision_form_can_include_multiple_selected_alternatives(self):
+        page = COMPARE_PAGE.read_text(encoding="utf-8")
+        self.assertIn('data-testid="decision-form-candidate-selection"', page)
+        self.assertIn('decision_candidate_scope: multiSnapshot ? "all_selected" : "primary"', page)
+        self.assertIn("This decision covers every selected alternative.", page)
+        self.assertIn("choose one of these parts for that revision", page)
+
     def test_decision_bom_scope_has_explicit_workspace_option(self):
         page = COMPARE_PAGE.read_text(encoding="utf-8")
         self.assertIn('data-testid="decision-bom-scope"', page)
@@ -295,19 +305,57 @@ def test_multi_candidate_manufacturers_persist_independently(_sandbox, monkeypat
                 "decision": "hold_for_review",
                 "reviewer": SMOKE_EMAIL,
                 "rationale": "Multi TI/ST/onsemi identities must reload intact.",
+                "decision_candidate_scope": "all_selected",
                 "comparison_snapshot": snapshot,
             },
         )
     assert create.status_code in {200, 201}, create.text
     record = create.json()["record"]
+    assert record.get("decision_candidate_scope") == "all_selected"
+    assert record.get("decision_candidate_mpns") == [mpn for mpn, _ in candidates]
     snap = record.get("comparison_snapshot") or {}
     brands = snap.get("multi_candidate_manufacturers") or {}
     assert brands.get("LM358AN/NOPB") == "Texas Instruments"
     assert brands.get("LM358DT") == "STMicroelectronics"
     assert brands.get("LM358DR2G") == "onsemi"
+    share = client.post(
+        "/decision-records/share",
+        headers=headers,
+        json={"decision_record_id": record["id"]},
+    )
+    assert share.status_code == 200, share.text
+    shared = client.get(f"/decision-records/share/{share.json()['token']}")
+    assert shared.status_code == 200, shared.text
+    shared_record = shared.json()["record"]
+    assert shared_record.get("decision_candidate_mpns") == [mpn for mpn, _ in candidates]
+    shared_brands = (shared_record.get("comparison_snapshot") or {}).get("multi_candidate_manufacturers") or {}
+    assert shared_brands.get("LM358DT") == "STMicroelectronics"
     for entry in snap.get("candidate_snapshots") or []:
         mpn = entry.get("part_b")
         assert entry.get("manufacturer_b") == multi_brands[mpn]
+
+
+def test_decision_export_lists_selected_replacement_alternatives():
+    exported = build_decision_record_export(
+        [{
+            "part_a": "LM358N",
+            "part_b": "LM358AN/NOPB",
+            "decision_candidate_scope": "all_selected",
+            "decision_candidate_mpns": ["LM358AN/NOPB", "LM358DT"],
+            "comparison_snapshot": {
+                "multi_candidate_manufacturers": {
+                    "LM358AN/NOPB": "Texas Instruments",
+                    "LM358DT": "STMicroelectronics",
+                    "LM358DR2G": "onsemi",
+                },
+            },
+        }],
+        "aerospace",
+    )
+    row = next(csv.DictReader(StringIO(exported.decode("utf-8"))))
+    assert row["Candidate alternatives"] == (
+        "LM358AN/NOPB · Texas Instruments; LM358DT · STMicroelectronics"
+    )
 
 
 def test_am29_identity_review_only_contract_still_present():

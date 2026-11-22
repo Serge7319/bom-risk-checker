@@ -18,6 +18,7 @@ import {
   downloadReportExport,
   fetchCompliancePack,
   fetchReport,
+  getDecisionCandidates,
   listProjects,
   listReports,
   listDecisionRecords,
@@ -215,6 +216,8 @@ function ReportPageInner() {
   const [revisionDraft, setRevisionDraft] = useState("");
   const [appliedDecisionIds, setAppliedDecisionIds] = useState<string[]>([]);
   const [usedDecisionIds, setUsedDecisionIds] = useState<string[]>([]);
+  const [decisionCandidateSelection, setDecisionCandidateSelection] = useState<Record<string, string>>({});
+  const [decisionAppliedCandidates, setDecisionAppliedCandidates] = useState<Record<string, string>>({});
   const [revisionBusy, setRevisionBusy] = useState(false);
   const [revisionError, setRevisionError] = useState("");
   const openedDecisionRequest = useRef("");
@@ -351,30 +354,37 @@ function ReportPageInner() {
         : undefined;
       let initialAppliedDecisionIds: string[] = [];
       let initialUsedDecisionIds: string[] = [];
+      const initialCandidateSelection: Record<string, string> = {};
+      const initialAppliedCandidates: Record<string, string> = {};
       if (applyDecisionId) {
         if (!selectedDecision || selectedDecision.decision !== "approve_alternate") {
           throw new Error("This approved replacement is not available in the selected BOM report.");
         }
         const currentMpn = selectedDecision.part_a.trim().toLowerCase();
-        const candidateMpn = selectedDecision.part_b.trim();
-        if (!candidateMpn || candidateMpn.toLowerCase() === currentMpn) {
+        const candidates = getDecisionCandidates(selectedDecision);
+        if (!candidates.length || candidates.some((candidate) => candidate.mpn.toLowerCase() === currentMpn)) {
           throw new Error("This decision does not contain a distinct replacement part number.");
         }
         if (!initialRows.some((row) => row.mpn.trim().toLowerCase() === currentMpn)) {
           throw new Error(`The current part ${selectedDecision.part_a} is not present in this saved BOM report.`);
         }
-        if (initialRows.some((row) => row.mpn.trim().toLowerCase() === candidateMpn.toLowerCase())) {
-          throw new Error(`The candidate ${candidateMpn} is already in this BOM. Review the existing line before creating a revision.`);
+        initialCandidateSelection[selectedDecision.id] = candidates.length === 1 ? candidates[0].mpn : "";
+        if (candidates.length === 1) {
+          const candidate = candidates[0];
+          if (initialRows.some((row) => row.mpn.trim().toLowerCase() === candidate.mpn.toLowerCase())) {
+            throw new Error(`The candidate ${candidate.mpn} is already in this BOM. Review the existing line before creating a revision.`);
+          }
+          initialRows = initialRows.map((row) => row.mpn.trim().toLowerCase() !== currentMpn
+            ? row
+            : {
+                ...row,
+                mpn: candidate.mpn,
+                manufacturer: candidate.manufacturer || "",
+              });
+          initialAppliedDecisionIds = [selectedDecision.id];
+          initialUsedDecisionIds = [selectedDecision.id];
+          initialAppliedCandidates[selectedDecision.id] = candidate.mpn;
         }
-        initialRows = initialRows.map((row) => row.mpn.trim().toLowerCase() !== currentMpn
-          ? row
-          : {
-              ...row,
-              mpn: candidateMpn,
-              manufacturer: String(selectedDecision.manufacturer_b || ""),
-            });
-        initialAppliedDecisionIds = [selectedDecision.id];
-        initialUsedDecisionIds = [selectedDecision.id];
       }
       setProjectNameDraft(userFacingLabel(projectName || String(report.project_name || "").split(" — ")[0], "General"));
       setBomNameDraft(userFacingLabel(report.bom_name || report.filename, "Saved BOM"));
@@ -382,6 +392,8 @@ function ReportPageInner() {
       setBomEditorRows(initialRows);
       setAppliedDecisionIds(initialAppliedDecisionIds);
       setUsedDecisionIds(initialUsedDecisionIds);
+      setDecisionCandidateSelection(initialCandidateSelection);
+      setDecisionAppliedCandidates(initialAppliedCandidates);
       setBomEditorOpen(true);
     } catch (err) {
       setRevisionError(err instanceof Error ? err.message : "Saved BOM details could not be loaded.");
@@ -398,23 +410,36 @@ function ReportPageInner() {
     void openBomEditor(requestedApplyDecisionId);
   }, [decisionHistoryLoaded, openBomEditor, params.id, report, requestedApplyDecisionId, session]);
 
-  function applyDecisionCandidate(decision: DecisionRecord) {
+  function applyDecisionCandidate(decision: DecisionRecord, candidateMpnValue?: string) {
     const currentMpn = decision.part_a.trim().toLowerCase();
-    const candidateMpn = decision.part_b.trim();
-    if (!candidateMpn || candidateMpn.toLowerCase() === currentMpn) {
+    const candidates = getDecisionCandidates(decision);
+    const selectedMpn = String(
+      candidateMpnValue
+      || decisionCandidateSelection[decision.id]
+      || (candidates.length === 1 ? candidates[0].mpn : ""),
+    ).trim();
+    const candidate = candidates.find((item) => item.mpn.toLowerCase() === selectedMpn.toLowerCase());
+    if (!candidate || candidate.mpn.toLowerCase() === currentMpn) {
       setRevisionError("This decision does not contain a distinct replacement part number.");
       return;
     }
-    if (!bomEditorRows.some((row) => row.mpn.trim().toLowerCase() === currentMpn)) {
+    const previouslyAppliedMpn = decisionAppliedCandidates[decision.id] || "";
+    const rowToReplace = previouslyAppliedMpn || currentMpn;
+    const rowIndex = bomEditorRows.findIndex((row) => row.mpn.trim().toLowerCase() === rowToReplace.toLowerCase());
+    if (rowIndex < 0) {
       setRevisionError(`The current part ${decision.part_a} is not present in this saved BOM revision.`);
       return;
     }
-    setBomEditorRows((current) => current.map((row) => row.mpn.trim().toLowerCase() !== currentMpn
+    if (bomEditorRows.some((row, index) => index !== rowIndex && row.mpn.trim().toLowerCase() === candidate.mpn.toLowerCase())) {
+      setRevisionError(`The candidate ${candidate.mpn} is already present in this BOM revision.`);
+      return;
+    }
+    setBomEditorRows((current) => current.map((row, index) => index !== rowIndex
       ? row
       : {
           ...row,
-          mpn: candidateMpn,
-          manufacturer: String(decision.manufacturer_b || ""),
+          mpn: candidate.mpn,
+          manufacturer: candidate.manufacturer || "",
         }));
     setRevisionError("");
     const decisionsForPart = new Set(
@@ -432,6 +457,13 @@ function ReportPageInner() {
       ...current.filter((id) => !decisionsForPart.has(id)),
       decision.id,
     ]);
+    setDecisionCandidateSelection((current) => ({ ...current, [decision.id]: candidate.mpn }));
+    setDecisionAppliedCandidates((current) => {
+      const next = { ...current };
+      decisionsForPart.forEach((id) => { delete next[id]; });
+      next[decision.id] = candidate.mpn;
+      return next;
+    });
   }
 
   async function saveBomRevision(event: FormEvent<HTMLFormElement>) {
@@ -606,24 +638,54 @@ function ReportPageInner() {
 
               {decisions.some((decision) => decision.decision !== "reject_alternate") ? (
                 <section className="cv-card pad" style={{ margin: "14px 0", background: "#f8fbff" }}>
-                  <h3 className="cv-card-title">Replacement candidates from this BOM</h3>
-                  <p className="cv-card-subtitle">Apply approved replacements directly to this new revision. You can also add a non-rejected candidate for evaluation; it will not count as approval. Apply candidates for different source parts in one revision, but choose only one candidate for each source part. The source report stays unchanged, and the draft does not independently qualify a part.</p>
+                  <h3 className="cv-card-title">Choose replacement options for this revision</h3>
+                  <p className="cv-card-subtitle">A decision can include multiple approved alternatives. Choose one option for each source part in this BOM revision. You can apply replacements for different source parts in the same revision. The source report stays unchanged, and creating a revision does not independently qualify a part.</p>
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     {decisions
                       .filter((decision) => decision.decision !== "reject_alternate")
                       .map((decision) => {
-                        const sourcePartPresent = bomEditorRows.some(
-                          (row) => row.mpn.trim().toLowerCase() === decision.part_a.trim().toLowerCase(),
+                        const candidates = getDecisionCandidates(decision);
+                        const selectedMpn = decisionCandidateSelection[decision.id]
+                          || (candidates.length === 1 ? candidates[0]?.mpn || "" : "");
+                        const appliedMpn = decisionAppliedCandidates[decision.id] || "";
+                        const rowToReplace = appliedMpn || decision.part_a;
+                        const sourcePresent = bomEditorRows.some(
+                          (row) => row.mpn.trim().toLowerCase() === rowToReplace.trim().toLowerCase(),
                         );
-                        const candidateInDraft = bomEditorRows.some(
-                          (row) => row.mpn.trim().toLowerCase() === decision.part_b.trim().toLowerCase(),
+                        const selectedCandidateInDraft = selectedMpn && bomEditorRows.some(
+                          (row) => row.mpn.trim().toLowerCase() === selectedMpn.toLowerCase(),
                         );
-                        const candidateUsed = usedDecisionIds.includes(decision.id);
+                        const alreadyApplied = Boolean(appliedMpn && selectedMpn.toLowerCase() === appliedMpn.toLowerCase());
+                        const canApply = Boolean(selectedMpn && sourcePresent && !alreadyApplied && !selectedCandidateInDraft);
+                        const alternativeLabel = candidates.map((candidate) => candidate.manufacturer
+                          ? `${candidate.mpn} · ${candidate.manufacturer}`
+                          : candidate.mpn).join("; ");
                         return (
-                          <div key={decision.id} style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-                            <span><strong>{decision.part_a}</strong> → <strong>{decision.part_b}</strong> · {decision.reviewer} · {decision.decision === "approve_alternate" ? "Approved" : "Not approved"}</span>
-                            <button type="button" className="cv-button small secondary" onClick={() => applyDecisionCandidate(decision)} disabled={candidateUsed || !sourcePartPresent}>
-                              {candidateUsed && decision.decision === "approve_alternate" ? "Applied with approval" : candidateUsed ? "In draft · not approved" : !sourcePartPresent && candidateInDraft ? "In draft" : !sourcePartPresent ? "Source part missing" : "Use candidate in draft"}
+                          <div key={decision.id} style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+                            <span style={{ flex: "1 1 260px", minWidth: 0 }}>
+                              <strong>{decision.part_a}</strong> → {candidates.length > 1 ? `${candidates.length} alternatives` : <strong>{candidates[0]?.mpn || decision.part_b}</strong>}
+                              <span className="cv-small-note" style={{ display: "block" }}>{alternativeLabel} · {decision.reviewer} · {decision.decision === "approve_alternate" ? "Approved" : "Not approved"}</span>
+                            </span>
+                            {candidates.length > 1 ? (
+                              <label className="cv-field" style={{ margin: 0, flex: "1 1 220px", minWidth: 0 }}>
+                                <span className="cv-small-note">Choose one for this BOM</span>
+                                <select
+                                  value={selectedMpn}
+                                  aria-label={`Choose replacement for ${decision.part_a}`}
+                                  onChange={(event) => setDecisionCandidateSelection((current) => ({ ...current, [decision.id]: event.target.value }))}
+                                >
+                                  <option value="">Choose a replacement</option>
+                                  {candidates.map((candidate) => <option key={candidate.mpn} value={candidate.mpn}>{candidate.mpn}{candidate.manufacturer ? ` · ${candidate.manufacturer}` : ""}</option>)}
+                                </select>
+                              </label>
+                            ) : <span className="cv-small-note">One available candidate</span>}
+                            <button
+                              type="button"
+                              className="cv-button small secondary"
+                              onClick={() => applyDecisionCandidate(decision, selectedMpn)}
+                              disabled={!canApply}
+                            >
+                              {alreadyApplied ? "Applied · choose another to change" : selectedCandidateInDraft ? "Already in this BOM" : !sourcePresent ? "Source part missing" : !selectedMpn ? "Choose an option" : appliedMpn ? "Change selected option" : decision.decision === "approve_alternate" ? "Use approved option" : "Use candidate for evaluation"}
                             </button>
                           </div>
                         );
@@ -944,7 +1006,7 @@ function ReportPageInner() {
                     <tr>
                       <th>Saved</th>
                       <th>Current</th>
-                      <th>Candidate</th>
+                      <th>Replacement alternatives</th>
                       <th>Decision</th>
                       <th>Reviewer / rationale</th>
                       <th>Approval details</th>
@@ -954,6 +1016,7 @@ function ReportPageInner() {
                   <tbody>
                     {decisions.map((decision) => {
                       const snapshot = (decision.comparison_snapshot || {}) as Record<string, unknown>;
+                      const alternatives = getDecisionCandidates(decision);
                       const evidenceStatus = String(
                         snapshot.engineering_evidence_status
                         || (decision.verified_primary_evidence ? "verified" : "unverified")
@@ -962,7 +1025,9 @@ function ReportPageInner() {
                       <tr key={decision.id}>
                         <td>{decision.created_at ? new Date(decision.created_at).toLocaleDateString() : "—"}</td>
                         <td><strong>{decision.part_a}</strong></td>
-                        <td><strong>{decision.part_b}</strong></td>
+                        <td><strong>{alternatives.map((candidate) => candidate.manufacturer
+                          ? `${candidate.mpn} · ${candidate.manufacturer}`
+                          : candidate.mpn).join("; ") || decision.part_b}</strong></td>
                         <td><span className="cv-badge blue">{decision.decision_label}</span></td>
                         <td>
                           {decision.reviewer}

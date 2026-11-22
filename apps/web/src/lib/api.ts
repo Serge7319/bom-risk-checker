@@ -745,6 +745,8 @@ export type DecisionRecord = {
   revision?: string | null;
   part_a: string;
   part_b: string;
+  decision_candidate_scope?: "primary" | "all_selected";
+  decision_candidate_mpns?: string[];
   manufacturer_a?: string | null;
   manufacturer_b?: string | null;
   decision: string;
@@ -762,6 +764,49 @@ export type DecisionRecord = {
   created_at: string;
   comparison_snapshot: Record<string, unknown>;
 };
+
+export type DecisionCandidate = {
+  mpn: string;
+  manufacturer?: string;
+};
+
+export function getDecisionCandidates(
+  record: Partial<DecisionRecord> | null | undefined,
+): DecisionCandidate[] {
+  const snapshot = record?.comparison_snapshot && typeof record.comparison_snapshot === "object"
+    ? record.comparison_snapshot
+    : {};
+  const manufacturers = snapshot.multi_candidate_manufacturers
+    && typeof snapshot.multi_candidate_manufacturers === "object"
+    ? snapshot.multi_candidate_manufacturers as Record<string, unknown>
+    : {};
+  const explicitlySelected = Array.isArray(record?.decision_candidate_mpns)
+    ? record.decision_candidate_mpns
+    : [];
+  const listed = record?.decision_candidate_scope === "all_selected"
+    ? (explicitlySelected.length ? explicitlySelected : Array.isArray(snapshot.multi_candidate_mpns) ? snapshot.multi_candidate_mpns : [])
+    : [];
+  const seen = new Set<string>();
+  const mpns = listed
+    .map((value) => String(value || "").trim())
+    .filter((mpn) => {
+      const key = mpn.toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  if (!mpns.length && String(record?.part_b || "").trim()) {
+    mpns.push(String(record?.part_b || "").trim());
+  }
+  return mpns.map((mpn) => ({
+    mpn,
+    manufacturer: String(manufacturers[mpn] || (
+      mpn.toLowerCase() === String(record?.part_b || "").trim().toLowerCase()
+        ? record?.manufacturer_b
+        : ""
+    ) || "").trim() || undefined,
+  }));
+}
 
 export async function listDecisionRecords(token: string, analysisId?: string) {
   const query = analysisId ? `?analysis_id=${encodeURIComponent(analysisId)}` : "";
@@ -848,6 +893,7 @@ export async function recordDecision(
     follow_up_due_date?: string | null;
     residual_risk?: string;
     verified_primary_evidence?: boolean;
+    decision_candidate_scope?: "primary" | "all_selected";
     comparison_snapshot?: Record<string, unknown> | null;
   },
   datasheets?: { a?: File | null; b?: File | null },

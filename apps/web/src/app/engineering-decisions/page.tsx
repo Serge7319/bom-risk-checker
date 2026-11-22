@@ -13,6 +13,7 @@ import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader"
 import {
   createDecisionRecordShare,
   downloadDecisionRecordExport,
+  getDecisionCandidates,
   inviteDecisionApprover,
   listDecisionRecords,
   listReports,
@@ -315,27 +316,28 @@ function EngineeringDecisionsPageInner() {
                         </div>
                       </td>
                       <td>
-                        <strong>
-                          {record.part_a}
-                          {record.manufacturer_a ? ` (${record.manufacturer_a})` : ""}
-                          {" → "}
-                          {record.part_b}
-                          {record.manufacturer_b ? ` (${record.manufacturer_b})` : ""}
-                        </strong>
                         {(() => {
-                          const snapshot = (record.comparison_snapshot || {}) as Record<string, unknown>;
-                          const multiMpns = Array.isArray(snapshot.multi_candidate_mpns)
-                            ? (snapshot.multi_candidate_mpns as unknown[]).map((item) => String(item || "").trim()).filter(Boolean)
-                            : [];
-                          const brands = (snapshot.multi_candidate_manufacturers || {}) as Record<string, unknown>;
-                          if (multiMpns.length < 2) return null;
+                          const candidates = getDecisionCandidates(record);
                           return (
-                            <div className="cv-small-note" data-testid="decision-multi-manufacturers">
-                              {multiMpns.map((mpn) => {
-                                const brand = String(brands[mpn] || "").trim();
-                                return brand ? `${mpn} · ${brand}` : mpn;
-                              }).join(" · ")}
-                            </div>
+                            <>
+                              <strong>
+                                {record.part_a}
+                                {record.manufacturer_a ? ` (${record.manufacturer_a})` : ""}
+                                {" → "}
+                                {candidates.length > 1
+                                  ? `${candidates.length} replacement alternatives`
+                                  : candidates[0]?.mpn || record.part_b}
+                              </strong>
+                              {candidates.length > 1 ? (
+                                <div className="cv-small-note" data-testid="decision-multi-manufacturers">
+                                  Options: {candidates.map((candidate) => candidate.manufacturer
+                                    ? `${candidate.mpn} · ${candidate.manufacturer}`
+                                    : candidate.mpn).join(" · ")}
+                                </div>
+                              ) : candidates[0]?.manufacturer ? (
+                                <div className="cv-small-note">{candidates[0].manufacturer}</div>
+                              ) : null}
+                            </>
                           );
                         })()}
                       </td>

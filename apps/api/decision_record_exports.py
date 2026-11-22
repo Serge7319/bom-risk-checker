@@ -28,6 +28,7 @@ _COLUMNS = (
     "Manufacturer A",
     "Part B",
     "Manufacturer B",
+    "Candidate alternatives",
     "Decision",
     "Rationale",
     "Validation checks recorded",
@@ -68,6 +69,19 @@ def build_decision_record_export(records: list[dict[str, Any]], template: str) -
             continue
         snapshot = record.get("comparison_snapshot")
         evidence_summary = ""
+        candidate_mpns = record.get("decision_candidate_mpns")
+        if not isinstance(candidate_mpns, list) or not candidate_mpns:
+            candidate_mpns = [record.get("part_b")]
+        candidate_brands = (
+            snapshot.get("multi_candidate_manufacturers")
+            if isinstance(snapshot, dict) and isinstance(snapshot.get("multi_candidate_manufacturers"), dict)
+            else {}
+        )
+        candidate_alternatives = "; ".join(
+            f"{str(mpn).strip()} · {str(candidate_brands.get(str(mpn).strip()) or '').strip()}".rstrip(" ·")
+            for mpn in candidate_mpns
+            if str(mpn or "").strip()
+        )
         if isinstance(snapshot, dict):
             evidence_summary = "; ".join(
                 f"{key}: {value}" for key, value in snapshot.items()
@@ -85,6 +99,7 @@ def build_decision_record_export(records: list[dict[str, Any]], template: str) -
             "Manufacturer A": _cell(record.get("manufacturer_a")),
             "Part B": _cell(record.get("part_b")),
             "Manufacturer B": _cell(record.get("manufacturer_b")),
+            "Candidate alternatives": _cell(candidate_alternatives),
             "Decision": _cell(record.get("decision_label") or record.get("decision")),
             "Rationale": _cell(record.get("rationale")),
             "Validation checks recorded": _cell(record.get("validation_checks")),

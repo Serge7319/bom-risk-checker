@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { fetchSharedDecisionRecord, type DecisionRecord } from "@/lib/api";
+import { fetchSharedDecisionRecord, getDecisionCandidates, type DecisionRecord } from "@/lib/api";
 
 export default function SharedDecisionRecordPage() {
   const params = useParams<{ token: string }>();
@@ -27,6 +27,7 @@ export default function SharedDecisionRecordPage() {
   }, [token]);
 
   const snapshot = (record?.comparison_snapshot || {}) as Record<string, unknown>;
+  const alternatives = getDecisionCandidates(record);
 
   return (
     <main className="cv-decision-share-page">
@@ -54,8 +55,8 @@ export default function SharedDecisionRecordPage() {
             <dl className="cv-decision-share-grid">
               <div><dt>Decision</dt><dd>{record.decision_label || record.decision || "—"}</dd></div>
               <div><dt>Reviewer</dt><dd>{record.reviewer || "—"}</dd></div>
-              <div><dt>Parts reviewed</dt><dd>{record.part_a || "—"} → {record.part_b || "—"}</dd></div>
-              <div><dt>Manufacturers</dt><dd>{[record.manufacturer_a, record.manufacturer_b].filter(Boolean).join(" → ") || "Not recorded"}</dd></div>
+              <div><dt>Current part</dt><dd>{record.part_a || "—"}{record.manufacturer_a ? ` · ${record.manufacturer_a}` : ""}</dd></div>
+              <div><dt>Replacement alternatives</dt><dd>{alternatives.map((candidate) => candidate.manufacturer ? `${candidate.mpn} · ${candidate.manufacturer}` : candidate.mpn).join("; ") || "—"}</dd></div>
               <div><dt>Residual risk</dt><dd>{record.residual_risk || "Not assessed"}</dd></div>
               <div><dt>Evidence status</dt><dd>{String(snapshot.engineering_evidence_status || (record.verified_primary_evidence ? "verified" : "unverified"))}</dd></div>
             </dl>
