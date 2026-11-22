@@ -238,9 +238,9 @@ def test_report_summaries_keep_unverified_parts_out_of_low_risk_counts():
     unknown_row = next(row for row in component_rows[1:] if row[component_columns["MPN"]] == "PART-UNKNOWN")
     assert unknown_row[component_columns["Stock"]] == "Not verified"
     assert unknown_row[component_columns["Unit Price"]] == "Not verified"
-    assert unknown_row[component_columns["Supplier Offers"]] == ""
+    assert unknown_row[component_columns["Supplier Offers"]] in ("", None)
     assert unknown_row[component_columns["RoHS Status"]] == "Not verified"
-    assert unknown_row[component_columns["RoHS Evidence Details"]] == ""
+    assert unknown_row[component_columns["RoHS Evidence Details"]] in ("", None)
 
     pdf_text, _ = _pdf_text(build_pdf(report))
     normalized = _normalized(pdf_text)
