@@ -106,6 +106,7 @@ export default function DesignImpactPage() {
   if (!session) return null;
 
   const intelligence = (data?.intelligence || {}) as Record<string, unknown>;
+  const intel = intelligence;
   const rawCatalog = (intelligence.component_catalog || intelligence.catalog || []) as Array<Record<string, unknown>>;
   const catalog = Array.isArray(rawCatalog) ? rawCatalog.filter(isUsablePart) : [];
   const selectedMpn = String(intelligence.selected_mpn || "").trim();
@@ -280,7 +281,7 @@ export default function DesignImpactPage() {
             <dl className="cv-record-meta" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
               <div className="cv-record-field"><dt>Saved BOMs affected</dt><dd>{affectedBomCount}</dd></div>
               <div className="cv-record-field"><dt>Projects affected</dt><dd>{projectCount || "—"}</dd></div>
-              <div className="cv-record-field"><dt>Quantity in saved BOMs</dt><dd>{cell(intelligence.total_quantity)}</dd></div>
+              <div className="cv-record-field"><dt>Combined quantity in saved BOMs</dt><dd>{cell(intel.total_quantity)}</dd></div>
               <div className="cv-record-field"><dt>Impact indicator</dt><dd>{impactLevel}</dd></div>
               <div className="cv-record-field"><dt>Recorded lifecycle</dt><dd>{selectedLifecycle}</dd></div>
               <div className="cv-record-field"><dt>Recorded risk</dt><dd>{selectedRisk}</dd></div>
@@ -319,7 +320,7 @@ export default function DesignImpactPage() {
                   {affected.length
                     ? affected.length + " saved BOM report" + (affected.length === 1 ? "" : "s") +
                       " across " + projectCount + " project" + (projectCount === 1 ? "" : "s") +
-                      " · quantity " + cell(intelligence.total_quantity, "not recorded")
+                      " · combined quantity " + cell(intel.total_quantity, "not recorded")
                     : "No matching BOM rows were returned for this component."}
                 </p>
               </div>
