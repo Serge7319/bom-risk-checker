@@ -226,7 +226,7 @@ export default function DesignImpactPage() {
           {error ? <div className="cv-error" role="alert" style={{ marginTop: 12 }}>{error}</div> : null}
 
           <p id="impact-data-note" className="cv-small-note" style={{ marginTop: 12, marginBottom: 0 }}>
-            This view reads saved BOM analyses when you open the page and when you select View impact. It does not monitor supplier changes, refresh live stock or pricing, or edit a BOM. For supplier updates, use{" "}
+            This view loads saved BOM analyses when you open the page and recalculates the selected part when you choose View impact. Reopen the page after saving a new BOM to refresh the part list. It does not monitor supplier changes, refresh live stock or pricing, or edit a BOM. For supplier updates, use{" "}
             <Link href="/monitoring" style={{ color: "var(--blue)", textDecoration: "underline" }}>Monitoring</Link>.
           </p>
         </section>
