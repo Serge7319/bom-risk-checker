@@ -11,6 +11,7 @@ import { Icon } from "@/components/Icons";
 import { PartThumbnail } from "@/components/PartThumbnail";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import { getReportRiskCounts, ReportOverview } from "@/components/ReportOverview";
+import { StatusPill } from "@/components/StatusPill";
 import {
   analyzeBom,
   downloadCompliancePack,
@@ -151,6 +152,40 @@ function complianceLifecycleSummary(value: unknown): string {
     event.end_of_life_date ? `end of life ${String(event.end_of_life_date)}` : "",
     event.estimated_eol_years != null ? `estimated ${String(event.estimated_eol_years)} years to EOL` : "",
   ].filter(Boolean).join(" · ");
+}
+
+type ReportLifecycleDisplay = {
+  label: string;
+  kind: "lifecycle" | "verification";
+  note?: string;
+};
+
+function reportLifecycleDisplay(part: Record<string, unknown>): ReportLifecycleDisplay {
+  const value = String(part.Lifecycle || part.lifecycle || "").trim();
+  const hasValue = Boolean(value) && !/^(unknown|not reported|—|-)$/.test(value.toLowerCase());
+  if (!hasValue) return { label: "Not reported", kind: "verification" };
+
+  const rawEvidence = part.evidence;
+  const evidence = rawEvidence && typeof rawEvidence === "object" && !Array.isArray(rawEvidence)
+    ? rawEvidence as { fields?: Record<string, { evidence_class?: string; current?: boolean } | undefined> }
+    : {};
+  const lifecycle = evidence.fields?.lifecycle;
+  const evidenceClass = String(lifecycle?.evidence_class || "");
+  if (evidenceClass === "live-authorized-supplier" && lifecycle?.current === true) {
+    return { label: value, kind: "lifecycle" };
+  }
+  if (evidenceClass === "synthetic-preview") {
+    return {
+      label: "Preview only",
+      kind: "verification",
+      note: `Preview estimate: ${value}`,
+    };
+  }
+  return {
+    label: "Needs verification",
+    kind: "verification",
+    note: `Reported: ${value} · unverified`,
+  };
 }
 
 export default function ReportPage() {
@@ -1073,6 +1108,7 @@ export default function ReportPage() {
                   {report.parts.map((part, index) => {
                     const risk = String(part["Risk Level"] || "");
                     const mpn = cleanKiCadFieldText(part.MPN || part.mpn || "");
+                    const lifecycleDisplay = reportLifecycleDisplay(part);
                     return (
                       <tr key={`${mpn}-${index}`}>
                         <td>
@@ -1101,7 +1137,14 @@ export default function ReportPage() {
                             part.effective_quantity ?? part.Quantity ?? "",
                           )}
                         </td>
-                        <td>{String(part.Lifecycle || "")}</td>
+                        <td>
+                          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                            <StatusPill kind={lifecycleDisplay.kind} value={lifecycleDisplay.label} />
+                            {lifecycleDisplay.note ? (
+                              <small className="cv-small-note">{lifecycleDisplay.note}</small>
+                            ) : null}
+                          </div>
+                        </td>
                         <td>
                           <span className={`cv-badge ${riskBadge(risk)}`}>
                             {risk || "—"}
