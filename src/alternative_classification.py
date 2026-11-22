@@ -66,12 +66,20 @@ SUITABILITY_SCORE_PENALTY = {
 _PACKAGING_SUFFIXES = ("CT", "TR", "TU", "DKR", "AUTO")
 
 _NON_COMPONENT_CATEGORY_RE = re.compile(
-    r"\b(?:kits?|modules?|evaluation\s+boards?|breakouts?)\b",
+    r"\b(?:kits?|modules?|evaluation\s+boards?|development\s+tools?"
+    r"|(?:development|expansion|carrier|sensor)\s+boards?|click\s+boards?|breakouts?)\b",
     re.IGNORECASE,
 )
 _NON_COMPONENT_DESCRIPTION_RE = re.compile(
-    r"\bmodules?\b|\b(?:evaluation|development|breakout)\s+boards?\b"
+    r"\bmodules?\b|\bbreakouts?\b|\bclick\s+boards?\b"
+    r"|\b(?:(?:evaluation|development|expansion|carrier|sensor)\s+boards?|development\s+tools?)\b"
     r"|\b(?:development|evaluation|starter|hobbyist)\s+kits?\b",
+    re.IGNORECASE,
+)
+_LIFECYCLE_LEAD_TIME_BLOCK_RE = re.compile(
+    r"\b(?:obsolete|discontinued|eol|nla|end[\s-]+of[\s-]+life"
+    r"|no[\s-]+longer[\s-]+(?:manufactured|available)"
+    r"|last[\s-]+time[\s-]+buy|ltb)\b",
     re.IGNORECASE,
 )
 _CATEGORY_FIELDS = (
@@ -80,10 +88,21 @@ _CATEGORY_FIELDS = (
     "Primary Category",
     "category_name",
     "CategoryName",
+    "Primary Category",
     "product_category",
     "ProductCategory",
+    "Product Type",
+    "ProductType",
+    "product_type",
+    "productType",
+    "part_type",
+    "Part Type",
+    "Category Path",
+    "category_path",
     "Category",
     "category",
+    "Type",
+    "type",
 )
 
 
@@ -125,6 +144,34 @@ def is_non_component_catalog_candidate(candidate: Mapping[str, object]) -> bool:
         return True
     description = str(candidate.get("description") or candidate.get("Description") or "")
     return bool(_NON_COMPONENT_DESCRIPTION_RE.search(description))
+
+
+def candidate_lead_time_block_reason(
+    lifecycle_status: object,
+    lifecycle_evidence: object = None,
+    *,
+    lifecycle_conflict: bool = False,
+) -> str:
+    """Withhold actionable lead-time claims when lifecycle evidence blocks them."""
+    if lifecycle_conflict:
+        return "lifecycle-conflict"
+
+    statuses = [str(lifecycle_status or "")]
+    if isinstance(lifecycle_evidence, (list, tuple, set)):
+        for item in lifecycle_evidence:
+            if isinstance(item, Mapping):
+                statuses.extend(
+                    str(item.get(key) or "")
+                    for key in ("status", "lifecycle_status", "lifecycle", "value", "state")
+                )
+            else:
+                statuses.append(str(item or ""))
+    elif lifecycle_evidence not in (None, ""):
+        statuses.append(str(lifecycle_evidence))
+
+    if any(_LIFECYCLE_LEAD_TIME_BLOCK_RE.search(value) for value in statuses):
+        return "obsolete"
+    return ""
 
 
 def utc_now_iso() -> str:
