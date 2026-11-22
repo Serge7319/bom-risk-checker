@@ -77,7 +77,10 @@ def test_health_and_synthetic_bom_flow():
     assert analyze.status_code == 200, analyze.text
     body = analyze.json()
     assert body["total_parts"] == 25
-    assert body["health_score"] is not None
+    # This fixture is a sample preview, so its row values cannot support a
+    # production health score even though the demo flow successfully runs.
+    assert body["health_score"] is None
+    assert body["health_status"] == "Needs verification"
     assert body["mode"] == "synthetic-preview"
     assert body["workspace_id"] == "ws-sandbox-a"
 
