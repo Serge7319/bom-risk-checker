@@ -310,6 +310,8 @@ def build_portfolio_intelligence(
         mpn = _text(_first(row, "mpn", "MPN", "part_number"), "Unknown")
         analysis_id = _text(row.get("analysis_id"))
         lifecycle = _text(row.get("lifecycle_status"), "Unknown")
+        reported_lifecycle = _text(row.get("portfolio_lifecycle_reported"), lifecycle)
+        lifecycle_evidence = _text(row.get("portfolio_lifecycle_evidence_class"), "")
         supplier_raw = _first(row, "supplier_count", default=None)
         supplier_value = _optional_number(supplier_raw)
         supplier_recorded = supplier_value is not None
@@ -340,6 +342,8 @@ def build_portfolio_intelligence(
                 ),
                 "Manufacturer": manufacturer,
                 "Lifecycle": lifecycle,
+                "Reported Lifecycle": reported_lifecycle,
+                "Lifecycle Evidence": lifecycle_evidence,
                 "Supplier Sources": supplier_count,
                 "Supplier Sources Recorded": supplier_recorded,
                 "Available Stock": stock,
@@ -391,6 +395,8 @@ def build_portfolio_intelligence(
                     (row["Supplier Sources"] for row in source_rows), default=None
                 ),
                 "Lifecycle": worst["Lifecycle"],
+                "Reported Lifecycle": worst["Reported Lifecycle"],
+                "Lifecycle Evidence": worst["Lifecycle Evidence"],
                 "Image URL": worst["Image URL"],
             }
         )
@@ -416,7 +422,8 @@ def build_portfolio_intelligence(
     lifecycle_exposed = [
         row for row in normalized
         if any(
-            term in row["Lifecycle"].lower()
+            term in value.casefold()
+            for value in (row["Lifecycle"], row["Reported Lifecycle"])
             for term in ("obsolete", "replacement", "nrnd", "not recommended", "eol")
         )
     ]
@@ -670,7 +677,8 @@ def build_portfolio_intelligence(
             "description": "Parts recorded in more than one saved project.",
             "headers": [
                 "Part Number", "Manufacturer", "Projects Using Part",
-                "Highest Risk Score", "Lowest Stock", "Minimum Supplier Sources", "Lifecycle",
+                "Highest Risk Score", "Lowest Stock", "Minimum Supplier Sources",
+                "Lifecycle", "Reported Lifecycle", "Lifecycle Evidence",
             ],
             "rows": shared_components,
         },
