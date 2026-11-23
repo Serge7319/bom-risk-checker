@@ -540,7 +540,11 @@ export default function Page() {
     try {
       const result = await beginBillingPortal(session.access_token);
       if (!result.ok || !result.checkout?.url) {
-        throw new Error(result.detail || "Billing settings could not be opened.");
+        throw new ApiError(
+          result.detail || "Billing settings could not be opened.",
+          409,
+          result as unknown as Record<string, unknown>,
+        );
       }
       window.location.assign(result.checkout.url);
     } catch (err) {
