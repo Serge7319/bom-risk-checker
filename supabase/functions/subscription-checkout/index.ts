@@ -196,7 +196,7 @@ async function verifyInternalActionProof(
 async function profileFor(userId: string) {
   const { data, error } = await supabase
     .from("users")
-    .select("plan,role,trial_started_at,trial_ends_at,plan_grandfather_source,stripe_customer_id,stripe_subscription_id,stripe_subscription_status")
+    .select("plan,role,trial_started_at,trial_ends_at,plan_grandfather_source,stripe_customer_id,stripe_subscription_id,stripe_subscription_status,stripe_current_period_end")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw new Error("Billing profile could not be loaded.");
@@ -509,6 +509,19 @@ async function usageCreditsFor(userId: string) {
   return credits;
 }
 
+function hasCurrentPaidSubscription(profile: Record<string, unknown>, now = new Date()): boolean {
+  const status = String(profile.stripe_subscription_status || "").trim().toLowerCase();
+  if (!["active", "trialing"].includes(status)) return false;
+
+  // Do not trust a stale `active` flag after the recorded paid period elapsed.
+  // This can occur when an old test-mode subscription snapshot was retained in
+  // production after the Stripe account switched to live mode.
+  const periodEndValue = profile.stripe_current_period_end;
+  if (!periodEndValue) return true;
+  const periodEnd = new Date(String(periodEndValue));
+  return !Number.isNaN(periodEnd.getTime()) && periodEnd > now;
+}
+
 function effectivePlan(profile: Record<string, unknown>, now = new Date()): {
   plan: string;
   trial_status: string | null;
@@ -516,7 +529,6 @@ function effectivePlan(profile: Record<string, unknown>, now = new Date()): {
 } {
   const role = String(profile.role || "").trim().toLowerCase();
   const stored = String(profile.plan || "").trim().toLowerCase();
-  const billingStatus = String(profile.stripe_subscription_status || "").trim().toLowerCase();
   const grandfathered = Boolean(String(profile.plan_grandfather_source || "").trim());
 
   if (role === "admin" || stored === "enterprise" || stored === "admin") {
@@ -540,7 +552,7 @@ function effectivePlan(profile: Record<string, unknown>, now = new Date()): {
     return { plan: "Trial expired", trial_status: "trial_expired", trial_days_remaining: 0 };
   }
   const paidPlan = planPrices.find((item) => item.name.toLowerCase() === stored);
-  if (paidPlan && ["active", "trialing"].includes(billingStatus)) {
+  if (paidPlan && hasCurrentPaidSubscription(profile, now)) {
     return { plan: paidPlan.name, trial_status: null, trial_days_remaining: null };
   }
   if (grandfathered && ["free", "beta", "beta access", "grandfathered", "grandfathered beta", "starter", "professional", "business"].includes(stored)) {
@@ -1117,7 +1129,7 @@ serve(async (request) => {
           (plan.annual as Record<string, unknown>).enabled === true
         )
       );
-      const active = ["active", "trialing"].includes(String(profile.stripe_subscription_status || "").toLowerCase());
+      const active = hasCurrentPaidSubscription(profile);
       return response({
         ok: true,
         current_plan: effectivePlan(profile).plan,
@@ -1145,8 +1157,7 @@ serve(async (request) => {
 
     if (action === "professional_api_addon_checkout") {
       const currentPlan = effectivePlan(profile).plan;
-      const currentStatus = String(profile.stripe_subscription_status || "").toLowerCase();
-      if (currentPlan !== "Professional" || !["active", "trialing"].includes(currentStatus)) {
+      if (currentPlan !== "Professional" || !hasCurrentPaidSubscription(profile)) {
         return response({ ok: false, detail: "The Professional API add-on requires an active Professional subscription." }, 409, origin);
       }
       const existing = await apiAddonFor(auth.user.id);
@@ -1178,9 +1189,8 @@ serve(async (request) => {
 
     if (action === "usage_overage_checkout") {
       const currentPlan = effectivePlan(profile).plan;
-      const currentStatus = String(profile.stripe_subscription_status || "").toLowerCase();
       if (!["Starter", "Professional", "Business"].includes(currentPlan) ||
-          !["active", "trialing"].includes(currentStatus)) {
+          !hasCurrentPaidSubscription(profile)) {
         return response({ ok: false, detail: "Usage overage packs require an active paid subscription." }, 409, origin);
       }
       const kind = String(body.credit_kind || "").trim();
@@ -1290,8 +1300,57 @@ serve(async (request) => {
     const plan = planPrices.find((item) => item.token === token);
     if (!plan) return response({ ok: false, detail: "Choose Starter, Professional, or Business." }, 400, origin);
 
-    const status = String(profile.stripe_subscription_status || "").toLowerCase();
-    if (["active", "trialing"].includes(status) && profile.stripe_customer_id) {
+    // A user's local profile can outlive the Stripe subscription it originally
+    // described. Verify against the active Stripe account before blocking a
+    // new purchase; do not let stale test-mode IDs strand a production account.
+    const activeSubscriptions: Stripe.Subscription[] = [];
+    try {
+      for (const status of ["active", "trialing"] as const) {
+        const result = await stripe.subscriptions.search({
+          query: "status:'" + status + "' AND metadata['user_id']:'" + auth.user.id + "'",
+          limit: 2,
+        });
+        activeSubscriptions.push(...result.data);
+        if (activeSubscriptions.length > 1) break;
+      }
+    } catch (error) {
+      const summary = stripeErrorSummary(error);
+      console.error("subscription_checkout_existing_subscription_check_failed", {
+        reference: supportReference,
+        error_type: summary.type,
+        error_code: summary.code,
+        error_status: summary.statusCode,
+        stripe_request_id: summary.requestId,
+      });
+      return response({
+        ok: false,
+        code: "billing_subscription_unverified",
+        detail: "Cadivor couldn't verify whether this account already has a subscription. No new subscription was started. Please retry or contact support.",
+        support_reference: supportReference,
+      }, 503, origin);
+    }
+    const uniqueActiveSubscriptions = [...new Map(activeSubscriptions.map((item) => [item.id, item])).values()];
+    if (uniqueActiveSubscriptions.length > 1) {
+      return response({
+        ok: false,
+        code: "billing_subscription_ambiguous",
+        detail: "Stripe found multiple active subscriptions for this account. No new subscription was started. Contact support.",
+        support_reference: supportReference,
+      }, 409, origin);
+    }
+    if (uniqueActiveSubscriptions.length === 1) {
+      const existing = uniqueActiveSubscriptions[0];
+      const customerId = typeof existing.customer === "string"
+        ? existing.customer
+        : existing.customer?.id || "";
+      if (String(existing.metadata?.user_id || "").trim() !== auth.user.id || !customerId) {
+        return response({
+          ok: false,
+          code: "billing_subscription_unverified",
+          detail: "Cadivor couldn't verify the active subscription linked to this account. No new subscription was started. Contact support.",
+          support_reference: supportReference,
+        }, 409, origin);
+      }
       return response({
         ok: false,
         code: "manage_existing_subscription",
