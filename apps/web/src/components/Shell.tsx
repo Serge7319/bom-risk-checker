@@ -12,6 +12,9 @@ import { NAV_GROUPS } from "@/lib/routes";
 function crumbTitle(pathname: string): string {
   if (pathname === "/") return "Home";
   if (pathname.startsWith("/reports/")) return "Engineering Intelligence";
+  if (pathname.startsWith("/admin/users")) return "User accounts";
+  if (pathname.startsWith("/admin/entitlements")) return "Account entitlements";
+  if (pathname.startsWith("/admin/marketing-analytics")) return "Growth analytics";
   for (const group of NAV_GROUPS) {
     for (const item of group.items) {
       if (item.href === "/") continue;
@@ -110,6 +113,24 @@ export function Shell({
           {session.platform_role === "admin" ? (
             <div className="cv-nav-group">
               <div className="cv-nav-label">Platform</div>
+              <Link
+                href="/admin/users"
+                className={pathname === "/admin/users" ? "active" : undefined}
+                aria-current={pathname === "/admin/users" ? "page" : undefined}
+                onClick={() => setNavOpen(false)}
+              >
+                <Icon name="shield" />
+                <span>User accounts</span>
+              </Link>
+              <Link
+                href="/admin/entitlements"
+                className={pathname === "/admin/entitlements" ? "active" : undefined}
+                aria-current={pathname === "/admin/entitlements" ? "page" : undefined}
+                onClick={() => setNavOpen(false)}
+              >
+                <Icon name="settings" />
+                <span>Account entitlements</span>
+              </Link>
               <Link
                 href="/admin/marketing-analytics"
                 className={pathname === "/admin/marketing-analytics" ? "active" : undefined}

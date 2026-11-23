@@ -85,6 +85,7 @@ from apps.api import monitoring_scheduler  # noqa: E402
 from apps.api import slack_notifications  # noqa: E402
 from apps.api import marketing_leads  # noqa: E402
 from apps.api import marketing_analytics  # noqa: E402
+from apps.api import account_admin_service  # noqa: E402
 from apps.api.marketing_attribution import sanitize_marketing_attribution  # noqa: E402
 from apps.api import plan_limits  # noqa: E402
 from apps.api import invitation_email  # noqa: E402
@@ -3841,6 +3842,203 @@ async def account_entitlements_admin_put(request: Request) -> JSONResponse:
     return _json({"ok": True, "account": {"email": account["email"], "feature_overrides": feature_overrides}})
 
 
+async def admin_users_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    try:
+        users = await run_in_threadpool(
+            supabase_auth.admin_list_accounts, str(ctx.get("access_token") or "")
+        )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    except Exception:  # noqa: BLE001
+        logging.exception("admin_users_list_failed")
+        return _json({"detail": "Account list is temporarily unavailable."}, 503)
+    return _json({"ok": True, "users": users})
+
+
+async def admin_user_status_patch(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    raw_user_id = str(request.path_params.get("target_user_id") or "").strip()
+    try:
+        target_user_id = str(uuid.UUID(raw_user_id))
+    except (ValueError, TypeError):
+        return _json({"detail": "Account was not found."}, 404)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON."}, 400)
+    status = str(body.get("status") or "").strip().lower()
+    if status not in {"active", "suspended"}:
+        return _json({"detail": "Choose active or suspended."}, 400)
+    reason = " ".join(str(body.get("reason") or "").split())[:500]
+    if target_user_id == str(ctx.get("user_id") or ""):
+        return _json({"detail": "Administrators cannot change their own account status."}, 409)
+    try:
+        await run_in_threadpool(
+            lambda: supabase_auth.admin_set_account_status(
+                access_token=str(ctx.get("access_token") or ""),
+                target_user_id=target_user_id,
+                status=status,
+                reason=reason,
+            )
+        )
+        sync_result, sync_status = await run_in_threadpool(
+            lambda: subscription_billing_service.request_action(
+                access_token=str(ctx.get("access_token") or ""),
+                action="admin_sync_account_status",
+                payload={"target_user_id": target_user_id, "status": status},
+                timeout_seconds=12,
+            )
+        )
+        if sync_status != 200 or sync_result.get("ok") is not True:
+            return _json(
+                {"detail": "Account status was saved, but sign-in controls did not sync. Retry this update."},
+                503,
+            )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json(
+            {"detail": "Account status was saved, but sign-in controls did not sync. Retry this update."},
+            503,
+        )
+    except Exception:  # noqa: BLE001
+        logging.exception("admin_user_status_update_failed")
+        return _json({"detail": "Account status could not be updated."}, 503)
+    return _json({"ok": True, "account_status": status})
+
+
+async def admin_user_delete(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    raw_user_id = str(request.path_params.get("target_user_id") or "").strip()
+    try:
+        target_user_id = str(uuid.UUID(raw_user_id))
+    except (ValueError, TypeError):
+        return _json({"detail": "Account was not found."}, 404)
+    if target_user_id == str(ctx.get("user_id") or ""):
+        return _json({"detail": "Administrators cannot delete their own account."}, 409)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON."}, 400)
+    try:
+        confirmation_email = team_service.normalize_email(
+            str(body.get("confirmation_email") or "")
+        )
+    except TeamError as exc:
+        return _team_error(exc)
+
+    token = str(ctx.get("access_token") or "")
+    payload = {
+        "target_user_id": target_user_id,
+        "confirmation_email": confirmation_email,
+    }
+    try:
+        preflight, preflight_status = await run_in_threadpool(
+            lambda: subscription_billing_service.request_action(
+                access_token=token,
+                action="admin_validate_account_deletion",
+                payload=payload,
+                timeout_seconds=12,
+            )
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Account deletion could not be validated. Try again shortly."}, 503)
+    if preflight_status != 200 or preflight.get("ok") is not True:
+        return _json(
+            {"detail": str(preflight.get("detail") or "Account deletion could not be validated.")},
+            preflight_status if 400 <= preflight_status < 600 else 503,
+        )
+
+    try:
+        await run_in_threadpool(
+            lambda: account_admin_service.validate_migration_account_data(
+                user_id=target_user_id
+            )
+        )
+    except account_admin_service.AccountAdminError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+
+    try:
+        prepared, prepare_status = await run_in_threadpool(
+            lambda: subscription_billing_service.request_action(
+                access_token=token,
+                action="admin_prepare_account_deletion",
+                payload=payload,
+                timeout_seconds=25,
+            )
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Account deletion could not be prepared. Try again shortly."}, 503)
+    if prepare_status != 200 or prepared.get("prepared") is not True:
+        return _json(
+            {"detail": str(prepared.get("detail") or "Account deletion could not be prepared.")},
+            prepare_status if 400 <= prepare_status < 600 else 503,
+        )
+
+    try:
+        migration_cleanup = await run_in_threadpool(
+            lambda: account_admin_service.delete_migration_account_data(
+                user_id=target_user_id,
+                email=confirmation_email,
+            )
+        )
+    except account_admin_service.AccountAdminError as exc:
+        return _json(
+            {
+                "detail": (
+                    exc.detail
+                    + " The account is suspended with deletion pending; retry after resolving the workspace issue."
+                )
+            },
+            exc.status_code,
+        )
+
+    try:
+        deletion, deletion_status = await run_in_threadpool(
+            lambda: subscription_billing_service.request_action(
+                access_token=token,
+                action="admin_delete_account",
+                payload=payload,
+                timeout_seconds=30,
+            )
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        logging.exception("admin_user_delete_bridge_failed")
+        return _json(
+            {
+                "detail": (
+                    "Private workspace data was cleaned, but account removal did not finish. "
+                    "Retry the deletion to complete it."
+                )
+            },
+            503,
+        )
+    if deletion_status != 200 or deletion.get("deleted") is not True:
+        return _json(
+            {
+                "detail": (
+                    "Private workspace data was cleaned, but account removal did not finish. "
+                    + str(deletion.get("detail") or "Retry the deletion to complete it.")
+                ),
+                "cleanup": migration_cleanup,
+            },
+            deletion_status if 400 <= deletion_status < 600 else 503,
+        )
+    return _json({"ok": True, "deleted": True, "cleanup": migration_cleanup})
+
+
+
 async def public_bom_stress_verified_get(request: Request) -> JSONResponse:
     """Return the full public audit only for the verified session email owner.
 
@@ -5177,6 +5375,9 @@ app = Starlette(
         Route("/admin/marketing-analytics", marketing_analytics_admin_get, methods=["GET"]),
         Route("/admin/account-entitlements", account_entitlements_admin_get, methods=["GET"]),
         Route("/admin/account-entitlements", account_entitlements_admin_put, methods=["PUT"]),
+        Route("/admin/users", admin_users_get, methods=["GET"]),
+        Route("/admin/users/{target_user_id}", admin_user_status_patch, methods=["PATCH"]),
+        Route("/admin/users/{target_user_id}", admin_user_delete, methods=["DELETE"]),
         Route(
             "/public/bom-stress/verified-report",
             public_bom_stress_verified_get,

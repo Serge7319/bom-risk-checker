@@ -1577,3 +1577,55 @@ export async function updateAdminAccountEntitlements(
     body: JSON.stringify({ email, feature_overrides: featureOverrides }),
   });
 }
+
+export type AdminAccount = {
+  id: string;
+  email: string;
+  full_name?: string | null;
+  company_name?: string | null;
+  role?: string | null;
+  plan?: string | null;
+  account_status: "active" | "suspended";
+  suspended_reason?: string | null;
+  trial_ends_at?: string | null;
+  signup_at?: string | null;
+  last_sign_in_at?: string | null;
+  last_active_at?: string | null;
+  activity_status?: "active" | "idle" | "offline";
+};
+
+export async function fetchAdminAccounts(token: string) {
+  return apiJson<{ ok: boolean; users: AdminAccount[] }>("/admin/users", { token });
+}
+
+export async function updateAdminAccountStatus(
+  token: string,
+  userId: string,
+  status: "active" | "suspended",
+  reason = "",
+) {
+  return apiJson<{ ok: boolean; account_status: "active" | "suspended" }>(
+    `/admin/users/${encodeURIComponent(userId)}`,
+    { method: "PATCH", token, body: JSON.stringify({ status, reason }) },
+  );
+}
+
+export async function deleteAdminAccount(
+  token: string,
+  userId: string,
+  confirmationEmail: string,
+) {
+  return apiJson<{
+    ok: boolean;
+    deleted: boolean;
+    cleanup?: {
+      private_workspaces_deleted: number;
+      shared_workspaces_preserved: number;
+      shared_workspaces_ownership_transferred: number;
+    };
+  }>(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    token,
+    body: JSON.stringify({ confirmation_email: confirmationEmail }),
+  });
+}
