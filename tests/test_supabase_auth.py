@@ -96,6 +96,18 @@ class _FakeAuth:
         return None
 
 
+def _fake_rpc(function_name: str, _payload: dict | None = None):
+    if function_name == "cadivor_admin_runtime_access":
+        data = [{
+            "maintenance_mode": False,
+            "maintenance_message": "",
+            "account_status": "active",
+        }]
+    else:
+        data = []
+    return SimpleNamespace(execute=lambda: SimpleNamespace(data=data))
+
+
 @pytest.fixture()
 def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     store_path = tmp_path / "store.json"
@@ -123,7 +135,7 @@ def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
 
     def _fake_client(_url: str, _key: str, **_kwargs):
         postgrest = SimpleNamespace(auth=lambda _token: None)
-        return SimpleNamespace(auth=fake, postgrest=postgrest)
+        return SimpleNamespace(auth=fake, postgrest=postgrest, rpc=_fake_rpc)
 
     monkeypatch.setattr("supabase.create_client", _fake_client)
 
@@ -420,7 +432,9 @@ def test_sandbox_hs256_blocked_when_production_runtime_forced(
     monkeypatch.setattr(
         "supabase.create_client",
         lambda *_a, **_k: SimpleNamespace(
-            auth=fake, postgrest=SimpleNamespace(auth=lambda _token: None)
+            auth=fake,
+            postgrest=SimpleNamespace(auth=lambda _token: None),
+            rpc=_fake_rpc,
         ),
     )
     owner = fake.users["owner@cadivor.test"]["user"]
