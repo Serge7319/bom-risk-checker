@@ -521,7 +521,11 @@ export default function Page() {
         : await beginSubscriptionCheckout(session.access_token, token, billingInterval);
       const url = result.checkout?.url;
       if (!result.ok || !url) {
-        throw new Error(result.detail || "Secure billing could not be opened.");
+        throw new ApiError(
+          result.detail || "Secure billing could not be opened.",
+          409,
+          result as unknown as Record<string, unknown>,
+        );
       }
       if (!canManageBilling) {
         trackMarketingEvent("checkout_started", { plan: token, intent: "subscription" }, "/settings");
