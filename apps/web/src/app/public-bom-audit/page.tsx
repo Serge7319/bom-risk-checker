@@ -25,12 +25,16 @@ const TURNSTILE_SITE_KEY = (
 
 const PUBLIC_BOM_LIMIT_MESSAGE =
   "This connection has used its two free BOM audits in the last 24 hours.";
+const PUBLIC_BOM_MAX_BYTES = 1024 * 1024;
 const STATUS_UNAVAILABLE_MESSAGE =
   "The free BOM stress test is temporarily unavailable. Please refresh and try again.";
 const STATUS_DISABLED_MESSAGE =
   "The free BOM stress test is being prepared. Please check back soon.";
 
 function leadSourceFromSearch(search: URLSearchParams): string {
+  if ((search.get("source") || "").trim() === "free-audit-page") {
+    return "free-audit-page";
+  }
   if (!marketingAnalyticsAllowed()) return "homepage_stress_test";
   const fields: string[] = [];
   for (const key of ["utm_source", "utm_medium", "utm_campaign"] as const) {
@@ -55,6 +59,7 @@ function PublicBomAuditInner() {
   const [statusError, setStatusError] = useState("");
   const [statusResolved, setStatusResolved] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [fileDragActive, setFileDragActive] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [report, setReport] = useState<PublicBomAuditReport | null>(null);
@@ -95,6 +100,35 @@ function PublicBomAuditInner() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!embedded) return;
+    const root = document.querySelector<HTMLElement>(
+      ".cv-public-stress-embed",
+    );
+    if (!root) return;
+
+    let animationFrame = 0;
+    const sendHeight = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        const height = Math.ceil(
+          Math.max(root.scrollHeight, root.getBoundingClientRect().height),
+        );
+        window.parent.postMessage(
+          { type: "cadivor:public-bom-audit:resize", height },
+          "*",
+        );
+      });
+    };
+    const observer = new ResizeObserver(sendHeight);
+    observer.observe(root);
+    sendHeight();
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [embedded]);
 
   // Only server-verified QA may skip Turnstile in the UI. Anonymous and
   // signed-in non-QA still complete the challenge when turnstile_required.
@@ -192,6 +226,24 @@ function PublicBomAuditInner() {
     setShareError("");
   }
 
+  function selectBomFile(selectedFile: File | null) {
+    setFileDragActive(false);
+    if (!selectedFile) return;
+    const extensionIsSupported = /\.(csv|xlsx)$/i.test(selectedFile.name);
+    if (!extensionIsSupported) {
+      setFile(null);
+      setError("Choose a CSV or XLSX file.");
+      return;
+    }
+    if (selectedFile.size > PUBLIC_BOM_MAX_BYTES) {
+      setFile(null);
+      setError("The file must be 1 MB or smaller.");
+      return;
+    }
+    setFile(selectedFile);
+    setError("");
+  }
+
   const statusLoading = !statusResolved;
   const auditEnabled = status?.enabled === true;
   const shellClass = embedded
@@ -273,14 +325,39 @@ function PublicBomAuditInner() {
               designs.
             </p>
             <form className="cv-public-stress-upload" onSubmit={onAudit}>
-              <label className="cv-public-stress-drop">
-                <span>Drop your BOM here</span>
+              <label
+                className={`cv-public-stress-drop${fileDragActive ? " is-dragging" : ""}`}
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  setFileDragActive(true);
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                  setFileDragActive(true);
+                }}
+                onDragLeave={(event) => {
+                  const nextTarget = event.relatedTarget;
+                  if (
+                    nextTarget instanceof Node &&
+                    event.currentTarget.contains(nextTarget)
+                  ) {
+                    return;
+                  }
+                  setFileDragActive(false);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  selectBomFile(event.dataTransfer.files?.[0] || null);
+                }}
+                data-testid="public-bom-drop-zone"
+              >
+                <span>{fileDragActive ? "Release to add your BOM" : "Drop your BOM here or choose a file"}</span>
                 <input
                   type="file"
                   accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   onChange={(event) => {
-                    setFile(event.target.files?.[0] || null);
-                    setError("");
+                    selectBomFile(event.target.files?.[0] || null);
                   }}
                 />
                 {file ? (
