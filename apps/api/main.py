@@ -86,6 +86,7 @@ from apps.api import monitoring_scheduler  # noqa: E402
 from apps.api import slack_notifications  # noqa: E402
 from apps.api import marketing_leads  # noqa: E402
 from apps.api import marketing_analytics  # noqa: E402
+from apps.api import account_admin_service  # noqa: E402
 from apps.api.marketing_attribution import sanitize_marketing_attribution  # noqa: E402
 from apps.api import plan_limits  # noqa: E402
 from apps.api import invitation_email  # noqa: E402
@@ -157,7 +158,6 @@ def _refresh_project_report_summaries(
 # Demo passwords are not shipped in the API. Tests import
 # tests.fixtures.sandbox_auth_accounts; operators seed via
 # python -m apps.api.seed_sandbox_demo (sandbox-only).
-
 _origins = [
     origin.strip()
     for origin in os.environ.get(
@@ -317,8 +317,7 @@ async def health(_: Request) -> JSONResponse:
                 "home-dashboard",
                 "workspace-isolation",
                 "sandbox-jwt-auth",
-                "supabase-jwt-auth",
-                "plan-limits",
+                "supabase-jwt-auth",                "plan-limits",
                 "monitoring-store",
                 "evidence-contract",
             ],
@@ -477,8 +476,7 @@ async def auth_signup(request: Request) -> JSONResponse:
             marketing_attribution=sanitize_marketing_attribution(
                 body.get("marketing_attribution")
             ),
-        )
-    except AuthNotConfiguredError as exc:
+        )    except AuthNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
     except AuthError as exc:
         return _json({"detail": exc.detail}, exc.status_code)
@@ -637,8 +635,7 @@ async def boms_validate(request: Request) -> JSONResponse:
         )
     intake_options, option_error = _intake_options_from_form(form)
     if option_error:
-        return option_error
-    preview = bom_validation.validation_preview(filename, payload, **intake_options)
+        return option_error    preview = bom_validation.validation_preview(filename, payload, **intake_options)
     # Always return the preview payload so the UI can show column detection and
     # actionable errors without treating soft validation failure as a transport error.
     return _json({**preview, "workspace_id": ctx["workspace_id"]})
@@ -797,8 +794,7 @@ async def _analyze_bom_form(
     if (applied_decision_ids or used_decision_ids) and not derived_from_analysis_id:
         return _json({"detail": "Replacement decisions require a source BOM report."}, 400)
     if derived_from_analysis_id:
-        source_report = _get_visible_report(
-            derived_from_analysis_id, workspace_id=ctx["workspace_id"]
+        source_report = _get_visible_report(            derived_from_analysis_id, workspace_id=ctx["workspace_id"]
         )
         if not source_report:
             return _json({"detail": "Source BOM report not found"}, 404)
@@ -957,8 +953,7 @@ async def _analyze_bom_form(
                 order_id=reserved_order_id,
                 analysis_id=analysis_id,
                 workspace_id=ctx["workspace_id"],
-            )
-        return _json(
+            )        return _json(
             {
                 "detail": str(exc),
                 "code": "persistence_verify_failed",
@@ -1117,8 +1112,7 @@ async def projects_list(request: Request) -> JSONResponse:
         )
         projects = customer_visible_projects(
             projects, reports, production=is_production_runtime()
-        )
-        projects = _refresh_project_report_summaries(projects, reports)
+        )        projects = _refresh_project_report_summaries(projects, reports)
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
     return _json(
@@ -1277,7 +1271,6 @@ async def workspace_home(request: Request) -> JSONResponse:
         return _json(payload)
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
-
 
 async def reports_csv_get(request: Request) -> Response:
     ctx, denied = _auth_context(request)
@@ -1439,7 +1432,6 @@ async def compare_parts_post(request: Request) -> JSONResponse:
     status = 200 if result.get("ok") else 400
     return _json(result, status)
 
-
 _DECISION_LABELS = {
     "hold_for_review": "Hold for review",
     "approve_alternate": "Approve alternate",
@@ -1597,8 +1589,7 @@ async def decision_record_share_get(request: Request) -> JSONResponse:
         "part_b", "decision_candidate_scope", "decision_candidate_mpns",
         "manufacturer_a", "manufacturer_b", "decision",
         "decision_label", "reviewer", "rationale", "validation_checks",
-        "follow_up_action", "follow_up_owner", "follow_up_due_date",
-        "residual_risk", "verified_primary_evidence",
+        "follow_up_action", "follow_up_owner", "follow_up_due_date",        "residual_risk", "verified_primary_evidence",
         "qualification_note",
     )
     projection = {key: record[key] for key in allowed if key in record}
@@ -1757,8 +1748,7 @@ async def decision_record_approver_get(request: Request) -> JSONResponse:
         }
     return JSONResponse(
         {
-            "ok": True,
-            "record": projection,
+            "ok": True,            "record": projection,
             "status": invite.get("status"),
             "response_rationale": invite.get("response_rationale"),
             "expires_at": invite.get("expires_at"),
@@ -1918,7 +1908,6 @@ async def decision_records_post(request: Request) -> JSONResponse:
             },
             400,
         )
-
     try:
         if requested_analysis_id and not _get_visible_report(
             requested_analysis_id, workspace_id=ctx["workspace_id"]
@@ -2077,8 +2066,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
                 "manufacturer_a": manufacturer_a or comparison.get("manufacturer_a") or None,
                 "manufacturer_b": manufacturer_b or comparison.get("manufacturer_b") or None,
                 "decision": decision,
-                "decision_label": _DECISION_LABELS[decision],
-                "reviewer": reviewer,
+                "decision_label": _DECISION_LABELS[decision],                "reviewer": reviewer,
                 "rationale": rationale,
                 "validation_checks": validation_checks,
                 "follow_up_action": follow_up_action,
@@ -2236,7 +2224,6 @@ def _valid_quote_url(value: Any) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("Source URL must start with http:// or https://.")
     return url
-
 
 async def procurement_quotes_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
@@ -2397,8 +2384,7 @@ async def design_impact_get(request: Request) -> JSONResponse:
                 analysis_id=request.query_params.get("analysis_id") or None,
                 selected_mpn=request.query_params.get("mpn") or "",
             )
-        )
-    except WorkspaceAccessError:
+        )    except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
 
 
@@ -2557,8 +2543,7 @@ async def ask_cadivor_post(request: Request) -> JSONResponse:
 
 async def monitoring_preferences_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
-    if denied or not ctx:
-        return denied or _json({"detail": "Unauthorized"}, 401)
+    if denied or not ctx:        return denied or _json({"detail": "Unauthorized"}, 401)
     return _json({
         "ok": True,
         "preferences": monitoring_store.get_user_preferences(
@@ -2717,8 +2702,7 @@ async def monitoring_alerts_get(request: Request) -> JSONResponse:
             ),
             "refresh_history": monitoring_store.list_refresh_history(ctx["workspace_id"]),
             "preferences": monitoring_store.get_user_preferences(
-                ctx["workspace_id"], ctx["user_id"], ctx["email"]
-            ),
+                ctx["workspace_id"], ctx["user_id"], ctx["email"]            ),
         }
     )
 
@@ -2877,8 +2861,7 @@ async def billing_usage_overage_checkout_post(request: Request) -> JSONResponse:
     return _json(result, status)
 
 
-def _developer_api_entitled(ctx: dict[str, Any]) -> bool:
-    return bool(plan_limits.effective_plan(ctx).get("api_access"))
+def _developer_api_entitled(ctx: dict[str, Any]) -> bool:    return bool(plan_limits.effective_plan(ctx).get("api_access"))
 
 
 async def developer_api_keys_get(request: Request) -> JSONResponse:
@@ -3037,8 +3020,7 @@ async def developer_webhooks_post(request: Request) -> JSONResponse:
             event_types=body.get("event_types"),
         )
     except developer_webhooks.DeveloperWebhookError as exc:
-        return _json({"detail": str(exc)}, 400 if "not configured" not in str(exc).lower() else 503)
-    try:
+        return _json({"detail": str(exc)}, 400 if "not configured" not in str(exc).lower() else 503)    try:
         saved = await run_in_threadpool(get_store().create_developer_webhook, prepared)
     except Exception as exc:  # noqa: BLE001
         logging.warning("developer_webhook_create_failed exception=%s", type(exc).__name__)
@@ -3198,7 +3180,6 @@ async def developer_api_reports_get(request: Request) -> JSONResponse:
         "next_offset": next_offset if next_offset < len(rows) else None,
     })
 
-
 async def developer_api_report_get(request: Request) -> JSONResponse:
     ctx, denied = await _developer_api_key_context(request)
     if denied or not ctx:
@@ -3357,8 +3338,7 @@ def _subscription_billing_readiness(
     checkout_enabled = result.get("checkout_enabled") is True
     can_manage_billing = result.get("can_manage_billing") is True
     status = (
-        "ready"
-        if checkout_enabled
+        "ready"        if checkout_enabled
         else "partial"
         if can_manage_billing
         else "not_connected"
@@ -3517,8 +3497,7 @@ async def public_bom_stress_status(request: Request) -> JSONResponse:
             "ok": True,
             "enabled": bool(enabled()),
             "preview_rows": PREVIEW_ROWS,
-            "max_rows": MAX_ROWS,
-            "max_bytes": MAX_BYTES,
+            "max_rows": MAX_ROWS,            "max_bytes": MAX_BYTES,
             "turnstile_required": bool(turnstile_enabled()),
             "qa_verified": bool(qa),
             "daily_enriched_row_limit": int(daily_enriched_row_limit()),
@@ -3677,8 +3656,7 @@ async def public_bom_stress_share_get(request: Request) -> JSONResponse:
     token = str(request.path_params.get("token") or "").strip()
     try:
         summary = await run_in_threadpool(get_shared_summary, token)
-    except Exception:  # noqa: BLE001
-        logging.exception("public_bom_stress_share_resolve_failed")
+    except Exception:  # noqa: BLE001        logging.exception("public_bom_stress_share_resolve_failed")
         return _json({"detail": "Shared audit summary unavailable."}, 503)
     if not summary:
         return _json({"detail": "This audit share link is invalid or expired."}, 404)
@@ -3837,8 +3815,7 @@ async def public_marketing_analytics_post(request: Request) -> JSONResponse:
         return _json({"ok": True, "accepted": False}, 202)
     try:
         content_length = int(request.headers.get("content-length") or "0")
-    except ValueError:
-        return _json({"detail": "Invalid request size."}, 400)
+    except ValueError:        return _json({"detail": "Invalid request size."}, 400)
     if content_length > 4096:
         return _json({"detail": "Request is too large."}, 413)
     raw = await request.body()
@@ -3962,6 +3939,204 @@ async def account_entitlements_admin_put(request: Request) -> JSONResponse:
     return _json({"ok": True, "account": {"email": account["email"], "feature_overrides": feature_overrides}})
 
 
+async def admin_users_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    try:
+        users = await run_in_threadpool(
+            supabase_auth.admin_list_accounts, str(ctx.get("access_token") or "")
+        )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    except Exception:  # noqa: BLE001
+        logging.exception("admin_users_list_failed")
+        return _json({"detail": "Account list is temporarily unavailable."}, 503)
+    return _json({"ok": True, "users": users})
+
+
+async def admin_user_status_patch(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    raw_user_id = str(request.path_params.get("target_user_id") or "").strip()
+    try:
+        target_user_id = str(uuid.UUID(raw_user_id))
+    except (ValueError, TypeError):
+        return _json({"detail": "Account was not found."}, 404)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON."}, 400)
+    status = str(body.get("status") or "").strip().lower()
+    if status not in {"active", "suspended"}:
+        return _json({"detail": "Choose active or suspended."}, 400)
+    reason = " ".join(str(body.get("reason") or "").split())[:500]
+    if target_user_id == str(ctx.get("user_id") or ""):
+        return _json({"detail": "Administrators cannot change their own account status."}, 409)
+    try:
+        await run_in_threadpool(
+            lambda: supabase_auth.admin_set_account_status(
+                access_token=str(ctx.get("access_token") or ""),
+                target_user_id=target_user_id,
+                status=status,
+                reason=reason,
+            )
+        )
+        sync_result, sync_status = await run_in_threadpool(
+            lambda: subscription_billing_service.request_action(
+                access_token=str(ctx.get("access_token") or ""),
+                action="admin_sync_account_status",
+                payload={"target_user_id": target_user_id, "status": status},
+                timeout_seconds=12,
+            )
+        )
+        if sync_status != 200 or sync_result.get("ok") is not True:
+            return _json(
+                {"detail": "Account status was saved, but sign-in controls did not sync. Retry this update."},
+                503,
+            )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json(
+            {"detail": "Account status was saved, but sign-in controls did not sync. Retry this update."},
+            503,
+        )
+    except Exception:  # noqa: BLE001
+        logging.exception("admin_user_status_update_failed")
+        return _json({"detail": "Account status could not be updated."}, 503)
+    return _json({"ok": True, "account_status": status})
+
+
+async def admin_user_delete(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    raw_user_id = str(request.path_params.get("target_user_id") or "").strip()
+    try:
+        target_user_id = str(uuid.UUID(raw_user_id))
+    except (ValueError, TypeError):
+        return _json({"detail": "Account was not found."}, 404)
+    if target_user_id == str(ctx.get("user_id") or ""):
+        return _json({"detail": "Administrators cannot delete their own account."}, 409)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON."}, 400)
+    try:
+        confirmation_email = team_service.normalize_email(
+            str(body.get("confirmation_email") or "")
+        )
+    except TeamError as exc:
+        return _team_error(exc)
+
+    token = str(ctx.get("access_token") or "")
+    payload = {
+        "target_user_id": target_user_id,
+        "confirmation_email": confirmation_email,
+    }
+    try:
+        preflight, preflight_status = await run_in_threadpool(
+            lambda: subscription_billing_service.request_action(
+                access_token=token,
+                action="admin_validate_account_deletion",
+                payload=payload,
+                timeout_seconds=12,
+            )
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Account deletion could not be validated. Try again shortly."}, 503)
+    if preflight_status != 200 or preflight.get("ok") is not True:
+        return _json(
+            {"detail": str(preflight.get("detail") or "Account deletion could not be validated.")},
+            preflight_status if 400 <= preflight_status < 600 else 503,
+        )
+
+    try:
+        await run_in_threadpool(
+            lambda: account_admin_service.validate_migration_account_data(
+                user_id=target_user_id
+            )
+        )
+    except account_admin_service.AccountAdminError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+
+    try:
+        prepared, prepare_status = await run_in_threadpool(
+            lambda: subscription_billing_service.request_action(
+                access_token=token,
+                action="admin_prepare_account_deletion",
+                payload=payload,
+                timeout_seconds=25,
+            )
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Account deletion could not be prepared. Try again shortly."}, 503)
+    if prepare_status != 200 or prepared.get("prepared") is not True:
+        return _json(
+            {"detail": str(prepared.get("detail") or "Account deletion could not be prepared.")},
+            prepare_status if 400 <= prepare_status < 600 else 503,
+        )
+
+    try:
+        migration_cleanup = await run_in_threadpool(
+            lambda: account_admin_service.delete_migration_account_data(
+                user_id=target_user_id,
+                email=confirmation_email,
+            )
+        )
+    except account_admin_service.AccountAdminError as exc:
+        return _json(
+            {
+                "detail": (
+                    exc.detail
+                    + " The account is suspended with deletion pending; retry after resolving the workspace issue."
+                )
+            },
+            exc.status_code,
+        )
+
+    try:
+        deletion, deletion_status = await run_in_threadpool(
+            lambda: subscription_billing_service.request_action(
+                access_token=token,
+                action="admin_delete_account",
+                payload=payload,
+                timeout_seconds=30,
+            )
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        logging.exception("admin_user_delete_bridge_failed")
+        return _json(
+            {
+                "detail": (
+                    "Private workspace data was cleaned, but account removal did not finish. "
+                    "Retry the deletion to complete it."
+                )
+            },
+            503,
+        )
+    if deletion_status != 200 or deletion.get("deleted") is not True:
+        return _json(
+            {
+                "detail": (
+                    "Private workspace data was cleaned, but account removal did not finish. "
+                    + str(deletion.get("detail") or "Retry the deletion to complete it.")
+                ),
+                "cleanup": migration_cleanup,
+            },
+            deletion_status if 400 <= deletion_status < 600 else 503,
+        )
+    return _json({"ok": True, "deleted": True, "cleanup": migration_cleanup})
+
+
+
+
 async def public_bom_stress_verified_get(request: Request) -> JSONResponse:
     """Return the full public audit only for the verified session email owner.
 
@@ -3997,8 +4172,7 @@ async def public_bom_stress_complete_post(request: Request) -> JSONResponse:
     from src.public_bom_stress_test import (
         PUBLIC_BOM_BUDGET_MESSAGE,
         PUBLIC_BOM_COMPLETE_IN_PROGRESS_MESSAGE,
-        PUBLIC_BOM_EMAIL_QUOTA_MESSAGE,
-        StressTestError,
+        PUBLIC_BOM_EMAIL_QUOTA_MESSAGE,        StressTestError,
         complete_audit,
         enabled,
         normalize_stress_report_id,
@@ -4157,8 +4331,7 @@ async def monitoring_refresh_post(request: Request) -> JSONResponse:
 
 
 async def monitoring_live_refresh_post(request: Request) -> JSONResponse:
-    """Explicit live supplier poll for one saved analysis or exact MPN."""
-    ctx, denied = _auth_context(request)
+    """Explicit live supplier poll for one saved analysis or exact MPN."""    ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -4317,8 +4490,7 @@ async def invitations_register_post(request: Request) -> JSONResponse:
             400,
         )
     token = str(body.get("token") or "").strip()
-    email = str(body.get("email") or "").strip().lower()
-    password = str(body.get("password") or "")
+    email = str(body.get("email") or "").strip().lower()    password = str(body.get("password") or "")
     preview = team_service.lookup_invitation(token)
     if not preview:
         return _json({"detail": "This invitation is not valid or has expired."}, 404)
@@ -4476,7 +4648,6 @@ async def workspace_activity_get(request: Request) -> JSONResponse:
         return _json(team_service.list_activity(ctx, limit=limit))
     except TeamError as exc:
         return _team_error(exc)
-
 
 async def workspace_activity_export_get(request: Request) -> Response:
     ctx, denied = _auth_context(request)
@@ -4638,7 +4809,6 @@ async def settings_security_get(request: Request) -> JSONResponse:
         }
     )
 
-
 # --------------------------------------------------------------------------
 # Invitations, workspaces, profile, preferences, security (Settings)
 # --------------------------------------------------------------------------
@@ -4797,8 +4967,7 @@ async def auth_invitation_signup(request: Request) -> JSONResponse:
                 captcha_token=str(body.get("captcha_token") or "") or None,
             )
         )
-    except AuthNotConfiguredError as exc:
-        return _json({"detail": str(exc)}, 503)
+    except AuthNotConfiguredError as exc:        return _json({"detail": str(exc)}, 503)
     except AuthError as exc:
         return _json({"detail": exc.detail}, exc.status_code)
     return _json(
@@ -4957,8 +5126,7 @@ async def invitations_accept_post(request: Request) -> JSONResponse:
 
 
 async def profile_get(request: Request) -> JSONResponse:
-    return await _team_endpoint(
-        request, lambda ctx, _: _flat("profile", team_service.get_profile(ctx))
+    return await _team_endpoint(        request, lambda ctx, _: _flat("profile", team_service.get_profile(ctx))
     )
 
 
@@ -5117,8 +5285,7 @@ async def invitations_register(request: Request) -> JSONResponse:
     if _use_supabase_auth():
         return await auth_invitation_signup(request)
     if not sandbox_jwt_permitted():
-        return _json({"detail": "Invitation account creation is not available"}, 503)
-    if _throttled(request, "invite-register", limit=20):
+        return _json({"detail": "Invitation account creation is not available"}, 503)    if _throttled(request, "invite-register", limit=20):
         return _json({"detail": "Too many requests. Try again shortly."}, 429)
     body, bad = await _read_json_object(request)
     if bad is not None or body is None:
@@ -5277,8 +5444,7 @@ app = Starlette(
         Route("/developer/webhooks/{webhook_id}", developer_webhook_delete, methods=["DELETE"]),
         Route("/v1/analyses", developer_api_analyze_post, methods=["POST"]),
         Route("/v1/reports", developer_api_reports_get, methods=["GET"]),
-        Route("/v1/reports/{analysis_id}", developer_api_report_get, methods=["GET"]),
-        Route("/billing/portal", billing_portal_post, methods=["POST"]),
+        Route("/v1/reports/{analysis_id}", developer_api_report_get, methods=["GET"]),        Route("/billing/portal", billing_portal_post, methods=["POST"]),
         Route("/billing/public-catalog", billing_public_catalog_get, methods=["GET"]),
         Route("/billing/checkout-prep", billing_checkout_prep_post, methods=["POST"]),
         Route("/billing/one-time-report", one_time_report_status_get, methods=["GET"]),
@@ -5298,6 +5464,9 @@ app = Starlette(
         Route("/admin/marketing-analytics", marketing_analytics_admin_get, methods=["GET"]),
         Route("/admin/account-entitlements", account_entitlements_admin_get, methods=["GET"]),
         Route("/admin/account-entitlements", account_entitlements_admin_put, methods=["PUT"]),
+        Route("/admin/users", admin_users_get, methods=["GET"]),
+        Route("/admin/users/{target_user_id}", admin_user_status_patch, methods=["PATCH"]),
+        Route("/admin/users/{target_user_id}", admin_user_delete, methods=["DELETE"]),
         Route(
             "/public/bom-stress/verified-report",
             public_bom_stress_verified_get,

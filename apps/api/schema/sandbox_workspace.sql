@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS migration_decision_record_shares (
   token_hash TEXT PRIMARY KEY CHECK (length(token_hash) = 64 AND token_hash ~ '^[0-9a-f]{64}$'),
   workspace_id TEXT NOT NULL,
   decision_record_id TEXT NOT NULL REFERENCES migration_decision_records(id) ON DELETE CASCADE,
-  created_by TEXT NOT NULL REFERENCES migration_users(id) ON DELETE CASCADE,
+  created_by TEXT REFERENCES migration_users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL,
   revoked_at TIMESTAMPTZ
@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS migration_decision_record_approvers (
   token_hash TEXT PRIMARY KEY CHECK (length(token_hash) = 64 AND token_hash ~ '^[0-9a-f]{64}$'),
   workspace_id TEXT NOT NULL,
   decision_record_id TEXT NOT NULL REFERENCES migration_decision_records(id) ON DELETE CASCADE,
-  created_by TEXT NOT NULL REFERENCES migration_users(id) ON DELETE CASCADE,
+  created_by TEXT REFERENCES migration_users(id) ON DELETE SET NULL,
   email TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'revoked')),
   response_rationale TEXT,
@@ -205,6 +205,22 @@ CREATE TABLE IF NOT EXISTS migration_decision_record_approvers (
 
 CREATE INDEX IF NOT EXISTS migration_decision_record_approvers_expiry_idx
   ON migration_decision_record_approvers (expires_at);
+
+
+-- Existing installations originally cascaded shared links when their creator
+-- account was removed. Keep the workspace record and clear only its creator.
+ALTER TABLE migration_decision_record_shares ALTER COLUMN created_by DROP NOT NULL;
+ALTER TABLE migration_decision_record_shares
+  DROP CONSTRAINT IF EXISTS migration_decision_record_shares_created_by_fkey;
+ALTER TABLE migration_decision_record_shares
+  ADD CONSTRAINT migration_decision_record_shares_created_by_fkey
+  FOREIGN KEY (created_by) REFERENCES migration_users(id) ON DELETE SET NULL;
+ALTER TABLE migration_decision_record_approvers ALTER COLUMN created_by DROP NOT NULL;
+ALTER TABLE migration_decision_record_approvers
+  DROP CONSTRAINT IF EXISTS migration_decision_record_approvers_created_by_fkey;
+ALTER TABLE migration_decision_record_approvers
+  ADD CONSTRAINT migration_decision_record_approvers_created_by_fkey
+  FOREIGN KEY (created_by) REFERENCES migration_users(id) ON DELETE SET NULL;
 
 -- Workspace-scoped outbound developer webhooks. Endpoint URLs and signing
 -- secrets are encrypted by the API before insertion. Delivery payloads are

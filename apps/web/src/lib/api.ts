@@ -157,8 +157,7 @@ async function refreshSupabaseAccessToken(): Promise<string | null> {
         const { data, error } = await client.auth.refreshSession();
         if (
           error ||
-          !data.session ||
-          !sessionMatchesSupabaseUser(appSession, data.session.user)
+          !data.session ||          !sessionMatchesSupabaseUser(appSession, data.session.user)
         ) {
           return null;
         }
@@ -317,8 +316,7 @@ export async function downloadReportCsv(analysisId: string, initialToken: string
     }
     if (response.status === 401) redirectToLoginAfterAuthFailure();
   }
-  if (!response.ok) {
-    const detail = (await response.json().catch(() => ({}))) as { detail?: string };
+  if (!response.ok) {    const detail = (await response.json().catch(() => ({}))) as { detail?: string };
     throw new Error(userFacingError(detail.detail, `Request failed (${response.status})`));
   }
 
@@ -477,7 +475,6 @@ export const DEFAULT_BOM_INTAKE_OPTIONS: BomIntakeOptions = {
   defaultSupplier: "",
   excludeInvalidRows: false,
 };
-
 export type BomValidationPreview = {
   ok: boolean;
   can_analyze: boolean;
@@ -637,8 +634,7 @@ export async function fetchReport(analysisId: string, token: string): Promise<Re
 export type ReportExportFormat = "pdf" | "csv" | "xlsx" | "plm-csv";
 
 export async function downloadReportExport(
-  analysisId: string,
-  token: string,
+  analysisId: string,  token: string,
   format: ReportExportFormat,
 ): Promise<void> {
   assertApiBaseConfigured();
@@ -797,8 +793,7 @@ export function getDecisionCandidates(
     });
   if (!mpns.length && String(record?.part_b || "").trim()) {
     mpns.push(String(record?.part_b || "").trim());
-  }
-  return mpns.map((mpn) => ({
+  }  return mpns.map((mpn) => ({
     mpn,
     manufacturer: String(manufacturers[mpn] || (
       mpn.toLowerCase() === String(record?.part_b || "").trim().toLowerCase()
@@ -957,8 +952,7 @@ export async function refreshLiveMonitoring(
   token: string,
   payload: { analysis_id: string; part_number?: string },
 ) {
-  return apiJson<Record<string, unknown>>("/tools/monitoring/live-refresh", {
-    method: "POST",
+  return apiJson<Record<string, unknown>>("/tools/monitoring/live-refresh", {    method: "POST",
     token,
     body: JSON.stringify(payload),
   });
@@ -1117,8 +1111,7 @@ export type ProcurementQuote = {
   source_url?: string;
   notes?: string;
   created_at: string;
-  evidence_kind: string;
-};
+  evidence_kind: string;};
 
 export async function listProcurementQuotes(
   token: string,
@@ -1277,8 +1270,7 @@ export async function beginUsageOverageCheckout(
   creditKind: "bom_analysis" | "monitored_part",
 ) {
   return apiJson<{
-    ok: boolean;
-    checkout?: { state: string; url?: string };
+    ok: boolean;    checkout?: { state: string; url?: string };
     detail?: string;
   }>("/billing/addons/usage-overage/checkout", {
     method: "POST",
@@ -1437,8 +1429,7 @@ export async function fetchServiceReadiness(token: string) {
 export type CompliancePackType = "rohs" | "reach" | "pfas" | "conflict_minerals" | "pcn" | "audit";
 
 export async function fetchCompliancePack(token: string, packType: CompliancePackType, analysisId?: string) {
-  const analysisQuery = analysisId ? `?analysis_id=${encodeURIComponent(analysisId)}` : "";
-  return apiJson<Record<string, unknown>>(
+  const analysisQuery = analysisId ? `?analysis_id=${encodeURIComponent(analysisId)}` : "";  return apiJson<Record<string, unknown>>(
     `/compliance/${encodeURIComponent(packType)}${analysisQuery}`,
     { token },
   );
@@ -1597,8 +1588,7 @@ export async function cancelWorkspaceInvitation(token: string, inviteId: string)
 }
 
 export async function listWorkspaceActivity(token: string, limit = 40) {
-  return apiJson<Record<string, unknown>>(
-    `/workspace/activity?limit=${encodeURIComponent(String(limit))}`,
+  return apiJson<Record<string, unknown>>(    `/workspace/activity?limit=${encodeURIComponent(String(limit))}`,
     { token },
   );
 }
@@ -1622,5 +1612,57 @@ export async function updateAdminAccountEntitlements(
     method: "PUT",
     token,
     body: JSON.stringify({ email, feature_overrides: featureOverrides }),
+  });
+}
+
+export type AdminAccount = {
+  id: string;
+  email: string;
+  full_name?: string | null;
+  company_name?: string | null;
+  role?: string | null;
+  plan?: string | null;
+  account_status: "active" | "suspended";
+  suspended_reason?: string | null;
+  trial_ends_at?: string | null;
+  signup_at?: string | null;
+  last_sign_in_at?: string | null;
+  last_active_at?: string | null;
+  activity_status?: "active" | "idle" | "offline";
+};
+
+export async function fetchAdminAccounts(token: string) {
+  return apiJson<{ ok: boolean; users: AdminAccount[] }>("/admin/users", { token });
+}
+
+export async function updateAdminAccountStatus(
+  token: string,
+  userId: string,
+  status: "active" | "suspended",
+  reason = "",
+) {
+  return apiJson<{ ok: boolean; account_status: "active" | "suspended" }>(
+    `/admin/users/${encodeURIComponent(userId)}`,
+    { method: "PATCH", token, body: JSON.stringify({ status, reason }) },
+  );
+}
+
+export async function deleteAdminAccount(
+  token: string,
+  userId: string,
+  confirmationEmail: string,
+) {
+  return apiJson<{
+    ok: boolean;
+    deleted: boolean;
+    cleanup?: {
+      private_workspaces_deleted: number;
+      shared_workspaces_preserved: number;
+      shared_workspaces_ownership_transferred: number;
+    };
+  }>(`/admin/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    token,
+    body: JSON.stringify({ confirmation_email: confirmationEmail }),
   });
 }
