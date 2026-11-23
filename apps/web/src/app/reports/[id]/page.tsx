@@ -11,6 +11,7 @@ import { Icon } from "@/components/Icons";
 import { PartThumbnail } from "@/components/PartThumbnail";
 import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import { getReportRiskCounts, ReportOverview } from "@/components/ReportOverview";
+import { RevisionDiff } from "@/components/RevisionDiff";
 import { StatusPill } from "@/components/StatusPill";
 import {
   analyzeBom,
@@ -197,6 +198,8 @@ function ReportPageInner() {
   const requestedApplyDecisionId = (searchParams.get("apply_decision") || "").trim();
   const [report, setReport] = useState<Report | null>(null);
   const [decisions, setDecisions] = useState<DecisionRecord[]>([]);
+  const [revisionDecisionRecords, setRevisionDecisionRecords] = useState<DecisionRecord[]>([]);
+  const [carriedDecisionLabels, setCarriedDecisionLabels] = useState<Array<{ label: string; mpn: string }>>([]);
   const [decisionHistoryLoaded, setDecisionHistoryLoaded] = useState(false);
   const [decisionError, setDecisionError] = useState("");
   const [error, setError] = useState("");
@@ -333,11 +336,17 @@ function ReportPageInner() {
   const openBomEditor = useCallback(async (applyDecisionId?: string) => {
     if (!session || !report) return;
     setRevisionError("");
+    setCarriedDecisionLabels([]);
     try {
-      const [{ reports }, { projects }] = await Promise.all([
+      const currentId = String(report.analysis_id || report.id || "");
+      const [{ reports }, { projects }, currentDecisionPayload] = await Promise.all([
         listReports(session.access_token),
         listProjects(session.access_token),
+        listDecisionRecords(session.access_token, currentId).catch(() => ({ records: decisions })),
       ]);
+      const currentDecisions = currentDecisionPayload.records || [];
+      setDecisions(currentDecisions);
+      setDecisionHistoryLoaded(true);
       const bomId = String(report.bom_id || "");
       const used = new Set(
         (reports || [])
@@ -350,12 +359,68 @@ function ReportPageInner() {
       )?.name;
       let initialRows = editableRows(report.parts || []);
       const selectedDecision = applyDecisionId
-        ? decisions.find((decision) => decision.id === applyDecisionId)
+        ? currentDecisions.find((decision) => decision.id === applyDecisionId)
         : undefined;
       let initialAppliedDecisionIds: string[] = [];
       let initialUsedDecisionIds: string[] = [];
       const initialCandidateSelection: Record<string, string> = {};
       const initialAppliedCandidates: Record<string, string> = {};
+
+      // Keep approved decision lineage when exactly one approved candidate is
+      // still in this revision and the replaced source MPN is gone.
+      const inheritedAppliedIds = new Set(report.applied_decision_ids || []);
+      const sourceChainRecords: DecisionRecord[] = [];
+      let sourceCursor: Report | null = report;
+      const seenSourceIds = new Set([currentId]);
+      for (let depth = 0; depth < 12 && sourceCursor?.derived_from_analysis_id; depth += 1) {
+        const sourceId = String(sourceCursor.derived_from_analysis_id || "").trim();
+        if (!sourceId || seenSourceIds.has(sourceId)) break;
+        seenSourceIds.add(sourceId);
+        let ancestor: Report;
+        try {
+          ancestor = await fetchReport(sourceId, session.access_token);
+        } catch {
+          break;
+        }
+        if (String(ancestor.bom_id || "") !== bomId) break;
+        try {
+          const payload = await listDecisionRecords(session.access_token, sourceId);
+          sourceChainRecords.push(...(payload.records || []).filter((record) =>
+            inheritedAppliedIds.has(record.id) && record.decision === "approve_alternate",
+          ));
+        } catch {
+          // A missing ancestor history does not prevent an ordinary BOM edit.
+        }
+        sourceCursor = ancestor;
+      }
+
+      const recordById = new Map<string, DecisionRecord>();
+      for (const record of [...currentDecisions, ...sourceChainRecords]) {
+        const recordId = String(record.id || record.decision_id || "").trim();
+        if (recordId) recordById.set(recordId, record);
+      }
+      const initialMpnKeys = new Set(initialRows.map((row) => row.mpn.trim().toLowerCase()).filter(Boolean));
+      const automaticCarryLabels: Array<{ label: string; mpn: string }> = [];
+      const carriedSourceMpns = new Set<string>();
+      for (const record of recordById.values()) {
+        if (record.decision !== "approve_alternate") continue;
+        const recordId = String(record.id || record.decision_id || "").trim();
+        const sourceMpn = String(record.part_a || "").trim();
+        const primaryCandidate = String(record.part_b || "").trim();
+        if (!recordId || !sourceMpn || !primaryCandidate) continue;
+        const candidates = getDecisionCandidates(record);
+        const presentCandidates = candidates.filter((candidate) => initialMpnKeys.has(candidate.mpn.trim().toLowerCase()));
+        if (presentCandidates.length !== 1) continue;
+        if (initialMpnKeys.has(sourceMpn.toLowerCase())) continue;
+        if (carriedSourceMpns.has(sourceMpn.toLowerCase())) continue;
+        carriedSourceMpns.add(sourceMpn.toLowerCase());
+        if (!initialUsedDecisionIds.includes(recordId)) initialUsedDecisionIds.push(recordId);
+        if (!initialAppliedDecisionIds.includes(recordId)) initialAppliedDecisionIds.push(recordId);
+        initialCandidateSelection[recordId] = presentCandidates[0].mpn;
+        initialAppliedCandidates[recordId] = presentCandidates[0].mpn;
+        automaticCarryLabels.push({ label: `${sourceMpn} → ${presentCandidates[0].mpn}`, mpn: presentCandidates[0].mpn });
+      }
+
       if (applyDecisionId) {
         if (!selectedDecision || selectedDecision.decision !== "approve_alternate") {
           throw new Error("This approved replacement is not available in the selected BOM report.");
@@ -381,8 +446,15 @@ function ReportPageInner() {
                 mpn: candidate.mpn,
                 manufacturer: candidate.manufacturer || "",
               });
-          initialAppliedDecisionIds = [selectedDecision.id];
-          initialUsedDecisionIds = [selectedDecision.id];
+          const sameSourceDecisionIds = new Set(
+            Array.from(recordById.values())
+              .filter((record) => record.part_a.trim().toLowerCase() === currentMpn)
+              .map((record) => record.id || record.decision_id),
+          );
+          initialAppliedDecisionIds = initialAppliedDecisionIds.filter((id) => !sameSourceDecisionIds.has(id));
+          initialUsedDecisionIds = initialUsedDecisionIds.filter((id) => !sameSourceDecisionIds.has(id));
+          initialAppliedDecisionIds.push(selectedDecision.id);
+          initialUsedDecisionIds.push(selectedDecision.id);
           initialAppliedCandidates[selectedDecision.id] = candidate.mpn;
         }
       }
@@ -394,6 +466,8 @@ function ReportPageInner() {
       setUsedDecisionIds(initialUsedDecisionIds);
       setDecisionCandidateSelection(initialCandidateSelection);
       setDecisionAppliedCandidates(initialAppliedCandidates);
+      setRevisionDecisionRecords(Array.from(recordById.values()));
+      setCarriedDecisionLabels(automaticCarryLabels);
       setBomEditorOpen(true);
     } catch (err) {
       setRevisionError(err instanceof Error ? err.message : "Saved BOM details could not be loaded.");
@@ -443,9 +517,9 @@ function ReportPageInner() {
         }));
     setRevisionError("");
     const decisionsForPart = new Set(
-      decisions
+      revisionDecisionRecords
         .filter((item) => item.part_a.trim().toLowerCase() === currentMpn)
-        .map((item) => item.id),
+        .map((item) => item.id || item.decision_id),
     );
     setAppliedDecisionIds((current) => {
       const next = current.filter((id) => !decisionsForPart.has(id));
@@ -481,6 +555,24 @@ function ReportPageInner() {
     setRevisionBusy(true);
     setRevisionError("");
     try {
+      const currentMpns = new Set(cleanRows.map((row) => row.mpn.trim().toLowerCase()));
+      const decisionById = new Map<string, DecisionRecord>(
+        revisionDecisionRecords.map((decision): [string, DecisionRecord] => [decision.id || decision.decision_id, decision]),
+      );
+      const revisionDecisionIsStillUsed = (decisionId: string) => {
+        const decision = decisionById.get(decisionId);
+        if (!decision) return false;
+        const sourceMpn = decision.part_a.trim().toLowerCase();
+        const presentCandidates = getDecisionCandidates(decision).filter((candidate) =>
+          currentMpns.has(candidate.mpn.trim().toLowerCase()),
+        );
+        return Boolean(sourceMpn && !currentMpns.has(sourceMpn) && presentCandidates.length === 1);
+      };
+      const validUsedDecisionIds = [...new Set(usedDecisionIds)].filter(revisionDecisionIsStillUsed);
+      const validAppliedDecisionIds = [...new Set(appliedDecisionIds)].filter((decisionId) =>
+        validUsedDecisionIds.includes(decisionId)
+        && decisionById.get(decisionId)?.decision === "approve_alternate",
+      );
       const header = ["MPN", "Manufacturer", "Description", "Parent MPN", "Line Type", "Quantity"];
       const lines = [
         header.map(csvCell).join(","),
@@ -504,8 +596,8 @@ function ReportPageInner() {
         bomName: bomNameDraft.trim(),
         revision: revisionDraft.trim(),
         sourceAnalysisId: String(report.analysis_id || report.id),
-        appliedDecisionIds,
-        usedDecisionIds,
+        appliedDecisionIds: validAppliedDecisionIds,
+        usedDecisionIds: validUsedDecisionIds,
       });
       setBomEditorOpen(false);
       router.push(`/reports/${encodeURIComponent(created.analysis_id)}`);
@@ -636,12 +728,19 @@ function ReportPageInner() {
                 Rename or move this BOM from Manage saved BOMs. New revisions stay attached to the same project and BOM history.
               </p>
 
-              {decisions.some((decision) => decision.decision !== "reject_alternate") ? (
+              {carriedDecisionLabels.length ? (
+                <div className="cv-success-note" role="status" style={{ margin: "10px 0 14px" }}>
+                  <strong>Approved decisions carried forward:</strong>{" "}
+                  {carriedDecisionLabels.map((item) => item.label).join(" · ")}. Review each BOM line before saving; Cadivor keeps a decision link only while exactly one approved candidate remains and its source part is absent.
+                </div>
+              ) : null}
+
+              {revisionDecisionRecords.some((decision) => decision.decision !== "reject_alternate") ? (
                 <section className="cv-card pad" style={{ margin: "14px 0", background: "#f8fbff" }}>
                   <h3 className="cv-card-title">Choose replacement options for this revision</h3>
                   <p className="cv-card-subtitle">A decision can include multiple approved alternatives. Choose one option for each source part in this BOM revision. You can apply replacements for different source parts in the same revision. The source report stays unchanged, and creating a revision does not independently qualify a part.</p>
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
-                    {decisions
+                    {revisionDecisionRecords
                       .filter((decision) => decision.decision !== "reject_alternate")
                       .map((decision) => {
                         const candidates = getDecisionCandidates(decision);
@@ -759,6 +858,8 @@ function ReportPageInner() {
           </dl>
 
           <ReportOverview report={report} />
+
+          <RevisionDiff report={report} token={session.access_token} />
 
           {report.derived_from_analysis_id ? (
             <section className="cv-card pad" style={{ marginBottom: 14 }} data-testid="revision-provenance">

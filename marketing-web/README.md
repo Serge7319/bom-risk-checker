@@ -9,22 +9,16 @@ cd marketing-web
 python3 -m http.server 3000
 ```
 
-Open `http://localhost:3000/#/home`.
+Open `http://localhost:3000/`.
 
 ## Routes
 
-- `#/home`
-- `#/analyze` (free anonymous BOM audit)
-- `#/one-time-report` (one-time report details and report-only account checkout entry)
-- `#/product`
-- `#/solutions`
-- `#/pricing`
-- `#/resources`
-- `#/company`
-- `#/contact`
-- `#/security`
-- `#/privacy`
-- `#/terms`
+- `/free-audit/` — details and entry to the free top-five BOM audit
+- `/one-time-report/` — one-time report details and checkout entry
+- `/contact/` — demo/contact form with status-aware confirmation
+- `/pricing/`, `/product/`, `/solutions/`, `/resources/`, `/security/`, `/privacy/`, `/terms/`, and `/data-sources/` — direct public pages
+
+The older client-side hash routes remain available as backward-compatible links.
 
 ## Application and marketing URLs
 
@@ -64,7 +58,7 @@ the funnel at `/admin/marketing-analytics`.
 
 ## Crawlable static pages
 
-The root marketing experience remains a client-side site, with crawlable pages at `/product/`, `/solutions/` (including role pages), `/pricing/`, `/resources/`, `/security/`, `/privacy/`, and `/terms/`. Each page has a canonical URL and server-delivered content. `robots.txt` points crawlers to `sitemap.xml`. These direct pages reuse the current product copy and do not rely on JavaScript for their main content.
+The root marketing experience remains a client-side site, with crawlable pages at `/product/`, `/solutions/` (including role pages), `/pricing/`, `/resources/`, `/security/`, `/privacy/`, `/terms/`, `/free-audit/`, `/one-time-report/`, and `/contact/`. Each page has a canonical URL and server-delivered content. `robots.txt` points crawlers to `sitemap.xml`. These direct pages reuse the current product copy and do not rely on JavaScript for their main content.
 
 The crawlable guide URLs are /release-readiness, /guides/alternate-qualification/, and /guides/implementation/. Each guide is static HTML with a canonical URL and server-delivered main content; the sitemap includes all three.
 

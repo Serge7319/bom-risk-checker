@@ -262,9 +262,10 @@ function PublicBomAuditInner() {
           <>
             <h1>Free BOM stress test</h1>
             <p>
-              Drop your BOM (.csv / .xlsx) here for a supplier-backed risk and
-              lifecycle review. Results show when a supplier could not verify a
-              component. No account is needed to see the first five components.
+              Upload a BOM (.csv / .xlsx) for a supplier-backed risk and
+              lifecycle review. Cadivor checks every accepted row, then shows
+              the five highest-priority findings. Unverified parts stay clearly
+              labeled as needing verification.
             </p>
             <p className="cv-small-note">
               Up to {status?.max_rows ?? 30} rows and 1 MB. Supplier lookups may
@@ -331,26 +332,24 @@ function PublicBomAuditInner() {
               </button>
             </div>
             <p className="cv-small-note">
-              First five checked components · verify your email for the complete
-              audit.
+              Top {report.preview.length} findings across the checked BOM · verify your email to unlock all component details.
             </p>
             <p className="cv-success-note">
-              Your BOM contains {report.row_count} components. The preview below shows{" "}
-              {report.preview.length} component results.
+              Your BOM contains {report.row_count} components. The preview below ranks the highest-priority findings from the full supplier check.
             </p>
-            <section className="cv-public-audit-metrics" aria-label="Findings in checked components">
+            <section className="cv-public-audit-metrics" aria-label="Findings in the top-ranked preview">
               <div><strong>{report.checked_summary?.blockers ?? "—"}</strong><span>Blockers</span></div>
               <div><strong>{report.checked_summary?.lifecycle_alerts ?? "—"}</strong><span>Lifecycle alerts</span></div>
               <div><strong>{report.checked_summary?.single_source_parts ?? "—"}</strong><span>Single-source parts</span></div>
               <p>
-                Counts are exact for the supplier-verified components shown below.
-                Components not yet checked are not included in these totals.
+                Counts cover the displayed ranked rows. Only supplier-verified rows count as confirmed blockers or sourcing findings.
               </p>
             </section>
             <div className="cv-public-stress-table-wrap">
               <table className="cv-public-stress-table">
                 <thead>
                   <tr>
+                    <th>Rank</th>
                     <th>MPN</th>
                     <th>Manufacturer</th>
                     <th>Lifecycle</th>
@@ -362,11 +361,13 @@ function PublicBomAuditInner() {
                     <th>Source(s) checked</th>
                     <th>Supplier coverage</th>
                     <th>Risk</th>
+                    <th>Why it ranked here</th>
                   </tr>
                 </thead>
                 <tbody>
                   {report.preview.map((row) => (
                     <tr key={`${row.mpn}-${row.manufacturer || ""}`}>
+                      <td>{row.preview_rank ?? "—"}</td>
                       <td>{row.mpn}</td>
                       <td>{row.manufacturer || "Not matched"}</td>
                       <td>{row.lifecycle || "Unknown"}</td>
@@ -389,6 +390,7 @@ function PublicBomAuditInner() {
                       <td>{row.sources || ""}</td>
                       <td>{row.supplier_coverage || ""}</td>
                       <td>{row.risk || ""}</td>
+                      <td>{row.risk_reasons?.join(" · ") || (row.verified ? "No specific driver reported" : "Exact part and supplier evidence need verification")}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -398,8 +400,10 @@ function PublicBomAuditInner() {
               Blank stock or lead-time values mean the supplier did not report a
               usable figure. Lifecycle is shown only when a supplier provided a
               status; Unknown does not mean Active. Inventory reflects the
-              checked supplier sources and can vary by region and time. The free
-              audit does not search for alternate parts.
+              checked supplier sources and can vary by region and time. Verified
+              high and medium risks rank first; unverified evidence gaps appear
+              before verified low-risk rows. The free audit does not search for
+              alternate parts.
             </p>
 
             {report.remaining_count > 0 ? (
@@ -408,15 +412,13 @@ function PublicBomAuditInner() {
                   Locked preview · {report.remaining_count} additional components
                 </strong>
                 <p>
-                  Supplier and lifecycle checks are still pending for these components.
-                  We do not estimate or invent findings before those checks run.
-                  Confirm your email to save the audit and finish checking them.
+                  The details for these {report.remaining_count} checked components remain locked in this preview.
+                  Confirm your email to save and unlock the complete audit.
                 </p>
               </div>
             ) : (
               <p className="cv-small-note">
-                All components fit in the free preview. Verify your email to save
-                and download this audit.
+                All component details fit in the free preview. Verify your email to save and download this audit.
               </p>
             )}
 

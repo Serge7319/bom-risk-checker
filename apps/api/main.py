@@ -804,17 +804,38 @@ async def _analyze_bom_form(
         if not source_report:
             return _json({"detail": "Source BOM report not found"}, 404)
         if applied_decision_ids or used_decision_ids:
-            source_decisions = get_store().list_decision_records(
-                workspace_id=ctx["workspace_id"],
-                analysis_id=derived_from_analysis_id,
-            )
-            decisions_by_id = {
-                str(record.get("id") or record.get("decision_id") or ""): record
-                for record in source_decisions
-            }
+            decisions_by_id: dict[str, dict[str, Any]] = {}
+            # A revision may carry an already-applied approval from an earlier
+            # revision. Follow only same-BOM ancestry, and only trust ancestor
+            # records explicitly linked as approved on the immediate source.
+            cursor_report = source_report
+            seen_report_ids = {derived_from_analysis_id}
+            inherited_approval_ids = set(source_report.get("applied_decision_ids") or [])
+            for depth in range(12):
+                cursor_id = str(cursor_report.get("id") or cursor_report.get("analysis_id") or "").strip()
+                if not cursor_id:
+                    break
+                records = get_store().list_decision_records(
+                    workspace_id=ctx["workspace_id"],
+                    analysis_id=cursor_id,
+                )
+                for record in records:
+                    record_id = str(record.get("id") or record.get("decision_id") or "")
+                    if depth == 0 or record_id in inherited_approval_ids:
+                        if record_id:
+                            decisions_by_id[record_id] = record
+                ancestor_id = str(cursor_report.get("derived_from_analysis_id") or "").strip()
+                if not ancestor_id or ancestor_id in seen_report_ids:
+                    break
+                seen_report_ids.add(ancestor_id)
+                ancestor = _get_visible_report(ancestor_id, workspace_id=ctx["workspace_id"])
+                source_bom_id = str(source_report.get("bom_id") or "")
+                if not ancestor or not source_bom_id or str(ancestor.get("bom_id") or "") != source_bom_id:
+                    break
+                cursor_report = ancestor
             approved_by_id = {
                 str(record.get("id") or record.get("decision_id") or ""): record
-                for record in source_decisions
+                for record in decisions_by_id.values()
                 if record.get("decision") == "approve_alternate"
             }
             if any(decision_id not in approved_by_id for decision_id in applied_decision_ids):
@@ -828,7 +849,7 @@ async def _analyze_bom_form(
                 for decision_id in used_decision_ids
             ):
                 return _json(
-                    {"detail": "Only non-rejected replacement candidates from the source BOM can be applied."},
+                    {"detail": "Only non-rejected candidates linked to this BOM's revision history can be applied."},
                     400,
                 )
             revised_parts = parse_bom_bytes(filename, payload, **intake_options)
@@ -840,12 +861,22 @@ async def _analyze_bom_form(
             for decision_id in used_decision_ids:
                 decision = decisions_by_id[decision_id]
                 current_mpn = str(decision.get("part_a") or "").strip().casefold()
-                candidate_mpn = str(decision.get("part_b") or "").strip().casefold()
-                if not candidate_mpn or candidate_mpn not in revised_mpns or current_mpn in revised_mpns:
+                if decision.get("decision_candidate_scope") == "all_selected":
+                    candidates = decision.get("decision_candidate_mpns")
+                    if not isinstance(candidates, list):
+                        candidates = []
+                else:
+                    candidates = [decision.get("part_b")]
+                present_candidates = {
+                    str(candidate or "").strip().casefold()
+                    for candidate in candidates
+                    if str(candidate or "").strip().casefold() in revised_mpns
+                }
+                if not present_candidates or len(present_candidates) != 1 or current_mpn in revised_mpns:
                     return _json(
                         {
                             "detail": (
-                                "The new BOM must contain each approved replacement and remove its current part before the decision can be linked."
+                                "The new BOM must contain exactly one saved candidate for each linked decision and remove its source part."
                             )
                         },
                         400,
@@ -3291,6 +3322,35 @@ async def billing_public_catalog_get(request: Request) -> JSONResponse:
     return response
 
 
+async def billing_public_addons_catalog_get(request: Request) -> JSONResponse:
+    """Expose configured one-time usage-pack amounts without Stripe identifiers."""
+    try:
+        result, status = subscription_billing_service.request_public_action(
+            action="addons_catalog"
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"ok": False, "detail": "Usage pack pricing is temporarily unavailable."}, 503)
+    if status < 200 or status >= 300 or result.get("ok") is not True:
+        return _json({"ok": False, "detail": "Usage pack pricing is temporarily unavailable."}, 503)
+
+    raw_addons = result.get("addons") if isinstance(result.get("addons"), dict) else {}
+    addons: dict[str, dict[str, Any]] = {}
+    for key in ("bom_analysis", "monitored_parts"):
+        value = raw_addons.get(key) if isinstance(raw_addons.get(key), dict) else {}
+        amount = value.get("amount")
+        credits = value.get("credits")
+        addons[key] = {
+            "enabled": value.get("enabled") is True,
+            "amount": amount if isinstance(amount, int) and not isinstance(amount, bool) else None,
+            "currency": str(value.get("currency") or "").lower(),
+            "credits": credits if isinstance(credits, int) and not isinstance(credits, bool) and credits > 0 else None,
+            "interval": "one_time",
+        }
+    response = _json({"ok": True, "addons": addons}, 200)
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return response
+
+
 async def one_time_report_status_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -3528,7 +3588,7 @@ async def public_bom_stress_status(request: Request) -> JSONResponse:
 
 
 async def public_bom_stress_audit(request: Request) -> JSONResponse:
-    """Anonymous BOM teaser: supplier lookups only for the first five rows."""
+    """Check the small BOM and reveal only its top-five ranked preview."""
     from src.public_bom_stress_test import (
         MAX_BYTES,
         PUBLIC_BOM_BUDGET_MESSAGE,
@@ -5505,6 +5565,7 @@ app = Starlette(
         Route("/v1/reports/{analysis_id}", developer_api_report_get, methods=["GET"]),
         Route("/billing/portal", billing_portal_post, methods=["POST"]),
         Route("/billing/public-catalog", billing_public_catalog_get, methods=["GET"]),
+        Route("/billing/public-addons-catalog", billing_public_addons_catalog_get, methods=["GET"]),
         Route("/billing/checkout-prep", billing_checkout_prep_post, methods=["POST"]),
         Route("/billing/one-time-report", one_time_report_status_get, methods=["GET"]),
         Route("/billing/one-time-report/checkout", one_time_report_checkout_post, methods=["POST"]),

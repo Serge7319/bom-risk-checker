@@ -1,8 +1,8 @@
 # Public BOM stress test: launch checklist
 
-The public entry page is https://www.cadivor.com/#/analyze. Its **Analyze a BOM free** buttons lead to a Cadivor-branded page with the anonymous uploader beneath the main banner. The direct fallback is https://app.cadivor.com/?public=stress. Before sharing the link in outreach, complete the email-to-Reports check in step 7. Use the Supabase project and Railway production service already serving app.cadivor.com. Do not send API keys, the signing secret, or a live email link in chat.
+The public free-audit page is https://www.cadivor.com/free-audit/. Its **Run the free audit** button opens the Cadivor-branded anonymous uploader at app.cadivor.com/public-bom-audit. The direct fallback is https://app.cadivor.com/?public=stress. Before sharing the link in outreach, complete the email-to-Reports check in step 7. Use the Supabase project and Railway production service already serving app.cadivor.com. Do not send API keys, the signing secret, or a live email link in chat.
 
-**Expected visitor flow:** Upload a CSV/XLSX BOM (1–30 rows, up to 1 MB, with MPN and Qty columns), see the first five rows, verify an email address, then see the complete audit in Reports. Consumer addresses such as Gmail are accepted; email verification and the anonymous upload limit still apply. There are two anonymous uploads per IP per rolling 24 hours. The full report expires after seven days and downloads as CSV; this feature does not generate a PDF.
+**Expected visitor flow:** Upload a CSV/XLSX BOM (1–30 rows, up to 1 MB, with MPN and Qty columns), see the five highest-priority findings from checks across the complete BOM, verify an email address, then see the full audit in Reports. Verified High and Medium findings rank first; exact-part verification gaps appear before verified Low rows. The full supplier-backed check counts against the daily enriched-row budget. Consumer addresses such as Gmail are accepted; email verification and the anonymous upload limit still apply. There are two anonymous uploads per IP per rolling 24 hours. The full report expires after seven days and downloads as CSV; this feature does not generate a PDF.
 
 ## 1. Supabase: run the database migration
 
@@ -117,7 +117,7 @@ The homepage flag is set in `marketing-web/index.html` by the launch change:
 window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED = true;
 ~~~
 
-After step 7 passes, deploy the launch change to both the app and `marketing-web/` through their existing release processes. In a signed-out window open [www.cadivor.com](https://www.cadivor.com/). Click **Analyze a BOM free** in the hero and desktop/mobile navigation; each should open [the branded audit page](https://www.cadivor.com/#/analyze). Confirm the home hero remains the first section on the homepage, and the audit form sits beneath its own banner on the audit page. The old direct app URL remains available for compatibility but is not presented as a second entry point. Share the audit page in outreach after the confirmed-email route unlocks the six-row audit in Reports.
+After step 7 passes, deploy the launch change to both the app and `marketing-web/` through their existing release processes. In a signed-out window open [www.cadivor.com](https://www.cadivor.com/). Click **Analyze a BOM free** in the hero and desktop/mobile navigation; each should open [the public free-audit page](https://www.cadivor.com/free-audit/). Confirm the home hero remains the first section on the homepage, and the audit form sits beneath its own banner on the audit page. The old direct app URL remains available for compatibility but is not presented as a second entry point. Share the audit page in outreach after the confirmed-email route unlocks the six-row audit in Reports.
 
 ## Send me only the checkpoint result
 

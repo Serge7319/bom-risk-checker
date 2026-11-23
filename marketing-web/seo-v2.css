@@ -123,3 +123,36 @@
   .seo-header .seo-header-inner .seo-header-actions>.seo-button{width:auto;min-height:38px;padding:7px 9px;font-size:12px}
   .seo-nav{order:2}
 }
+
+/* Crawlable demo/contact form used by the direct /contact/ URL. */
+.seo-contact-section{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:34px;align-items:start}
+.seo-contact-section>div:first-child h2{margin:0 0 10px;color:var(--navy);font-size:27px;line-height:1.25}
+.seo-contact-section>div:first-child>p{color:var(--muted)}
+.seo-contact-card{padding:24px;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 14px 34px rgba(16,40,75,.08)}
+.seo-contact-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
+.seo-form-field{display:grid;gap:6px;color:#294365;font-size:13px;font-weight:750}
+.seo-form-field input,.seo-form-field select,.seo-form-field textarea{width:100%;min-height:44px;padding:10px 12px;border:1px solid #cbd7e8;border-radius:9px;background:#fff;color:#182a44;font:inherit;font-size:14px}
+.seo-form-field textarea{min-height:128px;resize:vertical}
+.seo-form-field input:focus,.seo-form-field select:focus,.seo-form-field textarea:focus{outline:3px solid #dce8ff;border-color:#4d82e8}
+.seo-form-field-wide{grid-column:1/-1}
+.seo-form-consent{display:flex;align-items:flex-start;gap:10px;color:#536987;font-size:12px;line-height:1.5}
+.seo-form-consent input{flex:0 0 auto;margin-top:3px}
+.seo-form-status{margin:0;color:#61738e;font-size:12px;line-height:1.5}
+.seo-form-status[role=alert]{color:#a32934}
+.seo-contact-form .seo-button{width:100%;cursor:pointer;font:inherit;font-weight:800}
+.seo-contact-form .seo-button:disabled{opacity:.65;cursor:wait}
+.seo-contact-honeypot{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}
+.seo-contact-success{padding:8px 0}
+.seo-contact-success h2{margin:8px 0;color:var(--navy);font-size:25px}
+.seo-contact-success p{color:#526784}
+.seo-contact-success[hidden]{display:none!important}
+.seo-pricing-addons{margin-top:22px;padding:24px;border:1px solid #d6e2f2;border-radius:17px;background:linear-gradient(180deg,#f7faff,#fff)}
+.seo-pricing-addons h2{margin:0 0 8px;color:var(--navy);font-size:23px}
+.seo-pricing-addons>p{max-width:850px;color:var(--muted);font-size:14px}
+.seo-pricing-addons .seo-grid{margin-top:15px}
+.seo-addon-card h3{margin:0 0 6px;color:var(--navy)}
+.seo-addon-price{margin:4px 0;color:#10284b!important;font-size:26px!important;font-weight:850}
+.seo-addon-card .seo-button{margin-top:6px}
+.seo-pricing-addon-status{font-size:12px!important}
+@media(max-width:800px){.seo-contact-section{grid-template-columns:1fr;gap:20px}}
+@media(max-width:560px){.seo-contact-card{padding:18px}.seo-contact-form{grid-template-columns:1fr}.seo-form-field-wide{grid-column:auto}}

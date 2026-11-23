@@ -1,4 +1,75 @@
 (() => {
+  const addonSection = document.querySelector("[data-addons-catalog-url]");
+  const formatMoney = (cents, currency) => {
+    const code = /^[A-Z]{3}$/.test(String(currency || "").toUpperCase())
+      ? String(currency).toUpperCase()
+      : "USD";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+    }).format(cents / 100);
+  };
+
+  if (addonSection) {
+    const addonCards = addonSection.querySelector("[data-addon-cards]");
+    const addonStatus = addonSection.querySelector("[data-addon-status]");
+    const addonDefinitions = [
+      { key: "bom_analysis", title: "BOM analysis pack", unitLabel: "additional BOM analyses" },
+      { key: "monitored_parts", title: "Monitored-parts pack", unitLabel: "additional monitored parts" },
+    ];
+    fetch(addonSection.dataset.addonsCatalogUrl, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("Usage packs unavailable");
+        return response.json();
+      })
+      .then((catalog) => {
+        if (!catalog || catalog.ok !== true || !catalog.addons) {
+          throw new Error("Usage packs unavailable");
+        }
+        const available = addonDefinitions.filter(({ key }) => {
+          const item = catalog.addons[key];
+          return item && item.enabled === true && Number.isInteger(item.amount) &&
+            item.amount > 0 && Number.isInteger(item.credits) && item.credits > 0;
+        });
+        addonCards.replaceChildren();
+        for (const definition of available) {
+          const item = catalog.addons[definition.key];
+          const card = document.createElement("article");
+          card.className = "seo-card seo-addon-card";
+          const kicker = document.createElement("span");
+          kicker.className = "seo-kicker";
+          kicker.textContent = "ONE-TIME PURCHASE";
+          const heading = document.createElement("h3");
+          heading.textContent = definition.title;
+          const price = document.createElement("p");
+          price.className = "seo-addon-price";
+          price.textContent = formatMoney(item.amount, item.currency);
+          const units = document.createElement("p");
+          units.textContent = `${Number(item.credits).toLocaleString()} ${definition.unitLabel}`;
+          const note = document.createElement("p");
+          note.textContent = "For eligible active paid workspaces. Sign in to review pack eligibility and purchase.";
+          const link = document.createElement("a");
+          link.className = "seo-button";
+          link.href = "https://app.cadivor.com/settings?tab=billing";
+          link.textContent = "View account billing";
+          card.append(kicker, heading, price, units, note, link);
+          addonCards.append(card);
+        }
+        addonStatus.textContent = available.length
+          ? "Displayed prices and credit amounts come from the active billing catalog. Checkout verifies account eligibility."
+          : "No usage packs are currently published for checkout. Available packs will appear here after the billing price and credit amount are configured.";
+      })
+      .catch(() => {
+        addonCards.replaceChildren();
+        addonStatus.textContent = "Published usage pack prices could not be refreshed. Check account billing for current availability.";
+      });
+  }
+
   const section = document.querySelector("[data-pricing-catalog-url]");
   if (!section) return;
 

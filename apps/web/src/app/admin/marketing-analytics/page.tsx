@@ -46,6 +46,8 @@ const EVENT_LABELS: Record<string, string> = {
   subscription_created: "Subscriptions created",
   one_time_report_purchased: "One-time reports purchased",
   demo_requested: "Demo requests",
+  contact_form_started: "Contact forms started",
+  contact_form_completed: "Contact forms completed",
 };
 
 const EVENT_ORDER = Object.keys(EVENT_LABELS);
