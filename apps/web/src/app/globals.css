@@ -5759,3 +5759,21 @@ button {
   font-weight: 650;
   line-height: 1.45;
 }
+
+.admin-account-profile-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+}
+
+.admin-account-profile-link:hover,
+.admin-account-profile-link:focus-visible {
+  text-decoration-color: currentColor;
+}

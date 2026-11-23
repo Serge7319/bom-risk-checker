@@ -3981,6 +3981,32 @@ async def admin_users_get(request: Request) -> JSONResponse:
     return _json({"ok": True, "users": users})
 
 
+async def admin_user_profile_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    raw_user_id = str(request.path_params.get("target_user_id") or "").strip()
+    try:
+        target_user_id = str(uuid.UUID(raw_user_id))
+    except (ValueError, TypeError):
+        return _json({"detail": "Account was not found."}, 404)
+    try:
+        profile = await run_in_threadpool(
+            lambda: supabase_auth.admin_get_account_profile(
+                access_token=str(ctx.get("access_token") or ""),
+                target_user_id=target_user_id,
+            )
+        )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    except Exception:  # noqa: BLE001
+        logging.exception("admin_user_profile_read_failed")
+        return _json({"detail": "The user profile is temporarily unavailable."}, 503)
+    return _json({"ok": True, "user": profile})
+
+
 async def admin_user_status_patch(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -5498,6 +5524,7 @@ app = Starlette(
         Route("/admin/account-entitlements", account_entitlements_admin_get, methods=["GET"]),
         Route("/admin/account-entitlements", account_entitlements_admin_put, methods=["PUT"]),
         Route("/admin/users", admin_users_get, methods=["GET"]),
+        Route("/admin/users/{target_user_id}", admin_user_profile_get, methods=["GET"]),
         Route("/admin/users/{target_user_id}", admin_user_status_patch, methods=["PATCH"]),
         Route("/admin/users/{target_user_id}", admin_user_delete, methods=["DELETE"]),
         Route(

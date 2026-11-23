@@ -338,6 +338,17 @@ def admin_list_accounts(access_token: str) -> list[dict[str, Any]]:
     return result
 
 
+def admin_get_account_profile(*, access_token: str, target_user_id: str) -> dict[str, Any]:
+    result = _rpc(
+        access_token,
+        "cadivor_admin_get_user_profile_v1",
+        {"target_user_id": target_user_id},
+    )
+    if not isinstance(result, dict) or not result.get("id"):
+        raise AuthError("Account not found.", 404)
+    return result
+
+
 def admin_set_account_status(
     *, access_token: str, target_user_id: str, status: str, reason: str = ""
 ) -> None:
