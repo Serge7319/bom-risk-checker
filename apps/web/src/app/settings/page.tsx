@@ -516,9 +516,38 @@ export default function Page() {
     setBillingError("");
     trackMarketingEvent("upgrade_clicked", { plan: token, intent: "subscription" }, "/settings");
     try {
-      const result = canManageBilling
-        ? await beginBillingPortal(session.access_token)
-        : await beginSubscriptionCheckout(session.access_token, token, billingInterval);
+      let result: Awaited<ReturnType<typeof beginSubscriptionCheckout>>;
+      let checkoutStarted = !canManageBilling;
+      if (canManageBilling) {
+        let portalNeedsReplacement = false;
+        try {
+          const portal = await beginBillingPortal(session.access_token);
+          if (portal.ok && portal.checkout?.url) {
+            window.location.assign(portal.checkout.url);
+            return;
+          }
+          portalNeedsReplacement = portal.code === "billing_subscription_not_found";
+          if (!portalNeedsReplacement) {
+            throw new ApiError(
+              portal.detail || "Secure billing could not be opened.",
+              409,
+              portal as unknown as Record<string, unknown>,
+            );
+          }
+        } catch (err) {
+          portalNeedsReplacement = err instanceof ApiError &&
+            err.payload.code === "billing_subscription_not_found";
+          if (!portalNeedsReplacement) throw err;
+        }
+        // Older or test-mode subscription links can remain on a profile after
+        // Stripe has no active live subscription. Let the owner start a fresh
+        // Checkout session instead of leaving every plan change stranded in the
+        // billing portal error state.
+        result = await beginSubscriptionCheckout(session.access_token, token, billingInterval);
+        checkoutStarted = true;
+      } else {
+        result = await beginSubscriptionCheckout(session.access_token, token, billingInterval);
+      }
       const url = result.checkout?.url;
       if (!result.ok || !url) {
         throw new ApiError(
@@ -527,7 +556,7 @@ export default function Page() {
           result as unknown as Record<string, unknown>,
         );
       }
-      if (!canManageBilling) {
+      if (checkoutStarted) {
         trackMarketingEvent("checkout_started", { plan: token, intent: "subscription" }, "/settings");
       }
       window.location.assign(url);
