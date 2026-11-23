@@ -64,9 +64,27 @@
   }
 
   const auditFrame = document.getElementById("freeAuditFrame");
+  function analyticsChoice() {
+    try {
+      const value = localStorage.getItem(CONSENT_KEY) || "";
+      return value === "accepted" || value === "rejected" ? value : "";
+    } catch { return ""; }
+  }
+
+  function notifyAuditConsent() {
+    const choice = analyticsChoice();
+    if (!choice || !(auditFrame instanceof HTMLIFrameElement) || !auditFrame.contentWindow) return;
+    auditFrame.contentWindow.postMessage(
+      { type: "cadivor:marketing-analytics-consent", choice },
+      APP_ORIGIN,
+    );
+  }
+
   function loadAuditEmbed() {
     if (!(auditFrame instanceof HTMLIFrameElement) || auditFrame.hasAttribute("src")) return;
     const params = new URLSearchParams({ embed: "true", source: "free-audit-page" });
+    const choice = analyticsChoice();
+    if (choice) params.set("analytics_consent", choice);
     if (allowed()) {
       for (const [key, value] of Object.entries(utm())) params.set(key, value);
       const visitId = sessionId();
@@ -84,6 +102,7 @@
       if (!Number.isFinite(height)) return;
       auditFrame.style.height = `${Math.min(4200, Math.max(360, Math.ceil(height)))}px`;
     });
+    auditFrame.addEventListener("load", notifyAuditConsent);
     loadAuditEmbed();
   }
 
@@ -102,6 +121,7 @@
       applyChoice();
       decorateAppLinks();
       loadAuditEmbed();
+      notifyAuditConsent();
       if (choice === "accepted") track("page_view");
     });
   });

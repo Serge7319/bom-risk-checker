@@ -7,9 +7,43 @@ const CONSENT_KEY = "cadivor_analytics_consent_v1";
 export function AnalyticsConsent() {
   const [choice, setChoice] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [embedded, setEmbedded] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isTrustedMarketingOrigin = (origin: string) =>
+      origin === "https://cadivor.com" ||
+      origin === "https://www.cadivor.com" ||
+      /^https:\/\/[a-z0-9-]+\.cadivor\.pages\.dev$/i.test(origin);
+    let parentOrigin = "";
+    try { parentOrigin = new URL(document.referrer).origin; } catch { /* no referrer */ }
+    const isEmbeddedAudit =
+      window.parent !== window &&
+      ["1", "true"].includes((params.get("embed") || "").toLowerCase()) &&
+      isTrustedMarketingOrigin(parentOrigin);
+
+    if (isEmbeddedAudit) {
+      setEmbedded(true);
+      const applyEmbeddedChoice = (value: string | null) => {
+        if (value !== "accepted" && value !== "rejected") return;
+        try { localStorage.setItem(CONSENT_KEY, value); } catch { /* default to no tracking */ }
+        setChoice(value);
+        if (value === "accepted") window.dispatchEvent(new Event("cadivor-analytics-consent"));
+      };
+      applyEmbeddedChoice(params.get("analytics_consent"));
+      const onParentMessage = (event: MessageEvent) => {
+        if (event.source !== window.parent || !isTrustedMarketingOrigin(event.origin)) return;
+        if (event.data?.type !== "cadivor:marketing-analytics-consent") return;
+        applyEmbeddedChoice(event.data.choice);
+      };
+      window.addEventListener("message", onParentMessage);
+      setReady(true);
+      return () => window.removeEventListener("message", onParentMessage);
+    }
+
     try { setChoice(localStorage.getItem(CONSENT_KEY)); } catch { setChoice("rejected"); }
+    setReady(true);
   }, []);
 
   function choose(value: "accepted" | "rejected") {
@@ -18,6 +52,8 @@ export function AnalyticsConsent() {
     setOpen(false);
     if (value === "accepted") window.dispatchEvent(new Event("cadivor-analytics-consent"));
   }
+
+  if (!ready || embedded) return null;
 
   if (choice !== null && !open) {
     return (
