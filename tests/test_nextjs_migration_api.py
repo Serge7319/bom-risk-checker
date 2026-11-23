@@ -133,7 +133,7 @@ def test_boms_validate_route_no_analysis_side_effects():
     assert set(sa._REPORTS.keys()) == before_ids
 
 
-def test_edit_bom_creates_new_revision_and_validates_applied_decisions():
+def test_edit_bom_carries_decisions_as_context_without_transferring_approval():
     from apps.api.workspace_store import get_store
 
     client = TestClient(app)
@@ -171,7 +171,6 @@ def test_edit_bom_creates_new_revision_and_validates_applied_decisions():
             "bom_name": "Controller",
             "revision": "B",
             "source_analysis_id": source_id,
-            "applied_decision_ids": f'["{decision["id"]}"]',
             "used_decision_ids": f'["{decision["id"]}"]',
         },
     )
@@ -184,23 +183,41 @@ def test_edit_bom_creates_new_revision_and_validates_applied_decisions():
     assert result["revision"] == "B"
     assert [part["MPN"] for part in result["parts"]] == ["SEN0142"]
     assert result["derived_from_analysis_id"] == source_id
-    assert result["applied_decision_ids"] == [decision["id"]]
+    assert result.get("applied_decision_ids") in (None, [])
     assert result["used_decision_ids"] == [decision["id"]]
 
-    rejected = client.post(
+    revised_again = client.post(
         "/boms/analyze",
         headers=headers,
-        files={"file": ("controller-rev-C.csv", b"MPN,Quantity\nSEN0142,1\n", "text/csv")},
+        files={"file": ("controller-rev-C.csv", b"MPN,Manufacturer,Quantity\nSEN0142,DFRobot,1\n", "text/csv")},
         data={
             "project_name": "Drone",
             "bom_name": "Controller",
             "revision": "C",
-            "source_analysis_id": source_id,
-            "applied_decision_ids": '["not-an-approved-decision"]',
+            "source_analysis_id": new_id,
+            "used_decision_ids": f'["{decision["id"]}"]',
+        },
+    )
+    assert revised_again.status_code == 200, revised_again.text
+    carried = client.get(f"/reports/{revised_again.json()['analysis_id']}", headers=headers).json()
+    assert carried["used_decision_ids"] == [decision["id"]]
+    assert carried.get("applied_decision_ids") in (None, [])
+
+    rejected = client.post(
+        "/boms/analyze",
+        headers=headers,
+        files={"file": ("controller-rev-D.csv", b"MPN,Quantity\nSEN0142,1\n", "text/csv")},
+        data={
+            "project_name": "Drone",
+            "bom_name": "Controller",
+            "revision": "D",
+            "source_analysis_id": new_id,
+            "applied_decision_ids": f'["{decision["id"]}"]',
+            "used_decision_ids": f'["{decision["id"]}"]',
         },
     )
     assert rejected.status_code == 400
-    assert "Only approved alternate decisions" in rejected.json()["detail"]
+    assert "historical context only" in rejected.json()["detail"]
 
 
 def test_hold_for_review_candidate_can_update_report_without_claiming_approval():

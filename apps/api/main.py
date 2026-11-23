@@ -791,10 +791,21 @@ async def _analyze_bom_form(
             return _json({"detail": "Replacement decision references are invalid."}, 400)
         used_decision_ids = list(dict.fromkeys(item.strip() for item in parsed_decision_ids))
     elif applied_decision_ids:
-        # Backward compatible for callers that send only approved decisions.
+        # Keep parsing deterministic; the request is rejected below because
+        # an earlier approval cannot approve a newly analyzed revision.
         used_decision_ids = list(applied_decision_ids)
     if set(applied_decision_ids) - set(used_decision_ids):
         return _json({"detail": "Approved decisions must also be listed as applied candidates."}, 400)
+    if applied_decision_ids:
+        return _json(
+            {
+                "detail": (
+                    "Earlier approvals are historical context only. Create the new revision, "
+                    "then record a fresh decision against that revision."
+                )
+            },
+            400,
+        )
     if (applied_decision_ids or used_decision_ids) and not derived_from_analysis_id:
         return _json({"detail": "Replacement decisions require a source BOM report."}, 400)
     if derived_from_analysis_id:
@@ -805,12 +816,12 @@ async def _analyze_bom_form(
             return _json({"detail": "Source BOM report not found"}, 404)
         if applied_decision_ids or used_decision_ids:
             decisions_by_id: dict[str, dict[str, Any]] = {}
-            # A revision may carry an already-applied approval from an earlier
-            # revision. Follow only same-BOM ancestry, and only trust ancestor
-            # records explicitly linked as approved on the immediate source.
+            # Carry decision records as review context across same-BOM history.
+            # Their prior approval never transfers to the new revision.
             cursor_report = source_report
             seen_report_ids = {derived_from_analysis_id}
-            inherited_approval_ids = set(source_report.get("applied_decision_ids") or [])
+            inherited_decision_ids = set(source_report.get("used_decision_ids") or [])
+            inherited_decision_ids.update(source_report.get("applied_decision_ids") or [])
             for depth in range(12):
                 cursor_id = str(cursor_report.get("id") or cursor_report.get("analysis_id") or "").strip()
                 if not cursor_id:
@@ -821,7 +832,7 @@ async def _analyze_bom_form(
                 )
                 for record in records:
                     record_id = str(record.get("id") or record.get("decision_id") or "")
-                    if depth == 0 or record_id in inherited_approval_ids:
+                    if depth == 0 or record_id in inherited_decision_ids:
                         if record_id:
                             decisions_by_id[record_id] = record
                 ancestor_id = str(cursor_report.get("derived_from_analysis_id") or "").strip()
@@ -833,16 +844,6 @@ async def _analyze_bom_form(
                 if not ancestor or not source_bom_id or str(ancestor.get("bom_id") or "") != source_bom_id:
                     break
                 cursor_report = ancestor
-            approved_by_id = {
-                str(record.get("id") or record.get("decision_id") or ""): record
-                for record in decisions_by_id.values()
-                if record.get("decision") == "approve_alternate"
-            }
-            if any(decision_id not in approved_by_id for decision_id in applied_decision_ids):
-                return _json(
-                    {"detail": "Only approved alternate decisions can be linked as approval evidence."},
-                    400,
-                )
             if any(
                 decision_id not in decisions_by_id
                 or decisions_by_id[decision_id].get("decision") == "reject_alternate"

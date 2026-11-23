@@ -1439,7 +1439,12 @@ export default function Page() {
                       Number(plan.ai_credits) > 0
                         ? `${limit(plan.ai_credits)} Ask Cadivor credits`
                         : "Ask Cadivor not included",
-                      plan.team_features ? "Team collaboration" : "Individual workspace",
+                      plan.team_features
+                        ? plan.included_users == null
+                          ? "Team collaboration · unlimited members"
+                          : `Team collaboration · up to ${limit(plan.included_users)} members`
+                        : "Individual workspace",
+                      plan.api_access ? "API access included" : "",
                     ].filter(Boolean);
                     let actionText = "Choose plan";
                     if (current) actionText = "Current plan";

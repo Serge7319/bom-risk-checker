@@ -1253,6 +1253,7 @@ function ComparePartsInner() {
                         <td>
                           {row.current}
                           <div className="cv-small-note">Source: {row.currentSource}</div>
+                          <div className="cv-small-note">Retrieved: {row.currentRetrievedAt}</div>
                           <div className="cv-small-note">
                             {row.currentClass} · {row.currentCondition}
                           </div>
@@ -1261,6 +1262,7 @@ function ComparePartsInner() {
                           <td key={`${row.attribute}-${candidate.mpn}`}>
                             {candidate.value}
                             <div className="cv-small-note">Source: {candidate.source}</div>
+                            <div className="cv-small-note">Retrieved: {candidate.retrievedAt}</div>
                             <div className="cv-small-note">
                               {candidate.valueClass} · {candidate.condition}
                             </div>
@@ -1291,7 +1293,7 @@ function ComparePartsInner() {
                       <th>Property</th>
                       <th>Current</th>
                       <th>Candidate</th>
-                      <th>Sources</th>
+                      <th>Source / retrieved</th>
                       <th>Class / condition</th>
                       <th>Assessment</th>
                       <th>Evidence / review note</th>
@@ -1312,7 +1314,9 @@ function ComparePartsInner() {
                         </td>
                         <td>
                           <div className="cv-small-note">A: {text(row["Part A source"], "Not stated")}</div>
+                          <div className="cv-small-note">Retrieved: {text(row["Part A retrieved at"], "Date not recorded")}</div>
                           <div className="cv-small-note">B: {text(row["Part B source"], "Not stated")}</div>
+                          <div className="cv-small-note">Retrieved: {text(row["Part B retrieved at"], "Date not recorded")}</div>
                         </td>
                         <td>
                           <div className="cv-small-note">
@@ -1382,7 +1386,13 @@ function ComparePartsInner() {
                         {items.map((item, index) => (
                           <li key={`${String(item.document || "document")}-${String(item.page || index)}-${index}`}>
                             <span>{text(item.excerpt)}</span>
-                            <small>{text(item.document, "Datasheet")}{item.page ? ` · p. ${String(item.page)}` : ""}</small>
+                            <small>
+                              {item.source_url && /^https?:\/\//i.test(String(item.source_url))
+                                ? <a href={String(item.source_url)} target="_blank" rel="noreferrer">{text(item.document, "Manufacturer datasheet")}</a>
+                                : text(item.document, "Manufacturer datasheet")}
+                              {item.page ? ` · p. ${String(item.page)}` : ""}
+                              {` · retrieved ${item.retrieved_at ? reportDate(item.retrieved_at) : "date not recorded"}`}
+                            </small>
                           </li>
                         ))}
                       </ul>
@@ -1437,7 +1447,7 @@ function ComparePartsInner() {
                             <strong>{field.attribute}</strong>: {field.value}
                             <small>
                               {" "}
-                              · {field.source} · {field.valueClass} · {field.condition} · {field.assessment}
+                              · {field.source} · retrieved {field.retrievedAt} · {field.valueClass} · {field.condition} · {field.assessment}
                             </small>
                           </li>
                         ))}

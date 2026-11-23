@@ -217,7 +217,6 @@ function ReportPageInner() {
   const [projectNameDraft, setProjectNameDraft] = useState("");
   const [bomNameDraft, setBomNameDraft] = useState("");
   const [revisionDraft, setRevisionDraft] = useState("");
-  const [appliedDecisionIds, setAppliedDecisionIds] = useState<string[]>([]);
   const [usedDecisionIds, setUsedDecisionIds] = useState<string[]>([]);
   const [decisionCandidateSelection, setDecisionCandidateSelection] = useState<Record<string, string>>({});
   const [decisionAppliedCandidates, setDecisionAppliedCandidates] = useState<Record<string, string>>({});
@@ -361,14 +360,16 @@ function ReportPageInner() {
       const selectedDecision = applyDecisionId
         ? currentDecisions.find((decision) => decision.id === applyDecisionId)
         : undefined;
-      let initialAppliedDecisionIds: string[] = [];
       let initialUsedDecisionIds: string[] = [];
       const initialCandidateSelection: Record<string, string> = {};
       const initialAppliedCandidates: Record<string, string> = {};
 
-      // Keep approved decision lineage when exactly one approved candidate is
-      // still in this revision and the replaced source MPN is gone.
-      const inheritedAppliedIds = new Set(report.applied_decision_ids || []);
+      // Carry earlier decision records forward as traceability context. Their
+      // approval belongs to the earlier BOM revision and must not transfer.
+      const inheritedDecisionIds = new Set([
+        ...(report.used_decision_ids || []),
+        ...(report.applied_decision_ids || []),
+      ]);
       const sourceChainRecords: DecisionRecord[] = [];
       let sourceCursor: Report | null = report;
       const seenSourceIds = new Set([currentId]);
@@ -386,7 +387,7 @@ function ReportPageInner() {
         try {
           const payload = await listDecisionRecords(session.access_token, sourceId);
           sourceChainRecords.push(...(payload.records || []).filter((record) =>
-            inheritedAppliedIds.has(record.id) && record.decision === "approve_alternate",
+            inheritedDecisionIds.has(record.id || record.decision_id),
           ));
         } catch {
           // A missing ancestor history does not prevent an ordinary BOM edit.
@@ -415,7 +416,6 @@ function ReportPageInner() {
         if (carriedSourceMpns.has(sourceMpn.toLowerCase())) continue;
         carriedSourceMpns.add(sourceMpn.toLowerCase());
         if (!initialUsedDecisionIds.includes(recordId)) initialUsedDecisionIds.push(recordId);
-        if (!initialAppliedDecisionIds.includes(recordId)) initialAppliedDecisionIds.push(recordId);
         initialCandidateSelection[recordId] = presentCandidates[0].mpn;
         initialAppliedCandidates[recordId] = presentCandidates[0].mpn;
         automaticCarryLabels.push({ label: `${sourceMpn} → ${presentCandidates[0].mpn}`, mpn: presentCandidates[0].mpn });
@@ -451,9 +451,7 @@ function ReportPageInner() {
               .filter((record) => record.part_a.trim().toLowerCase() === currentMpn)
               .map((record) => record.id || record.decision_id),
           );
-          initialAppliedDecisionIds = initialAppliedDecisionIds.filter((id) => !sameSourceDecisionIds.has(id));
           initialUsedDecisionIds = initialUsedDecisionIds.filter((id) => !sameSourceDecisionIds.has(id));
-          initialAppliedDecisionIds.push(selectedDecision.id);
           initialUsedDecisionIds.push(selectedDecision.id);
           initialAppliedCandidates[selectedDecision.id] = candidate.mpn;
         }
@@ -462,7 +460,6 @@ function ReportPageInner() {
       setBomNameDraft(userFacingLabel(report.bom_name || report.filename, "Saved BOM"));
       setRevisionDraft(revisionCandidate(String(report.revision || "A"), used));
       setBomEditorRows(initialRows);
-      setAppliedDecisionIds(initialAppliedDecisionIds);
       setUsedDecisionIds(initialUsedDecisionIds);
       setDecisionCandidateSelection(initialCandidateSelection);
       setDecisionAppliedCandidates(initialAppliedCandidates);
@@ -521,12 +518,8 @@ function ReportPageInner() {
         .filter((item) => item.part_a.trim().toLowerCase() === currentMpn)
         .map((item) => item.id || item.decision_id),
     );
-    setAppliedDecisionIds((current) => {
-      const next = current.filter((id) => !decisionsForPart.has(id));
-      return decision.decision === "approve_alternate"
-        ? [...next, decision.id]
-        : next;
-    });
+    // The chosen alternate can be put into the draft, but the source report's
+    // approval is not an approval for this new revision.
     setUsedDecisionIds((current) => [
       ...current.filter((id) => !decisionsForPart.has(id)),
       decision.id,
@@ -569,10 +562,6 @@ function ReportPageInner() {
         return Boolean(sourceMpn && !currentMpns.has(sourceMpn) && presentCandidates.length === 1);
       };
       const validUsedDecisionIds = [...new Set(usedDecisionIds)].filter(revisionDecisionIsStillUsed);
-      const validAppliedDecisionIds = [...new Set(appliedDecisionIds)].filter((decisionId) =>
-        validUsedDecisionIds.includes(decisionId)
-        && decisionById.get(decisionId)?.decision === "approve_alternate",
-      );
       const header = ["MPN", "Manufacturer", "Description", "Parent MPN", "Line Type", "Quantity"];
       const lines = [
         header.map(csvCell).join(","),
@@ -596,7 +585,6 @@ function ReportPageInner() {
         bomName: bomNameDraft.trim(),
         revision: revisionDraft.trim(),
         sourceAnalysisId: String(report.analysis_id || report.id),
-        appliedDecisionIds: validAppliedDecisionIds,
         usedDecisionIds: validUsedDecisionIds,
       });
       setBomEditorOpen(false);
@@ -705,7 +693,7 @@ function ReportPageInner() {
               <div>
                 <div className="cv-eyebrow">BOM revision editor</div>
                 <h2 id="bom-editor-title">Edit BOM and create a new revision</h2>
-                <p>The current saved report stays unchanged. Cadivor validates and re-analyzes the edited part list as a new revision on this saved BOM{usedDecisionIds.length ? "; the selected approved replacement is already applied in this draft" : ""}.</p>
+                <p>The current saved report stays unchanged. Cadivor validates and re-analyzes this part list as a new revision. Earlier decisions carry forward for context only; reapproval is required for the new revision.</p>
               </div>
               <span className="cv-badge blue">New revision</span>
             </div>
@@ -730,8 +718,8 @@ function ReportPageInner() {
 
               {carriedDecisionLabels.length ? (
                 <div className="cv-success-note" role="status" style={{ margin: "10px 0 14px" }}>
-                  <strong>Approved decisions carried forward:</strong>{" "}
-                  {carriedDecisionLabels.map((item) => item.label).join(" · ")}. Review each BOM line before saving; Cadivor keeps a decision link only while exactly one approved candidate remains and its source part is absent.
+                  <strong>Prior decisions carried forward as context:</strong>{" "}
+                  {carriedDecisionLabels.map((item) => item.label).join(" · ")}. Review each BOM line before saving. These records do not approve the alternate for this revision; create a new decision after the revision is analyzed.
                 </div>
               ) : null}
 
@@ -784,7 +772,7 @@ function ReportPageInner() {
                               onClick={() => applyDecisionCandidate(decision, selectedMpn)}
                               disabled={!canApply}
                             >
-                              {alreadyApplied ? "Applied · choose another to change" : selectedCandidateInDraft ? "Already in this BOM" : !sourcePresent ? "Source part missing" : !selectedMpn ? "Choose an option" : appliedMpn ? "Change selected option" : decision.decision === "approve_alternate" ? "Use approved option" : "Use candidate for evaluation"}
+                              {alreadyApplied ? "In draft · prior approval does not transfer" : selectedCandidateInDraft ? "Already in this BOM" : !sourcePresent ? "Source part missing" : !selectedMpn ? "Choose an option" : appliedMpn ? "Change selected option" : decision.decision === "approve_alternate" ? "Use candidate · reapproval required" : "Use candidate for evaluation"}
                             </button>
                           </div>
                         );
@@ -867,7 +855,7 @@ function ReportPageInner() {
               <p className="cv-small-note" style={{ margin: "6px 0 0" }}>
                 Source report: <Link href={`/reports/${encodeURIComponent(report.derived_from_analysis_id)}`}>open original analysis</Link>
                 {report.used_decision_ids?.length
-                  ? ` · ${report.used_decision_ids.length} replacement decision candidate${report.used_decision_ids.length === 1 ? "" : "s"} used${report.applied_decision_ids?.length ? ` (${report.applied_decision_ids.length} approved)` : " (none approved)"}`
+                  ? ` · ${report.used_decision_ids.length} prior decision record${report.used_decision_ids.length === 1 ? "" : "s"} linked as context · reapproval required for this revision`
                   : " · BOM contents edited by the user"}
               </p>
             </section>

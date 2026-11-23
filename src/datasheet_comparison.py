@@ -1555,6 +1555,28 @@ def extract_datasheet_dimension_evidence(pdf_result: Mapping[str, Any] | None) -
     """
     output: list[dict[str, Any]] = []
     document = pdf_result if isinstance(pdf_result, Mapping) else {}
+    evidence_sources = [
+        row for row in (document.get("evidence_sources") or [])
+        if isinstance(row, Mapping)
+    ]
+    source_url = str(
+        document.get("final_url") or document.get("url") or document.get("datasheet_url") or ""
+    ).strip()
+    matched_sources = [
+        row for row in evidence_sources
+        if source_url and source_url.casefold() in {
+            str(row.get(key) or "").strip().casefold()
+            for key in ("url", "source_url", "final_url")
+        }
+    ]
+    source_times = {
+        str(row.get("retrieved_at") or "").strip()
+        for row in matched_sources
+        if str(row.get("retrieved_at") or "").strip()
+    }
+    default_retrieved_at = str(document.get("retrieved_at") or "").strip()
+    if not default_retrieved_at and len(source_times) == 1:
+        default_retrieved_at = next(iter(source_times))
     for page in document.get("pages") or []:
         if not isinstance(page, Mapping):
             continue
@@ -1584,9 +1606,11 @@ def extract_datasheet_dimension_evidence(pdf_result: Mapping[str, Any] | None) -
                 continue
             seen.add(excerpt.casefold())
             output.append({
-                "document": str(page.get("document") or "").strip(),
+                "document": str(page.get("document") or document.get("document") or "Manufacturer datasheet").strip(),
                 "page": page.get("page", "?"),
                 "excerpt": excerpt,
+                "source_url": str(page.get("source_url") or source_url).strip(),
+                "retrieved_at": str(page.get("retrieved_at") or default_retrieved_at).strip(),
             })
             if len(output) >= 12:
                 return output

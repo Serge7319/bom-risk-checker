@@ -29,6 +29,7 @@ export type MultiMatrixRow = {
   attribute: string;
   current: string;
   currentSource: string;
+  currentRetrievedAt: string;
   currentClass: string;
   currentCondition: string;
   unit: string;
@@ -37,6 +38,7 @@ export type MultiMatrixRow = {
     manufacturer: string;
     value: string;
     source: string;
+    retrievedAt: string;
     valueClass: string;
     condition: string;
     assessment: string;
@@ -86,6 +88,7 @@ export function buildMultiCompareMatrix(
           attribute,
           current: text(row["Part A"] || row.part_a),
           currentSource: text(row["Part A source"], "Not stated"),
+          currentRetrievedAt: text(row["Part A retrieved at"] || row.part_a_retrieved_at, "Date not recorded"),
           currentClass: text(row["Part A value class"], "unknown"),
           currentCondition: text(
             row["Part A test condition"] || row["Test condition"],
@@ -101,6 +104,7 @@ export function buildMultiCompareMatrix(
         manufacturer: brand,
         value: text(row["Part B"] || row.part_b),
         source: text(row["Part B source"], "Not stated"),
+        retrievedAt: text(row["Part B retrieved at"] || row.part_b_retrieved_at, "Date not recorded"),
         valueClass: text(row["Part B value class"], "unknown"),
         condition: text(row["Part B test condition"] || row["Test condition"], "Not stated"),
         assessment: text(row.Assessment || row.assessment || row.Status, "Needs data"),
@@ -119,6 +123,7 @@ export function buildMultiCompareMatrix(
         manufacturer: candidateManufacturer(column),
         value: "—",
         source: "Not stated",
+        retrievedAt: "Date not recorded",
         valueClass: "unknown",
         condition: "Not stated",
         assessment: "Needs data",
@@ -145,6 +150,7 @@ export type MultiSourceRecord = {
     attribute: string;
     value: string;
     source: string;
+    retrievedAt: string;
     valueClass: string;
     condition: string;
     assessment: string;
@@ -183,6 +189,7 @@ export function buildMultiSourceRecords(
         attribute: text(row.Attribute || row.attribute),
         value: text(row["Part A"] || row.part_a),
         source: text(row["Part A source"], "Not stated"),
+        retrievedAt: text(row["Part A retrieved at"] || row.part_a_retrieved_at, "Date not recorded"),
         valueClass: text(row["Part A value class"], "unknown"),
         condition: text(row["Part A test condition"] || row["Test condition"], "Not stated"),
         assessment: text(row.Assessment || row.assessment || row.Status, "Needs data"),
@@ -209,6 +216,7 @@ export function buildMultiSourceRecords(
         attribute: text(row.Attribute || row.attribute),
         value: text(row["Part B"] || row.part_b),
         source: text(row["Part B source"], "Not stated"),
+        retrievedAt: text(row["Part B retrieved at"] || row.part_b_retrieved_at, "Date not recorded"),
         valueClass: text(row["Part B value class"], "unknown"),
         condition: text(row["Part B test condition"] || row["Test condition"], "Not stated"),
         assessment: text(row.Assessment || row.assessment || row.Status, "Needs data"),

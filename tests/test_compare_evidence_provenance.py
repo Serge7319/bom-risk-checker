@@ -50,6 +50,38 @@ class ValueConditionClassificationTests(unittest.TestCase):
 
 
 class OpAmpAndFamilyProvenanceTests(unittest.TestCase):
+    def test_field_rows_show_only_unambiguous_source_retrieval_times(self):
+        row = {
+            "Attribute": "Package",
+            "Original": "QFN",
+            "Candidate": "LGA",
+            "Status": "Different",
+            "Part A source": "Manufacturer datasheet, field: Package",
+            "Part B source": "Not stated",
+            "Part A value class": "exact",
+            "Part B value class": "unknown",
+            "Part A test condition": "Not stated",
+            "Part B test condition": "Not stated",
+        }
+        sources = {
+            "part_a": [{
+                "source_type": "manufacturer_pdf",
+                "retrieved_at": "2026-11-20T12:00:00Z",
+            }],
+            "part_b": [],
+        }
+
+        projected = user_facing_compare_rows([row], evidence_sources=sources)[0]
+        self.assertEqual(projected["Part A retrieved at"], "2026-11-20T12:00:00Z")
+        self.assertEqual(projected["Part B retrieved at"], "")
+
+        sources["part_a"].append({
+            "source_type": "manufacturer_product_page",
+            "retrieved_at": "2026-11-21T12:00:00Z",
+        })
+        ambiguous = user_facing_compare_rows([row], evidence_sources=sources)[0]
+        self.assertEqual(ambiguous["Part A retrieved at"], "")
+
     def test_general_family_display_is_short(self):
         self.assertEqual(get_family_profile("General electronic component").display_name, "General")
 
