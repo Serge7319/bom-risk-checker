@@ -585,7 +585,7 @@ def user_facing_compare_rows(
                 source_b=source_b,
                 value_a=part_a,
                 value_b=part_b,
-                field_name=row.get("Key") or row.get("Attribute"),
+                field_name=row.get("Attribute") or row.get("Key"),
             ),
             "Evidence": customer_facing_evidence_text(row.get("Evidence", "")),
         }
