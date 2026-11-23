@@ -206,6 +206,46 @@ class CompareAssessmentHonestyTests(unittest.TestCase):
         self.assertIn("fit unverified", assessment.casefold())
         self.assertNotEqual(assessment, FINDING_COMPATIBLE)
 
+    def test_catalog_agreement_is_visible_for_fields_without_test_conditions(self):
+        assessment = assess_compare_row(
+            status="Listing agreement",
+            class_a="unknown",
+            class_b="unknown",
+            condition_a="Not stated",
+            condition_b="Not stated",
+            source_a="supplier catalog",
+            source_b="DigiKey",
+        )
+        self.assertEqual(assessment, FINDING_LISTING_AGREEMENT)
+        self.assertNotEqual(assessment, FINDING_COMPATIBLE)
+        projected = user_facing_compare_rows(
+            [
+                {
+                    "Attribute": "Package",
+                    "Original": "16-SOIC",
+                    "Candidate": "16-SOIC",
+                    "Status": "Listing agreement",
+                    "Part A source": "supplier catalog",
+                    "Part B source": "DigiKey",
+                    "Part A value class": "unknown",
+                    "Part B value class": "unknown",
+                    "Part A test condition": "Not stated",
+                    "Part B test condition": "Not stated",
+                }
+            ]
+        )[0]
+        self.assertEqual(projected["Assessment"], FINDING_LISTING_AGREEMENT)
+
+    def test_listing_agreement_without_two_catalog_sources_stays_unknown(self):
+        assessment = assess_compare_row(
+            status="Listing agreement",
+            class_a="unknown",
+            class_b="unknown",
+            source_a="supplier catalog",
+            source_b="",
+        )
+        self.assertEqual(assessment, FINDING_NEEDS_VERIFICATION)
+
     def test_user_facing_rows_demote_catalog_match(self):
         unknown_rows = user_facing_compare_rows(
             [

@@ -158,7 +158,17 @@ def assess_compare_row(
             return FINDING_CATALOG_DIFFERENCE
         return FINDING_NEEDS_VERIFICATION
 
-    if listing_status or normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
+    # An explicit Listing agreement means both retrieved catalog values are
+    # the same. Keep that observation visible even when a field has no
+    # meaningful test class/condition (for example package or interface).
+    # This label still says fit is unverified and never counts as engineering
+    # compatibility. Missing or mixed provenance cannot support the claim.
+    if listing_status:
+        if missing_a or missing_b or not (catalog_a and catalog_b):
+            return FINDING_NEEDS_VERIFICATION
+        return FINDING_LISTING_AGREEMENT
+
+    if normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
         # Missing/unknown provenance never yields Compatible.
         if missing_a or missing_b:
             return FINDING_NEEDS_VERIFICATION
