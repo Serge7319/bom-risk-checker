@@ -17,6 +17,9 @@ class BillingStaleSubscriptionRecoveryTests(unittest.TestCase):
         cls.settings = (
             ROOT / "apps" / "web" / "src" / "app" / "settings" / "page.tsx"
         ).read_text(encoding="utf-8")
+        cls.shell = (
+            ROOT / "apps" / "web" / "src" / "components" / "Shell.tsx"
+        ).read_text(encoding="utf-8")
 
     def test_expired_paid_period_does_not_preserve_paid_access(self):
         helper_start = self.checkout.index("function hasCurrentPaidSubscription(")
@@ -48,6 +51,11 @@ class BillingStaleSubscriptionRecoveryTests(unittest.TestCase):
         self.assertIn('err.payload.code === "billing_subscription_not_found"', plan_change)
         self.assertIn("beginSubscriptionCheckout(session.access_token, token, billingInterval)", plan_change)
         self.assertIn("checkout_started", plan_change)
+
+    def test_shared_shell_uses_server_plan_instead_of_stale_login_snapshot(self):
+        self.assertIn("fetchPlanUsage(session.access_token)", self.shell)
+        self.assertIn('const planLabel = verifiedPlan || session.plan;', self.shell)
+        self.assertIn('planLabel === "Subscription inactive"', self.shell)
 
 
 if __name__ == "__main__":
