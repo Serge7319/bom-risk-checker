@@ -99,6 +99,29 @@ def _condition_unknown(value: object) -> bool:
     return (not text) or text in {"not stated", "unknown", "none", "n/a", "na"}
 
 
+def _catalog_value_is_present(value: object) -> bool:
+    text = str(value or "").strip().casefold()
+    return bool(text) and not text.startswith(
+        ("not stated", "not available", "unknown", "n/a", "none")
+    )
+
+
+def _catalog_literal_field_can_agree(field_name: object) -> bool:
+    """Fields without a test condition whose literal catalog values can agree."""
+    normalized = re.sub(r"[^a-z0-9]+", " ", str(field_name or "").casefold()).strip()
+    return normalized in {
+        "package",
+        "pin count",
+        "mounting",
+        "mounting style",
+        "function category",
+        "function category type",
+        "i o interface type",
+        "interface",
+        "interface type",
+    }
+
+
 def assess_compare_row(
     *,
     status: str,
@@ -108,6 +131,9 @@ def assess_compare_row(
     condition_b: object = "",
     source_a: object = "",
     source_b: object = "",
+    value_a: object = "",
+    value_b: object = "",
+    field_name: object = "",
 ) -> str:
     """Map a row status to a customer assessment with provenance honesty.
 
@@ -166,6 +192,30 @@ def assess_compare_row(
     if listing_status:
         if missing_a or missing_b or not (catalog_a and catalog_b):
             return FINDING_NEEDS_VERIFICATION
+        return FINDING_LISTING_AGREEMENT
+
+    # Catalog providers can agree on populated literal identity/format values
+    # even when the schema has no test condition (package, pin count, interface).
+    # Numeric/electrical limits still need class and condition evidence. Explicit
+    # conflicts/differences take priority, and this never implies fit.
+    comparable_statuses = {
+        "",
+        "match",
+        "needs data",
+        "needs verification",
+        "listing agreement",
+    }
+    normalized_value_a = re.sub(r"\s+", " ", str(value_a or "").strip()).casefold()
+    normalized_value_b = re.sub(r"\s+", " ", str(value_b or "").strip()).casefold()
+    if (
+        folded in comparable_statuses
+        and catalog_a
+        and catalog_b
+        and _catalog_literal_field_can_agree(field_name)
+        and _catalog_value_is_present(value_a)
+        and _catalog_value_is_present(value_b)
+        and normalized_value_a == normalized_value_b
+    ):
         return FINDING_LISTING_AGREEMENT
 
     if normalized == "Match" or folded == FINDING_COMPATIBLE.casefold():
@@ -531,6 +581,9 @@ def user_facing_compare_rows(
                 condition_b=condition_b,
                 source_a=source_a,
                 source_b=source_b,
+                value_a=part_a,
+                value_b=part_b,
+                field_name=row.get("Key") or row.get("Attribute"),
             ),
             "Evidence": customer_facing_evidence_text(row.get("Evidence", "")),
         }
