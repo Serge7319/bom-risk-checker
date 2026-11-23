@@ -196,6 +196,171 @@ async function profileFor(userId: string) {
   return data || {};
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function accountIsSuspended(userId: string): Promise<boolean> {
+  const [controls, profile, pending] = await Promise.all([
+    supabase.from("admin_user_controls").select("account_status").eq("user_id", userId).maybeSingle(),
+    supabase.from("users").select("id").eq("id", userId).maybeSingle(),
+    supabase.from("admin_account_deletion_pending").select("user_id").eq("user_id", userId).maybeSingle(),
+  ]);
+  if (controls.error || profile.error || pending.error) {
+    throw new Error("Account access could not be checked.");
+  }
+  return !profile.data ||
+    Boolean(pending.data) ||
+    String(controls.data?.account_status || "active").toLowerCase() === "suspended";
+}
+
+type AdminDeletionTarget = {
+  ok: true;
+  userId: string;
+  email: string;
+  role: string;
+  authUser: { id: string; email?: string } | null;
+  pending: boolean;
+};
+
+async function validateAdminDeletionTarget(
+  actorId: string,
+  body: Record<string, unknown>,
+): Promise<AdminDeletionTarget | { ok: false; status: number; detail: string }> {
+  const actorProfile = await profileFor(actorId);
+  if (String(actorProfile.role || "").trim().toLowerCase() !== "admin") {
+    return { ok: false, status: 403, detail: "Platform administrator access is required." };
+  }
+  const userId = String(body.target_user_id || "").trim();
+  if (!UUID_PATTERN.test(userId)) {
+    return { ok: false, status: 400, detail: "Choose a valid account." };
+  }
+  if (userId === actorId) {
+    return { ok: false, status: 409, detail: "Administrators cannot delete their own account." };
+  }
+  const confirmationEmail = String(body.confirmation_email || "").trim().toLowerCase();
+  const { data: targetProfile, error: profileError } = await supabase
+    .from("users")
+    .select("email,role")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError) throw new Error("Account could not be checked.");
+  if (!targetProfile) return { ok: false, status: 404, detail: "Account not found." };
+
+  const { data: authResult, error: authError } = await supabase.auth.admin.getUserById(userId);
+  const authUser = authResult?.user
+    ? { id: authResult.user.id, email: authResult.user.email || undefined }
+    : null;
+  const status = Number((authError as unknown as Record<string, unknown> | null)?.status || 0);
+  const missingAuthUser = Boolean(authError && status === 404);
+  if (authError && !missingAuthUser) throw new Error("Account authentication could not be checked.");
+
+  const { data: pendingMarker, error: controlsError } = await supabase
+    .from("admin_account_deletion_pending")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (controlsError) throw new Error("Account status could not be checked.");
+  const pending = !authUser && Boolean(pendingMarker);
+  if (!authUser && !pending) {
+    return { ok: false, status: 404, detail: "Account not found." };
+  }
+
+  const email = String(authUser?.email || targetProfile.email || "").trim().toLowerCase();
+  if (!email || !confirmationEmail || confirmationEmail !== email) {
+    return { ok: false, status: 409, detail: "Type the account’s exact email address to confirm deletion." };
+  }
+  const role = String(targetProfile.role || "").trim().toLowerCase();
+  if (role === "admin") {
+    const { data: adminProfiles, error: adminError } = await supabase
+      .from("users")
+      .select("id")
+      .ilike("role", "admin");
+    if (adminError) throw new Error("Administrator access could not be checked.");
+    const adminIds = (adminProfiles || []).map((row) => String(row.id));
+    if (adminIds.includes(userId)) {
+      const [controlsResult, pendingResult] = await Promise.all([
+        supabase.from("admin_user_controls").select("user_id,account_status").in("user_id", adminIds),
+        supabase.from("admin_account_deletion_pending").select("user_id").in("user_id", adminIds),
+      ]);
+      if (controlsResult.error || pendingResult.error) {
+        throw new Error("Administrator access could not be checked.");
+      }
+      const controlsById = new Map<string, string>(
+        (controlsResult.data || []).map((row): [string, string] => [
+          String(row.user_id),
+          String(row.account_status || "active").toLowerCase(),
+        ]),
+      );
+      const pendingIds = new Set<string>((pendingResult.data || []).map((row) => String(row.user_id)));
+      const targetIsActiveAdmin = !pendingIds.has(userId) &&
+        (controlsById.get(userId) || "active") === "active";
+      const otherActiveAdmins = adminIds.filter((adminId) => adminId !== userId &&
+        !pendingIds.has(adminId) && (controlsById.get(adminId) || "active") === "active");
+      if (targetIsActiveAdmin && otherActiveAdmins.length === 0) {
+        return { ok: false, status: 409, detail: "Cadivor must retain at least one active administrator." };
+      }
+    }
+  }
+  return { ok: true, userId, email, role, authUser, pending };
+}
+
+function clearedStripeMetadata(metadata: Record<string, string> | null | undefined) {
+  const result: Record<string, string> = {};
+  for (const key of Object.keys(metadata || {})) result[key] = "";
+  result.cadivor_deleted_account = "true";
+  return result;
+}
+
+async function cancelAndAnonymizeBilling(targetUserId: string, profile: Record<string, unknown>) {
+  const { data: addon, error: addonError } = await supabase
+    .from("cadivor_professional_api_addons")
+    .select("subscription_id")
+    .eq("user_id", targetUserId)
+    .maybeSingle();
+  if (addonError) throw new Error("Subscription records could not be loaded.");
+
+  const subscriptionIds = new Set<string>();
+  for (const value of [profile.stripe_subscription_id, addon?.subscription_id]) {
+    const id = String(value || "").trim();
+    if (id) subscriptionIds.add(id);
+  }
+  for (const id of subscriptionIds) {
+    try {
+      const subscription = await stripe.subscriptions.retrieve(id);
+      await stripe.subscriptions.update(id, {
+        metadata: clearedStripeMetadata(subscription.metadata),
+      });
+      if (!['canceled', 'incomplete_expired'].includes(subscription.status)) {
+        await stripe.subscriptions.cancel(id);
+      }
+    } catch (error) {
+      const summary = stripeErrorSummary(error);
+      if (summary.code === "resource_missing") continue;
+      throw error;
+    }
+  }
+
+  const customerId = String(profile.stripe_customer_id || "").trim();
+  if (customerId) {
+    try {
+      const customer = await stripe.customers.retrieve(customerId);
+      if (!("deleted" in customer && customer.deleted)) {
+        await stripe.customers.update(customerId, {
+          email: "",
+          name: "",
+          phone: "",
+          description: "",
+          address: { city: "", country: "", line1: "", line2: "", postal_code: "", state: "" },
+          metadata: clearedStripeMetadata(customer.metadata),
+        });
+      }
+    } catch (error) {
+      const summary = stripeErrorSummary(error);
+      if (summary.code !== "resource_missing") throw error;
+    }
+  }
+}
+
+
 function positiveUnits(name: string): number | null {
   const raw = String(Deno.env.get(name) || "").trim();
   if (!/^\d+$/.test(raw)) return null;
@@ -521,6 +686,13 @@ serve(async (request) => {
 
   const auth = await verifiedUser(request);
   if (!auth.user) return response({ ok: false, detail: "Sign in with a verified Cadivor account." }, auth.status, origin);
+  try {
+    if (await accountIsSuspended(auth.user.id)) {
+      return response({ ok: false, detail: "This account is suspended. Contact Cadivor support for help." }, 403, origin);
+    }
+  } catch {
+    return response({ ok: false, detail: "Account access could not be verified." }, 503, origin);
+  }
   if (internalActions.has(action) && !(await verifyInternalActionProof(action, auth.user.id, body))) {
     return response({ ok: false, detail: "This billing operation must be requested through Cadivor." }, 403, origin);
   }
@@ -529,6 +701,142 @@ serve(async (request) => {
   const supportReference = crypto.randomUUID();
   try {
     const profile = await profileFor(auth.user.id);
+
+    if (action === "admin_sync_account_status") {
+      if (String(profile.role || "").trim().toLowerCase() !== "admin") {
+        return response({ ok: false, detail: "Platform administrator access is required." }, 403, origin);
+      }
+      const targetUserId = String(body.target_user_id || "").trim();
+      const nextStatus = String(body.status || "").trim().toLowerCase();
+      if (!UUID_PATTERN.test(targetUserId) || targetUserId === auth.user.id ||
+          !["active", "suspended"].includes(nextStatus)) {
+        return response({ ok: false, detail: "Invalid account status update." }, 400, origin);
+      }
+      const targetProfile = await profileFor(targetUserId);
+      if (!targetProfile.role) return response({ ok: false, detail: "Account not found." }, 404, origin);
+      const { data: targetControls, error: targetControlsError } = await supabase
+        .from("admin_user_controls")
+        .select("account_status,suspended_reason")
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+      const { data: pendingMarker, error: pendingError } = await supabase
+        .from("admin_account_deletion_pending")
+        .select("user_id")
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+      if (targetControlsError || pendingError) throw new Error("Account status could not be loaded.");
+      if (pendingMarker || targetControls?.suspended_reason === "Account deletion pending") {
+        return response({ ok: false, detail: "Account deletion is pending; retry deletion to finish it." }, 409, origin);
+      }
+      const storedStatus = String(targetControls?.account_status || "active").toLowerCase();
+      if (storedStatus !== nextStatus) {
+        return response({ ok: false, detail: "The account status change was not saved. Retry the update." }, 409, origin);
+      }
+      const { error } = await supabase.auth.admin.updateUserById(targetUserId, {
+        ban_duration: nextStatus === "suspended" ? "876000h" : "none",
+      });
+      if (error) throw new Error("Auth account status could not be synchronized.");
+      return response({ ok: true, account_status: nextStatus }, 200, origin);
+    }
+
+    if (action === "admin_validate_account_deletion") {
+      const target = await validateAdminDeletionTarget(auth.user.id, body);
+      if (!target.ok) return response({ ok: false, detail: target.detail }, target.status, origin);
+      return response({
+        ok: true,
+        account: { id: target.userId, email: target.email, role: target.role },
+      }, 200, origin);
+    }
+
+    if (action === "admin_prepare_account_deletion") {
+      const target = await validateAdminDeletionTarget(auth.user.id, body);
+      if (!target.ok) return response({ ok: false, detail: target.detail }, target.status, origin);
+      const { error: prepareError } = await supabase.rpc("cadivor_admin_prepare_account_deletion", {
+        p_target_user_id: target.userId,
+        p_actor_user_id: auth.user.id,
+      });
+      if (prepareError) {
+        const message = String(prepareError.message || "").toLowerCase();
+        const conflict = message.includes("active member to receive ownership") ||
+          message.includes("must retain at least one administrator") ||
+          message.includes("must retain at least one active administrator");
+        return response({
+          ok: false,
+          detail: conflict
+            ? "Deletion needs attention: preserve shared workspace ownership and retry."
+            : "Account cleanup could not be prepared. The account was not removed.",
+        }, conflict ? 409 : 503, origin);
+      }
+      if (target.authUser) {
+        const { error: banError } = await supabase.auth.admin.updateUserById(target.userId, {
+          ban_duration: "876000h",
+        });
+        if (banError) {
+          return response({
+            ok: false,
+            detail: "The account is marked for deletion, but sign-in could not be blocked. Retry deletion.",
+          }, 503, origin);
+        }
+      }
+      return response({ ok: true, prepared: true }, 200, origin);
+    }
+
+    if (action === "admin_delete_account") {
+      const target = await validateAdminDeletionTarget(auth.user.id, body);
+      if (!target.ok) return response({ ok: false, detail: target.detail }, target.status, origin);
+
+      const { error: prepareError } = await supabase.rpc("cadivor_admin_prepare_account_deletion", {
+        p_target_user_id: target.userId,
+        p_actor_user_id: auth.user.id,
+      });
+      if (prepareError) {
+        const message = String(prepareError.message || "").toLowerCase();
+        const conflict = message.includes("active member to receive ownership") ||
+          message.includes("must retain at least one administrator") ||
+          message.includes("must retain at least one active administrator");
+        return response({
+          ok: false,
+          detail: conflict
+            ? "Deletion needs attention: preserve shared workspace ownership and retry."
+            : "Account cleanup could not be prepared. The account was not removed.",
+        }, conflict ? 409 : 503, origin);
+      }
+
+      const targetBillingProfile = await profileFor(target.userId);
+      if (target.authUser) {
+        const { error: banError } = await supabase.auth.admin.updateUserById(target.userId, {
+          ban_duration: "876000h",
+        });
+        if (banError) {
+          return response({ ok: false, detail: "The account is marked for deletion, but sign-in could not be blocked. Retry deletion." }, 503, origin);
+        }
+      }
+      try {
+        await cancelAndAnonymizeBilling(target.userId, targetBillingProfile);
+      } catch {
+        return response({
+          ok: false,
+          detail: "The account is marked for deletion, but billing cleanup did not finish. Retry deletion.",
+        }, 503, origin);
+      }
+
+      if (target.authUser) {
+        const { error: deleteError } = await supabase.auth.admin.deleteUser(target.userId, false);
+        if (deleteError) {
+          return response({ ok: false, detail: "The account is marked for deletion, but Auth removal did not finish. Retry deletion." }, 503, origin);
+        }
+      }
+
+      const { error: finalizeError } = await supabase.rpc("cadivor_admin_finalize_account_deletion", {
+        p_target_user_id: target.userId,
+        p_actor_user_id: auth.user.id,
+      });
+      if (finalizeError) {
+        return response({ ok: false, detail: "Auth removal finished, but account cleanup needs a retry." }, 503, origin);
+      }
+      return response({ ok: true, deleted: true }, 200, origin);
+    }
+
 
     if (action === "entitlements") {
       return response(await entitlementSnapshot(auth.user.id, profile), 200, origin);
