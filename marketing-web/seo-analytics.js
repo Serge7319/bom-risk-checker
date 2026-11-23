@@ -63,6 +63,30 @@
     });
   }
 
+  const auditFrame = document.getElementById("freeAuditFrame");
+  function loadAuditEmbed() {
+    if (!(auditFrame instanceof HTMLIFrameElement) || auditFrame.hasAttribute("src")) return;
+    const params = new URLSearchParams({ embed: "true", source: "free-audit-page" });
+    if (allowed()) {
+      for (const [key, value] of Object.entries(utm())) params.set(key, value);
+      const visitId = sessionId();
+      if (visitId) params.set("cadivor_visit_id", visitId);
+    }
+    auditFrame.src = `${APP_ORIGIN}/public-bom-audit?${params.toString()}`;
+  }
+
+  if (auditFrame instanceof HTMLIFrameElement) {
+    window.addEventListener("message", (event) => {
+      if (event.origin !== APP_ORIGIN || event.source !== auditFrame.contentWindow) return;
+      const message = event.data;
+      if (!message || message.type !== "cadivor:public-bom-audit:resize") return;
+      const height = Number(message.height);
+      if (!Number.isFinite(height)) return;
+      auditFrame.style.height = `${Math.min(4200, Math.max(360, Math.ceil(height)))}px`;
+    });
+    loadAuditEmbed();
+  }
+
   const banner = document.getElementById("seoAnalyticsConsent");
   const manage = document.getElementById("seoPrivacyChoices");
   const applyChoice = () => {
@@ -77,6 +101,7 @@
       try { localStorage.setItem(CONSENT_KEY, choice); } catch {}
       applyChoice();
       decorateAppLinks();
+      loadAuditEmbed();
       if (choice === "accepted") track("page_view");
     });
   });

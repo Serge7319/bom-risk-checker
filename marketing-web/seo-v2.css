@@ -156,3 +156,14 @@
 .seo-pricing-addon-status{font-size:12px!important}
 @media(max-width:800px){.seo-contact-section{grid-template-columns:1fr;gap:20px}}
 @media(max-width:560px){.seo-contact-card{padding:18px}.seo-contact-form{grid-template-columns:1fr}.seo-form-field-wide{grid-column:auto}}
+
+/* Keep the free BOM audit on its marketing page and let the app content grow. */
+.seo-free-audit-embed{width:min(1580px,calc(100% - 56px));margin:34px auto 0;padding:30px;border:1px solid #d3e0f2;border-radius:20px;background:#fff;box-shadow:0 14px 36px rgba(16,40,75,.08)}
+.seo-free-audit-embed-heading{max-width:820px;margin:0 auto 14px}
+.seo-free-audit-embed-heading .seo-kicker{color:#2e63c6}
+.seo-free-audit-embed-heading h2{margin:0 0 7px;color:#10284b;font-size:28px;line-height:1.2;letter-spacing:-.025em}
+.seo-free-audit-embed-heading p{margin:0;color:#61738e;font-size:14px}
+.seo-free-audit-embed-frame{width:min(100%,1000px);margin:0 auto}
+.seo-free-audit-embed-frame iframe{display:block;width:100%;height:480px;border:0;border-radius:14px;background:#fff}
+@media(max-width:800px){.seo-free-audit-embed{width:min(100% - 36px,1580px);padding:22px}}
+@media(max-width:560px){.seo-free-audit-embed{width:calc(100% - 28px);margin-top:22px;padding:18px 12px}.seo-free-audit-embed-heading{padding:0 5px}.seo-free-audit-embed-heading h2{font-size:23px}.seo-free-audit-embed-frame iframe{height:520px}}
