@@ -32,15 +32,21 @@ ROOT = Path(__file__).resolve().parents[1]
 COMPARE_PAGE = ROOT / "apps/web/src/app/compare-parts/page.tsx"
 MULTI_COMPARE = ROOT / "apps/web/src/lib/multiCompare.ts"
 FIND_REPLACEMENT = ROOT / "apps/web/src/app/find-replacement/page.tsx"
+GLOBAL_CSS = ROOT / "apps/web/src/app/globals.css"
 
 
 class UiContractTests(unittest.TestCase):
     def test_decision_form_can_include_multiple_selected_alternatives(self):
         page = COMPARE_PAGE.read_text(encoding="utf-8")
+        css = GLOBAL_CSS.read_text(encoding="utf-8")
         self.assertIn('data-testid="decision-form-candidate-selection"', page)
+        self.assertIn('data-testid="decision-form-selected-candidates"', page)
+        self.assertIn("className=\"cv-decision-alternative-checkbox\"", page)
         self.assertIn('decision_candidate_scope: multiSnapshot ? "all_selected" : "primary"', page)
-        self.assertIn("This decision covers every selected alternative.", page)
-        self.assertIn("choose one of these parts for that revision", page)
+        self.assertIn("This disposition, rationale, and validation record apply to every selected alternative.", page)
+        self.assertIn("Choose one option when creating a BOM revision.", page)
+        self.assertIn(".cv-field .cv-decision-alternative-checkbox", css)
+        self.assertIn("width: 16px;", css)
 
     def test_decision_bom_scope_has_explicit_workspace_option(self):
         page = COMPARE_PAGE.read_text(encoding="utf-8")

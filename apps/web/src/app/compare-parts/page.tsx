@@ -1562,14 +1562,18 @@ function ComparePartsInner() {
                 <div className="cv-field" aria-describedby="decision-candidate-scope-help">
                   <span>Replacement alternatives in this decision</span>
                   {multiColumns.length > 1 ? (
-                    <div style={{ display: "grid", gap: 6, maxHeight: 180, overflowY: "auto", padding: 8, border: "1px solid #d6e1ef", borderRadius: 8, background: "#fff" }} data-testid="decision-form-candidate-selection">
+                    <div className="cv-decision-alternative-picker" data-testid="decision-form-candidate-selection" role="group" aria-label="Select replacement alternatives">
                       {multiColumns.map((column) => {
                         const selectable = column.result.ok !== false && Boolean(String(column.result.snapshot_token || "").trim());
                         const checked = decisionCandidateMpns.includes(column.mpn);
                         const brand = column.manufacturer || manufacturerBByMpn[column.mpn] || candidateManufacturer(column);
                         return (
-                          <label key={`decision-form-candidate-${column.mpn}`} style={{ display: "flex", gap: 8, alignItems: "flex-start", opacity: selectable ? 1 : 0.58 }}>
+                          <label
+                            key={`decision-form-candidate-${column.mpn}`}
+                            className={`cv-decision-alternative-row${checked ? " is-selected" : ""}${selectable ? "" : " is-unavailable"}`}
+                          >
                             <input
+                              className="cv-decision-alternative-checkbox"
                               type="checkbox"
                               checked={checked}
                               disabled={!selectable || decisionBusy}
@@ -1585,29 +1589,30 @@ function ComparePartsInner() {
                                 setDecisionPartB(next[0] || "");
                               }}
                             />
-                            <span>
+                            <span className="cv-decision-alternative-copy">
                               <strong>{cleanUserText(column.mpn)}</strong>
-                              {brand ? <span className="cv-small-note" style={{ display: "block" }}>{cleanUserText(brand)}</span> : null}
-                              {!selectable ? <span className="cv-small-note" style={{ display: "block" }}>Comparison unavailable — rerun before recording.</span> : null}
+                              {brand ? <span className="cv-small-note">{cleanUserText(brand)}</span> : null}
+                              {!selectable ? <span className="cv-small-note">Comparison unavailable — rerun before recording.</span> : null}
                             </span>
                           </label>
                         );
                       })}
                     </div>
                   ) : (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minHeight: 42, alignItems: "center", padding: 8, border: "1px solid #d6e1ef", borderRadius: 8, background: "#fff" }}>
-                      {decisionCandidateMpns.map((mpn) => {
-                        const brand = manufacturerBByMpn[mpn]
-                          || multiColumns.find((column) => column.mpn === mpn)?.manufacturer
-                          || "";
-                        return <span className="cv-badge blue" key={mpn}>{cleanUserText(mpn)}{brand ? ` · ${cleanUserText(brand)}` : ""}</span>;
-                      })}
-                      {!decisionCandidateMpns.length ? <span className="cv-small-note">No alternative selected.</span> : null}
+                    <div className="cv-decision-selected-summary" aria-live="polite">
+                      <span className="cv-small-note">Selected part</span>
+                      <strong>{decisionCandidateMpns.map(cleanUserText).join(", ") || "None selected"}</strong>
                     </div>
                   )}
+                  {multiColumns.length > 1 ? (
+                    <div className="cv-decision-selected-summary" aria-live="polite" data-testid="decision-form-selected-candidates">
+                      <span className="cv-small-note">Selected parts</span>
+                      <strong>{decisionCandidateMpns.map(cleanUserText).join(", ") || "None selected"}</strong>
+                    </div>
+                  ) : null}
                   <p className="cv-small-note" id="decision-candidate-scope-help" style={{ margin: "6px 0 0" }}>
                     {decisionCandidateMpns.length > 1
-                      ? "This decision covers every selected alternative. To update a BOM, choose one of these parts for that revision."
+                      ? "This disposition, rationale, and validation record apply to every selected alternative. Choose one option when creating a BOM revision."
                       : decisionCandidateMpns.length === 1
                         ? "This decision covers the selected alternative."
                         : "Select at least one available alternative to record this decision."}
