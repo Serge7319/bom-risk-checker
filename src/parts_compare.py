@@ -114,6 +114,8 @@ def _catalog_literal_field_can_agree(field_name: object) -> bool:
         "pin count",
         "mounting",
         "mounting style",
+        "function",
+        "category",
         "function category",
         "function category type",
         "i o interface type",
