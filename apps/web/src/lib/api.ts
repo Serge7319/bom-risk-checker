@@ -1381,6 +1381,7 @@ export async function beginBillingPortal(token: string) {
     checkout?: { state: string; url?: string };
     code?: string;
     detail?: string;
+    support_reference?: string;
   }>("/billing/portal", {
     method: "POST",
     token,
