@@ -17,7 +17,8 @@ EVENTS = frozenset({
     "page_view", "cta_click", "free_audit_started", "free_audit_completed",
     "signup_started", "signup_completed", "bom_uploaded", "first_analysis_completed",
     "trial_started", "upgrade_clicked", "checkout_started", "subscription_created",
-    "demo_requested", "one_time_report_purchased", "free_audit_email_requested",
+    "demo_requested", "contact_form_started", "contact_form_completed",
+    "one_time_report_purchased", "free_audit_email_requested",
     "free_audit_trial_clicked", "first_blocker_viewed",
 })
 UTM_KEYS = ("utm_source", "utm_medium", "utm_campaign", "utm_content")

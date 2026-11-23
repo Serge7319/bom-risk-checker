@@ -122,7 +122,7 @@
     signIn: buildAppUrl({ auth: 'login' }),
     signUp: buildAppUrl({ auth: 'signup', intent: 'trial' }),
     workspace: buildAppUrl({ source: 'marketing' }),
-    demo: '#/contact?intent=demo'
+    demo: '/contact/?intent=demo'
   };
   const CONTACT_SUBMIT_URL = `${APP_ORIGIN}/api/public/contact`;
 
@@ -412,7 +412,7 @@
     $$('.app-link').forEach(a => {
       const auth = String(a.dataset.auth || '').trim().toLowerCase();
       if (a.dataset.stressCta === 'true' && window.CADIVOR_PUBLIC_BOM_STRESS_TEST_ENABLED === true) {
-        a.href = '#/analyze';
+        a.href = '/free-audit/';
         a.addEventListener('click', () => {
           if (location.hash === '#/analyze') window.scrollTo({ top: 0, behavior: 'smooth' });
         });
@@ -2490,7 +2490,7 @@
       const href = link.getAttribute('href') || '';
       const normalizedHref = href.toLowerCase();
       if (normalizedHref.includes('student%20plan%20request') || normalizedHref.includes('student plan request')) {
-        link.href = '#/contact?intent=student';
+        link.href = '/contact/?intent=student';
       }
     });
     if (!form) return;
@@ -2507,7 +2507,7 @@
     const submitButton = $('#contactSubmit', form);
     if (submitButton && !$('[name="consent"]', form)) {
       submitButton.insertAdjacentHTML('beforebegin', `
-        <label class="contact-consent"><input type="checkbox" name="consent" value="true" required><span>I agree Cadivor may use these details and referral source to respond to my request. Read the <a class="route-link" href="#/privacy">Privacy Policy</a>.</span></label>
+        <label class="contact-consent"><input type="checkbox" name="consent" value="true" required><span>I agree Cadivor may use these details and referral source to respond to my request. Read the <a class="route-link" href="/privacy/">Privacy Policy</a>.</span></label>
         <label class="contact-honeypot" aria-hidden="true">Leave this field empty<input name="website" tabindex="-1" autocomplete="off"></label>
       `);
     }

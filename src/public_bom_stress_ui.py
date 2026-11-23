@@ -62,7 +62,7 @@ def render_public_bom_stress_test() -> None:
     if not embedded:
         st.markdown("""
         <header class="cv-stress-site-header">
-          <a class="cv-stress-brand" href="https://www.cadivor.com/#/home" target="_self" aria-label="Cadivor home">
+          <a class="cv-stress-brand" href="https://www.cadivor.com/" target="_self" aria-label="Cadivor home">
             <span class="cv-stress-brand-mark" aria-hidden="true">C</span>
             <span><span class="cv-stress-brand-name">Cadivor</span>
               <span class="cv-stress-brand-line">Engineering Decision Intelligence</span></span>
@@ -77,7 +77,7 @@ def render_public_bom_stress_test() -> None:
         report = st.session_state.get("cv_stress_report")
         if report:
             st.markdown("## Preliminary BOM audit")
-            st.caption("First five checked components · verify your email for the complete audit.")
+            st.caption("Top five findings across the checked BOM · verify your email for the complete audit.")
             if st.button("Audit another BOM", key="cv_stress_new_audit"):
                 for key in ("cv_stress_report", "cv_stress_error", "cv_stress_last_digest",
                             "cv_stress_upload", "cv_stress_email_pending"):
@@ -85,7 +85,7 @@ def render_public_bom_stress_test() -> None:
                 st.rerun()
         else:
             st.markdown("## Free BOM stress test")
-            st.write("Drop your BOM (.csv / .xlsx) here for a supplier-backed risk and lifecycle review. Results show when a supplier could not verify a component. No account is needed to see the first five components.")
+            st.write("Upload a BOM (.csv / .xlsx) for a supplier-backed risk and lifecycle review. Cadivor checks every accepted row and shows the five highest-priority findings; unverified parts stay clearly labeled.")
             st.caption("Up to 30 rows and 1 MB. Supplier lookups may take several minutes. Do not upload regulated or export-controlled designs.")
             uploaded = st.file_uploader(
                 "Drop your BOM here", type=["csv", "xlsx"], max_upload_size=1,
@@ -164,8 +164,8 @@ def render_public_bom_stress_test() -> None:
             submit = st.form_submit_button("Email my full report", type="primary")
             st.caption("We'll send a secure one-time sign-in link. Verify your email to unlock the full audit in Reports.")
         st.markdown(
-            "[Terms of Service](https://www.cadivor.com/#/terms) · "
-            "[Privacy Policy](https://www.cadivor.com/#/privacy)"
+            "[Terms of Service](https://www.cadivor.com/terms/) · "
+            "[Privacy Policy](https://www.cadivor.com/privacy/)"
         )
         if submit:
             if not accepted:

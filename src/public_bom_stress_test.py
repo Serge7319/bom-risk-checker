@@ -42,9 +42,10 @@ FULL_ENRICHMENT_LEASE_SECONDS = 15 * 60
 PUBLIC_BOM_COMPLETE_IN_PROGRESS_MESSAGE = (
     "Your complete audit is still being prepared. Refresh in a moment."
 )
-# Default global UTC-day cap on supplier-enriched rows (preview + complete).
-# Tune via CADIVOR_PUBLIC_BOM_DAILY_ENRICHED_ROWS. Providers have no coded daily
-# caps beyond per-search limit≤25; 500 ≈ 100 anonymous 5-row previews.
+# Default global UTC-day cap on supplier-enriched rows. The anonymous preview
+# checks every accepted row (up to 30) so its top-five ranking is meaningful;
+# email confirmation then unlocks the already-checked report. Tune this cap
+# with CADIVOR_PUBLIC_BOM_DAILY_ENRICHED_ROWS.
 DEFAULT_DAILY_ENRICHED_ROWS = 500
 TURNSTILE_SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 TURNSTILE_EXPECTED_ACTION = "public_bom_audit"
@@ -496,10 +497,58 @@ def _enrich_one(index: int, row: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         "lifecycle_conflict": bool(part.get("lifecycle_conflict")) if verified else False,
         "checked_at": str(part.get("retrieved_at") or "") if verified else "",
         "risk": str(risk.get("risk_level") or "Needs verification"),
+        "risk_score": risk.get("risk_score") if verified else None,
         "alternate_search_status": "Not checked in the free audit",
         "risk_reasons": [str(reason) for reason in (risk.get("risk_reasons") or [])],
         "verified": verified,
     }
+
+
+def _rank_public_audit_rows(
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split a checked BOM into a conservative top-five preview and remainder.
+
+    Verified High and Medium findings lead, then exact-part verification gaps,
+    then verified Low findings. Numeric risk scores break ties only inside the
+    same category; unknown rows never receive an invented score.
+    """
+    def rank_key(indexed: tuple[int, dict[str, Any]]) -> tuple[int, float, int]:
+        index, row = indexed
+        risk = str(row.get("risk") or "").strip().casefold()
+        if row.get("verified") is not True:
+            bucket = 2
+        elif "critical" in risk or "high" in risk:
+            bucket = 0
+        elif "medium" in risk:
+            bucket = 1
+        elif risk in {"low", "healthy"}:
+            bucket = 3
+        else:
+            bucket = 2
+        try:
+            score = float(row.get("risk_score"))
+            if not math.isfinite(score):
+                score = float("-inf")
+        except (TypeError, ValueError):
+            score = float("-inf")
+        return (bucket, -score, index)
+
+    ranked = sorted(enumerate(rows), key=rank_key)
+    preview = []
+    for rank, (_index, row) in enumerate(ranked[:PREVIEW_ROWS], start=1):
+        visible = {**row, "preview_rank": rank}
+        # Keep the score as an internal ordering aid; the public result shows
+        # the risk label and its evidence-backed reason instead.
+        visible.pop("risk_score", None)
+        preview.append(visible)
+    remainder = [row for _index, row in ranked[PREVIEW_ROWS:]]
+    return preview, remainder
+
+
+def _rank_public_preview(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return only the public top-five rows for small callers and previews."""
+    return _rank_public_audit_rows(rows)[0]
 
 
 def run_audit(
@@ -511,11 +560,12 @@ def run_audit(
     access_token: str | None = None,
     remoteip: str | None = None,
 ) -> dict[str, Any]:
-    """Anonymous preview: supplier lookups only for the first PREVIEW_ROWS.
+    """Anonymous preview: check the complete small BOM, reveal its top five.
 
     IP 2/24h reserve and Turnstile apply unless a server-verified QA session
     (confirmed allowlisted bearer) is present. Global daily enrichment budget
-    always applies. Remaining rows are pending stubs until ``complete_audit``.
+    always applies. Full checked rows stay server-side until email confirmation;
+    only a ranked five-row preview is returned anonymously.
     """
     if not enabled():
         raise StressTestError("The public audit is temporarily unavailable.")
@@ -527,20 +577,16 @@ def run_audit(
     rows = parse_bom(filename, payload)
     # Atomic rate gate BEFORE any supplier lookup (QA skips the IP count only).
     report_id = _reserve(ip_hash, qa_mode=qa_mode)
-    preview_n = min(PREVIEW_ROWS, len(rows))
-    _claim_enrichment_budget(preview_n)
-    preview_rows = rows[:preview_n]
-    pending_rows = rows[preview_n:]
-    enriched_preview = _enrich_rows(preview_rows)
-    stubs = [_pending_stub(row) for row in pending_rows]
-    results = enriched_preview + stubs
+    _claim_enrichment_budget(len(rows))
+    results = _enrich_rows(rows)
+    enriched_preview, remaining_results = _rank_public_audit_rows(results)
     try:
         update = {
             "filename": str(filename)[:180],
             "row_count": len(rows),
             "results": results,
             "status": "ready",
-            "preview_enriched_count": preview_n,
+            "preview_enriched_count": len(results),
             "qa_mode": qa_mode,
         }
         _service_client().table("cadivor_public_bom_stress_tests").update(update).eq(
@@ -556,18 +602,21 @@ def run_audit(
             logging.info("public_bom_qa_audit %s", logging_note)
         except Exception:
             pass
-    remaining_count = len(stubs)
+    remaining_count = len(remaining_results)
     summary = audit_summary_counts(enriched_preview)
     return {
         "id": report_id,
         "row_count": len(rows),
         "preview": enriched_preview,
         "remaining_count": remaining_count,
-        # Unevaluated rows have no supplier risk yet — do not invent High counts.
-        "remaining_high_risk": 0,
-        "remaining_unverified": remaining_count,
-        "remaining_pending": remaining_count,
-        "preview_enriched_count": preview_n,
+        "remaining_high_risk": sum(
+            row.get("verified") is True
+            and any(term in str(row.get("risk") or "").casefold() for term in ("high", "critical"))
+            for row in remaining_results
+        ),
+        "remaining_unverified": sum(row.get("verified") is not True for row in remaining_results),
+        "remaining_pending": 0,
+        "preview_enriched_count": len(results),
         "checked_summary": summary,
         "qa_mode": qa_mode,
         "full_enriched": False,

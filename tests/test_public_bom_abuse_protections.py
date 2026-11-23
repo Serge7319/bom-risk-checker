@@ -124,7 +124,7 @@ def test_visitor_forged_and_expired_still_rejected():
         assert len(funnel.visitor_hash(good)) == 64
 
 
-def test_preview_enriches_only_first_five_rows():
+def test_preview_enriches_full_bom_before_ranking_top_five():
     class FakeUpdate:
         def __init__(self):
             self.saved = None
@@ -171,10 +171,12 @@ def test_preview_enriches_only_first_five_rows():
     ):
         teaser = funnel.run_audit("board.csv", csv, "signed")
 
-    assert enrich_calls == [0, 1, 2, 3, 4]
-    assert teaser["preview_enriched_count"] == 5
-    assert teaser["remaining_pending"] == 7
-    assert all(row.get("enrichment_pending") for row in fake.saved["results"][5:])
+    assert sorted(enrich_calls) == list(range(12))
+    assert teaser["preview_enriched_count"] == 12
+    assert teaser["remaining_pending"] == 0
+    assert len(teaser["preview"]) == 5
+    assert [row["preview_rank"] for row in teaser["preview"]] == [1, 2, 3, 4, 5]
+    assert not any(row.get("enrichment_pending") for row in fake.saved["results"])
 
 
 def test_complete_audit_email_quota_idempotent_and_cross_ip():

@@ -45,6 +45,10 @@
     }).catch(() => undefined);
   }
 
+  // Direct marketing pages reuse the same consent-gated sender without
+  // passing form content or contact details.
+  window.cadivorTrackMarketingEvent = track;
+
   function decorateAppLinks() {
     if (!allowed()) return;
     const params = utm();

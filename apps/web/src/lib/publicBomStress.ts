@@ -1,4 +1,4 @@
-/** Client helpers for the anonymous 5-part BOM audit and verified report handoff. */
+/** Client helpers for the anonymous top-five BOM audit and verified report handoff. */
 
 export type PublicBomPreviewRow = {
   mpn: string;
@@ -12,6 +12,8 @@ export type PublicBomPreviewRow = {
   sources?: string;
   supplier_coverage?: string;
   risk?: string;
+  risk_score?: number | null;
+  preview_rank?: number;
   verified?: boolean;
   quantity?: number | null;
   matched_mpn?: string;

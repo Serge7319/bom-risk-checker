@@ -36,7 +36,7 @@ class PublicBomStressTest(unittest.TestCase):
         self.assertEqual(homepage.count('data-stress-cta="true"'), 3)
         self.assertLess(homepage.index('class="hero experience-scene"'), homepage.index('data-page="analyze"'))
         self.assertLess(homepage.index('class="page-hero stress-page-hero"'), homepage.index('class="stress-funnel"'))
-        self.assertIn("a.href = '#/analyze'", script)
+        self.assertIn("a.href = '/free-audit/'", script)
         self.assertNotIn("stressFullPage", script)
         self.assertIn("if (page === 'analyze')", script)
         # Marketing iframe targets the Next anonymous route directly (not /?).
@@ -72,7 +72,7 @@ class PublicBomStressTest(unittest.TestCase):
             with patch.object(module, "enabled", return_value=False):
                 module.render_public_bom_stress_test()
                 self.assertIn('class="cv-stress-site-header"', "".join(rendered))
-                self.assertIn('href="https://www.cadivor.com/#/home"', "".join(rendered))
+                self.assertIn('href="https://www.cadivor.com/"', "".join(rendered))
                 self.assertIn('class="cv-stress-header-note">Free BOM audit', "".join(rendered))
                 self.assertNotIn('href="https://www.cadivor.com/#/product"', "".join(rendered))
                 self.assertNotIn('href="https://www.cadivor.com/#/pricing"', "".join(rendered))
@@ -301,7 +301,7 @@ class PublicBomStressTest(unittest.TestCase):
 
         def enrich(index, row):
             self.assertEqual(calls[0], "reserve")
-            self.assertEqual(calls[1], ("budget", 5))
+            self.assertEqual(calls[1], ("budget", 10))
             return index, {
                 **row, "risk": "Low",
                 "verified": True, "risk_reasons": [f"private-evidence-{index}"],
@@ -319,22 +319,21 @@ class PublicBomStressTest(unittest.TestCase):
              patch.object(funnel, "_enrich_one", side_effect=enrich):
             teaser = funnel.run_audit("prototype.csv", csv, "signed")
         self.assertEqual(len(teaser["preview"]), 5)
-        # Remaining rows are pending stubs — no invented high-risk counts.
+        # Every row is checked before the anonymous five-row preview is ranked.
         self.assertEqual(teaser["remaining_count"], 5)
         self.assertEqual(teaser["remaining_high_risk"], 0)
-        self.assertEqual(teaser["remaining_pending"], 5)
+        self.assertEqual(teaser["remaining_pending"], 0)
         self.assertEqual(len(fake.saved["results"]), 10)
-        self.assertEqual(fake.saved["preview_enriched_count"], 5)
-        self.assertTrue(all(
-            fake.saved["results"][i].get("enrichment_pending") for i in range(5, 10)
-        ))
+        self.assertEqual(fake.saved["preview_enriched_count"], 10)
+        self.assertTrue(all(not row.get("enrichment_pending") for row in fake.saved["results"]))
+        self.assertEqual([row["preview_rank"] for row in teaser["preview"]], [1, 2, 3, 4, 5])
         self.assertEqual(sum(1 for _ in calls if _ == "reserve" or (isinstance(_, tuple) and _[0] == "budget")), 2)
         self.assertNotIn("PART5", str(teaser["preview"]))
         self.assertNotIn("private-evidence-5", str(teaser))
-        # Only the first five rows hit supplier enrichment.
+        # The complete 10-row BOM is supplier-enriched before ranking.
         self.assertEqual(
             sum(1 for row in fake.saved["results"] if not row.get("enrichment_pending")),
-            5,
+            10,
         )
 
     def test_full_results_require_a_confirmed_supabase_identity_with_matching_email(self):
