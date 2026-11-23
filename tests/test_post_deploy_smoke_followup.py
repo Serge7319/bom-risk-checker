@@ -246,6 +246,64 @@ class CompareAssessmentHonestyTests(unittest.TestCase):
         )
         self.assertEqual(assessment, FINDING_NEEDS_VERIFICATION)
 
+    def test_literal_catalog_agreement_does_not_overstate_electrical_or_pinout_fit(self):
+        projected = user_facing_compare_rows(
+            [
+                {
+                    "Attribute": "Package",
+                    "Key": "package",
+                    "Original": "16-SOIC (0.154\", 3.90mm Width)",
+                    "Candidate": "16-SOIC (0.154\", 3.90mm Width)",
+                    "Status": "Needs data",
+                    "Part A source": "supplier catalog",
+                    "Part B source": "DigiKey",
+                    "Part A value class": "unknown",
+                    "Part B value class": "unknown",
+                    "Part A test condition": "Not stated",
+                    "Part B test condition": "Not stated",
+                },
+                {
+                    "Attribute": "I/O / interface type",
+                    "Key": "interface_type",
+                    "Original": "RS232",
+                    "Candidate": "RS232",
+                    "Status": "Needs data",
+                    "Part A source": "supplier catalog",
+                    "Part B source": "DigiKey",
+                    "Part A value class": "unknown",
+                    "Part B value class": "unknown",
+                    "Part A test condition": "Not stated",
+                    "Part B test condition": "Not stated",
+                },
+                {
+                    "Attribute": "Supply voltage",
+                    "Key": "supply_voltage",
+                    "Original": "4.5V ~ 5.5V",
+                    "Candidate": "4.5V ~ 5.5V",
+                    "Status": "Needs data",
+                    "Part A source": "supplier catalog",
+                    "Part B source": "DigiKey",
+                    "Part A value class": "unknown",
+                    "Part B value class": "unknown",
+                    "Part A test condition": "Not stated",
+                    "Part B test condition": "Not stated",
+                },
+                {
+                    "Attribute": "Pinout",
+                    "Key": "pinout",
+                    "Original": "Not stated in this DigiKey product record",
+                    "Candidate": "Not stated in this DigiKey product record",
+                    "Status": "Needs data",
+                    "Part A source": "Not stated",
+                    "Part B source": "Not stated",
+                },
+            ]
+        )
+        self.assertEqual(projected[0]["Assessment"], FINDING_LISTING_AGREEMENT)
+        self.assertEqual(projected[1]["Assessment"], FINDING_LISTING_AGREEMENT)
+        self.assertEqual(projected[2]["Assessment"], FINDING_NEEDS_VERIFICATION)
+        self.assertEqual(projected[3]["Assessment"], FINDING_NEEDS_VERIFICATION)
+
     def test_user_facing_rows_demote_catalog_match(self):
         unknown_rows = user_facing_compare_rows(
             [
