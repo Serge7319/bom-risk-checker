@@ -107,6 +107,13 @@ function isMissingStripeCustomer(error: unknown): boolean {
   );
 }
 
+function isMissingStripeSubscription(error: unknown): boolean {
+  const summary = stripeErrorSummary(error);
+  return summary.code === "resource_missing" && (
+    summary.param === "id" || /no such subscription/i.test(summary.message || "")
+  );
+}
+
 function checkoutSessionParams(
   origin: string,
   userId: string,
@@ -643,8 +650,25 @@ async function createPortal(
   origin: string,
   supportReference: string,
 ) {
-  const customer = String(profile.stripe_customer_id || "").trim();
+  const savedSubscriptionId = String(profile.stripe_subscription_id || "").trim();
   const returnUrl = `${origin}/settings?billing=returned`;
+  const failure = (code: string, detail: string) => ({
+    ok: false,
+    code,
+    detail,
+    support_reference: supportReference,
+  });
+  const customerIdFor = (subscription: Stripe.Subscription) =>
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : subscription.customer?.id || "";
+  const isManageableSubscription = (subscription: Stripe.Subscription | null) =>
+    Boolean(
+      subscription &&
+      String(subscription.metadata?.user_id || "").trim() === userId &&
+      ["active", "trialing"].includes(subscription.status) &&
+      customerIdFor(subscription),
+    );
   const createPortalSession = async (customerId: string) => {
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,
@@ -653,72 +677,128 @@ async function createPortal(
     return { ok: true, checkout: { state: "open", url: session.url } };
   };
 
-  if (customer) {
+  let subscription: Stripe.Subscription | null = null;
+  if (savedSubscriptionId) {
     try {
-      return await createPortalSession(customer);
+      subscription = await stripe.subscriptions.retrieve(savedSubscriptionId);
     } catch (error) {
-      if (!isMissingStripeCustomer(error)) throw error;
-      console.warn("billing_portal_customer_missing", { reference: supportReference });
+      const summary = stripeErrorSummary(error);
+      if (!isMissingStripeSubscription(error)) {
+        console.error("billing_portal_subscription_recovery_failed", {
+          reference: supportReference,
+          error_type: summary.type,
+          error_code: summary.code,
+          error_status: summary.statusCode,
+          error_param: summary.param,
+          stripe_request_id: summary.requestId,
+        });
+        return failure(
+          "billing_subscription_unverified",
+          "Cadivor couldn't verify the subscription linked to this account. No billing changes were made. Contact support and provide this reference.",
+        );
+      }
+      console.warn("billing_portal_saved_subscription_missing", {
+        reference: supportReference,
+        error_code: summary.code,
+        error_param: summary.param,
+        stripe_request_id: summary.requestId,
+      });
     }
   }
 
-  const subscriptionId = String(profile.stripe_subscription_id || "").trim();
-  if (!subscriptionId) {
-    return {
-      ok: false,
-      code: "billing_customer_link_invalid",
-      detail: "The Stripe customer linked to this subscription could not be found. Contact support and provide this reference.",
-      support_reference: supportReference,
-    };
-  }
+  if (!isManageableSubscription(subscription)) {
+    const matches: Stripe.Subscription[] = [];
+    try {
+      for (const status of ["active", "trialing"] as const) {
+        const result = await stripe.subscriptions.search({
+          query: "status:'" + status + "' AND metadata['user_id']:'" + userId + "'",
+          limit: 2,
+        });
+        matches.push(...result.data);
+        if (matches.length > 1) break;
+      }
+    } catch (error) {
+      const summary = stripeErrorSummary(error);
+      console.error("billing_portal_subscription_search_failed", {
+        reference: supportReference,
+        error_type: summary.type,
+        error_code: summary.code,
+        error_status: summary.statusCode,
+        error_param: summary.param,
+        stripe_request_id: summary.requestId,
+      });
+      return failure(
+        "billing_subscription_unverified",
+        "Cadivor couldn't verify the subscription linked to this account. No billing changes were made. Contact support and provide this reference.",
+      );
+    }
 
-  const subscription = await stripe.subscriptions.retrieve(subscriptionId).catch((error: unknown) => {
-    const summary = stripeErrorSummary(error);
-    console.error("billing_portal_subscription_recovery_failed", {
+    const uniqueMatches = [...new Map(matches.map((item) => [item.id, item])).values()];
+    if (uniqueMatches.length === 0) {
+      console.error("billing_portal_active_subscription_not_found", {
+        reference: supportReference,
+        saved_subscription_missing: Boolean(savedSubscriptionId),
+      });
+      return failure(
+        "billing_subscription_not_found",
+        "Stripe couldn't find an active subscription for this account. Cadivor hasn't started a replacement subscription or changed billing. Contact support and provide this reference.",
+      );
+    }
+    if (uniqueMatches.length !== 1 || !isManageableSubscription(uniqueMatches[0])) {
+      console.error("billing_portal_subscription_search_ambiguous", {
+        reference: supportReference,
+        match_count: uniqueMatches.length,
+      });
+      return failure(
+        "billing_subscription_ambiguous",
+        "Stripe found multiple or unverified subscriptions for this account. Cadivor hasn't changed billing. Contact support and provide this reference.",
+      );
+    }
+    subscription = uniqueMatches[0];
+    console.info("billing_portal_subscription_recovered_by_user_metadata", {
       reference: supportReference,
-      error_type: summary.type,
-      error_code: summary.code,
-      error_status: summary.statusCode,
-      error_param: summary.param,
-      stripe_request_id: summary.requestId,
+      subscription_status: subscription.status,
     });
-    return null;
-  });
-  if (!subscription) {
-    return {
-      ok: false,
-      code: "billing_customer_link_invalid",
-      detail: "Cadivor couldn't verify the subscription linked to this account. Contact support and provide this reference.",
-      support_reference: supportReference,
-    };
   }
 
-  const subscriptionOwner = String(subscription.metadata?.user_id || "").trim();
-  const recoveredCustomer = typeof subscription.customer === "string"
-    ? subscription.customer
-    : subscription.customer.id;
-  if (subscriptionOwner !== userId || !recoveredCustomer ||
-      !["active", "trialing"].includes(subscription.status)) {
+  if (!subscription || !isManageableSubscription(subscription)) {
     console.error("billing_portal_subscription_recovery_rejected", {
       reference: supportReference,
-      owner_matches: subscriptionOwner === userId,
-      subscription_status: subscription.status,
-      has_customer: Boolean(recoveredCustomer),
+      owner_matches: Boolean(subscription && String(subscription.metadata?.user_id || "").trim() === userId),
+      subscription_status: subscription?.status || null,
+      has_customer: Boolean(subscription && customerIdFor(subscription)),
     });
-    return {
-      ok: false,
-      code: "billing_customer_link_invalid",
-      detail: "Cadivor couldn't verify the active subscription linked to this account. Contact support and provide this reference.",
-      support_reference: supportReference,
-    };
+    return failure(
+      "billing_subscription_unverified",
+      "Cadivor couldn't verify the active subscription linked to this account. No billing changes were made. Contact support and provide this reference.",
+    );
   }
 
-  const portal = await createPortalSession(recoveredCustomer);
+  const recoveredCustomer = customerIdFor(subscription);
+  let portal;
+  try {
+    portal = await createPortalSession(recoveredCustomer);
+  } catch (error) {
+    if (!isMissingStripeCustomer(error)) throw error;
+    console.error("billing_portal_recovered_customer_missing", {
+      reference: supportReference,
+      stripe_request_id: stripeErrorSummary(error).requestId,
+    });
+    return failure(
+      "billing_customer_link_invalid",
+      "Stripe couldn't find the customer attached to this active subscription. Cadivor hasn't changed billing. Contact support and provide this reference.",
+    );
+  }
+
   const { data: repairedProfile, error: repairError } = await supabase
     .from("users")
-    .update({ stripe_customer_id: recoveredCustomer })
+    .update({
+      stripe_customer_id: recoveredCustomer,
+      stripe_subscription_id: subscription.id,
+      stripe_subscription_status: subscription.status,
+    })
     .eq("id", userId)
-    .eq("stripe_subscription_id", subscriptionId)
+    .eq("stripe_subscription_id", savedSubscriptionId)
     .select("id")
     .maybeSingle();
   if (repairError || !repairedProfile) {
@@ -728,7 +808,10 @@ async function createPortal(
       profile_matched: Boolean(repairedProfile),
     });
   } else {
-    console.info("billing_portal_customer_link_repaired", { reference: supportReference });
+    console.info("billing_portal_customer_link_repaired", {
+      reference: supportReference,
+      recovered_subscription: subscription.id !== savedSubscriptionId,
+    });
   }
   return portal;
 }
