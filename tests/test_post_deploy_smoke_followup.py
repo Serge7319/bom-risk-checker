@@ -277,7 +277,7 @@ class CompareAssessmentHonestyTests(unittest.TestCase):
                 },
                 {
                     "Attribute": "Function / category",
-                    "Key": "function",
+                    "Key": "architecture",
                     "Original": "Transceiver",
                     "Candidate": "Transceiver",
                     "Status": "Needs data",
