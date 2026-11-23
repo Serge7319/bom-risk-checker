@@ -168,6 +168,7 @@ export default function AdminUsersPage() {
     ["Plan last changed", selectedProfile.plan_changed_at ? formatDate(selectedProfile.plan_changed_at) : null],
   ] : [];
 
+
   return (
     <Shell session={session}>
       <PageHeader
@@ -332,12 +333,12 @@ export default function AdminUsersPage() {
             ) : null}
             {!profileLoading && !profileError ? (
               <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, margin: "20px 0 0" }}>
-              {profileFields.map(([label, value]) => (
-                <div key={label} style={{ border: "1px solid #dce4ef", borderRadius: 10, padding: "11px 13px", minWidth: 0 }}>
-                  <dt style={{ color: "#65758b", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>{label}</dt>
-                  <dd className="cv-cell-wrap" style={{ margin: 0, color: "#17365d", fontWeight: 600 }}>{value || "Not provided"}</dd>
-                </div>
-              ))}
+                {profileFields.map(([label, value]) => (
+                  <div key={label} style={{ border: "1px solid #dce4ef", borderRadius: 10, padding: "11px 13px", minWidth: 0 }}>
+                    <dt style={{ color: "#65758b", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>{label}</dt>
+                    <dd className="cv-cell-wrap" style={{ margin: 0, color: "#17365d", fontWeight: 600 }}>{value || "Not provided"}</dd>
+                  </div>
+                ))}
               </dl>
             ) : null}
             {profileImageUrl ? (
