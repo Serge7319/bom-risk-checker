@@ -1629,12 +1629,16 @@ export type AdminAccount = {
   id: string;
   email: string;
   full_name?: string | null;
+  role_title?: string | null;
   company_name?: string | null;
+  profile_image_url?: string | null;
   role?: string | null;
   plan?: string | null;
   account_status: "active" | "suspended";
   suspended_reason?: string | null;
+  trial_started_at?: string | null;
   trial_ends_at?: string | null;
+  plan_changed_at?: string | null;
   signup_at?: string | null;
   last_sign_in_at?: string | null;
   last_active_at?: string | null;
@@ -1643,6 +1647,13 @@ export type AdminAccount = {
 
 export async function fetchAdminAccounts(token: string) {
   return apiJson<{ ok: boolean; users: AdminAccount[] }>("/admin/users", { token });
+}
+
+export async function fetchAdminAccountProfile(token: string, userId: string) {
+  return apiJson<{ ok: boolean; user: AdminAccount }>(
+    `/admin/users/${encodeURIComponent(userId)}`,
+    { token },
+  );
 }
 
 export async function updateAdminAccountStatus(

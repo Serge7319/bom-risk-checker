@@ -6,6 +6,7 @@ import { PageHeader, SecondaryLink } from "@/components/PageHeader";
 import { useRequireSession } from "@/lib/session";
 import {
   deleteAdminAccount,
+  fetchAdminAccountProfile,
   fetchAdminAccounts,
   type AdminAccount,
   updateAdminAccountStatus,
@@ -28,6 +29,9 @@ export default function AdminUsersPage() {
   const session = useRequireSession();
   const [accounts, setAccounts] = useState<AdminAccount[]>([]);
   const [search, setSearch] = useState("");
+  const [selectedProfile, setSelectedProfile] = useState<AdminAccount | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
   const [dialog, setDialog] = useState<Dialog>(null);
   const [confirmationEmail, setConfirmationEmail] = useState("");
   const [reason, setReason] = useState("");
@@ -39,6 +43,22 @@ export default function AdminUsersPage() {
   async function refresh(token: string) {
     const result = await fetchAdminAccounts(token);
     setAccounts(result.users || []);
+  }
+
+  async function openProfile(account: AdminAccount) {
+    if (!session?.access_token) return;
+    setDialog(null);
+    setSelectedProfile(account);
+    setProfileLoading(true);
+    setProfileError("");
+    try {
+      const result = await fetchAdminAccountProfile(session.access_token, account.id);
+      setSelectedProfile(result.user);
+    } catch (cause) {
+      setProfileError(cause instanceof Error ? cause.message : "Could not load this user profile.");
+    } finally {
+      setProfileLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -64,6 +84,7 @@ export default function AdminUsersPage() {
     return accounts.filter((account) => [
       account.email,
       account.full_name,
+      account.role_title,
       account.company_name,
       account.role,
       account.plan,
@@ -72,6 +93,7 @@ export default function AdminUsersPage() {
   }, [accounts, search]);
 
   function openDialog(kind: "status" | "delete", account: AdminAccount) {
+    setSelectedProfile(null);
     setDialog({ kind, account });
     setConfirmationEmail("");
     setReason("");
@@ -119,6 +141,32 @@ export default function AdminUsersPage() {
     dialog?.kind === "delete" &&
     confirmationEmail.trim().toLowerCase() === dialog.account.email.trim().toLowerCase(),
   );
+  const profileImageUrl = (() => {
+    if (!selectedProfile?.profile_image_url) return null;
+    try {
+      const url = new URL(selectedProfile.profile_image_url);
+      return url.protocol === "https:" ? url.toString() : null;
+    } catch {
+      return null;
+    }
+  })();
+  const profileFields: Array<[string, string | null | undefined]> = selectedProfile ? [
+    ["Position", selectedProfile.role_title],
+    ["Company", selectedProfile.company_name],
+    ["Email", selectedProfile.email],
+    ["Account ID", selectedProfile.id],
+    ["Plan", selectedProfile.plan],
+    ["Platform role", selectedProfile.role],
+    ["Access status", selectedProfile.account_status],
+    ["Status reason", selectedProfile.suspended_reason],
+    ["Current activity", selectedProfile.activity_status],
+    ["Signed up", selectedProfile.signup_at ? formatDate(selectedProfile.signup_at) : null],
+    ["Last sign-in", selectedProfile.last_sign_in_at ? formatDate(selectedProfile.last_sign_in_at) : null],
+    ["Last active", selectedProfile.last_active_at ? formatDate(selectedProfile.last_active_at) : null],
+    ["Trial started", selectedProfile.trial_started_at ? formatDate(selectedProfile.trial_started_at) : null],
+    ["Trial ends", selectedProfile.trial_ends_at ? formatDate(selectedProfile.trial_ends_at) : null],
+    ["Plan last changed", selectedProfile.plan_changed_at ? formatDate(selectedProfile.plan_changed_at) : null],
+  ] : [];
 
   return (
     <Shell session={session}>
@@ -191,8 +239,16 @@ export default function AdminUsersPage() {
                   return (
                     <tr key={account.id}>
                       <td className="cv-cell-wrap">
-                        <strong>{account.full_name || account.email}</strong>
+                        <button
+                          className="admin-account-profile-link"
+                          type="button"
+                          aria-label={`View profile for ${account.full_name || account.email}`}
+                          onClick={() => void openProfile(account)}
+                        >
+                          <strong>{account.full_name || account.email}</strong>
+                        </button>
                         <div>{account.email}</div>
+                        {account.role_title ? <small>{account.role_title}</small> : null}
                         {account.company_name ? <small>{account.company_name}</small> : null}
                         {deletionPending ? <div className="cv-error">Deletion pending — retry to finish cleanup.</div> : null}
                       </td>
@@ -206,6 +262,14 @@ export default function AdminUsersPage() {
                       <td>{formatDate(account.last_active_at || account.last_sign_in_at)}</td>
                       <td>
                         <div style={{ display: "grid", gap: 6, minWidth: 118 }}>
+                          <button
+                            className="cv-button"
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void openProfile(account)}
+                          >
+                            View profile
+                          </button>
                           <button
                             className="cv-button"
                             type="button"
@@ -233,6 +297,60 @@ export default function AdminUsersPage() {
           </div>
         )}
       </section>
+
+      {selectedProfile ? (
+        <div
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !profileLoading) {
+              setSelectedProfile(null);
+              setProfileError("");
+            }
+          }}
+          style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(12, 26, 45, .54)", display: "grid", placeItems: "center", padding: 16 }}
+        >
+          <section
+            className="cv-card pad"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-user-profile-title"
+            style={{ width: "min(760px, 100%)", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 70px rgba(0,0,0,.24)" }}
+          >
+            <h2 id="admin-user-profile-title" className="cv-card-title">User profile</h2>
+            <p className="cv-card-subtitle" style={{ marginTop: 8 }}>
+              <strong style={{ color: "#17365d", fontSize: 18 }}>{selectedProfile.full_name || "Name not provided"}</strong>
+              <br />{selectedProfile.email}
+            </p>
+            {profileLoading ? <p role="status" style={{ marginTop: 18 }}>Loading profile details…</p> : null}
+            {profileError ? (
+              <div className="cv-error" role="alert" style={{ marginTop: 14 }}>
+                {profileError}{" "}
+                <button className="cv-button" type="button" onClick={() => void openProfile(selectedProfile)}>
+                  Retry
+                </button>
+              </div>
+            ) : null}
+            {!profileLoading && !profileError ? (
+              <dl style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, margin: "20px 0 0" }}>
+              {profileFields.map(([label, value]) => (
+                <div key={label} style={{ border: "1px solid #dce4ef", borderRadius: 10, padding: "11px 13px", minWidth: 0 }}>
+                  <dt style={{ color: "#65758b", fontSize: 12, fontWeight: 700, marginBottom: 5 }}>{label}</dt>
+                  <dd className="cv-cell-wrap" style={{ margin: 0, color: "#17365d", fontWeight: 600 }}>{value || "Not provided"}</dd>
+                </div>
+              ))}
+              </dl>
+            ) : null}
+            {profileImageUrl ? (
+              <p style={{ marginTop: 14 }}>
+                <a href={profileImageUrl} target="_blank" rel="noreferrer">Open profile image</a>
+              </p>
+            ) : null}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
+              <button className="cv-button" type="button" disabled={profileLoading} onClick={() => { setSelectedProfile(null); setProfileError(""); }}>Close</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {dialog ? (
         <div
