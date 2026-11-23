@@ -290,6 +290,68 @@ def _user_scoped_client(access_token: str):
     return client
 
 
+def _rpc(access_token: str, function_name: str, payload: dict[str, Any] | None = None) -> Any:
+    """Call an RLS-aware PostgREST RPC with the caller's bearer token."""
+    client = _user_scoped_client(access_token)
+    try:
+        result = client.rpc(function_name, payload or {}).execute()
+    except Exception as exc:  # noqa: BLE001
+        message = str(getattr(exc, "message", "") or exc).strip()
+        normalized = message.lower()
+        code = str(getattr(exc, "code", "") or "").strip().upper()
+        status = int(getattr(exc, "status_code", 0) or 0)
+        if status in {401, 403} or "administrator access is required" in normalized:
+            raise AuthError("Platform administrator access is required.", 403)
+        if (
+            "must retain at least one administrator" in normalized
+            or "must retain at least one active administrator" in normalized
+            or "active member to receive ownership" in normalized
+            or "account deletion is pending" in normalized
+        ):
+            raise AuthError(message, 409)
+        if "user was not found" in normalized or "account was not found" in normalized:
+            raise AuthError("Account not found.", 404)
+        if status == 404 or code == "PGRST202" or "could not find the function" in normalized:
+            raise AuthError("Account management is not available until the database migration is applied.", 503)
+        if message:
+            raise AuthError(message[:300], 400 if status and status < 500 else 503)
+        raise AuthError("Account management is temporarily unavailable.", 503) from exc
+    return getattr(result, "data", result)
+
+
+def require_active_account(access_token: str) -> None:
+    """Reject suspended accounts before they can use an authenticated API route."""
+    result = _rpc(access_token, "cadivor_admin_runtime_access")
+    if not isinstance(result, list) or not result or not isinstance(result[0], dict):
+        raise AuthError("Account access could not be verified.", 503)
+    status = str(result[0].get("account_status") or "").strip().lower()
+    if status == "suspended":
+        raise AuthError("This account is suspended. Contact Cadivor support for help.", 403)
+    if status != "active":
+        raise AuthError("Account access could not be verified.", 503)
+
+
+def admin_list_accounts(access_token: str) -> list[dict[str, Any]]:
+    result = _rpc(access_token, "cadivor_admin_list_users_v2")
+    if not isinstance(result, list) or any(not isinstance(row, dict) for row in result):
+        raise AuthError("The account list could not be loaded.", 503)
+    return result
+
+
+def admin_set_account_status(
+    *, access_token: str, target_user_id: str, status: str, reason: str = ""
+) -> None:
+    _rpc(
+        access_token,
+        "cadivor_admin_set_account_status",
+        {
+            "target_user_id": target_user_id,
+            "next_status": status,
+            "reason": reason,
+        },
+    )
+
+
 def _token_fingerprint(access_token: str) -> str:
     return hashlib.sha256(access_token.encode("utf-8")).hexdigest()
 
@@ -679,6 +741,7 @@ def login(
     )
     if not access_token:
         raise AuthError("Invalid credentials")
+    require_active_account(access_token)
     user_id, user_email = _user_payload(user)
     membership = ensure_owner_membership(
         user_id=user_id,
@@ -785,6 +848,7 @@ def resolve_bearer(access_token: str) -> AuthContext:
     user_id, email = _user_payload(user)
     if not user_email_verified(user):
         raise AuthError("Verify your email address before using Cadivor", 403)
+    require_active_account(access_token)
     membership = ensure_owner_membership(
         user_id=user_id,
         email=email,

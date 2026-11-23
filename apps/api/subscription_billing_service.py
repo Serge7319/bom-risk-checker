@@ -29,6 +29,10 @@ ALLOWED_ACTIONS = frozenset({
     "developer_api_key_create",
     "developer_api_key_revoke",
     "developer_api_access_override_sync",
+    "admin_validate_account_deletion",
+    "admin_prepare_account_deletion",
+    "admin_delete_account",
+    "admin_sync_account_status",
 })
 
 PUBLIC_ACTIONS = frozenset({"catalog", "addons_catalog", "developer_api_key_resolve"})
