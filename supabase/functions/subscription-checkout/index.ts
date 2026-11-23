@@ -637,14 +637,100 @@ async function priceCatalog() {
   return rows;
 }
 
-async function createPortal(profile: Record<string, unknown>, origin: string) {
+async function createPortal(
+  profile: Record<string, unknown>,
+  userId: string,
+  origin: string,
+  supportReference: string,
+) {
   const customer = String(profile.stripe_customer_id || "").trim();
-  if (!customer) return { ok: false, code: "billing_customer_missing", detail: "No subscription is linked to this account." };
-  const session = await stripe.billingPortal.sessions.create({
-    customer,
-    return_url: `${origin}/settings?billing=returned`,
+  const returnUrl = `${origin}/settings?billing=returned`;
+  const createPortalSession = async (customerId: string) => {
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: returnUrl,
+    });
+    return { ok: true, checkout: { state: "open", url: session.url } };
+  };
+
+  if (customer) {
+    try {
+      return await createPortalSession(customer);
+    } catch (error) {
+      if (!isMissingStripeCustomer(error)) throw error;
+      console.warn("billing_portal_customer_missing", { reference: supportReference });
+    }
+  }
+
+  const subscriptionId = String(profile.stripe_subscription_id || "").trim();
+  if (!subscriptionId) {
+    return {
+      ok: false,
+      code: "billing_customer_link_invalid",
+      detail: "The Stripe customer linked to this subscription could not be found. Contact support and provide this reference.",
+      support_reference: supportReference,
+    };
+  }
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId).catch((error: unknown) => {
+    const summary = stripeErrorSummary(error);
+    console.error("billing_portal_subscription_recovery_failed", {
+      reference: supportReference,
+      error_type: summary.type,
+      error_code: summary.code,
+      error_status: summary.statusCode,
+      error_param: summary.param,
+      stripe_request_id: summary.requestId,
+    });
+    return null;
   });
-  return { ok: true, checkout: { state: "open", url: session.url } };
+  if (!subscription) {
+    return {
+      ok: false,
+      code: "billing_customer_link_invalid",
+      detail: "Cadivor couldn't verify the subscription linked to this account. Contact support and provide this reference.",
+      support_reference: supportReference,
+    };
+  }
+
+  const subscriptionOwner = String(subscription.metadata?.user_id || "").trim();
+  const recoveredCustomer = typeof subscription.customer === "string"
+    ? subscription.customer
+    : subscription.customer.id;
+  if (subscriptionOwner !== userId || !recoveredCustomer ||
+      !["active", "trialing"].includes(subscription.status)) {
+    console.error("billing_portal_subscription_recovery_rejected", {
+      reference: supportReference,
+      owner_matches: subscriptionOwner === userId,
+      subscription_status: subscription.status,
+      has_customer: Boolean(recoveredCustomer),
+    });
+    return {
+      ok: false,
+      code: "billing_customer_link_invalid",
+      detail: "Cadivor couldn't verify the active subscription linked to this account. Contact support and provide this reference.",
+      support_reference: supportReference,
+    };
+  }
+
+  const portal = await createPortalSession(recoveredCustomer);
+  const { data: repairedProfile, error: repairError } = await supabase
+    .from("users")
+    .update({ stripe_customer_id: recoveredCustomer })
+    .eq("id", userId)
+    .eq("stripe_subscription_id", subscriptionId)
+    .select("id")
+    .maybeSingle();
+  if (repairError || !repairedProfile) {
+    console.error("billing_portal_customer_link_repair_failed", {
+      reference: supportReference,
+      error_code: repairError?.code || null,
+      profile_matched: Boolean(repairedProfile),
+    });
+  } else {
+    console.info("billing_portal_customer_link_repaired", { reference: supportReference });
+  }
+  return portal;
 }
 
 serve(async (request) => {
@@ -957,7 +1043,7 @@ serve(async (request) => {
         charges_created: false,
         subscription_status: profile.stripe_subscription_status || null,
         has_active_subscription: active,
-        can_manage_billing: Boolean(active && profile.stripe_customer_id),
+        can_manage_billing: Boolean(active && (profile.stripe_customer_id || profile.stripe_subscription_id)),
         plans,
         addons: await addonCatalog(),
         usage_credits: await usageCreditsFor(auth.user.id),
@@ -970,7 +1056,7 @@ serve(async (request) => {
     }
 
     if (action === "portal") {
-      const portal = await createPortal(profile, origin);
+      const portal = await createPortal(profile, auth.user.id, origin, supportReference);
       return response(portal, portal.ok ? 200 : 409, origin);
     }
 

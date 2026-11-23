@@ -1290,7 +1290,7 @@ button {
 }
 
 .cv-plan-option li::before {
-  content: "â";
+  content: "\2713";
   margin-right: 7px;
   color: #31805e;
   font-weight: 800;
