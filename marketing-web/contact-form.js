@@ -12,9 +12,20 @@
   const inboxByTopic = { security: "security@cadivor.com", legal: "legal@cadivor.com", billing: "billing@cadivor.com" };
   let started = false;
 
-  function track(event, properties) {
-    if (typeof window.cadivorTrackMarketingEvent === "function") {
-      window.cadivorTrackMarketingEvent(event, properties);
+  async function track(event, properties) {
+    if (typeof window.cadivorTrackMarketingEvent !== "function") return false;
+    try {
+      return await window.cadivorTrackMarketingEvent(event, properties) === true;
+    } catch {
+      return false;
+    }
+  }
+
+  function analyticsConsented() {
+    try {
+      return window.localStorage.getItem("cadivor_analytics_consent_v1") === "accepted";
+    } catch {
+      return false;
     }
   }
 
@@ -93,8 +104,23 @@
       if (!response.ok || result.ok !== true) {
         throw new Error(result.detail || "Your request could not be sent. Please try again.");
       }
-      track("contact_form_completed", { intent: topic, location: "contact-form" });
-      if (topic === "demo") track("demo_requested", { intent: "demo", location: "contact-form" });
+      const consentedForAnalytics = analyticsConsented();
+      const eventResults = consentedForAnalytics
+        ? await Promise.race([
+            Promise.all([
+              track("contact_form_completed", { intent: topic, location: "contact-form" }),
+              ...(topic === "demo"
+                ? [track("demo_requested", { intent: "demo", location: "contact-form" })]
+                : []),
+            ]),
+            new Promise((resolve) => window.setTimeout(() => resolve([]), 1500)),
+          ])
+        : [];
+      form.dataset.demoAnalyticsStatus = !consentedForAnalytics
+        ? "not-consented"
+        : topic === "demo" && Array.isArray(eventResults) && eventResults.length === 2 && eventResults[1]
+          ? "recorded"
+          : "unconfirmed";
       form.hidden = true;
       success.hidden = false;
       const inbox = inboxByTopic[topic] || "info@cadivor.com";

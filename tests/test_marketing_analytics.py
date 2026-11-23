@@ -118,6 +118,51 @@ def test_sitemap_routes_resolve_to_static_pages_with_metadata_and_content():
         assert re.search(r"<h1(?:\s[^>]*)?>\s*[^<]+", content, re.IGNORECASE), path
 
 
+def test_free_audit_runs_inline_and_supports_actual_file_drop():
+    marketing_page = (MARKETING / "free-audit" / "index.html").read_text(encoding="utf-8")
+    marketing_script = (MARKETING / "seo-analytics.js").read_text(encoding="utf-8")
+    app_page = (ROOT / "apps" / "web" / "src" / "app" / "public-bom-audit" / "page.tsx").read_text(encoding="utf-8")
+
+    assert 'id="freeAuditFrame"' in marketing_page
+    assert 'href="#free-audit-form"' in marketing_page
+    assert "loadAuditEmbed" in marketing_script
+    assert "cadivor:public-bom-audit:resize" in marketing_script
+    assert "onDragOver" in app_page
+    assert "onDrop" in app_page
+    assert "selectBomFile(event.dataTransfer.files?.[0] || null)" in app_page
+    assert "PUBLIC_BOM_MAX_BYTES" in app_page
+
+
+def test_public_pricing_matches_included_business_and_enterprise_entitlements():
+    pricing = (MARKETING / "pricing" / "index.html").read_text(encoding="utf-8")
+    pricing_script = (MARKETING / "pricing.js").read_text(encoding="utf-8")
+    plans = (ROOT / "src" / "plans.py").read_text(encoding="utf-8")
+
+    assert "Up to 10 team members" in pricing
+    assert "Unlimited monitored parts" in pricing
+    assert "2,500 Ask Cadivor credits" in pricing
+    assert "10,000 Ask Cadivor credits" in pricing
+    assert "API access included" in (ROOT / "apps" / "web" / "src" / "app" / "settings" / "page.tsx").read_text(encoding="utf-8")
+    assert "Talk to sales" not in pricing
+    assert 'data-plan-token="business"' in pricing
+    assert 'data-pricing-catalog-url="https://app.cadivor.com/api/public/pricing"' in pricing
+    assert 'data-addons-catalog-url="https://app.cadivor.com/api/public/pricing/addons"' in pricing
+    assert "plan.annual.enabled === true" in pricing_script
+    assert "No usage packs are currently published for checkout" in pricing_script
+    assert '"included_users": 10' in plans
+    assert '"ai_credits": 2500' in plans
+
+
+def test_demo_contact_shows_delivery_fallback_and_records_consent_event():
+    contact_script = (MARKETING / "contact-form.js").read_text(encoding="utf-8")
+
+    assert 'track("demo_requested"' in contact_script
+    assert 'track("contact_form_completed"' in contact_script
+    assert 'result.notification_status === "not_configured"' in contact_script
+    assert 'link.href = `mailto:${inbox}' in contact_script
+    assert 'form.dataset.demoAnalyticsStatus' in contact_script
+
+
 def test_home_and_guides_have_meaningful_server_delivered_content():
     home = (MARKETING / "index.html").read_text(encoding="utf-8")
     assert '<section class="page active" data-page="home">' in home

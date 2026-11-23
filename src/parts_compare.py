@@ -207,6 +207,8 @@ USER_FACING_COMPARE_COLUMNS = (
     "Part B MPN",
     "Part A source",
     "Part B source",
+    "Part A retrieved at",
+    "Part B retrieved at",
     "Unit",
     "Part A test condition",
     "Part B test condition",
@@ -409,11 +411,56 @@ def map_status_to_assessment(status: str) -> str:
     return FINDING_NEEDS_VERIFICATION
 
 
-def user_facing_compare_rows(rows: list | None) -> list[dict]:
+def _field_retrieval_time(
+    source_label: object,
+    source_rows: list | None,
+    part: Mapping[str, Any] | None = None,
+) -> str:
+    """Return a source timestamp only when it can be tied to the field source."""
+    label = str(source_label or "").strip().casefold()
+    part_data = dict(part or {})
+    if not label or label in {"not stated", "none", "unknown"}:
+        return ""
+    if "catalog" in label:
+        return str(part_data.get("retrieved_at") or "").strip()
+
+    sources = [row for row in (source_rows or []) if isinstance(row, Mapping)]
+    matches: list[Mapping[str, Any]] = []
+    for row in sources:
+        source_tokens = [
+            str(row.get(key) or "").strip().casefold().replace("_", " ")
+            for key in ("label", "name", "source_name", "source", "source_type", "url")
+        ]
+        if any(token and (token in label or label in token) for token in source_tokens):
+            matches.append(row)
+            continue
+        if "datasheet" in label and any("datasheet" in token or "manufacturer" in token for token in source_tokens):
+            matches.append(row)
+        elif "product page" in label and any("product page" in token for token in source_tokens):
+            matches.append(row)
+
+    timestamps = {
+        str(row.get("retrieved_at") or "").strip()
+        for row in matches
+        if str(row.get("retrieved_at") or "").strip()
+    }
+    return next(iter(timestamps)) if len(timestamps) == 1 else ""
+
+
+def user_facing_compare_rows(
+    rows: list | None,
+    *,
+    evidence_sources: Mapping[str, Any] | None = None,
+    part_a_context: Mapping[str, Any] | None = None,
+    part_b_context: Mapping[str, Any] | None = None,
+) -> list[dict]:
     """Project comparison rows with per-field provenance for UI/API/exports."""
     from src.parametric_compare import classify_value_condition, extract_test_condition
 
     projected: list[dict] = []
+    evidence_by_side = evidence_sources if isinstance(evidence_sources, Mapping) else {}
+    sources_a = list(evidence_by_side.get("part_a") or [])
+    sources_b = list(evidence_by_side.get("part_b") or [])
     for row in rows or []:
         if not isinstance(row, dict):
             continue
@@ -450,6 +497,16 @@ def user_facing_compare_rows(rows: list | None) -> list[dict]:
             "Part B MPN": row.get("Part B MPN") or row.get("Candidate MPN") or "",
             "Part A source": source_a or "Not stated",
             "Part B source": source_b or "Not stated",
+            "Part A retrieved at": str(
+                row.get("Part A retrieved at")
+                or row.get("part_a_retrieved_at")
+                or _field_retrieval_time(source_a, sources_a, part_a_context)
+            ).strip(),
+            "Part B retrieved at": str(
+                row.get("Part B retrieved at")
+                or row.get("part_b_retrieved_at")
+                or _field_retrieval_time(source_b, sources_b, part_b_context)
+            ).strip(),
             "Unit": row.get("Unit") or row.get("unit") or "",
             "Part A test condition": condition_a or "Not stated",
             "Part B test condition": condition_b or "Not stated",
@@ -517,6 +574,7 @@ def public_part_card(part: Mapping[str, Any] | None, *, family: str = "") -> dic
         "identity_verified": identity_verified,
         "identity_status": identity_status
         or ("verified" if identity_verified else ("resolved" if manufacturer else "")),
+        "retrieved_at": str(data.get("retrieved_at") or "").strip(),
         "identity_choices": list(data.get("identity_choices") or []),
         "identity_gap": str(data.get("identity_gap") or "").strip(),
     }
@@ -1406,7 +1464,12 @@ def build_parts_comparison(
             "Part B does not. Rows with Part A values and empty Part B remain Needs validation."
         )
 
-    user_rows = user_facing_compare_rows(rows)
+    user_rows = user_facing_compare_rows(
+        rows,
+        evidence_sources=evidence_sources,
+        part_a_context=part_a,
+        part_b_context=part_b,
+    )
     # Customer-facing counts/summary come from provenance-aware Assessments.
     # Raw Status Match/Different/Needs data stay in count_aliases for internals.
     assessment_counts = {

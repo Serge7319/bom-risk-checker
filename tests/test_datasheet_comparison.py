@@ -77,6 +77,11 @@ class DatasheetComparisonTests(unittest.TestCase):
     def test_generic_powerpad_phrase_is_not_a_package_conflict_or_match(self):
         pdf = {
             "available": True,
+            "final_url": "https://manufacturer.example/datasheet.pdf",
+            "evidence_sources": [{
+                "url": "https://manufacturer.example/datasheet.pdf",
+                "retrieved_at": "2026-11-20T12:00:00Z",
+            }],
             "pages": [{
                 "page": 1,
                 "document": "TI datasheet Rev L",
@@ -256,6 +261,11 @@ class DatasheetComparisonTests(unittest.TestCase):
     def test_dimension_excerpts_keep_document_and_page_citations(self):
         pdf = {
             "available": True,
+            "final_url": "https://manufacturer.example/datasheet.pdf",
+            "evidence_sources": [{
+                "url": "https://manufacturer.example/datasheet.pdf",
+                "retrieved_at": "2026-11-20T12:00:00Z",
+            }],
             "pages": [{
                 "page": 12,
                 "document": "MCU datasheet Rev D",
@@ -267,6 +277,8 @@ class DatasheetComparisonTests(unittest.TestCase):
         self.assertEqual(excerpts[0]["document"], "MCU datasheet Rev D")
         self.assertEqual(excerpts[0]["page"], 12)
         self.assertIn("10.0 mm", excerpts[0]["excerpt"])
+        self.assertEqual(excerpts[0]["source_url"], "https://manufacturer.example/datasheet.pdf")
+        self.assertEqual(excerpts[0]["retrieved_at"], "2026-11-20T12:00:00Z")
 
     def test_dimension_evidence_deduplicates_repeated_geometry_lines(self):
         excerpts = extract_datasheet_dimension_evidence(

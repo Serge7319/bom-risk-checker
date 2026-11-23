@@ -34,15 +34,21 @@
     try { return JSON.parse(sessionStorage.getItem(UTM_KEY) || "{}"); } catch { return {}; }
   }
 
-  function track(event, properties = {}) {
-    if (!allowed()) return;
-    fetch(`${APP_ORIGIN}/api/public/analytics`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ event, source: "marketing", page: location.pathname, session_id: sessionId(), utm: utm(), properties }),
-      keepalive: true,
-      cache: "no-store",
-    }).catch(() => undefined);
+  async function track(event, properties = {}) {
+    if (!allowed()) return false;
+    try {
+      const response = await fetch(`${APP_ORIGIN}/api/public/analytics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ event, source: "marketing", page: location.pathname, session_id: sessionId(), utm: utm(), properties }),
+        keepalive: true,
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      return response.ok && result.ok === true && result.accepted === true;
+    } catch {
+      return false;
+    }
   }
 
   // Direct marketing pages reuse the same consent-gated sender without

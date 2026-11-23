@@ -103,6 +103,17 @@ function PublicBomAuditInner() {
 
   useEffect(() => {
     if (!embedded) return;
+    let parentOrigin = "";
+    try {
+      parentOrigin = new URL(document.referrer).origin;
+    } catch {
+      return;
+    }
+    const trustedParent =
+      parentOrigin === "https://cadivor.com"
+      || parentOrigin === "https://www.cadivor.com"
+      || /^https:\/\/[a-z0-9-]+\.cadivor\.pages\.dev$/i.test(parentOrigin);
+    if (!trustedParent) return;
     const root = document.querySelector<HTMLElement>(
       ".cv-public-stress-embed",
     );
@@ -117,7 +128,7 @@ function PublicBomAuditInner() {
         );
         window.parent.postMessage(
           { type: "cadivor:public-bom-audit:resize", height },
-          "*",
+          parentOrigin,
         );
       });
     };
