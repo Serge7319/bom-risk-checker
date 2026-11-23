@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, NAV_ICONS } from "@/components/Icons";
 import { BrandLink } from "@/components/BrandLink";
-import { clearSession, logout, type Session } from "@/lib/api";
+import { clearSession, fetchPlanUsage, logout, type Session } from "@/lib/api";
 import { workspaceDisplayName } from "@/lib/display";
 import { NAV_GROUPS } from "@/lib/routes";
 
@@ -37,18 +37,23 @@ export function Shell({
   const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [verifiedPlan, setVerifiedPlan] = useState<string | null>(null);
   const title = crumbTitle(pathname);
   const remainingDays = session.trial_ends_at
     ? Math.max(0, Math.ceil((Date.parse(session.trial_ends_at) - Date.now()) / 86400000))
     : session.trial_days_remaining;
-  const trialExpired =
-    session.trial_status === "trial_expired" ||
-    (session.trial_status === "trialing" && remainingDays === 0);
-  const subscriptionLabel = trialExpired
-    ? "Trial expired · read only"
-    : session.trial_status === "trialing" && remainingDays != null
-      ? `Trial · ${remainingDays} days remaining`
-      : `Subscription · ${session.plan}`;
+  const planLabel = verifiedPlan || session.plan;
+  const trialExpired = verifiedPlan
+    ? verifiedPlan === "Trial expired" || verifiedPlan === "Subscription inactive"
+    : session.trial_status === "trial_expired" ||
+      (session.trial_status === "trialing" && remainingDays === 0);
+  const subscriptionLabel = verifiedPlan === "Subscription inactive"
+    ? "Subscription inactive · read only"
+    : verifiedPlan === "Trial expired" || (!verifiedPlan && trialExpired)
+      ? "Trial expired · read only"
+      : (verifiedPlan === "Trial" || (!verifiedPlan && session.trial_status === "trialing")) && remainingDays != null
+        ? `Trial · ${remainingDays} days remaining`
+        : `Subscription · ${planLabel}`;
 
   const initials = useMemo(() => {
     const source = (session.email || "C").trim();
@@ -59,6 +64,22 @@ export function Shell({
   useEffect(() => {
     setNavOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    let current = true;
+    setVerifiedPlan(null);
+    void fetchPlanUsage(session.access_token)
+      .then((usage) => {
+        const plan = String(usage.plan || "").trim();
+        if (current && plan) setVerifiedPlan(plan);
+      })
+      .catch(() => {
+        // Keep the sign-in snapshot if the usage endpoint is temporarily unavailable.
+      });
+    return () => {
+      current = false;
+    };
+  }, [session.access_token, session.user_id]);
 
   function onSearch(event: FormEvent) {
     event.preventDefault();
@@ -208,7 +229,7 @@ export function Shell({
               </span>
               <span className="cv-user-copy">
                 <strong>{session.email}</strong>
-                <span>{session.plan} plan</span>
+                <span>{planLabel === "Subscription inactive" ? planLabel : `${planLabel} plan`}</span>
               </span>
             </div>
           </div>
