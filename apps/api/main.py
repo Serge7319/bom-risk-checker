@@ -394,6 +394,34 @@ async def auth_login(request: Request) -> JSONResponse:
     return _json(session)
 
 
+async def auth_login_complete(request: Request) -> JSONResponse:
+    """Finish Supabase sign-in after the user's MFA challenge has succeeded."""
+    if not _use_supabase_auth():
+        return _json({"detail": "Multi-factor sign-in requires Supabase Auth."}, 409)
+    authorization = request.headers.get("authorization") or ""
+    if not authorization.startswith("Bearer "):
+        return _json({"detail": "Missing bearer token"}, 401)
+    token = authorization.removeprefix("Bearer ").strip()
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid JSON"}, 400)
+    try:
+        session = await run_in_threadpool(
+            lambda: supabase_auth.complete_login_session(
+                token,
+                invite_token=str(body.get("invite_token") or "") or None,
+            )
+        )
+    except AuthNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    return _json(session)
+
+
 def _web_origin(request: Request) -> str:
     """Prefer an allowlisted Origin / Referer; fall back to the first CADIVOR_WEB_ORIGINS entry."""
     candidates = [
@@ -5317,13 +5345,30 @@ async def settings_security_get(request: Request) -> JSONResponse:
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     supabase = _use_supabase_auth()
+    if supabase:
+        try:
+            mfa = await run_in_threadpool(
+                supabase_auth.mfa_status,
+                str(ctx.get("access_token") or ""),
+                str(ctx.get("user_id") or ""),
+                force_refresh=True,
+            )
+        except AuthError as exc:
+            return _json({"detail": exc.detail}, exc.status_code)
+    else:
+        mfa = {
+            "status": "unavailable",
+            "enabled": False,
+            "label": "Authenticator apps are available with Supabase Auth.",
+            "factors": [],
+        }
     return _json(
         {
             "ok": True,
             "auth_mode": "supabase" if supabase else "sandbox",
             "password_change_available": supabase,
             "password_reset_available": supabase,
-            "mfa": {"status": "planned", "enabled": False},
+            "mfa": mfa,
             "sessions": {
                 "status": "planned" if not supabase else "basic",
                 "revoke_others_available": supabase,
@@ -5601,11 +5646,28 @@ async def auth_sessions_revoke_others(request: Request) -> JSONResponse:
 
 
 async def security_status_get(request: Request) -> JSONResponse:
-    """Accurate account-security status; planned items are labelled, not faked."""
+    """Accurate account-security status; unavailable features are labelled."""
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     managed = _use_supabase_auth()
+    if managed:
+        try:
+            two_factor = await run_in_threadpool(
+                supabase_auth.mfa_status,
+                str(ctx.get("access_token") or ""),
+                str(ctx.get("user_id") or ""),
+                force_refresh=True,
+            )
+        except AuthError as exc:
+            return _json({"detail": exc.detail}, exc.status_code)
+    else:
+        two_factor = {
+            "status": "unavailable",
+            "enabled": False,
+            "label": "Authenticator apps are available with Supabase Auth.",
+            "factors": [],
+        }
     return _json(
         {
             "ok": True,
@@ -5618,10 +5680,7 @@ async def security_status_get(request: Request) -> JSONResponse:
                 "reset_available": managed,
                 "min_length": 12,
             },
-            "two_factor": {
-                "status": "planned",
-                "label": "Planned - two-factor authentication is not available yet.",
-            },
+            "two_factor": two_factor,
             "sessions": {
                 "status": "available" if managed else "unavailable",
                 "current_device": True,
@@ -5863,6 +5922,7 @@ app = Starlette(
         Route("/auth/config", auth_signup_config, methods=["GET"]),
         Route("/auth/signup", auth_signup, methods=["POST"]),
         Route("/auth/login", auth_login, methods=["POST"]),
+        Route("/auth/login/complete", auth_login_complete, methods=["POST"]),
         Route("/auth/logout", auth_logout, methods=["POST"]),
         Route("/auth/me", auth_me, methods=["GET"]),
         Route("/auth/smoke-login", smoke_login, methods=["POST"]),

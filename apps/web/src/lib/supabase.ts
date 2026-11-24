@@ -29,6 +29,9 @@ export function getSupabaseBrowserClient(): SupabaseClient | null {
         persistSession: true,
         detectSessionInUrl,
         flowType: "pkce",
+        // Supabase's WebAuthn passkey API is currently experimental and must
+        // be explicitly opted into. Keep the integration isolated here.
+        experimental: { passkey: true },
       },
     });
   }
