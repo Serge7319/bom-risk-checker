@@ -1290,7 +1290,7 @@ serve(async (request) => {
       }
       if (!subscription || String(subscription.metadata?.user_id || "").trim() !== auth.user.id ||
           subscription.status !== "active" || subscription.cancel_at_period_end) {
-        return response({ ok: false, detail: "Cadivor could not verify an active, non-canceling Stripe subscription for this account. Open Manage subscription or contact support before adding capacity." }, 409, origin);
+        return response({ ok: false, detail: "Cadivor could not verify an active, non-canceling subscription for this account. Open Manage subscription or contact support before adding capacity." }, 409, origin);
       }
       const configuredPlanPrices = planPrices.flatMap((item) => [
         { plan: item.name, interval: "month", price_id: String(Deno.env.get(item.env) || "").trim() },
@@ -1301,7 +1301,7 @@ serve(async (request) => {
         return configuredPlanPrices.some((candidate) => candidate.price_id === id);
       });
       if (!planItem) {
-        return response({ ok: false, detail: "Cadivor could not identify the plan price on this Stripe subscription. Contact support before changing billing." }, 409, origin);
+        return response({ ok: false, detail: "Cadivor could not identify the current plan price for this account. Contact support before changing billing." }, 409, origin);
       }
       const planPriceId = typeof planItem.price === "string" ? planItem.price : planItem.price.id;
       const planPrice = configuredPlanPrices.find((candidate) => candidate.price_id === planPriceId);
@@ -1341,7 +1341,7 @@ serve(async (request) => {
           subscription_item_id: item.id,
           error_code: applyError?.code || null,
         });
-        return response({ ok: false, detail: "Stripe added the capacity price, but Cadivor could not confirm the entitlement yet. Refresh billing status or contact support." }, 503, origin);
+        return response({ ok: false, detail: "The capacity add-on was added, but Cadivor could not confirm the entitlement yet. Refresh billing status or contact support." }, 503, origin);
       }
       return response({
         ok: true,
@@ -1367,7 +1367,7 @@ serve(async (request) => {
         return itemPriceId === addon.price_id || String(item.metadata?.cadivor_addon || "") === "monitored_parts_capacity";
       });
       if (!addonItem) {
-        return response({ ok: false, detail: "Stripe no longer lists this add-on on the account subscription. Refresh billing status or contact support." }, 409, origin);
+        return response({ ok: false, detail: "The current subscription no longer lists this add-on. Refresh billing status or contact support." }, 409, origin);
       }
       await stripe.subscriptionItems.del(addonItem.id, { proration_behavior: "create_prorations" });
       const { data: removed, error: removeError } = await supabase.rpc("cadivor_set_monitored_parts_addon", {
@@ -1384,7 +1384,7 @@ serve(async (request) => {
           subscription_item_id: addonItem.id,
           error_code: removeError?.code || null,
         });
-        return response({ ok: false, detail: "Stripe removed the add-on, but Cadivor could not update its entitlement yet. Refresh billing status or contact support." }, 503, origin);
+        return response({ ok: false, detail: "The add-on was removed, but Cadivor could not update its entitlement yet. Refresh billing status or contact support." }, 503, origin);
       }
       return response({
         ok: true,
@@ -1538,7 +1538,7 @@ serve(async (request) => {
       return response({
         ok: false,
         code: "billing_subscription_ambiguous",
-        detail: "Stripe found multiple active subscriptions for this account. No new subscription was started. Contact support.",
+        detail: "More than one active subscription is linked to this account. No new subscription was started. Contact support.",
         support_reference: supportReference,
       }, 409, origin);
     }
