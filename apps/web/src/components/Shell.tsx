@@ -17,6 +17,10 @@ import {
 import { workspaceDisplayName } from "@/lib/display";
 import { NAV_GROUPS } from "@/lib/routes";
 
+// Each page mounts its own Shell. Keep the last account-scoped status so
+// soft navigation doesn't flash the full-screen gate during revalidation.
+const runtimeMaintenanceByUser = new Map<string, RuntimeMaintenanceStatus>();
+
 function crumbTitle(pathname: string): string {
   if (pathname === "/") return "Home";
   if (pathname.startsWith("/reports/")) return "Saved report";
@@ -49,7 +53,13 @@ export function Shell({
   const [navOpen, setNavOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [verifiedPlan, setVerifiedPlan] = useState<string | null>(null);
-  const [maintenanceStatus, setMaintenanceStatus] = useState<RuntimeMaintenanceStatus | null>(null);
+  const [maintenanceSnapshot, setMaintenanceSnapshot] = useState(() => ({
+    userId: session.user_id,
+    status: runtimeMaintenanceByUser.get(session.user_id) ?? null,
+  }));
+  const maintenanceStatus = maintenanceSnapshot.userId === session.user_id
+    ? maintenanceSnapshot.status
+    : null;
   const title = crumbTitle(pathname);
   const remainingDays = session.trial_ends_at
     ? Math.max(0, Math.ceil((Date.parse(session.trial_ends_at) - Date.now()) / 86400000))
@@ -82,24 +92,28 @@ export function Shell({
     const refreshAvailability = () => {
       void fetchRuntimeMaintenance(session.access_token)
         .then((status) => {
-          if (current) setMaintenanceStatus(status);
+          if (current) {
+            runtimeMaintenanceByUser.set(session.user_id, status);
+            setMaintenanceSnapshot({ userId: session.user_id, status });
+          }
         })
         .catch(() => {
           // Keep the app usable if the status check itself has a transient error;
           // authenticated API routes still enforce maintenance server-side.
           if (current) {
-            setMaintenanceStatus({
+            const fallbackStatus: RuntimeMaintenanceStatus = {
               maintenance_mode: false,
               maintenance_message: "",
               is_admin: session.platform_role === "admin",
               planned_maintenance_message: "",
               planned_maintenance_starts_at: null,
               planned_maintenance_ends_at: null,
-            });
+            };
+            runtimeMaintenanceByUser.set(session.user_id, fallbackStatus);
+            setMaintenanceSnapshot({ userId: session.user_id, status: fallbackStatus });
           }
         });
     };
-    setMaintenanceStatus(null);
     refreshAvailability();
     const timer = window.setInterval(refreshAvailability, 30_000);
     return () => {
