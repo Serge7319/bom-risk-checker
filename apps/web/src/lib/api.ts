@@ -162,6 +162,8 @@ function tokenBelongsToSession(token: string, session: Session): boolean {
 function persistAccessToken(accessToken: string) {
   const current = getSession();
   if (!current || typeof window === "undefined") return;
+  const canonicalSession = window.localStorage.getItem(SESSION_KEY);
+  if (current.access_token === accessToken && canonicalSession) return;
   window.localStorage.setItem(
     SESSION_KEY,
     JSON.stringify({ ...current, access_token: accessToken }),
