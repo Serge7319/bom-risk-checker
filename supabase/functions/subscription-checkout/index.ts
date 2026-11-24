@@ -1348,7 +1348,7 @@ serve(async (request) => {
         addon_added: true,
         capacity,
         billing_interval: interval,
-        detail: "Monitored-parts capacity is active. Stripe applies any partial-period charge to the next subscription invoice.",
+        detail: "Monitored-parts capacity is active. Any partial-period charge is included on your next subscription invoice.",
       }, 200, origin);
     }
 
@@ -1389,7 +1389,7 @@ serve(async (request) => {
       return response({
         ok: true,
         addon_removed: true,
-        detail: "Monitored-parts capacity was removed. Stripe will prorate unused time on the subscription invoice.",
+        detail: "Monitored-parts capacity was removed. Any unused time is prorated on your next subscription invoice.",
       }, 200, origin);
     }
 
