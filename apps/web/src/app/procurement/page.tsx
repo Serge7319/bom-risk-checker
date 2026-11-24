@@ -1166,7 +1166,7 @@ function ProcurementPageInner() {
                 </header>
                 <div className="cv-procurement-modal-body">
                   {Array.isArray(offersDialogPart.supplier_offers) && offersDialogPart.supplier_offers.length ? (
-                    (offersDialogPart.supplier_offers as Array<Record<string, unknown>>).map((offer, index) => {
+                    offersDialogPart.supplier_offers.map((offer: Record<string, unknown>, index) => {
                       const identity = describeCatalogIdentity(
                         String(offersDialogPart.mpn || ""),
                         String(offersDialogPart.manufacturer || ""),
