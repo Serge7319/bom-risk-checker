@@ -1695,6 +1695,45 @@ export async function fetchAdminAccountProfile(token: string, userId: string) {
   );
 }
 
+export type AdminManualPlanInvoice = {
+  id: string;
+  plan: string;
+  billing_interval: "month" | "year";
+  amount_minor: number;
+  currency: string;
+  status: "creating" | "open" | "payment_recorded" | "paid" | "void";
+  hosted_invoice_url?: string | null;
+  invoice_pdf?: string | null;
+  invoice_sent_at?: string | null;
+  due_at?: string | null;
+  created_at?: string | null;
+  paid_at?: string | null;
+  payment_method?: "stripe" | "cash" | "check" | "offline_unclassified" | null;
+  payment_reference?: string | null;
+  payment_recorded_at?: string | null;
+  grant_starts_at?: string | null;
+  grant_ends_at?: string | null;
+  stripe_invoice_id?: string | null;
+};
+
+export async function fetchAdminManualPlanBilling(token: string, userId: string) {
+  return apiJson<{ ok: boolean; invoices: AdminManualPlanInvoice[] }>(
+    `/admin/users/${encodeURIComponent(userId)}/billing`,
+    { token },
+  );
+}
+
+export async function adminManualPlanBillingAction(
+  token: string,
+  userId: string,
+  body: Record<string, unknown>,
+) {
+  return apiJson<Record<string, unknown>>(
+    `/admin/users/${encodeURIComponent(userId)}/billing`,
+    { method: "POST", token, body: JSON.stringify(body) },
+  );
+}
+
 export async function updateAdminAccountStatus(
   token: string,
   userId: string,

@@ -329,6 +329,49 @@ async function oneTimeBOMEvent(event: Stripe.Event): Promise<{
   return { userId, customerId, outcome: data === "applied" ? "applied" : "skipped_stale" };
 }
 
+async function manualPlanInvoiceEvent(event: Stripe.Event): Promise<{
+  userId: string | null; customerId: string | null; outcome: string;
+} | null> {
+  if (event.type !== "invoice.paid") return null;
+  const invoice = event.data.object as Stripe.Invoice;
+  const invoiceRecordId = String(invoice.metadata?.cadivor_manual_plan_invoice_id || "").trim();
+  if (!invoiceRecordId) return null;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(invoiceRecordId)) {
+    throw new WebhookConfigurationError("Manual Cadivor invoice metadata is invalid.");
+  }
+  if (invoice.status !== "paid" || invoice.subscription || typeof invoice.amount_paid !== "number" ||
+      !invoice.currency || !invoice.status_transitions?.paid_at) {
+    throw new WebhookConfigurationError("Paid manual invoice is incomplete or linked to a subscription.");
+  }
+  const { data: record, error: recordError } = await supabase
+    .from("cadivor_manual_plan_invoices")
+    .select("id,user_id,stripe_invoice_id")
+    .eq("id", invoiceRecordId)
+    .maybeSingle();
+  if (recordError || !record || record.stripe_invoice_id !== invoice.id) {
+    throw new WebhookConfigurationError("Paid manual invoice does not match a Cadivor billing record.");
+  }
+  const { data, error } = await supabase.rpc("cadivor_apply_manual_plan_invoice_paid", {
+    p_invoice_id: invoiceRecordId,
+    p_stripe_invoice_id: invoice.id,
+    p_stripe_event_id: event.id,
+    p_amount_paid: invoice.amount_paid,
+    p_currency: invoice.currency,
+    p_paid_at: new Date(invoice.status_transitions.paid_at * 1000).toISOString(),
+    p_paid_out_of_band: invoice.paid_out_of_band === true,
+  });
+  if (error) throw new Error("Paid manual invoice could not be applied.");
+  const result = (data || {}) as Record<string, unknown>;
+  if (result.ok !== true || !["applied", "already_paid", "account_deleted", "account_unavailable"].includes(String(result.outcome || ""))) {
+    throw new WebhookConfigurationError("Manual invoice payment did not pass Cadivor validation.");
+  }
+  return {
+    userId: record.user_id ? String(record.user_id) : null,
+    customerId: asId(invoice.customer),
+    outcome: String(result.outcome),
+  };
+}
+
 serve(async (req) => {
   const signature = req.headers.get("stripe-signature");
   if (!signature) {
@@ -368,6 +411,12 @@ serve(async (req) => {
     if (oneTime) {
       await completeEvent(event.id, oneTime.userId, oneTime.customerId, null, oneTime.outcome);
       return Response.json({ received: true, outcome: oneTime.outcome });
+    }
+
+    const manualInvoice = await manualPlanInvoiceEvent(event);
+    if (manualInvoice) {
+      await completeEvent(event.id, manualInvoice.userId, manualInvoice.customerId, null, manualInvoice.outcome);
+      return Response.json({ received: true, outcome: manualInvoice.outcome });
     }
 
     const subscription = await subscriptionForEvent(event);
