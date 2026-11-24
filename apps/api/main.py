@@ -4206,6 +4206,82 @@ async def admin_user_profile_get(request: Request) -> JSONResponse:
     return _json({"ok": True, "user": profile})
 
 
+async def admin_user_billing_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    try:
+        target_user_id = str(uuid.UUID(str(request.path_params.get("target_user_id") or "")))
+    except (ValueError, TypeError):
+        return _json({"detail": "Account was not found."}, 404)
+    try:
+        result, status = await run_in_threadpool(
+            lambda: subscription_billing_service.request_action(
+                access_token=str(ctx.get("access_token") or ""),
+                action="admin_manual_plan_billing_list",
+                payload={"target_user_id": target_user_id},
+                timeout_seconds=12,
+            )
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Manual billing history is temporarily unavailable."}, 503)
+    return _json(result, status)
+
+
+async def admin_user_billing_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    try:
+        target_user_id = str(uuid.UUID(str(request.path_params.get("target_user_id") or "")))
+    except (ValueError, TypeError):
+        return _json({"detail": "Account was not found."}, 404)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON."}, 400)
+    requested_action = str(body.get("action") or "").strip().lower()
+    action_map = {
+        "create_invoice": "admin_manual_plan_invoice_create",
+        "send_invoice": "admin_manual_plan_invoice_send",
+        "record_payment": "admin_manual_plan_payment_record",
+        "void_invoice": "admin_manual_plan_invoice_void",
+    }
+    edge_action = action_map.get(requested_action)
+    if not edge_action:
+        return _json({"detail": "Choose a supported manual billing action."}, 400)
+    payload: dict[str, Any] = {"target_user_id": target_user_id}
+    if requested_action == "create_invoice":
+        payload.update({
+            "plan": body.get("plan"),
+            "billing_interval": body.get("billing_interval"),
+            "due_days": body.get("due_days", 30),
+        })
+    else:
+        payload.update({
+            "invoice_id": body.get("invoice_id"),
+            **({
+                "payment_method": body.get("payment_method"),
+                "payment_reference": body.get("payment_reference", ""),
+            } if requested_action == "record_payment" else {}),
+        })
+    try:
+        result, status = await run_in_threadpool(
+            lambda: subscription_billing_service.request_action(
+                access_token=str(ctx.get("access_token") or ""),
+                action=edge_action,
+                payload=payload,
+                timeout_seconds=45,
+            )
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return _json({"detail": "Manual billing is temporarily unavailable. Check Stripe before retrying."}, 503)
+    return _json(result, status)
+
+
 async def admin_user_status_patch(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -5728,6 +5804,8 @@ app = Starlette(
         Route("/admin/account-entitlements", account_entitlements_admin_put, methods=["PUT"]),
         Route("/admin/users", admin_users_get, methods=["GET"]),
         Route("/admin/users/{target_user_id}", admin_user_profile_get, methods=["GET"]),
+        Route("/admin/users/{target_user_id}/billing", admin_user_billing_get, methods=["GET"]),
+        Route("/admin/users/{target_user_id}/billing", admin_user_billing_post, methods=["POST"]),
         Route("/admin/users/{target_user_id}", admin_user_status_patch, methods=["PATCH"]),
         Route("/admin/users/{target_user_id}", admin_user_delete, methods=["DELETE"]),
         Route(

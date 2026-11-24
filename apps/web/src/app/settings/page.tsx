@@ -386,6 +386,9 @@ export default function Page() {
   const currentPlanName = String(billing?.current_plan || usage?.plan || session.plan);
   const currentPlan = currentPlanName.toLowerCase();
   const canManageBilling = billing?.can_manage_billing === true;
+  const manualBillingMode = String(billing?.manual_billing_mode || "");
+  const invoiceBilling = manualBillingMode === "invoice" || manualBillingMode === "invoice_pending";
+  const manualInvoiceStatus = String(billing?.manual_invoice_status || "");
   const checkoutEnabled = billing?.checkout_enabled === true;
   const billingAddons = asRecord(billing?.addons);
   const analysisOverage = asRecord(billingAddons.bom_analysis);
@@ -1454,7 +1457,7 @@ export default function Page() {
                       Your plan controls analysis limits, monitoring, and team access. Annual billing appears when discounted yearly pricing is available.
                     </p>
                   </div>
-                  {canManageBilling ? (
+                  {canManageBilling && !invoiceBilling ? (
                     <button
                       className="cv-button"
                       type="button"
@@ -1465,7 +1468,7 @@ export default function Page() {
                     </button>
                   ) : null}
                 </div>
-                {!canManageBilling ? (
+                {!canManageBilling && !invoiceBilling ? (
                   <div className="cv-billing-interval-picker" role="group" aria-label="Billing interval">
                     <button
                       type="button"
@@ -1488,6 +1491,32 @@ export default function Page() {
                     ? ` · ${session.trial_days_remaining} days remaining`
                     : ""}
                 </p>
+                {invoiceBilling ? (
+                  <div className="cv-evidence-context" role="status" style={{ margin: "12px 0", padding: 12 }}>
+                    <strong>Invoice billing</strong>
+                    <p style={{ margin: "5px 0 0" }}>
+                      {manualBillingMode === "invoice"
+                        ? manualInvoiceStatus === "payment_recorded"
+                          ? `The payment for your next term is recorded and is being confirmed. You do not need to pay again. Current access continues through ${billing?.manual_access_ends_at ? new Date(String(billing.manual_access_ends_at)).toLocaleDateString() : "the end of your paid term"}.`
+                          : `This plan is paid for a fixed term and does not renew automatically${billing?.manual_access_ends_at ? ` · access through ${new Date(String(billing.manual_access_ends_at)).toLocaleDateString()}` : ""}.${manualInvoiceStatus === "open" ? " A new invoice is awaiting payment; its term starts after current paid access ends." : " Contact Cadivor to renew or change the plan."}`
+                        : manualInvoiceStatus === "payment_recorded"
+                          ? "Your payment is recorded and is being confirmed. You do not need to pay again. Plan access begins after payment is confirmed."
+                          : manualInvoiceStatus === "creating"
+                            ? "Your invoice is being prepared. Plan access begins only after payment is confirmed."
+                            : "An invoice is awaiting payment. Plan access begins only after payment is confirmed."}
+                    </p>
+                    {manualInvoiceStatus === "open" && typeof billing?.manual_invoice_url === "string" && billing.manual_invoice_url ? (
+                      <p style={{ margin: "8px 0 0" }}>
+                        <a href={billing.manual_invoice_url} target="_blank" rel="noreferrer">Open invoice payment page</a>
+                      </p>
+                    ) : null}
+                    {manualInvoiceStatus === "open" && typeof billing?.manual_invoice_pdf === "string" && billing.manual_invoice_pdf ? (
+                      <p style={{ margin: "5px 0 0" }}>
+                        <a href={billing.manual_invoice_pdf} target="_blank" rel="noreferrer">Download invoice PDF</a>
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="cv-plan-grid">
                   {planCatalog.map((plan) => {
                     const name = String(plan.name || "");
@@ -1529,6 +1558,7 @@ export default function Page() {
                     ].filter(Boolean);
                     let actionText = "Choose plan";
                     if (current) actionText = "Current plan";
+                    else if (invoiceBilling) actionText = "Plan changes by invoice";
                     else if (canManageBilling) actionText = "Change plan in billing";
                     else if (!checkoutEnabled || !hasPrice) actionText = "Temporarily unavailable";
                     if (enterprise) actionText = "Contact sales";
@@ -1568,6 +1598,7 @@ export default function Page() {
                             type="button"
                             disabled={
                               current ||
+                              invoiceBilling ||
                               !paidPlan ||
                               (!canManageBilling && (!checkoutEnabled || !hasPrice)) ||
                               Boolean(billingAction)

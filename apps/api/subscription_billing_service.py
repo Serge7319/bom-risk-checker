@@ -35,6 +35,11 @@ ALLOWED_ACTIONS = frozenset({
     "admin_prepare_account_deletion",
     "admin_delete_account",
     "admin_sync_account_status",
+    "admin_manual_plan_billing_list",
+    "admin_manual_plan_invoice_create",
+    "admin_manual_plan_invoice_send",
+    "admin_manual_plan_payment_record",
+    "admin_manual_plan_invoice_void",
 })
 
 PUBLIC_ACTIONS = frozenset({"catalog", "addons_catalog", "developer_api_key_resolve"})

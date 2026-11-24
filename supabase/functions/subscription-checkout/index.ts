@@ -318,7 +318,11 @@ function clearedStripeMetadata(metadata: Record<string, string> | null | undefin
 }
 
 async function cancelAndAnonymizeBilling(targetUserId: string, profile: Record<string, unknown>) {
-  const [{ data: apiAddon, error: apiAddonError }, { data: monitoredAddon, error: monitoredAddonError }] = await Promise.all([
+  const [
+    { data: apiAddon, error: apiAddonError },
+    { data: monitoredAddon, error: monitoredAddonError },
+    { data: manualInvoices, error: manualInvoicesError },
+  ] = await Promise.all([
     supabase
     .from("cadivor_professional_api_addons")
     .select("subscription_id")
@@ -329,8 +333,59 @@ async function cancelAndAnonymizeBilling(targetUserId: string, profile: Record<s
       .select("subscription_id")
       .eq("user_id", targetUserId)
       .maybeSingle(),
+    supabase
+      .from("cadivor_manual_plan_invoices")
+      .select("id,status,stripe_invoice_id,payment_method")
+      .eq("user_id", targetUserId)
+      .in("status", ["creating", "open", "payment_recorded"]),
   ]);
-  if (apiAddonError || monitoredAddonError) throw new Error("Subscription records could not be loaded.");
+  if (apiAddonError || monitoredAddonError || manualInvoicesError) {
+    throw new Error("Subscription records could not be loaded.");
+  }
+
+  for (const manualInvoice of manualInvoices || []) {
+    const invoiceId = String(manualInvoice.stripe_invoice_id || "").trim();
+    let nextStatus = "void";
+    let paidAt: string | null = null;
+    let paymentMethod: string | null = null;
+    if (invoiceId) {
+      try {
+        const invoice = await stripe.invoices.retrieve(invoiceId);
+        if (invoice.status === "paid") {
+          nextStatus = "paid";
+          paidAt = invoice.status_transitions?.paid_at
+            ? new Date(invoice.status_transitions.paid_at * 1000).toISOString()
+            : new Date().toISOString();
+          paymentMethod = invoice.paid_out_of_band
+            ? ["cash", "check"].includes(String(manualInvoice.payment_method || ""))
+              ? String(manualInvoice.payment_method)
+              : "offline_unclassified"
+            : "stripe";
+        } else if (invoice.status === "draft") {
+          await stripe.invoices.del(invoiceId);
+        } else if (invoice.status === "open") {
+          await stripe.invoices.voidInvoice(invoiceId);
+        } else if (invoice.status !== "void") {
+          throw new Error("Unpaid invoice could not be safely closed.");
+        }
+      } catch (error) {
+        const summary = stripeErrorSummary(error);
+        if (summary.code !== "resource_missing") throw error;
+      }
+    }
+    const { error: invoiceCloseError } = await supabase
+      .from("cadivor_manual_plan_invoices")
+      .update({
+        status: nextStatus,
+        ...(nextStatus === "paid" ? { paid_at: paidAt, payment_method: paymentMethod } : {}),
+        hosted_invoice_url: null,
+        invoice_pdf: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", manualInvoice.id)
+      .in("status", ["creating", "open", "payment_recorded"]);
+    if (invoiceCloseError) throw new Error("Manual invoice cleanup could not be saved.");
+  }
 
   const subscriptionIds = new Set<string>();
   for (const value of [profile.stripe_subscription_id, apiAddon?.subscription_id, monitoredAddon?.subscription_id]) {
@@ -470,6 +525,81 @@ async function monitoredPartsAddonFor(userId: string) {
   };
 }
 
+type ManualPlanGrant = {
+  id: string;
+  plan: string;
+  billing_interval: string;
+  grant_starts_at: string;
+  grant_ends_at: string;
+};
+
+async function manualBillingStateFor(userId: string, now = new Date()) {
+  const [grantResult, invoiceResult] = await Promise.all([
+    supabase
+      .from("cadivor_manual_plan_invoices")
+      .select("id,plan,billing_interval,grant_starts_at,grant_ends_at")
+      .eq("user_id", userId)
+      .eq("status", "paid")
+      .lte("grant_starts_at", now.toISOString())
+      .gt("grant_ends_at", now.toISOString())
+      .order("grant_ends_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("cadivor_manual_plan_invoices")
+      .select("id,status,hosted_invoice_url,invoice_pdf,invoice_sent_at,plan,billing_interval,amount_minor,currency,due_at,created_at")
+      .eq("user_id", userId)
+      .in("status", ["creating", "open", "payment_recorded"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (grantResult.error || invoiceResult.error) {
+    throw new Error("Manual billing status could not be loaded.");
+  }
+  return {
+    activeGrant: (grantResult.data || null) as ManualPlanGrant | null,
+    pendingInvoice: invoiceResult.data || null,
+  };
+}
+
+async function effectivePlanFor(
+  userId: string,
+  profile: Record<string, unknown>,
+  now = new Date(),
+) {
+  const manualBilling = await manualBillingStateFor(userId, now);
+  if (manualBilling.activeGrant) {
+    return {
+      plan: String(manualBilling.activeGrant.plan),
+      trial_status: null,
+      trial_days_remaining: null,
+      manual_grant: manualBilling.activeGrant,
+    };
+  }
+  return { ...effectivePlan(profile, now), manual_grant: null };
+}
+
+async function applyOutOfBandManualInvoicePayment(invoiceRecordId: string, invoice: Stripe.Invoice) {
+  if (invoice.status !== "paid" || !invoice.paid_out_of_band ||
+      typeof invoice.amount_paid !== "number" || !invoice.status_transitions?.paid_at) {
+    throw new Error("The offline invoice payment has not been confirmed.");
+  }
+  const { data, error } = await supabase.rpc("cadivor_apply_manual_plan_invoice_paid", {
+    p_invoice_id: invoiceRecordId,
+    p_stripe_invoice_id: invoice.id,
+    p_stripe_event_id: null,
+    p_amount_paid: invoice.amount_paid,
+    p_currency: invoice.currency,
+    p_paid_at: new Date(invoice.status_transitions.paid_at * 1000).toISOString(),
+    p_paid_out_of_band: true,
+  });
+  if (error) throw new Error("Payment was confirmed, but Cadivor could not apply the paid plan term yet.");
+  const result = (data || {}) as Record<string, unknown>;
+  if (result.ok !== true) throw new Error("Payment was confirmed, but Cadivor could not apply the paid plan term yet.");
+  return result;
+}
+
 async function apiAccessEnabled(userId: string, profile: Record<string, unknown>): Promise<boolean> {
   const { data: override, error } = await supabase
     .from("cadivor_api_access_overrides")
@@ -478,7 +608,7 @@ async function apiAccessEnabled(userId: string, profile: Record<string, unknown>
     .maybeSingle();
   if (error) throw new Error("API access entitlement could not be loaded.");
   if (typeof override?.enabled === "boolean") return override.enabled;
-  const plan = effectivePlan(profile).plan;
+  const plan = (await effectivePlanFor(userId, profile)).plan;
   if (["Trial", "Business", "Enterprise"].includes(plan)) return true;
   if (plan === "Professional") return (await apiAddonFor(userId)).active;
   return false;
@@ -517,7 +647,7 @@ async function resolveDeveloperApiKey(apiKey: string) {
   if (!(await apiAccessEnabled(String(data.user_id), profile))) {
     return response({ ok: false, detail: "Developer API access is not active for this account." }, 403);
   }
-  const effective = effectivePlan(profile);
+  const effective = await effectivePlanFor(String(data.user_id), profile);
   const apiAddon = await apiAddonFor(String(data.user_id));
   const monitoredAddon = await monitoredPartsAddonFor(String(data.user_id));
   const monitoredCapacity = hasCurrentPaidSubscription(profile) && monitoredAddon.active &&
@@ -610,7 +740,14 @@ function effectivePlan(profile: Record<string, unknown>, now = new Date()): {
 }
 
 async function entitlementSnapshot(userId: string, profile: Record<string, unknown>) {
-  const effective = effectivePlan(profile);
+  const manualBilling = await manualBillingStateFor(userId);
+  const effective = manualBilling.activeGrant
+    ? {
+      plan: String(manualBilling.activeGrant.plan),
+      trial_status: null,
+      trial_days_remaining: null,
+    }
+    : effectivePlan(profile);
   const [apiAddon, monitoredAddon, usageCredits] = await Promise.all([
     apiAddonFor(userId),
     monitoredPartsAddonFor(userId),
@@ -632,6 +769,14 @@ async function entitlementSnapshot(userId: string, profile: Record<string, unkno
     api_access_addon_active: apiAddon.active,
     monitored_parts_addon_capacity: monitoredPartsAddonCapacity,
     usage_credits: usageCredits,
+    manual_billing: {
+      active: Boolean(manualBilling.activeGrant),
+      access_ends_at: manualBilling.activeGrant?.grant_ends_at || null,
+      invoice_pending: Boolean(manualBilling.pendingInvoice),
+      invoice_status: manualBilling.pendingInvoice?.status || null,
+      invoice_url: manualBilling.pendingInvoice?.hosted_invoice_url || null,
+      invoice_pdf: manualBilling.pendingInvoice?.invoice_pdf || null,
+    },
   };
 }
 
@@ -938,6 +1083,383 @@ serve(async (request) => {
   try {
     const profile = await profileFor(auth.user.id);
 
+    if (action.startsWith("admin_manual_plan_")) {
+      if (String(profile.role || "").trim().toLowerCase() !== "admin") {
+        return response({ ok: false, detail: "Platform administrator access is required." }, 403, origin);
+      }
+      const targetUserId = String(body.target_user_id || "").trim();
+      if (!UUID_PATTERN.test(targetUserId) || targetUserId === auth.user.id) {
+        return response({ ok: false, detail: "Choose a valid customer account." }, 400, origin);
+      }
+
+      if (action === "admin_manual_plan_billing_list") {
+        const { data, error } = await supabase
+          .from("cadivor_manual_plan_invoices")
+          .select("id,plan,billing_interval,amount_minor,currency,status,hosted_invoice_url,invoice_pdf,invoice_sent_at,due_at,created_at,paid_at,payment_method,payment_reference,payment_recorded_at,grant_starts_at,grant_ends_at,stripe_invoice_id")
+          .eq("user_id", targetUserId)
+          .order("created_at", { ascending: false })
+          .limit(30);
+        if (error) throw new Error("Manual billing history could not be loaded.");
+        return response({ ok: true, invoices: data || [] }, 200, origin);
+      }
+
+      const { data: targetProfile, error: targetProfileError } = await supabase
+        .from("users")
+        .select("role,email,full_name,stripe_customer_id,stripe_subscription_status,stripe_current_period_end")
+        .eq("id", targetUserId)
+        .maybeSingle();
+      if (targetProfileError) throw new Error("Customer account could not be loaded.");
+      if (!targetProfile) return response({ ok: false, detail: "Customer account was not found." }, 404, origin);
+
+      if (action === "admin_manual_plan_invoice_create") {
+        if (String(targetProfile.role || "user").trim().toLowerCase() === "admin") {
+          return response({ ok: false, detail: "Platform administrator accounts cannot be billed through this flow." }, 409, origin);
+        }
+        if (await accountIsSuspended(targetUserId)) {
+          return response({ ok: false, detail: "Restore the customer account before issuing an invoice." }, 409, origin);
+        }
+        const planName = String(body.plan || "").trim();
+        const billingInterval = String(body.billing_interval || "month").trim().toLowerCase();
+        const rawDueDays = body.due_days == null ? 30 : Number(body.due_days);
+        const selectedPlan = planPrices.find((item) => item.name === planName);
+        if (!selectedPlan || !["month", "year"].includes(billingInterval) ||
+            !Number.isSafeInteger(rawDueDays) || rawDueDays < 1 || rawDueDays > 90) {
+          return response({ ok: false, detail: "Choose a valid plan, billing term, and due date." }, 400, origin);
+        }
+        const { data: authResult, error: authError } = await supabase.auth.admin.getUserById(targetUserId);
+        if (authError || !authResult?.user?.email) {
+          const status = Number((authError as unknown as Record<string, unknown> | null)?.status || 0);
+          if (status === 404 || (!authError && !authResult?.user)) {
+            return response({ ok: false, detail: "Customer account was not found." }, 404, origin);
+          }
+          throw new Error("Customer email could not be verified.");
+        }
+        const customerEmail = String(authResult.user.email).trim().toLowerCase();
+
+        const activeSubscriptions: Stripe.Subscription[] = [];
+        for (const status of ["active", "trialing"] as const) {
+          const result = await stripe.subscriptions.search({
+            query: `status:'${status}' AND metadata['user_id']:'${targetUserId}'`,
+            limit: 2,
+          });
+          activeSubscriptions.push(...result.data);
+          if (activeSubscriptions.length > 1) break;
+        }
+        if (activeSubscriptions.length > 0 || (
+          ["active", "trialing"].includes(String(targetProfile.stripe_subscription_status || "").toLowerCase()) &&
+          (!targetProfile.stripe_current_period_end || new Date(String(targetProfile.stripe_current_period_end)) > new Date())
+        )) {
+          return response({ ok: false, detail: "This account has an active Stripe subscription. No manual invoice was created." }, 409, origin);
+        }
+
+        const priceEnv = billingInterval === "year" ? selectedPlan.annualEnv : selectedPlan.env;
+        const priceId = String(Deno.env.get(priceEnv) || "").trim();
+        if (!priceId) return response({ ok: false, detail: "This plan term has no configured Stripe price." }, 503, origin);
+        const price = await stripe.prices.retrieve(priceId);
+        const monthlyValid = billingInterval === "month" && price.recurring?.interval === "month" &&
+          (price.recurring.interval_count || 1) === 1 && price.unit_amount === selectedPlan.expected;
+        const annualValid = billingInterval === "year" && price.recurring?.interval === "year" &&
+          (price.recurring.interval_count || 1) === 1 && typeof price.unit_amount === "number" &&
+          price.unit_amount > 0 && price.unit_amount < selectedPlan.expected * 12;
+        if (!price.active || price.currency !== "usd" || typeof price.unit_amount !== "number" ||
+            (!monthlyValid && !annualValid)) {
+          return response({ ok: false, detail: "This plan's configured price does not match Cadivor's billing catalog." }, 503, origin);
+        }
+
+        let stripeCustomerId = String(targetProfile.stripe_customer_id || "").trim();
+        let customer: Stripe.Customer;
+        if (stripeCustomerId) {
+          const existingCustomer = await stripe.customers.retrieve(stripeCustomerId);
+          if ("deleted" in existingCustomer && existingCustomer.deleted) {
+            return response({ ok: false, detail: "The saved Stripe customer record is unavailable. No invoice was created." }, 409, origin);
+          }
+          if (existingCustomer.metadata?.user_id && existingCustomer.metadata.user_id !== targetUserId) {
+            return response({ ok: false, detail: "The saved Stripe customer does not belong to this Cadivor account." }, 409, origin);
+          }
+          if (existingCustomer.email && existingCustomer.email.trim().toLowerCase() !== customerEmail) {
+            return response({ ok: false, detail: "The Stripe billing email does not match this account's verified email. Correct it in Stripe before issuing an invoice." }, 409, origin);
+          }
+          customer = existingCustomer.email && existingCustomer.metadata?.user_id === targetUserId
+            ? existingCustomer
+            : await stripe.customers.update(stripeCustomerId, {
+              ...(existingCustomer.email ? {} : { email: customerEmail }),
+              metadata: { ...existingCustomer.metadata, user_id: targetUserId },
+            });
+        } else {
+          customer = await stripe.customers.create({
+            email: customerEmail,
+            ...(targetProfile.full_name ? { name: String(targetProfile.full_name).slice(0, 200) } : {}),
+            metadata: { user_id: targetUserId, cadivor_billing_customer: "true" },
+          }, { idempotencyKey: `cadivor_manual_customer_${targetUserId}` });
+          stripeCustomerId = customer.id;
+          const { error: customerLinkError } = await supabase
+            .from("users")
+            .update({ stripe_customer_id: stripeCustomerId })
+            .eq("id", targetUserId);
+          if (customerLinkError) throw new Error("Stripe customer was created, but Cadivor could not link it safely.");
+        }
+        stripeCustomerId = customer.id;
+
+        const invoiceRecordId = crypto.randomUUID();
+        const { data: reserveData, error: reserveError } = await supabase.rpc("cadivor_admin_reserve_manual_plan_invoice", {
+          p_invoice_id: invoiceRecordId,
+          p_actor_user_id: auth.user.id,
+          p_target_user_id: targetUserId,
+          p_customer_email: customerEmail,
+          p_plan: selectedPlan.name,
+          p_billing_interval: billingInterval,
+          p_price_id: priceId,
+          p_amount_minor: price.unit_amount,
+          p_currency: price.currency,
+          p_due_days: rawDueDays,
+          p_stripe_customer_id: stripeCustomerId,
+        });
+        if (reserveError) throw new Error("Invoice could not be safely reserved.");
+        const reservation = (reserveData || {}) as Record<string, unknown>;
+        if (reservation.ok !== true) {
+          const code = String(reservation.code || "");
+          const detail = code === "invoice_pending"
+            ? "This account already has an unpaid manual invoice. Close it before creating another."
+            : code === "stripe_subscription_active"
+              ? "This account has an active Stripe subscription. No manual invoice was created."
+              : code === "account_unavailable"
+                ? "Restore the customer account before issuing an invoice."
+                : code === "account_not_found"
+                  ? "Customer account was not found."
+                  : code === "admin_target"
+                    ? "Platform administrator accounts cannot be billed through this flow."
+                    : "Invoice details failed Cadivor's billing checks.";
+          return response({ ok: false, detail, code }, code === "account_not_found" ? 404 : 409, origin);
+        }
+        const invoiceRecord = (reservation.invoice || {}) as Record<string, unknown>;
+        const recordId = String(invoiceRecord.id || "").trim();
+        if (!UUID_PATTERN.test(recordId)) throw new Error("Manual invoice record is invalid.");
+
+        const invoiceMetadata = {
+          cadivor_manual_plan_invoice_id: recordId,
+          cadivor_user_id: targetUserId,
+          cadivor_plan: selectedPlan.token,
+          cadivor_interval: billingInterval,
+        };
+        let invoice: Stripe.Invoice;
+        const linkedInvoiceId = String(invoiceRecord.stripe_invoice_id || "").trim();
+        if (linkedInvoiceId) {
+          invoice = await stripe.invoices.retrieve(linkedInvoiceId);
+        } else {
+          invoice = await stripe.invoices.create({
+            customer: stripeCustomerId,
+            collection_method: "send_invoice",
+            days_until_due: rawDueDays,
+            auto_advance: false,
+            description: `Cadivor ${selectedPlan.name} plan access - ${billingInterval === "year" ? "annual" : "monthly"} prepayment`,
+            metadata: invoiceMetadata,
+          }, { idempotencyKey: `cadivor_manual_invoice_${recordId}` });
+          const { error: invoiceLinkError } = await supabase
+            .from("cadivor_manual_plan_invoices")
+            .update({ stripe_invoice_id: invoice.id, stripe_customer_id: stripeCustomerId, updated_at: new Date().toISOString() })
+            .eq("id", recordId)
+            .eq("status", "creating");
+          if (invoiceLinkError) throw new Error("Stripe invoice was created, but Cadivor could not link it safely.");
+        }
+        if (asId(invoice.customer) !== stripeCustomerId || invoice.subscription ||
+            invoice.metadata?.cadivor_manual_plan_invoice_id !== recordId) {
+          return response({ ok: false, detail: "Stripe invoice ownership could not be verified. No access was changed." }, 409, origin);
+        }
+        if (invoice.status === "draft") {
+          const lines = await stripe.invoices.listLineItems(invoice.id, { limit: 5 });
+          if (lines.data.length === 0) {
+            await stripe.invoiceItems.create({
+              customer: stripeCustomerId,
+              invoice: invoice.id,
+              currency: price.currency,
+              amount: price.unit_amount,
+              description: `Cadivor ${selectedPlan.name} plan access - ${billingInterval === "year" ? "12 months" : "1 month"} after payment`,
+              metadata: { cadivor_manual_plan_invoice_id: recordId },
+            }, { idempotencyKey: `cadivor_manual_invoice_line_${recordId}` });
+          } else if (lines.data.length !== 1 || lines.data[0].amount !== price.unit_amount) {
+            throw new Error("Draft invoice line items did not match the configured plan price.");
+          }
+          invoice = await stripe.invoices.finalizeInvoice(invoice.id, { auto_advance: false });
+        } else {
+          const lines = await stripe.invoices.listLineItems(invoice.id, { limit: 5 });
+          if (lines.data.length !== 1 || lines.data[0].amount !== price.unit_amount) {
+            throw new Error("Invoice line items did not match the configured plan price.");
+          }
+        }
+        if (invoice.status !== "open" || invoice.amount_due !== price.unit_amount || invoice.currency !== price.currency) {
+          if (invoice.status === "open") await stripe.invoices.voidInvoice(invoice.id);
+          const { error: voidError } = await supabase.rpc("cadivor_admin_void_manual_plan_invoice", {
+            p_actor_user_id: auth.user.id,
+            p_invoice_id: recordId,
+          });
+          if (voidError) throw new Error("Invoice amount validation failed and the invoice could not be closed.");
+          return response({ ok: false, detail: "Stripe added an amount or currency that differs from the configured plan price. The invoice was voided; review customer tax or balance settings." }, 409, origin);
+        }
+        const { error: saveInvoiceError } = await supabase
+          .from("cadivor_manual_plan_invoices")
+          .update({
+            status: "open",
+            stripe_invoice_id: invoice.id,
+            stripe_customer_id: stripeCustomerId,
+            hosted_invoice_url: invoice.hosted_invoice_url,
+            invoice_pdf: invoice.invoice_pdf,
+            due_at: invoice.due_date ? new Date(invoice.due_date * 1000).toISOString() : null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", recordId)
+          .eq("status", "creating");
+        if (saveInvoiceError) throw new Error("Invoice was finalized, but Cadivor could not save its payment link.");
+        return response({
+          ok: true,
+          invoice: {
+            id: recordId,
+            stripe_invoice_id: invoice.id,
+            plan: selectedPlan.name,
+            billing_interval: billingInterval,
+            amount_minor: price.unit_amount,
+            currency: price.currency,
+            status: "open",
+            hosted_invoice_url: invoice.hosted_invoice_url,
+            invoice_pdf: invoice.invoice_pdf,
+            due_at: invoice.due_date ? new Date(invoice.due_date * 1000).toISOString() : null,
+            invoice_sent_at: null,
+          },
+        }, 200, origin);
+      }
+
+      const invoiceRecordId = String(body.invoice_id || "").trim();
+      if (!UUID_PATTERN.test(invoiceRecordId)) {
+        return response({ ok: false, detail: "Choose a valid manual invoice." }, 400, origin);
+      }
+      const { data: invoiceRecord, error: invoiceRecordError } = await supabase
+        .from("cadivor_manual_plan_invoices")
+        .select("id,user_id,plan,billing_interval,price_id,amount_minor,currency,status,payment_method,payment_reference,payment_recorded_at,payment_recorded_by,stripe_customer_id,stripe_invoice_id,hosted_invoice_url,invoice_pdf,invoice_sent_at,due_at,created_at,paid_at,grant_starts_at,grant_ends_at")
+        .eq("id", invoiceRecordId)
+        .eq("user_id", targetUserId)
+        .maybeSingle();
+      if (invoiceRecordError) throw new Error("Manual invoice could not be loaded.");
+      if (!invoiceRecord) return response({ ok: false, detail: "Manual invoice was not found." }, 404, origin);
+
+      if (action === "admin_manual_plan_invoice_send") {
+        if (invoiceRecord.status !== "open" || !invoiceRecord.stripe_invoice_id) {
+          return response({ ok: false, detail: "Only an open invoice can be sent." }, 409, origin);
+        }
+        if (invoiceRecord.invoice_sent_at) {
+          return response({ ok: true, already_sent: true, invoice: invoiceRecord }, 200, origin);
+        }
+        const invoice = await stripe.invoices.retrieve(String(invoiceRecord.stripe_invoice_id));
+        if (invoice.status !== "open" || invoice.subscription ||
+            invoice.metadata?.cadivor_manual_plan_invoice_id !== invoiceRecordId ||
+            asId(invoice.customer) !== invoiceRecord.stripe_customer_id) {
+          return response({ ok: false, detail: "Stripe invoice ownership could not be verified. It was not sent." }, 409, origin);
+        }
+        const sentInvoice = await stripe.invoices.sendInvoice(invoice.id, {}, {
+          idempotencyKey: `cadivor_manual_invoice_send_${invoiceRecordId}`,
+        });
+        const sentAt = new Date().toISOString();
+        const { error: sentError } = await supabase
+          .from("cadivor_manual_plan_invoices")
+          .update({ invoice_sent_at: sentAt, hosted_invoice_url: sentInvoice.hosted_invoice_url, invoice_pdf: sentInvoice.invoice_pdf, updated_at: sentAt })
+          .eq("id", invoiceRecordId)
+          .eq("status", "open");
+        if (sentError) throw new Error("Stripe sent the invoice, but Cadivor could not save the send record.");
+        return response({ ok: true, invoice_sent_at: sentAt }, 200, origin);
+      }
+
+      if (action === "admin_manual_plan_payment_record") {
+        const method = String(body.payment_method || "").trim().toLowerCase();
+        const reference = String(body.payment_reference || "").replace(/[\r\n\t]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+        if (!["cash", "check"].includes(method)) {
+          return response({ ok: false, detail: "Choose cash or check as the received payment method." }, 400, origin);
+        }
+        if (!["open", "payment_recorded"].includes(String(invoiceRecord.status || "")) || !invoiceRecord.stripe_invoice_id) {
+          return response({ ok: false, detail: "Only an open unpaid invoice can be recorded as paid offline." }, 409, origin);
+        }
+        const invoice = await stripe.invoices.retrieve(String(invoiceRecord.stripe_invoice_id));
+        if (invoice.status === "paid") {
+          if (invoiceRecord.status !== "payment_recorded" || !invoice.paid_out_of_band ||
+              invoice.amount_paid !== invoiceRecord.amount_minor) {
+            return response({ ok: false, detail: "This invoice is already paid. Refresh the account; no additional payment was recorded." }, 409, origin);
+          }
+          const grantResult = await applyOutOfBandManualInvoicePayment(invoiceRecordId, invoice);
+          return response({
+            ok: true,
+            paid: true,
+            outcome: grantResult.outcome,
+            grant_starts_at: grantResult.grant_starts_at || null,
+            grant_ends_at: grantResult.grant_ends_at || null,
+          }, 200, origin);
+        }
+        if (invoice.status !== "open" || invoice.subscription ||
+            invoice.metadata?.cadivor_manual_plan_invoice_id !== invoiceRecordId ||
+            asId(invoice.customer) !== invoiceRecord.stripe_customer_id ||
+            invoice.amount_remaining !== invoiceRecord.amount_minor || invoice.currency !== invoiceRecord.currency) {
+          return response({ ok: false, detail: "Stripe invoice details no longer match Cadivor's invoice record." }, 409, origin);
+        }
+        const { data: paymentData, error: paymentRecordError } = await supabase.rpc("cadivor_admin_record_manual_plan_payment", {
+          p_actor_user_id: auth.user.id,
+          p_invoice_id: invoiceRecordId,
+          p_payment_method: method,
+          p_payment_reference: reference || null,
+        });
+        if (paymentRecordError) throw new Error("Offline payment details could not be recorded.");
+        const paymentResult = (paymentData || {}) as Record<string, unknown>;
+        if (paymentResult.ok !== true) {
+          const code = String(paymentResult.code || "");
+          const detail = code === "invoice_already_paid"
+            ? "This invoice is already paid. Refresh the account."
+            : code === "payment_already_recorded"
+              ? "A different offline payment was already recorded for this invoice."
+              : "This invoice cannot be marked paid in its current state.";
+          return response({ ok: false, detail, code }, 409, origin);
+        }
+        const paidInvoice = await stripe.invoices.pay(invoice.id, { paid_out_of_band: true }, {
+          idempotencyKey: `cadivor_manual_invoice_oob_payment_${invoiceRecordId}`,
+        });
+        if (paidInvoice.status !== "paid" || !paidInvoice.paid_out_of_band ||
+            paidInvoice.amount_paid !== invoiceRecord.amount_minor) {
+          return response({ ok: false, detail: "The payment was recorded, but Stripe has not confirmed the invoice as paid. Retry after checking Stripe." }, 503, origin);
+        }
+        const grantResult = await applyOutOfBandManualInvoicePayment(invoiceRecordId, paidInvoice);
+        return response({
+          ok: true,
+          paid: true,
+          outcome: grantResult.outcome,
+          grant_starts_at: grantResult.grant_starts_at || null,
+          grant_ends_at: grantResult.grant_ends_at || null,
+        }, 200, origin);
+      }
+
+      if (action === "admin_manual_plan_invoice_void") {
+        if (invoiceRecord.status !== "open") {
+          return response({ ok: false, detail: "Only a finalized, unpaid invoice can be voided. A preparing invoice or recorded payment must be resolved first." }, 409, origin);
+        }
+        if (invoiceRecord.stripe_invoice_id) {
+          const invoice = await stripe.invoices.retrieve(String(invoiceRecord.stripe_invoice_id));
+          if (invoice.status === "paid") {
+            return response({ ok: false, detail: "This invoice is already paid and cannot be voided." }, 409, origin);
+          }
+          if (invoice.metadata?.cadivor_manual_plan_invoice_id !== invoiceRecordId ||
+              asId(invoice.customer) !== invoiceRecord.stripe_customer_id || invoice.subscription) {
+            return response({ ok: false, detail: "Stripe invoice ownership could not be verified. It was not changed." }, 409, origin);
+          }
+          if (invoice.status === "draft") await stripe.invoices.del(invoice.id);
+          else if (invoice.status === "open") await stripe.invoices.voidInvoice(invoice.id);
+          else if (invoice.status !== "void") return response({ ok: false, detail: "This invoice can no longer be voided." }, 409, origin);
+        }
+        const { data: voidData, error: voidError } = await supabase.rpc("cadivor_admin_void_manual_plan_invoice", {
+          p_actor_user_id: auth.user.id,
+          p_invoice_id: invoiceRecordId,
+        });
+        if (voidError) throw new Error("Stripe invoice was closed, but Cadivor could not save the void record.");
+        const voidResult = (voidData || {}) as Record<string, unknown>;
+        if (voidResult.ok !== true) return response({ ok: false, detail: "This invoice can no longer be voided." }, 409, origin);
+        return response({ ok: true, voided: true }, 200, origin);
+      }
+
+      return response({ ok: false, detail: "Unknown manual billing action." }, 400, origin);
+    }
+
     if (action === "admin_sync_account_status") {
       if (String(profile.role || "").trim().toLowerCase() !== "admin") {
         return response({ ok: false, detail: "Platform administrator access is required." }, 403, origin);
@@ -1185,9 +1707,13 @@ serve(async (request) => {
         )
       );
       const active = hasCurrentPaidSubscription(profile);
+      const manualBilling = await manualBillingStateFor(auth.user.id);
+      const effective = manualBilling.activeGrant
+        ? { plan: String(manualBilling.activeGrant.plan), trial_status: null, trial_days_remaining: null }
+        : effectivePlan(profile);
       const monitoredAddon = await monitoredPartsAddonFor(auth.user.id);
       const monitoredAddonCapacity = active && monitoredAddon.active &&
-          ["Starter", "Professional"].includes(effectivePlan(profile).plan)
+          ["Starter", "Professional"].includes(effective.plan)
         ? monitoredAddon.capacity
         : 0;
       const storedPriceId = String(profile.stripe_price_id || "").trim();
@@ -1196,7 +1722,13 @@ serve(async (request) => {
         .filter(Boolean);
       return response({
         ok: true,
-        current_plan: effectivePlan(profile).plan,
+        current_plan: effective.plan,
+        manual_billing_mode: manualBilling.activeGrant ? "invoice" : manualBilling.pendingInvoice ? "invoice_pending" : null,
+        manual_access_ends_at: manualBilling.activeGrant?.grant_ends_at || null,
+        manual_invoice_pending: Boolean(manualBilling.pendingInvoice),
+        manual_invoice_status: manualBilling.pendingInvoice?.status || null,
+        manual_invoice_url: manualBilling.pendingInvoice?.hosted_invoice_url || null,
+        manual_invoice_pdf: manualBilling.pendingInvoice?.invoice_pdf || null,
         checkout_enabled: checkoutEnabled,
         stripe_mode: stripeSecret.startsWith("sk_live_") ? "live" : stripeSecret.startsWith("sk_test_") ? "test" : "unknown",
         charges_created: false,
@@ -1218,6 +1750,14 @@ serve(async (request) => {
     }
 
     if (action === "portal") {
+      const manualBilling = await manualBillingStateFor(auth.user.id);
+      if (manualBilling.activeGrant || manualBilling.pendingInvoice) {
+        return response({
+          ok: false,
+          code: "manual_billing_mode",
+          detail: "This account is billed through a Cadivor invoice. Contact Cadivor to change or renew the plan.",
+        }, 409, origin);
+      }
       const portal = await createPortal(profile, auth.user.id, origin, supportReference);
       return response(portal, portal.ok ? 200 : 409, origin);
     }
@@ -1498,6 +2038,14 @@ serve(async (request) => {
     }
 
     if (action !== "checkout") return response({ ok: false, detail: "Unknown billing action." }, 400, origin);
+    const manualBilling = await manualBillingStateFor(auth.user.id);
+    if (manualBilling.activeGrant || manualBilling.pendingInvoice) {
+      return response({
+        ok: false,
+        code: "manual_billing_mode",
+        detail: "This account has a Cadivor invoice or invoice-funded plan. Use the invoice link to pay, or contact Cadivor to change the plan.",
+      }, 409, origin);
+    }
     const token = String(body.plan || "").trim().toLowerCase();
     const billingInterval = body.billing_interval === "year" ? "year" : "month";
     planToken = token || "unknown";
