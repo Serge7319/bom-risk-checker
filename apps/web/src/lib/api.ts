@@ -585,6 +585,19 @@ export async function fetchWorkspaceHome(token: string) {
   }>("/workspace/home", { token });
 }
 
+export async function fetchWorkspacePriorityQueue(token: string, offset = 0) {
+  const query = new URLSearchParams({ offset: String(Math.max(0, offset)) });
+  return apiJson<{
+    ok: boolean;
+    items: Array<Record<string, unknown>>;
+    reports_total: number;
+    reports_loaded: number;
+    reports_scanned: number;
+    next_offset: number;
+    has_more: boolean;
+  }>(`/workspace/priority-queue?${query.toString()}`, { token });
+}
+
 export async function listProjects(token: string) {
   return apiJson<{
     ok: boolean;

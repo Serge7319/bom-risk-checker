@@ -714,7 +714,18 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
   gap: 15px;
-  align-items: start;
+  align-items: stretch;
+}
+
+.cv-home-grid > .cv-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.cv-home-grid .cv-home-list-summary {
+  margin-top: auto;
+  padding-top: 12px;
 }
 
 .cv-home-panel-heading {
@@ -5503,9 +5514,22 @@ button {
 }
 
 .cv-priority-panel .cv-priority-row {
-  grid-template-columns: minmax(82px, auto) minmax(0, 1fr) auto;
-  gap: 10px;
-  padding: 13px 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 0;
+}
+
+.cv-priority-row-main {
+  min-width: 0;
+}
+
+.cv-priority-row-heading {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
 }
 
 .cv-priority-severity {
@@ -5549,14 +5573,53 @@ button {
 }
 
 .cv-priority-panel .cv-priority-title {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: 12px;
   color: #243951;
+  overflow-wrap: anywhere;
 }
 
 .cv-priority-panel .cv-priority-meta {
+  overflow: hidden;
   font-size: 10px;
   color: #71829a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 4px;
+}
+
+.cv-priority-panel .cv-evidence-chips {
+  margin-top: 5px;
+}
+
+.cv-priority-full-table {
+  min-width: 840px;
+}
+
+.cv-priority-full-finding {
+  max-width: 520px;
+  line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+.cv-priority-full-meta {
+  margin-top: 4px;
+  color: #71829a;
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.cv-priority-full-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
 }
 
 /* Keep the health summary on the hero surface without an inset card fill. */
@@ -5646,25 +5709,20 @@ button {
     flex-wrap: wrap;
   }
 
-  .cv-priority-panel .cv-priority-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
   .cv-priority-severity {
-    grid-column: 1;
-    grid-row: 1;
+    min-width: 0;
   }
 
-  .cv-priority-row > div {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-
-  .cv-priority-row > .cv-button,
+  .cv-priority-row > .cv-priority-row-action,
   .cv-priority-row > .cv-badge {
     grid-column: 2;
     grid-row: 1;
     justify-self: end;
+  }
+
+  .cv-priority-full-footer {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

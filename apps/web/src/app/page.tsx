@@ -36,8 +36,6 @@ export default function HomePage() {
   const [data, setData] = useState<HomePayload | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
-  const [showAllProjects, setShowAllProjects] = useState(false);
-  const [showAllPriorityRisks, setShowAllPriorityRisks] = useState(false);
 
   useEffect(() => {
     if (!session) return;
@@ -54,12 +52,8 @@ export default function HomePage() {
   const projects = data?.projects || [];
   const priorityRisks = data?.priority_risks || [];
   const homeListPreviewLimit = 3;
-  const visibleProjects = showAllProjects
-    ? projects
-    : projects.slice(0, homeListPreviewLimit);
-  const visiblePriorityRisks = showAllPriorityRisks
-    ? priorityRisks
-    : priorityRisks.slice(0, homeListPreviewLimit);
+  const visibleProjects = projects.slice(0, homeListPreviewLimit);
+  const visiblePriorityRisks = priorityRisks.slice(0, homeListPreviewLimit);
   const hasSaved = Number(metrics.saved_analyses || 0) > 0;
   const latest = (data?.recent_analyses || [])[0] as
     | Record<string, unknown>
@@ -223,20 +217,16 @@ export default function HomePage() {
                 <div className="cv-home-panel-copy">
                   <h3 className="cv-card-title">Active projects</h3>
                   <p className="cv-card-subtitle">
-                    Projects and BOMs saved with the latest analysis link.
+                    Recent projects and their latest analysis health.
                   </p>
                 </div>
-                {projects.length > homeListPreviewLimit ? (
-                  <button
-                    type="button"
-                    className="cv-button small cv-home-view-toggle"
-                    aria-expanded={showAllProjects}
-                    aria-controls="home-active-projects-list"
-                    onClick={() => setShowAllProjects((showAll) => !showAll)}
-                  >
-                    {showAllProjects ? "Show fewer" : `View all ${projects.length}`}
-                  </button>
-                ) : null}
+                <Link
+                  className="cv-button small cv-home-view-toggle"
+                  href="/reports"
+                  aria-label="Open saved projects and reports"
+                >
+                  {projects.length > homeListPreviewLimit ? "View all " + projects.length : "Open reports"}
+                </Link>
               </div>
               {projects.length ? (
                 <>
@@ -307,24 +297,20 @@ export default function HomePage() {
                 <div className="cv-home-panel-copy">
                   <h3 className="cv-card-title">Priority queue</h3>
                   <p className="cv-card-subtitle">
-                    Ranked, evidence-linked risks from saved analyses in this workspace.
+                    Recent evidence-linked risks and findings that need review.
                   </p>
                 </div>
                 <div className="cv-priority-actions">
                   <span className="cv-priority-count">
                     {priorityTotal} active {priorityTotal === 1 ? "signal" : "signals"}
                   </span>
-                  {priorityRisks.length > homeListPreviewLimit ? (
-                    <button
-                      type="button"
-                      className="cv-button small cv-home-view-toggle"
-                      aria-expanded={showAllPriorityRisks}
-                      aria-controls="home-priority-risks-list"
-                      onClick={() => setShowAllPriorityRisks((showAll) => !showAll)}
-                    >
-                      {showAllPriorityRisks ? "Show fewer" : `View all ${priorityRisks.length}`}
-                    </button>
-                  ) : null}
+                  <Link
+                    className="cv-button small cv-home-view-toggle"
+                    href="/priority-queue"
+                    aria-label="View the full priority queue"
+                  >
+                    View full queue
+                  </Link>
                 </div>
               </div>
               {severityTotal > 0 ? (
@@ -355,35 +341,34 @@ export default function HomePage() {
                       const severity = prioritySeverityClass(level);
                       return (
                         <div className="cv-priority-row" key={index}>
-                          <span className={`cv-priority-severity ${severity}`}>
-                            {level}
-                          </span>
-                          <div>
-                            <div className="cv-priority-title">
-                              {item.why
-                                ? cleanUserText(item.why)
-                                : userFacingLabel(item.bom_name, "BOM")}
+                          <div className="cv-priority-row-main">
+                            <div className="cv-priority-row-heading">
+                              <span className={"cv-priority-severity " + severity}>
+                                {level}
+                              </span>
+                              <div className="cv-priority-title">
+                                {item.why
+                                  ? cleanUserText(item.why)
+                                  : userFacingLabel(item.bom_name, "BOM")}
+                              </div>
                             </div>
                             <div className="cv-priority-meta">
-                              {item.mpn ? `${String(item.mpn)} · ` : ""}
+                              {item.mpn ? String(item.mpn) + " · " : ""}
                               {userFacingLabel(item.project_name, "")}
-                              {item.bom_path ? ` · ${cleanUserText(item.bom_path)}` : ""}
                             </div>
                             <div className="cv-evidence-chips">
                               <span className="cv-evidence-chip">
                                 {evidenceSourceLabel(item.evidence_source)}
                               </span>
-                              <span className="cv-evidence-chip">
-                                {String(item.risk_level || "—")} priority
-                              </span>
                             </div>
                           </div>
                           {item.analysis_id ? (
                             <Link
-                              className="cv-button small"
-                              href={`/reports/${String(item.analysis_id)}`}
+                              className="cv-button small cv-priority-row-action"
+                              href={"/reports/" + String(item.analysis_id)}
+                              aria-label="Review evidence"
                             >
-                              Review evidence
+                              Review
                             </Link>
                           ) : (
                             <span className="cv-badge gray">No report link</span>
@@ -393,7 +378,7 @@ export default function HomePage() {
                     })}
                   </div>
                   <p className="cv-home-list-summary" aria-live="polite">
-                    Showing {visiblePriorityRisks.length} of {priorityRisks.length} priority item{priorityRisks.length === 1 ? "" : "s"}
+                    Previewing {visiblePriorityRisks.length} recent priority items.
                   </p>
                 </>
               ) : (

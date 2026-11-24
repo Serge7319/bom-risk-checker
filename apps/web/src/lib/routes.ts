@@ -70,6 +70,13 @@ export const PAGE_META: Record<string, PageMeta> = {
     description:
       "A clear view of engineering priorities across your saved BOMs.",
   },
+  priorityQueue: {
+    icon: "risk",
+    title: "Priority queue",
+    eyebrow: "Workspace risk review",
+    description:
+      "Review current high, medium, and unverified component findings across saved analyses.",
+  },
   bom: {
     icon: "bom",
     title: "BOM Analyzer",

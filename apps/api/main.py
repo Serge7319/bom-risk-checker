@@ -1312,6 +1312,49 @@ async def workspace_home(request: Request) -> JSONResponse:
         return _json({"detail": str(exc)}, 503)
 
 
+async def workspace_priority_queue(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        workspace_id = ctx["workspace_id"]
+        try:
+            offset = max(0, int(request.query_params.get("offset") or 0))
+        except (TypeError, ValueError):
+            return _json({"detail": "Invalid priority queue offset"}, 400)
+        report_page_size = 8
+        reports = customer_visible_analyses(
+            list_reports(workspace_id=workspace_id),
+            production=is_production_runtime(),
+        )
+        report_page = reports[offset : offset + report_page_size]
+        items: list[dict[str, Any]] = []
+        for summary in report_page:
+            analysis_id = str(summary.get("id") or summary.get("analysis_id") or "")
+            report = get_report(analysis_id, workspace_id=workspace_id) if analysis_id else None
+            if not report:
+                continue
+            for item in current_priority_items(report, summary):
+                items.append({
+                    **item,
+                    "filename": summary.get("filename"),
+                    "revision": summary.get("revision"),
+                    "created_at": summary.get("created_at"),
+                })
+        next_offset = offset + len(report_page)
+        return _json({
+            "ok": True,
+            "items": items,
+            "reports_total": len(reports),
+            "reports_loaded": next_offset,
+            "reports_scanned": len(report_page),
+            "next_offset": next_offset,
+            "has_more": next_offset < len(reports),
+        })
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+
+
 async def reports_csv_get(request: Request) -> Response:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -5611,6 +5654,7 @@ app = Starlette(
         Route("/boms/{bom_id}", boms_update, methods=["PATCH"]),
         Route("/boms/{bom_id}", boms_delete, methods=["DELETE"]),
         Route("/workspace/home", workspace_home, methods=["GET"]),
+        Route("/workspace/priority-queue", workspace_priority_queue, methods=["GET"]),
         Route("/tools/monitoring", monitoring_get, methods=["GET"]),
         Route("/tools/compare-parts", compare_parts_post, methods=["POST"]),
         Route("/decision-records", decision_records_get, methods=["GET"]),
