@@ -601,7 +601,7 @@ function ReportPageInner() {
   const meta = {
     ...PAGE_META.ei,
     title: report?.filename && userFacingLabel(report.filename, "")
-      ? `EI · ${userFacingLabel(report.filename, "Saved analysis")}`
+      ? `Report · ${userFacingLabel(report.filename, "Saved analysis")}`
       : PAGE_META.ei.title,
   };
   const evidenceSummary = (report?.evidence_summary || {}) as Record<string, unknown>;
@@ -644,6 +644,9 @@ function ReportPageInner() {
             </button>
             <SecondaryLink href="/engineering-decisions">
               Decision queue
+            </SecondaryLink>
+            <SecondaryLink href={`/detailed-risk-report?analysis_id=${encodeURIComponent(String(report?.analysis_id || report?.id || params.id))}`}>
+              Risk evidence detail
             </SecondaryLink>
             <SecondaryLink href={`/compare-parts?analysis_id=${encodeURIComponent(params.id)}`}>
               Compare parts

@@ -161,6 +161,7 @@ function displayRevision(report: Report): string {
 }
 
 type RiskCounts = { high: number; medium: number; low: number; unknown: number };
+type RevisionOption = { id: string; revision: string; filename: string; created_at: string };
 
 function riskCounts(report: Report): RiskCounts {
   const counts: RiskCounts = { high: 0, medium: 0, low: 0, unknown: 0 };
@@ -198,6 +199,8 @@ export function RevisionDiff({ report, token }: { report: Report; token: string 
   const [error, setError] = useState("");
   const [previous, setPrevious] = useState<Report | null>(null);
   const [diff, setDiff] = useState<DiffRow[] | null>(null);
+  const [previousOptions, setPreviousOptions] = useState<RevisionOption[]>([]);
+  const [selectedPreviousId, setSelectedPreviousId] = useState("");
   const [decisionContext, setDecisionContext] = useState<DecisionRecord[]>([]);
   const [searched, setSearched] = useState(false);
 
@@ -206,6 +209,7 @@ export function RevisionDiff({ report, token }: { report: Report; token: string 
     setLoading(true);
     setError("");
     setSearched(true);
+    setDecisionContext([]);
     try {
       const currentId = String(report.analysis_id || report.id || "");
       const bomId = String(report.bom_id || "");
@@ -220,13 +224,22 @@ export function RevisionDiff({ report, token }: { report: Report; token: string 
           if (a.time !== null && b.time !== null && a.time !== b.time) return b.time - a.time;
           return a.index - b.index;
         });
-      const candidate = siblings[0]?.row;
+      const options = siblings.map(({ row }) => ({
+        id: reportId(row),
+        revision: text(row.revision),
+        filename: text(row.filename),
+        created_at: text(row.created_at),
+      })).filter((option) => option.id);
+      setPreviousOptions(options);
+      const candidate = options.find((option) => option.id === selectedPreviousId) || options[0];
       if (!candidate) {
+        setSelectedPreviousId("");
         setPrevious(null);
         setDiff([]);
         return;
       }
-      const loaded = await fetchReport(reportId(candidate), token);
+      setSelectedPreviousId(candidate.id);
+      const loaded = await fetchReport(candidate.id, token);
       setPrevious(loaded);
       setDiff(revisionDiff(loaded, report));
       const contextIds = new Set([
@@ -290,19 +303,44 @@ export function RevisionDiff({ report, token }: { report: Report; token: string 
     );
     return { decision, candidate };
   });
+  const selectedOptionId = previousOptions.some((option) => option.id === selectedPreviousId)
+    ? selectedPreviousId
+    : previousOptions[0]?.id || "";
+  const comparisonNeedsRefresh = Boolean(previous && selectedOptionId && reportId(previous) !== selectedOptionId);
+  function optionLabel(option: RevisionOption): string {
+    const revision = option.revision ? `Rev ${option.revision}` : "Saved revision";
+    const savedDate = option.created_at ? new Date(option.created_at) : null;
+    const saved = savedDate && !Number.isNaN(savedDate.getTime()) ? savedDate.toLocaleDateString() : "date unavailable";
+    return `${revision} · ${saved}`;
+  }
 
   return (
     <section className="cv-card pad" style={{ marginBottom: 14 }} data-testid="revision-diff">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h2 className="cv-card-title">BOM revision comparison</h2>
-          <p className="cv-card-subtitle">Compare this report with the nearest earlier revision of the same saved BOM. The comparison shows part-level risk shifts, added and removed MPNs, and new blockers.</p>
+          <p className="cv-card-subtitle">Compare this saved revision with any earlier revision of the same BOM. The comparison shows added and removed parts, tracked field changes, and risk shifts.</p>
         </div>
-        <button type="button" className="cv-button secondary" onClick={() => void comparePrevious()} disabled={loading || !token}>
-          {loading ? "Comparing revisions…" : searched ? "Compare again" : "Compare with previous revision"}
-        </button>
+        <div className="cv-revision-compare-controls">
+          {searched && previousOptions.length > 1 ? (
+            <label className="cv-field cv-revision-compare-select">
+              <span>Compare with</span>
+              <select
+                aria-label="Choose an earlier BOM revision to compare"
+                value={selectedOptionId}
+                onChange={(event) => setSelectedPreviousId(event.target.value)}
+              >
+                {previousOptions.map((option) => <option key={option.id} value={option.id}>{optionLabel(option)}</option>)}
+              </select>
+            </label>
+          ) : null}
+          <button type="button" className="cv-button primary" onClick={() => void comparePrevious()} disabled={loading || !token}>
+            {loading ? "Comparing revisions…" : searched ? "Compare revisions" : "Compare with previous revision"}
+          </button>
+        </div>
       </div>
       {error ? <p className="cv-error" role="alert" style={{ marginTop: 12 }}>{error}</p> : null}
+      {comparisonNeedsRefresh ? <p className="cv-small-note" role="status" style={{ marginTop: 10 }}>Choose Compare revisions to load the selected earlier snapshot.</p> : null}
       {searched && !error && !previous ? <p className="cv-small-note" role="status" style={{ marginTop: 12 }}>No earlier saved revision was found for this BOM.</p> : null}
       {previous && diff ? (
         <div style={{ marginTop: 14 }}>
@@ -348,7 +386,11 @@ export function RevisionDiff({ report, token }: { report: Report; token: string 
                 </tbody>
               </table>
             </div>
-          ) : <p className="cv-success-note" role="status">No MPN or tracked report fields changed. No new high-risk parts were found.</p>}
+          ) : (
+            <p className="cv-revision-no-changes" role="status" data-testid="revision-no-changes">
+              These saved revisions have the same MPNs, quantities, manufacturers, descriptions, risk labels, and lifecycle values. Cadivor found no changes in the fields it compares for this report.
+            </p>
+          )}
           {decisionContext.length ? (
             <section className="cv-card pad" style={{ marginTop: 14, background: "#f8fbff" }} aria-label="Prior decision context">
               <h3 className="cv-card-title">Prior decision context</h3>

@@ -42,6 +42,8 @@ export type AnalyzeSummary = {
   total_parts: number;
   health_score: number | null;
   health_status: string;
+  assessment_coverage?: number | null;
+  needs_verification_count?: number;
   high_risk_count: number;
   medium_risk_count: number;
   low_risk_count: number;

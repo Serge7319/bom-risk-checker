@@ -2,14 +2,13 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { AnalysisStageNavigation } from "@/components/AnalysisStageNavigation";
 import { userFacingLabel } from "@/lib/display";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { KpiCard } from "@/components/KpiCard";
 import { StatusPill } from "@/components/StatusPill";
-import { PageHeader, PrimaryLink } from "@/components/PageHeader";
+import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { fetchDetailedRisk } from "@/lib/api";
 import { PAGE_META } from "@/lib/routes";
 import { readLastAnalysis, useRequireSession } from "@/lib/session";
@@ -81,13 +80,24 @@ function DetailedRiskPageInner() {
       <PageHeader
         meta={{
           ...PAGE_META.risk,
-          title: data?.filename ? `Detailed risk · ${userFacingLabel(data.filename, "Saved analysis")}` : PAGE_META.risk.title,
+          title: data?.filename ? `Risk evidence · ${userFacingLabel(data.filename, "Saved analysis")}` : PAGE_META.risk.title,
         }}
         record
-        actions={<PrimaryLink href="/reports">Open saved reports</PrimaryLink>}
+        actions={
+          <>
+            {activeAnalysisId ? (
+              <PrimaryLink href={`/reports/${encodeURIComponent(activeAnalysisId)}`}>Back to full report</PrimaryLink>
+            ) : null}
+            <SecondaryLink href="/reports">Saved reports</SecondaryLink>
+          </>
+        }
       />
-      <AnalysisStageNavigation analysisId={activeAnalysisId} current="risks" />
       {<EvidenceNotice gap={data?.gap} />}
+      {activeAnalysisId ? (
+        <p className="cv-risk-detail-context" role="note">
+          This is the component evidence drill-down for the selected saved revision. Use <strong>Back to full report</strong> to return to the Risks overview, revision comparison, exports, and the linked Evidence, Decision, and Monitor workflow.
+        </p>
+      ) : null}
       {!busy && data?.evidence_summary ? (
         <p className="cv-small-note" style={{ marginBottom: 12 }} data-testid="detailed-risk-evidence-summary">
           {(() => {
@@ -105,7 +115,16 @@ function DetailedRiskPageInner() {
       {!busy && data ? (
         rows.length ? <>
           <div className="cv-kpis">
-            <KpiCard icon="shield" tone={healthTone} label="Health score" value={healthScore == null ? "Not scored" : `${String(healthScore)}/100`} status={{ label: healthStatusLabel, tone: healthTone === "blue" ? "gray" : healthTone }} detail="100 minus average risk score; screening index" />
+            <KpiCard
+              icon="shield"
+              tone={healthTone}
+              label="Health score"
+              value={healthScore == null ? "Not scored" : `${String(healthScore)}/100`}
+              status={{ label: healthStatusLabel, tone: healthTone === "blue" ? "gray" : healthTone }}
+              detail={assessmentScored
+                ? "Screening index: 100 minus average component risk score."
+                : String(data.summary_message || "Withheld until every BOM line has complete, current evidence. Individual risk labels may still appear.")}
+            />
             <KpiCard icon="box" tone="blue" label="Components assessed" value={rows.length} status={{ label: "In this report", tone: "blue" }} detail="Rows assessed" />
             <KpiCard
               icon="risk"

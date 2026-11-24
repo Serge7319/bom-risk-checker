@@ -2439,6 +2439,8 @@ def detailed_risk_payload(*, workspace_id: str, analysis_id: str | None = None) 
             "revision": report.get("revision"),
             "health_score": report.get("health_score"),
             "health_status": report.get("health_status"),
+            "summary_message": report.get("summary_message"),
+            "needs_verification_count": report.get("needs_verification_count"),
             "high_risk_count": high_risk_count,
             "gap": gap,
             "evidence_summary": evidence_summary,

@@ -11,7 +11,9 @@ import { NAV_GROUPS } from "@/lib/routes";
 
 function crumbTitle(pathname: string): string {
   if (pathname === "/") return "Home";
-  if (pathname.startsWith("/reports/")) return "Engineering Intelligence";
+  if (pathname.startsWith("/reports/")) return "Saved report";
+  if (pathname === "/detailed-risk-report") return "Risk evidence detail";
+  if (pathname === "/engineering-intelligence") return "Latest report";
   if (pathname.startsWith("/admin/users")) return "User accounts";
   if (pathname.startsWith("/admin/entitlements")) return "Account entitlements";
   if (pathname.startsWith("/admin/marketing-analytics")) return "Growth analytics";
