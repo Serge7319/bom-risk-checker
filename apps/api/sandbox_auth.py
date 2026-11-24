@@ -254,6 +254,7 @@ class AuthContext:
     # not inferred from workspace membership or a browser-visible plan.
     platform_role: str | None = None
     api_access_addon_active: bool | None = None
+    monitored_parts_addon_capacity: int | None = None
     usage_credits: dict[str, int] | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -279,6 +280,8 @@ class AuthContext:
             payload["platform_role"] = self.platform_role
         if self.api_access_addon_active is not None:
             payload["api_access_addon_active"] = self.api_access_addon_active
+        if self.monitored_parts_addon_capacity is not None:
+            payload["monitored_parts_addon_capacity"] = self.monitored_parts_addon_capacity
         if self.usage_credits is not None:
             payload["usage_credits"] = self.usage_credits
         return payload

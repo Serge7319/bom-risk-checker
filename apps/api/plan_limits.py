@@ -88,6 +88,16 @@ def effective_plan(ctx: dict[str, Any] | None) -> dict[str, Any]:
         and row.get("api_access_addon_active") is True
     ):
         plan["api_access"] = True
+    capacity_addon = row.get("monitored_parts_addon_capacity")
+    base_capacity = plan.get("monitored_parts_limit")
+    if (
+        isinstance(capacity_addon, int)
+        and not isinstance(capacity_addon, bool)
+        and capacity_addon > 0
+        and isinstance(base_capacity, int)
+        and not isinstance(base_capacity, bool)
+    ):
+        plan["monitored_parts_limit"] = base_capacity + capacity_addon
     overrides = row.get("entitlement_overrides")
     if isinstance(overrides, dict):
         for key, value in overrides.items():

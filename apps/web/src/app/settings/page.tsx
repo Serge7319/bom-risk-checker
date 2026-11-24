@@ -9,6 +9,7 @@ import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader"
 import {
   ApiError,
   beginBillingPortal,
+  beginMonitoredPartsAddonCheckout,
   beginProfessionalApiAddonCheckout,
   beginSubscriptionCheckout,
   beginUsageOverageCheckout,
@@ -33,6 +34,7 @@ import {
   fetchProfile,
   fetchSecurityStatus,
   fetchWorkspaceSettings,
+  removeMonitoredPartsAddon,
   listWorkspaceActivity,
   listWorkspaceInvitations,
   listWorkspaceMembers,
@@ -193,6 +195,7 @@ export default function Page() {
   const [compliance, setCompliance] = useState<Record<string, unknown> | null>(null);
   const [billingAction, setBillingAction] = useState("");
   const [billingError, setBillingError] = useState("");
+  const [billingNotice, setBillingNotice] = useState("");
   const [billingInterval, setBillingInterval] = useState<"month" | "year">("month");
   const [developerWebhooks, setDeveloperWebhooks] = useState<DeveloperWebhook[]>([]);
   const [developerWebhookDeliveries, setDeveloperWebhookDeliveries] = useState<DeveloperWebhookDelivery[]>([]);
@@ -287,7 +290,12 @@ export default function Page() {
         settledValue(fetchServiceReadiness(token)),
       ]);
     if (usageRes) setUsage(usageRes);
-    if (billingRes) setBilling(billingRes);
+    if (billingRes) {
+      setBilling(billingRes);
+      if (billingRes.subscription_billing_interval === "year" || billingRes.subscription_billing_interval === "month") {
+        setBillingInterval(billingRes.subscription_billing_interval);
+      }
+    }
     const usageLimits = asRecord(usageRes?.limits);
     const apiAccessAvailable = usageLimits.api_access === true || billingRes?.api_access_addon_active === true;
     if (apiAccessAvailable) {
@@ -382,9 +390,13 @@ export default function Page() {
   const billingAddons = asRecord(billing?.addons);
   const analysisOverage = asRecord(billingAddons.bom_analysis);
   const monitoredOverage = asRecord(billingAddons.monitored_parts);
+  const addonBillingInterval = billing?.subscription_billing_interval === "year" ? "year" : "month";
+  const monitoredOveragePrice = asRecord(monitoredOverage[addonBillingInterval === "year" ? "annual" : "monthly"]);
   const apiOverage = asRecord(billingAddons.professional_api);
   const usageCredits = asRecord(billing?.usage_credits);
   const hasProfessionalApiAddon = billing?.api_access_addon_active === true;
+  const hasMonitoredPartsAddon = billing?.monitored_parts_addon_active === true;
+  const monitoredPartsAddonCapacity = Number(billing?.monitored_parts_addon_capacity || 0);
   const paidSubscription = billing?.has_active_subscription === true &&
     ["starter", "professional", "business"].includes(currentPlan);
   const connectorRows = asRows(
@@ -595,20 +607,60 @@ export default function Page() {
     }).format(amount / 100) + suffix;
   }
 
-  async function openAddonCheckout(kind: "bom_analysis" | "monitored_part" | "professional_api") {
+  async function openAddonCheckout(kind: "bom_analysis" | "monitored_parts_capacity" | "professional_api") {
     if (!session) return;
     setBillingAction("addon-" + kind);
     setBillingError("");
+    setBillingNotice("");
     try {
+      if (kind === "monitored_parts_capacity") {
+        const result = await beginMonitoredPartsAddonCheckout(session.access_token, addonBillingInterval);
+        if (!result.ok || !result.addon_added) {
+          throw new Error(result.detail || "Monitored-parts capacity could not be added.");
+        }
+        setBillingNotice(result.detail || "Monitored-parts capacity is active.");
+        const [billingRes, usageRes] = await Promise.all([
+          settledValue(fetchBillingStatus(session.access_token)),
+          settledValue(fetchPlanUsage(session.access_token)),
+        ]);
+        if (billingRes) setBilling(billingRes);
+        if (usageRes) setUsage(usageRes);
+        setBillingAction("");
+        return;
+      }
       const result = kind === "professional_api"
         ? await beginProfessionalApiAddonCheckout(session.access_token)
-        : await beginUsageOverageCheckout(session.access_token, kind);
+        : await beginUsageOverageCheckout(session.access_token, "bom_analysis");
       if (!result.ok || !result.checkout?.url) {
         throw new Error(result.detail || "Secure add-on checkout could not be opened.");
       }
       window.location.assign(result.checkout.url);
     } catch (err) {
       setBillingError(billingErrorMessage(err, "Secure add-on checkout could not be opened."));
+      setBillingAction("");
+    }
+  }
+
+  async function removeMonitoredCapacity() {
+    if (!session || !window.confirm("Remove the monitored-parts capacity add-on? Stripe will prorate any unused time on the subscription invoice.")) return;
+    setBillingAction("addon-monitored_parts_remove");
+    setBillingError("");
+    setBillingNotice("");
+    try {
+      const result = await removeMonitoredPartsAddon(session.access_token);
+      if (!result.ok || !result.addon_removed) {
+        throw new Error(result.detail || "The monitored-parts add-on could not be removed.");
+      }
+      setBillingNotice(result.detail || "Monitored-parts capacity was removed.");
+      const [billingRes, usageRes] = await Promise.all([
+        settledValue(fetchBillingStatus(session.access_token)),
+        settledValue(fetchPlanUsage(session.access_token)),
+      ]);
+      if (billingRes) setBilling(billingRes);
+      if (usageRes) setUsage(usageRes);
+    } catch (err) {
+      setBillingError(billingErrorMessage(err, "The monitored-parts add-on could not be removed."));
+    } finally {
       setBillingAction("");
     }
   }
@@ -1623,7 +1675,7 @@ export default function Page() {
               <section className="cv-card pad" style={{ marginBottom: 14 }}>
                 <h3 className="cv-card-title">Usage add-ons</h3>
                 <p className="cv-card-subtitle">
-                  Buy extra BOM analysis or monitoring capacity when you need it. Pack sizes and prices come from the configured Stripe catalog; they are not estimated by Cadivor.
+                  Buy extra BOM analysis credits or recurring monitoring capacity. Stripe prorates monitoring capacity to align with your plan renewal.
                 </p>
                 <div className="cv-addon-grid">
                   <article className="cv-addon-card">
@@ -1635,12 +1687,22 @@ export default function Page() {
                     </button>
                   </article>
                   <article className="cv-addon-card">
-                    <h4>Monitored parts pack</h4>
-                    <p>{Number(monitoredOverage.credits || 0).toLocaleString()} additional monitored parts · {addonPriceLabel(monitoredOverage, " one time")}</p>
-                    <p className="cv-small-note">Available monitoring credits: {Number(usageCredits.monitored_part || 0).toLocaleString()}</p>
-                    <button className="cv-button" type="button" disabled={!paidSubscription || monitoredOverage.enabled !== true || Boolean(billingAction)} onClick={() => void openAddonCheckout("monitored_part")}>
-                      {billingAction === "addon-monitored_part" ? "Opening checkout…" : "Buy monitored parts pack"}
-                    </button>
+                    <h4>Monitored-parts capacity</h4>
+                    <p>{Number(monitoredOverage.capacity || 0) > 0 ? `+${Number(monitoredOverage.capacity).toLocaleString()} monitored parts` : "Additional monitoring capacity"} · {addonPriceLabel(monitoredOveragePrice, addonBillingInterval === "year" ? " / year" : " / month")}</p>
+                    <p className="cv-small-note">
+                      {hasMonitoredPartsAddon
+                        ? `${monitoredPartsAddonCapacity.toLocaleString()} additional monitored parts are active on this subscription.`
+                        : "Recurring add-on for active Starter and Professional plans. Any partial-period charge appears on the next subscription invoice."}
+                    </p>
+                    {hasMonitoredPartsAddon ? (
+                      <button className="cv-button" type="button" disabled={Boolean(billingAction)} onClick={() => void removeMonitoredCapacity()}>
+                        {billingAction === "addon-monitored_parts_remove" ? "Removing…" : "Remove capacity add-on"}
+                      </button>
+                    ) : (
+                      <button className="cv-button" type="button" disabled={!paidSubscription || !["starter", "professional"].includes(currentPlan) || monitoredOveragePrice.enabled !== true || Boolean(billingAction)} onClick={() => void openAddonCheckout("monitored_parts_capacity")}>
+                        {billingAction === "addon-monitored_parts_capacity" ? "Adding capacity…" : "Add monitored capacity"}
+                      </button>
+                    )}
                   </article>
                   <article className="cv-addon-card">
                     <h4>Professional API access</h4>
@@ -1652,6 +1714,8 @@ export default function Page() {
                   </article>
                 </div>
                 {!paidSubscription ? <p className="cv-small-note" style={{ marginTop: 10 }}>Choose an active paid plan before purchasing add-ons.</p> : null}
+                {currentPlan === "business" || currentPlan === "enterprise" ? <p className="cv-small-note" style={{ marginTop: 10 }}>Business and Enterprise already include unlimited monitored parts.</p> : null}
+                {billingNotice ? <div className="cv-success" role="status" style={{ marginTop: 12 }}>{billingNotice}</div> : null}
                 {billingError ? <div className="cv-error" role="alert" style={{ marginTop: 12 }}>{billingError}</div> : null}
               </section>
 

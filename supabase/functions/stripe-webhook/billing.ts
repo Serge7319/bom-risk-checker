@@ -84,9 +84,22 @@ export function billingDecision(
   priceIds: Record<string, string | string[] | undefined>,
 ): { setPlan: boolean; plan: string | null; priceId: string | null } {
   const status = String(subscription.status || "").trim().toLowerCase();
+  // A Cadivor subscription can contain the plan item plus recurring add-on
+  // items. Resolve the plan from any configured plan price, rather than
+  // assuming Stripe's first item is always the plan.
+  const itemPriceIds = (subscription.items?.data || []).map((item) => {
+    const price = item.price;
+    if (typeof price === "string") return price.trim() || null;
+    const id = price && typeof price === "object" ? price.id : null;
+    return typeof id === "string" && id.trim() ? id.trim() : null;
+  });
+  const mappedPlanPriceId = itemPriceIds.find((priceId) =>
+    Boolean(priceId && planForPrice(priceId, priceIds))
+  ) || null;
+  const resolvedPriceId = mappedPlanPriceId || priceIdOf(subscription);
   const mapped = resolvePaidPlan(
     subscription.metadata,
-    priceIdOf(subscription),
+    resolvedPriceId,
     priceIds,
   );
   const entitling = ENTITLING_STATUSES.has(status);
@@ -98,6 +111,6 @@ export function billingDecision(
   return {
     setPlan: Boolean(entitling && mapped),
     plan: entitling ? mapped : null,
-    priceId: priceIdOf(subscription),
+    priceId: resolvedPriceId,
   };
 }

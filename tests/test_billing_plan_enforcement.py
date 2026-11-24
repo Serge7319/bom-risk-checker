@@ -14,6 +14,50 @@ def load_plans():
 
 
 class BillingPlanEnforcementTests(unittest.TestCase):
+    def test_monitored_parts_addon_extends_only_limited_plans(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from apps.api.plan_limits import effective_plan
+
+        self.assertEqual(effective_plan({"plan": "Starter"})["monitored_parts_limit"], 0)
+        self.assertEqual(
+            effective_plan({"plan": "Starter", "monitored_parts_addon_capacity": 1000})[
+                "monitored_parts_limit"
+            ],
+            1000,
+        )
+        self.assertEqual(
+            effective_plan({"plan": "Professional", "monitored_parts_addon_capacity": 1000})[
+                "monitored_parts_limit"
+            ],
+            3500,
+        )
+        self.assertIsNone(
+            effective_plan({"plan": "Business", "monitored_parts_addon_capacity": 1000})[
+                "monitored_parts_limit"
+            ]
+        )
+
+    def test_monitored_parts_addon_ignores_invalid_capacity_values(self):
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from apps.api.plan_limits import effective_plan
+
+        self.assertEqual(
+            effective_plan({"plan": "Professional", "monitored_parts_addon_capacity": True})[
+                "monitored_parts_limit"
+            ],
+            2500,
+        )
+        self.assertEqual(
+            effective_plan({"plan": "Professional", "monitored_parts_addon_capacity": -100})[
+                "monitored_parts_limit"
+            ],
+            2500,
+        )
+
     def test_admin_resolves_to_enterprise(self):
         plans = load_plans()
         self.assertEqual(plans.resolve_effective_plan({"role": "admin", "plan": "Starter"}), ("Enterprise", False))
