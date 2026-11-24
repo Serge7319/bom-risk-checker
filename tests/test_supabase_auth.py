@@ -1099,3 +1099,58 @@ def test_decision_scope_and_snapshot_token_suites_in_ci() -> None:
         check=False,
     )
     assert completed.returncode == 0
+
+
+def test_mfa_factor_rows_reads_authenticated_user_factors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Supabase exposes MFA factors on GET /auth/v1/user, not /factors."""
+    import io
+    import json
+
+    user_id = "44444444-4444-4444-4444-444444444444"
+    token = "header.payload.signature"
+    payload = {
+        "id": user_id,
+        "factors": [
+            {
+                "id": "factor-1",
+                "factor_type": "totp",
+                "status": "verified",
+                "friendly_name": "Cadivor authenticator",
+                "secret": "must-not-be-retained",
+            }
+        ],
+    }
+    requests = []
+
+    monkeypatch.setattr(
+        supabase_auth, "_verified_jwt_claims", lambda _token: {"sub": user_id}
+    )
+    monkeypatch.setattr(
+        supabase_auth, "_require_configured",
+        lambda: ("https://example.supabase.co", "public-anon-key"),
+    )
+
+    def _urlopen(request, timeout):
+        requests.append((request, timeout))
+        return io.BytesIO(json.dumps(payload).encode("utf-8"))
+
+    monkeypatch.setattr("urllib.request.urlopen", _urlopen)
+    with supabase_auth._MFA_FACTOR_CACHE_LOCK:
+        supabase_auth._MFA_FACTOR_CACHE.pop(user_id, None)
+
+    rows = supabase_auth._mfa_factor_rows(token, user_id, force_refresh=True)
+
+    assert len(requests) == 1
+    request, timeout = requests[0]
+    assert request.full_url == "https://example.supabase.co/auth/v1/user"
+    assert request.get_method() == "GET"
+    assert request.get_header("Authorization") == f"Bearer {token}"
+    assert timeout == 10
+    assert rows == [
+        {
+            "id": "factor-1",
+            "factor_type": "totp",
+            "status": "verified",
+            "friendly_name": "Cadivor authenticator",
+        }
+    ]
