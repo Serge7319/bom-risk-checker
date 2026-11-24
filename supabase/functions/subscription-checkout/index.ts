@@ -85,15 +85,6 @@ function stripeErrorSummary(error: unknown): StripeErrorSummary {
   };
 }
 
-function safeSupportMessage(message: string | undefined): string | undefined {
-  if (!message) return undefined;
-  return message
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
-    .replace(/\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]+\b/gi, "[redacted-key]")
-    .replace(/\bBearer\s+[^\s,]+/gi, "Bearer [redacted]")
-    .slice(0, 240);
-}
-
 function marketingAttribution(user: { user_metadata?: unknown }): Record<string, string> {
   const metadata = user.user_metadata && typeof user.user_metadata === "object"
     ? user.user_metadata as Record<string, unknown>
@@ -2198,7 +2189,6 @@ serve(async (request) => {
       error_status: summary.statusCode,
       error_param: summary.param,
       stripe_request_id: summary.requestId,
-      error_message: safeSupportMessage(summary.message),
     });
     const detail = action === "admin_manual_plan_invoice_create"
       ? `Invoice setup did not finish. No access was granted or invoice email sent. Refresh this profile; if an incomplete invoice appears, use Resume invoice setup. Reference: ${supportReference}.`
