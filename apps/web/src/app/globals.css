@@ -3491,12 +3491,88 @@ button {
   gap: 8px;
 }
 
-.cv-procurement-table {
-  min-width: 1840px;
+.cv-procurement-guide {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(420px, 1.1fr);
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 14px;
+  background: linear-gradient(135deg, #fff 0%, #f7faff 100%);
 }
+.cv-procurement-guide-eyebrow {
+  display: block;
+  margin-bottom: 7px;
+  color: #55749a;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.cv-procurement-guide h2 {
+  margin: 0;
+  color: #1a2c47;
+  font-size: 18px;
+}
+.cv-procurement-guide p {
+  margin: 7px 0 0;
+  color: #647790;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.cv-procurement-guide ol {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: procurement-step;
+}
+.cv-procurement-guide li {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #dfe7f2;
+  border-radius: 11px;
+  background: rgba(255,255,255,0.82);
+  counter-increment: procurement-step;
+}
+.cv-procurement-guide li::before {
+  content: counter(procurement-step, decimal-leading-zero);
+  color: #2869e8;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+}
+.cv-procurement-guide li strong {
+  color: #263b59;
+  font-size: 11px;
+}
+.cv-procurement-guide li span {
+  color: #6b7d95;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.cv-procurement-table {
+  min-width: 1120px;
+  table-layout: fixed;
+}
+.cv-procurement-table th:nth-child(1) { width: 17%; }
+.cv-procurement-table th:nth-child(2) { width: 21%; }
+.cv-procurement-table th:nth-child(3) { width: 14%; }
+.cv-procurement-table th:nth-child(4) { width: 19%; }
+.cv-procurement-table th:nth-child(5) { width: 18%; }
+.cv-procurement-table th:nth-child(6) { width: 11%; }
 .cv-procurement-table .cv-part-cell {
-  min-width: 210px;
+  min-width: 0;
   gap: 10px;
+}
+.cv-procurement-table td {
+  white-space: normal;
+  vertical-align: top;
+  overflow-wrap: anywhere;
 }
 .cv-procurement-description,
 .cv-procurement-recommendation small,
@@ -3509,49 +3585,160 @@ button {
   white-space: normal;
 }
 .cv-procurement-recommendation {
-  min-width: 245px;
+  min-width: 0;
   white-space: normal;
 }
 .cv-procurement-recommendation strong {
   display: block;
 }
-.cv-procurement-offers summary {
-  color: #2455a6;
-  cursor: pointer;
-  font-weight: 750;
-  white-space: nowrap;
-}
-.cv-procurement-offer-list {
-  display: grid;
-  gap: 8px;
-  min-width: 260px;
-  max-width: 340px;
-  margin-top: 8px;
-}
-.cv-procurement-offer {
-  display: grid;
-  gap: 3px;
-  padding: 9px 10px;
-  border: 1px solid #e2e8f0;
+.cv-procurement-offers-button {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid #c9d7ea;
   border-radius: 9px;
-  background: #f8fafc;
-  white-space: normal;
+  background: #f8fbff;
+  color: #2455a6;
+  font-size: 11px;
+  font-weight: 760;
+  white-space: nowrap;
+  cursor: pointer;
 }
-.cv-procurement-offer strong {
-  color: #19304f;
+.cv-procurement-offers-button:hover {
+  border-color: #8aace8;
+  background: #edf4ff;
 }
-.cv-procurement-offer span,
-.cv-procurement-offer a {
-  color: #60738d;
+.cv-procurement-offers-button:focus-visible,
+.cv-procurement-modal button:focus-visible,
+.cv-procurement-modal a:focus-visible {
+  outline: 3px solid rgba(40, 105, 232, 0.3);
+  outline-offset: 2px;
+}
+.cv-procurement-modal-backdrop {
+  position: fixed;
+  z-index: 300;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(13, 27, 47, 0.48);
+}
+.cv-procurement-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(860px, 100%);
+  max-height: min(860px, 90vh);
+  overflow: hidden;
+  border: 1px solid #d9e3f0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(16, 32, 54, 0.25);
+}
+.cv-procurement-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 19px 22px;
+  border-bottom: 1px solid #e2e9f2;
+}
+.cv-procurement-modal-header h2 {
+  margin: 0;
+  color: #1b2d47;
+  font-size: 18px;
+}
+.cv-procurement-modal-header p {
+  max-width: 650px;
+  margin: 6px 0 0;
+  color: #697b92;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.cv-procurement-modal-body {
+  display: grid;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 17px 22px 22px;
+}
+.cv-procurement-offer-card {
+  display: grid;
+  gap: 13px;
+  padding: 15px;
+  border: 1px solid #dfe7f2;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+.cv-procurement-offer-card-heading,
+.cv-procurement-offer-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cv-procurement-offer-card-heading > div {
+  display: grid;
+  gap: 4px;
+}
+.cv-procurement-offer-card-heading strong {
+  color: #213754;
+  font-size: 13px;
+}
+.cv-procurement-offer-card-heading small,
+.cv-procurement-offer-footer {
+  color: #6c7e95;
   font-size: 10px;
-  line-height: 1.4;
+  line-height: 1.45;
+}
+.cv-procurement-offer-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.cv-procurement-offer-facts > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #e4eaf2;
+  border-radius: 9px;
+  background: #fff;
+}
+.cv-procurement-offer-facts span {
+  color: #75859a;
+  font-size: 9px;
+  font-weight: 760;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cv-procurement-offer-facts strong {
+  color: #263b59;
+  font-size: 11px;
   overflow-wrap: anywhere;
 }
-.cv-procurement-offer a {
-  color: #2455a6;
-  font-weight: 700;
+.cv-procurement-offer-breaks {
+  margin: 0;
+  color: #526780;
+  font-size: 10px;
+  line-height: 1.5;
 }
-
+.cv-procurement-offer-footer {
+  padding-top: 10px;
+  border-top: 1px solid #e4eaf2;
+}
+.cv-procurement-offer-footer a,
+.cv-quote-table a {
+  color: #2455a6;
+  font-size: 10px;
+  font-weight: 760;
+  text-decoration: underline;
+}
+.cv-quote-price-summary.is-review {
+  border-color: #f0d9a4;
+  background: #fffaf0;
+  color: #765612;
+}
+.cv-quote-price-summary.is-review small {
+  color: #796943;
+}
 .cv-quote-comparison {
   margin-top: 18px;
 }
@@ -3614,20 +3801,19 @@ button {
   margin-top: 12px;
 }
 .cv-quote-table {
-  min-width: 1430px;
+  min-width: 1040px;
+  table-layout: fixed;
 }
+.cv-quote-table th:nth-child(1) { width: 16%; }
+.cv-quote-table th:nth-child(2) { width: 20%; }
+.cv-quote-table th:nth-child(3) { width: 18%; }
+.cv-quote-table th:nth-child(4) { width: 17%; }
+.cv-quote-table th:nth-child(5) { width: 17%; }
+.cv-quote-table th:nth-child(6) { width: 12%; }
 .cv-quote-table td {
   white-space: normal;
   vertical-align: top;
-}
-.cv-quote-table td:first-child {
-  min-width: 180px;
-}
-.cv-quote-table td:nth-child(2) {
-  min-width: 235px;
-}
-.cv-quote-table td:nth-child(3) {
-  min-width: 245px;
+  overflow-wrap: anywhere;
 }
 .cv-quote-review-link {
   display: block;
@@ -3710,6 +3896,12 @@ button {
 .cv-quote-entry > .cv-button {
   justify-self: start;
 }
+@media (max-width: 900px) {
+  .cv-procurement-guide {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+}
 @media (max-width: 760px) {
   .cv-quote-controls,
   .cv-quote-form-grid {
@@ -3720,6 +3912,37 @@ button {
   }
   .cv-quote-remove-break {
     grid-column: 1 / -1;
+  }
+  .cv-procurement-guide ol {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cv-procurement-guide li {
+    grid-template-columns: 28px 1fr;
+    align-items: start;
+  }
+  .cv-procurement-guide li::before {
+    grid-row: span 2;
+    padding-top: 2px;
+  }
+  .cv-procurement-modal-backdrop {
+    padding: 8px;
+  }
+  .cv-procurement-modal {
+    max-height: 94vh;
+    border-radius: 12px;
+  }
+  .cv-procurement-modal-header {
+    padding: 15px;
+  }
+  .cv-procurement-modal-body {
+    padding: 12px 15px 15px;
+  }
+  .cv-procurement-offer-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cv-procurement-offer-card-heading,
+  .cv-procurement-offer-footer {
+    flex-direction: column;
   }
 }
 
