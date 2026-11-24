@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
@@ -102,6 +102,14 @@ function optionalNumber(value: unknown): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
+function riskBadgeClass(value: unknown) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized.includes("high")) return "red";
+  if (normalized.includes("medium") || normalized.includes("verification") || normalized.includes("conflict")) return "amber";
+  if (normalized.includes("low")) return "green";
+  return "gray";
+}
+
 function describeCatalogIdentity(
   targetMpn: string,
   targetManufacturer: string,
@@ -157,6 +165,8 @@ function ProcurementPageInner() {
   const [quoteSaving, setQuoteSaving] = useState(false);
   const [quoteError, setQuoteError] = useState("");
   const [quoteSaved, setQuoteSaved] = useState("");
+  const [offersDialogPart, setOffersDialogPart] = useState<Record<string, unknown> | null>(null);
+  const procurementCacheRef = useRef(new Map<string, Record<string, unknown>>());
 
   const requestedAnalysisId = useMemo(
     () => (searchParams.get("analysis_id") || "").trim(),
@@ -166,17 +176,83 @@ function ProcurementPageInner() {
   useEffect(() => {
     if (!session) return;
     let active = true;
+    let loadVersion = 0;
+    let reportsResolved = false;
+    let pendingProcurementError = "";
+    const accessToken = session.access_token;
     const last = readLastAnalysis(session);
     const preferredId = requestedAnalysisId || last?.analysis_id || "";
-    setSelectedAnalysisId("");
-    setBusy(true);
+    const cache = procurementCacheRef.current;
+
+    setSelectedAnalysisId(preferredId);
     setError("");
-    setData(null);
-    listReports(session.access_token)
-      .catch(() => ({ reports: [] as Array<Record<string, unknown>> }))
-      .then((reportPayload) => {
+    const cached = preferredId ? cache.get(preferredId) : undefined;
+    setData(cached || null);
+    setBusy(!cached);
+
+    const remember = (analysisId: string, procurement: Record<string, unknown>) => {
+      if (!analysisId) return;
+      cache.set(analysisId, procurement);
+      if (cache.size > 5) {
+        const oldest = cache.keys().next().value;
+        if (typeof oldest === "string") cache.delete(oldest);
+      }
+    };
+
+    const loadAnalysis = async (analysisId: string) => {
+      const id = analysisId.trim();
+      const requestVersion = ++loadVersion;
+      if (!id) {
+        setData(null);
+        setBusy(false);
+        return;
+      }
+      const cachedForId = cache.get(id);
+      if (cachedForId) {
+        setData(cachedForId);
+        setError(cachedForId.ok === false ? String(cachedForId.gap || "Procurement could not load that analysis.") : "");
+        setBusy(false);
+      } else {
+        setData(null);
+        setError("");
+        setBusy(true);
+      }
+
+      try {
+        const procurement = await fetchProcurement(accessToken, id);
+        if (!active || requestVersion !== loadVersion) return;
+        remember(id, procurement);
+        setData(procurement);
+        setError(
+          procurement.ok === false
+            ? String(procurement.gap || "Procurement could not load that analysis.")
+            : "",
+        );
+      } catch (err) {
+        if (!active || requestVersion !== loadVersion) return;
+        const message = err instanceof Error ? err.message : "Procurement data could not be loaded.";
+        if (cachedForId) {
+          setData(cachedForId);
+        } else {
+          setData(null);
+        }
+        if (reportsResolved) setError(message);
+        else pendingProcurementError = message;
+      } finally {
+        if (active && requestVersion === loadVersion) setBusy(false);
+      }
+    };
+
+    // Start the selected analysis immediately. Reports load independently, so
+    // the slower directory request cannot hold the main Procurement view.
+    if (preferredId) void loadAnalysis(preferredId);
+    else setBusy(true);
+
+    void listReports(accessToken)
+      .then(({ reports: reportRows }) => {
         if (!active) return;
-        const visibleReports = (reportPayload.reports || []) as Array<Record<string, unknown>>;
+        reportsResolved = true;
+        const visibleReports = (reportRows || []) as Array<Record<string, unknown>>;
         setReports(visibleReports);
         const availableIds = new Set(
           visibleReports.map((row) => String(row.id || "").trim()).filter(Boolean),
@@ -184,33 +260,45 @@ function ProcurementPageInner() {
         const safeAnalysisId = availableIds.has(preferredId)
           ? preferredId
           : String(visibleReports[0]?.id || "").trim();
-        setSelectedAnalysisId(safeAnalysisId);
-        if (safeAnalysisId !== requestedAnalysisId) {
+
+        if (safeAnalysisId !== preferredId) {
+          setSelectedAnalysisId(safeAnalysisId);
           router.replace(
             safeAnalysisId
               ? `/procurement?analysis_id=${encodeURIComponent(safeAnalysisId)}`
               : "/procurement",
           );
+          if (!safeAnalysisId) {
+            setData(null);
+            setBusy(false);
+            setError("");
+          }
+          return;
         }
-        return fetchProcurement(session.access_token, safeAnalysisId || undefined).then(
-          (procurement) => {
-            if (!active) return;
-            setData(procurement);
-            if (procurement.ok === false) {
-              setError(String(procurement.gap || "Procurement could not load that analysis."));
-            }
-          },
-        );
+
+        setSelectedAnalysisId(safeAnalysisId);
+        if (pendingProcurementError) setError(pendingProcurementError);
+        if (!safeAnalysisId) {
+          setData(null);
+          setBusy(false);
+          setError("");
+        }
       })
       .catch((err) => {
         if (!active) return;
-        setError(err instanceof Error ? err.message : "Failed");
-      })
-      .finally(() => {
-        if (active) setBusy(false);
+        reportsResolved = true;
+        setReports([]);
+        if (!preferredId) {
+          setBusy(false);
+          setError(err instanceof Error ? err.message : "Saved analyses could not be loaded.");
+        } else if (pendingProcurementError) {
+          setError(pendingProcurementError);
+        }
       });
+
     return () => {
       active = false;
+      loadVersion += 1;
     };
   }, [session, requestedAnalysisId, router]);
 
@@ -231,8 +319,10 @@ function ProcurementPageInner() {
     }
   }, [allParts, selectedPartKey]);
 
+  const quoteAnalysisId = requestedAnalysisId || selectedAnalysisId;
+
   useEffect(() => {
-    if (!session || !selectedAnalysisId) {
+    if (!session || !quoteAnalysisId) {
       setSavedQuotes([]);
       return;
     }
@@ -241,7 +331,7 @@ function ProcurementPageInner() {
     setSavedQuotes([]);
     setQuoteError("");
     setQuoteSaved("");
-    listProcurementQuotes(session.access_token, selectedAnalysisId)
+    listProcurementQuotes(session.access_token, quoteAnalysisId)
       .then(({ quotes }) => {
         if (active) setSavedQuotes(quotes || []);
       })
@@ -254,7 +344,21 @@ function ProcurementPageInner() {
     return () => {
       active = false;
     };
-  }, [session, selectedAnalysisId]);
+  }, [session, quoteAnalysisId]);
+
+  useEffect(() => {
+    if (!offersDialogPart) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOffersDialogPart(null);
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [offersDialogPart]);
 
   const parts = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -306,49 +410,82 @@ function ProcurementPageInner() {
     const offers = Array.isArray(selectedPart.supplier_offers)
       ? selectedPart.supplier_offers as Array<Record<string, unknown>>
       : [];
-    const catalogRows: ComparisonRow[] = offers.map((offer, index) => {
-      const offeredMpn = String(offer.offered_mpn || "").trim();
-      const offeredManufacturer = String(offer.offered_manufacturer || "").trim();
-      const breaks = Array.isArray(offer.price_breaks)
-        ? offer.price_breaks.flatMap((raw) => {
-            if (!raw || typeof raw !== "object") return [];
-            const row = raw as Record<string, unknown>;
-            const quantity = optionalNumber(row.quantity);
-            const unitPrice = optionalNumber(row.unit_price);
-            return quantity !== null && unitPrice !== null ? [{ quantity, unit_price: unitPrice }] : [];
-          })
-        : [];
-      const priceBreakQuantity = optionalNumber(offer.price_break_quantity);
-      const unitPrice = optionalNumber(offer.unit_price);
-      const normalizedBreaks = breaks.length
-        ? breaks
-        : priceBreakQuantity !== null && unitPrice !== null
-          ? [{ quantity: priceBreakQuantity, unit_price: unitPrice }]
-          : [];
-      return {
-        id: `offer-${index}-${String(offer.supplier || "supplier")}`,
-        kind: `Saved catalog offer${liveCatalogEvidence ? " · live evidence" : " · not verified live"}`,
-        supplier: String(offer.supplier || "Supplier not recorded"),
-        quoteReference: String(offer.quote_reference || ""),
-        offeredMpn,
-        offeredManufacturer,
-        identityStatus: describeCatalogIdentity(targetMpn, targetManufacturer, offeredMpn, offeredManufacturer),
-        exactPart: describeCatalogIdentity(targetMpn, targetManufacturer, offeredMpn, offeredManufacturer) === "Exact MPN and manufacturer",
-        currency: String(offer.currency || "").toUpperCase(),
-        unitPrice,
-        priceBreakQuantity,
-        priceBreaks: normalizedBreaks,
-        minimumOrderQuantity: optionalNumber(offer.minimum_order_quantity),
-        packQuantity: optionalNumber(offer.pack_quantity),
-        leadTimeWeeks: optionalNumber(offer.lead_time_weeks),
-        stock: optionalNumber(offer.stock),
-        validUntil: String(offer.valid_until || ""),
-        sourceUrl: String(offer.product_url || ""),
-        sourceTime: String(offer.retrieved_at || ""),
-        notes: [String(offer.region || ""), ...(!liveCatalogEvidence ? ["Saved analysis does not confirm this as a live supplier quote."] : [])].filter(Boolean).join(" · "),
-        canPriceCompare: liveCatalogEvidence,
-      };
-    });
+    const offerGroups = new Map<string, Array<Record<string, unknown>>>();
+    for (const offer of offers) {
+      const groupKey = [
+        offer.supplier,
+        offer.offered_mpn,
+        offer.offered_manufacturer,
+        offer.currency,
+        offer.product_url,
+        offer.retrieved_at,
+        offer.stock,
+        offer.region,
+        offer.quote_reference,
+      ].map((value) => String(value || "").trim().toLowerCase()).join("\u0000");
+      offerGroups.set(groupKey, [...(offerGroups.get(groupKey) || []), offer]);
+    }
+    const catalogRows: ComparisonRow[] = Array.from(offerGroups.entries()).map(
+      ([groupKey, groupOffers], index) => {
+        const offer = groupOffers[0] || {};
+        const offeredMpn = String(offer.offered_mpn || "").trim();
+        const offeredManufacturer = String(offer.offered_manufacturer || "").trim();
+        const identityStatus = describeCatalogIdentity(
+          targetMpn,
+          targetManufacturer,
+          offeredMpn,
+          offeredManufacturer,
+        );
+        const normalizedBreaks = groupOffers.flatMap((groupOffer) => {
+          const breaks = Array.isArray(groupOffer.price_breaks)
+            ? groupOffer.price_breaks.flatMap((raw) => {
+                if (!raw || typeof raw !== "object") return [];
+                const row = raw as Record<string, unknown>;
+                const quantity = optionalNumber(row.quantity);
+                const unitPrice = optionalNumber(row.unit_price);
+                return quantity !== null && unitPrice !== null ? [{ quantity, unit_price: unitPrice }] : [];
+              })
+            : [];
+          const breakQuantity = optionalNumber(groupOffer.price_break_quantity);
+          const unitPrice = optionalNumber(groupOffer.unit_price);
+          if (!breaks.length && breakQuantity !== null && unitPrice !== null) {
+            breaks.push({ quantity: breakQuantity, unit_price: unitPrice });
+          }
+          return breaks;
+        });
+        const priceBreaks = Array.from(
+          new Map(normalizedBreaks.map((priceBreak) => [priceBreak.quantity, priceBreak])).values(),
+        ).sort((a, b) => a.quantity - b.quantity);
+        const priceBreakQuantity = optionalNumber(offer.price_break_quantity);
+        const unitPrice = optionalNumber(offer.unit_price);
+        return {
+          id: "offer-" + index + "-" + String(offer.supplier || groupKey),
+          kind: "Saved catalog offer" + (liveCatalogEvidence ? " · live evidence" : " · not verified live"),
+          supplier: String(offer.supplier || "Supplier not recorded"),
+          quoteReference: String(offer.quote_reference || ""),
+          offeredMpn,
+          offeredManufacturer,
+          identityStatus,
+          exactPart: identityStatus === "Exact MPN and manufacturer",
+          currency: String(offer.currency || "").toUpperCase(),
+          unitPrice: unitPrice ?? priceBreaks[0]?.unit_price ?? null,
+          priceBreakQuantity: priceBreakQuantity ?? priceBreaks[0]?.quantity ?? null,
+          priceBreaks,
+          minimumOrderQuantity: optionalNumber(offer.minimum_order_quantity),
+          packQuantity: optionalNumber(offer.pack_quantity),
+          leadTimeWeeks: optionalNumber(offer.lead_time_weeks),
+          stock: optionalNumber(offer.stock),
+          validUntil: String(offer.valid_until || ""),
+          sourceUrl: String(offer.product_url || ""),
+          sourceTime: String(offer.retrieved_at || ""),
+          notes: [
+            String(offer.region || ""),
+            ...(!liveCatalogEvidence ? ["Saved analysis does not confirm this as a live supplier quote."] : []),
+          ].filter(Boolean).join(" · "),
+          canPriceCompare: liveCatalogEvidence,
+        };
+      },
+    );
     const enteredRows: ComparisonRow[] = savedQuotes
       .filter((quote) =>
         quote.requested_mpn.trim().toLowerCase() === targetMpn.toLowerCase()
@@ -383,7 +520,7 @@ function ProcurementPageInner() {
         notes: quote.notes || "",
         canPriceCompare: true,
       }));
-    return [...catalogRows, ...enteredRows];
+    return [...catalogRows, ...enteredRows].sort((a, b) => Number(b.exactPart) - Number(a.exactPart));
   }, [savedQuotes, selectedPart]);
 
   const comparisonSummaries = useMemo(() => {
@@ -467,6 +604,21 @@ function ProcurementPageInner() {
         }
       />
       {<EvidenceNotice gap={data?.gap} />}
+      <section className="cv-card pad cv-procurement-guide" aria-labelledby="cv-procurement-guide-title">
+        <div>
+          <span className="cv-procurement-guide-eyebrow">How to use this page</span>
+          <h2 id="cv-procurement-guide-title">Turn supplier evidence into a sourcing decision</h2>
+          <p>
+            Choose a saved BOM revision, review parts that need verification, then confirm the supplier listing or record a current quote.
+            Cadivor does not place orders or create binding quotes.
+          </p>
+        </div>
+        <ol>
+          <li><strong>Pick the revision</strong><span>Keep the sourcing review tied to the BOM you intend to build.</span></li>
+          <li><strong>Resolve the blockers</strong><span>Check exact part identity, availability, lead time, and missing terms.</span></li>
+          <li><strong>Compare the evidence</strong><span>Use confirmed matches for price checks; ask the supplier about anything not reported.</span></li>
+        </ol>
+      </section>
       {busy ? <LoadingCard label="Loading procurement coverage…" /> : null}
       {error ? <div className="cv-error">{error}</div> : null}
       {!busy && data ? (
@@ -531,115 +683,103 @@ function ProcurementPageInner() {
                 <table className="cv-table cv-procurement-table">
                   <thead>
                     <tr>
-                      <th>MPN</th>
-                      <th>Manufacturer</th>
-                      <th>Recommended action</th>
-                      <th>Required quantity</th>
-                      <th>Lifecycle</th>
-                      <th>Risk</th>
-                      <th>Supplier coverage</th>
-                      <th>Stock</th>
-                      <th>Unit price</th>
-                      <th>Lead time</th>
-                      <th>Evidence source</th>
-                      <th>Offers</th>
+                      <th>Part</th>
+                      <th>Next action</th>
+                      <th>Risk and lifecycle</th>
+                      <th>Supplier evidence</th>
+                      <th>Recorded price and availability</th>
+                      <th>Saved offers</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {parts.map((p, i) => (
-                      <tr key={`${String(p.mpn || "part")}-${i}`}>
-                        <td>
-                          <div className="cv-part-cell">
-                            <PartThumbnail part={p} />
-                            <div>
-                              <strong>{display(p.mpn, "MPN not recorded")}</strong>
-                              {p.description ? <small className="cv-procurement-description">{String(p.description)}</small> : null}
-                              {p.category ? <small className="cv-procurement-description">Category: {String(p.category)}</small> : null}
-                            </div>
-                          </div>
-                        </td>
-                        <td>{display(p.manufacturer, "Not provided")}</td>
-                        <td className="cv-procurement-recommendation">
-                          <strong>{display(p.recommendation, "Check an authorized source")}</strong>
-                          {p.next_step ? <small>{String(p.next_step)}</small> : null}
-                        </td>
-                        <td>{display(p.quantity)}</td>
-                        <td>{display(p.lifecycle, "Unknown")}</td>
-                        <td>{display(p.risk_level, "Needs verification")}</td>
-                        <td>
-                          <strong>{display(p.supplier, "No primary supplier recorded")}</strong>
-                          <small className="cv-procurement-description">
-                            {p.supplier_count == null
-                              ? "Supplier count not reported"
-                              : String(p.supplier_count) + " source" + (Number(p.supplier_count) === 1 ? "" : "s")}
-                          </small>
-                        </td>
-                        <td>{display(p.stock, "Not reported")}</td>
-                        <td>
-                          {p.unit_price == null
-                            ? "Price absent"
-                            : `${String(p.unit_price)}${p.currency ? ` ${String(p.currency)}` : " (currency not recorded)"}`}
-                          {p.price_type ? (
-                            <small className="cv-procurement-description">Type: {String(p.price_type)}</small>
-                          ) : null}
-                        </td>
-                        <td>{p.lead_time_weeks == null ? "Not reported" : `${String(p.lead_time_weeks)} weeks`}</td>
-                        <td>
-                          <span className="cv-badge gray">
-                            {evidenceSourceLabel(p.price_source, "Not recorded")}
-                          </span>
-                          {p.identity_source ? (
-                            <small className="cv-procurement-description">
-                              Identity: {evidenceSourceLabel(p.identity_source, "Not recorded")}
-                            </small>
-                          ) : null}
-                          {p.price_retrieved_at || p.retrieved_at ? (
-                            <small className="cv-procurement-timestamp">
-                              {String(p.price_retrieved_at || p.retrieved_at)}
-                            </small>
-                          ) : null}
-                        </td>
-                        <td>
-                          {Array.isArray(p.supplier_offers) && p.supplier_offers.length ? (
-                            <details className="cv-procurement-offers">
-                              <summary>{p.supplier_offers.length} saved offer{p.supplier_offers.length === 1 ? "" : "s"}</summary>
-                              <div className="cv-procurement-offer-list">
-                                {p.supplier_offers.map((rawOffer, offerIndex) => {
-                                  const offer = rawOffer as Record<string, unknown>;
-                                  const supplierName = display(offer.supplier, "Supplier not recorded");
-                                  const productUrl = String(offer.product_url || "");
-                                  return (
-                                    <div className="cv-procurement-offer" key={`${supplierName}-${offerIndex}`}>
-                                      <strong>{supplierName}</strong>
-                                      <span>
-                                        {offer.unit_price == null
-                                          ? "Price not reported"
-                                          : `${String(offer.unit_price)}${offer.currency ? ` ${String(offer.currency)}` : " (currency not recorded)"}`}
-                                      </span>
-                                      <span>Stock: {display(offer.stock, "Not reported")}</span>
-                                      <span>Lead: {offer.lead_time_weeks == null ? "Not reported" : `${String(offer.lead_time_weeks)} weeks`}</span>
-                                      <span>
-                                        Qty break:{" "}
-                                        {offer.price_break_quantity == null
-                                          ? "Not recorded"
-                                          : String(offer.price_break_quantity)}
-                                      </span>
-                                      {offer.region ? <span>Region: {String(offer.region)}</span> : null}
-                                      {offer.retrieved_at ? <span>Retrieved: {String(offer.retrieved_at)}</span> : null}
-                                      {productUrl.startsWith("https://") || productUrl.startsWith("http://") ? (
-                                        <a href={productUrl} target="_blank" rel="noreferrer">Supplier listing</a>
-                                      ) : null}
-                                    </div>
-                                  );
-                                })}
+                    {parts.map((p, i) => {
+                      const offers = Array.isArray(p.supplier_offers)
+                        ? p.supplier_offers as Array<Record<string, unknown>>
+                        : [];
+                      const risk = display(p.risk_level, "Needs verification");
+                      return (
+                        <tr key={String(p.mpn || "part") + "-" + i}>
+                          <td>
+                            <div className="cv-part-cell">
+                              <PartThumbnail part={p} />
+                              <div>
+                                <strong>{display(p.mpn, "MPN not recorded")}</strong>
+                                <small className="cv-procurement-description">
+                                  {display(p.manufacturer, "Manufacturer not recorded")}
+                                </small>
+                                {p.description ? <small className="cv-procurement-description">{String(p.description)}</small> : null}
+                                <small className="cv-procurement-description">
+                                  Required quantity: {display(p.quantity, "Not provided")}
+                                </small>
                               </div>
-                            </details>
-                          ) : (
-                            <span>{display(p.coverage, "No saved offers")}</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                            </div>
+                          </td>
+                          <td className="cv-procurement-recommendation">
+                            <strong>{display(p.recommendation, "Verify with a configured supplier")}</strong>
+                            <small>
+                              {display(
+                                p.next_step,
+                                "Confirm exact identity, current stock, lead time, and price before ordering.",
+                              )}
+                            </small>
+                          </td>
+                          <td>
+                            <span className={"cv-badge " + riskBadgeClass(risk)}>{risk}</span>
+                            <small className="cv-procurement-description">
+                              Lifecycle: {display(p.lifecycle, "Not provided by source")}
+                            </small>
+                          </td>
+                          <td>
+                            <strong>{display(p.supplier, "Supplier match not confirmed")}</strong>
+                            <small className="cv-procurement-description">
+                              {p.supplier_count == null
+                                ? "Source count not provided"
+                                : String(p.supplier_count) + " source" + (Number(p.supplier_count) === 1 ? "" : "s")}
+                            </small>
+                            <small className="cv-procurement-description">
+                              {evidenceSourceLabel(p.price_source, "Source not recorded")}
+                              {p.identity_source ? " · identity: " + evidenceSourceLabel(p.identity_source, "not recorded") : ""}
+                            </small>
+                            {p.price_retrieved_at || p.retrieved_at ? (
+                              <small className="cv-procurement-timestamp">
+                                Retrieved: {String(p.price_retrieved_at || p.retrieved_at)}
+                              </small>
+                            ) : null}
+                          </td>
+                          <td>
+                            <strong>
+                              {p.unit_price == null
+                                ? "Price not provided"
+                                : String(p.unit_price) + (p.currency ? " " + String(p.currency) : " · currency not recorded")}
+                            </strong>
+                            <small className="cv-procurement-description">
+                              Stock: {display(p.stock, "Not provided")}
+                            </small>
+                            <small className="cv-procurement-description">
+                              Lead time: {p.lead_time_weeks == null ? "Not provided" : String(p.lead_time_weeks) + " weeks"}
+                            </small>
+                            {p.price_type ? (
+                              <small className="cv-procurement-description">Price basis: {String(p.price_type)}</small>
+                            ) : null}
+                          </td>
+                          <td>
+                            {offers.length ? (
+                              <button
+                                className="cv-procurement-offers-button"
+                                type="button"
+                                onClick={() => setOffersDialogPart(p)}
+                                aria-label={"View " + offers.length + " saved offers for " + display(p.mpn, "this part")}
+                                aria-haspopup="dialog"
+                              >
+                                View {offers.length} offer{offers.length === 1 ? "" : "s"}
+                              </button>
+                            ) : (
+                              <span className="cv-small-note">No saved offers</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -658,10 +798,10 @@ function ProcurementPageInner() {
               <div>
                 <h2 className="cv-card-title" style={{ fontSize: 16 }}>Quote comparison</h2>
                 <p className="cv-card-subtitle">
-                  Compare saved distributor offers and quotes entered for this exact BOM revision.
+                  Compare saved supplier snapshots and manually recorded quotes for this BOM part. A lower price is only a starting point: verify the exact part, current price, and order terms with the supplier.
                 </p>
                 <p className="cv-small-note" style={{ marginTop: 7 }}>
-                  Missing terms stay marked as unknown. A different MPN needs engineering review; an unconfirmed manufacturer stays unverified. Unit prices exclude costs not shown in the source.
+                  “Not provided” means the source did not report it; it does not mean zero or unavailable. Cadivor only applies recorded MOQ and pack rules, so confirm any missing terms before ordering.
                 </p>
               </div>
               <span className="cv-badge gray">{contextLabel || "Saved BOM context required"}</span>
@@ -706,20 +846,41 @@ function ProcurementPageInner() {
                 </div>
 
                 {comparisonQuantity.trim() ? (
-                  <div className="cv-quote-price-summary" role="status">
-                    <strong>Lowest recorded exact-part price tier</strong>
-                    {comparisonSummaries.length ? (
+                  <div
+                    className={"cv-quote-price-summary " + (comparisonSummaries.length ? "is-ready" : "is-review")}
+                    role="status"
+                  >
+                    <strong>Price check for {comparisonQuantity} units</strong>
+                    {!Number.isSafeInteger(Number(comparisonQuantity)) || Number(comparisonQuantity) <= 0 ? (
+                      <p>Enter a whole-number quantity greater than zero to compare price breaks.</p>
+                    ) : comparisonSummaries.length ? (
                       <ul>
                         {comparisonSummaries.map((summary) => (
                           <li key={summary.currency}>
-                            At {comparisonQuantity} units, the lowest recorded tier is {summary.currency} {summary.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} per unit from {summary.supplier}{summary.reference ? ` (${cleanUserText(summary.reference)})` : ""}.
+                            Lowest recorded tier that fits the known quantity rules: {summary.currency} {summary.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} per unit from {summary.supplier}{summary.reference ? " (" + cleanUserText(summary.reference) + ")" : ""}. Confirm any missing order terms with the supplier.
                           </li>
                         ))}
                       </ul>
+                    ) : comparisonRows.some((row) => row.canPriceCompare && row.exactPart) ? (
+                      <p>
+                        Exact-part prices were found, but none qualifies for this quantity. Check recorded price-break, minimum-order, pack, currency, or expiry details; confirm any missing terms with the supplier.
+                      </p>
+                    ) : comparisonRows.some((row) => row.canPriceCompare && !row.exactPart) ? (
+                      <p>
+                        Supplier listings were found, but the exact part identity is not confirmed. Verify the manufacturer and part listing before comparing its price.
+                      </p>
+                    ) : comparisonRows.length ? (
+                      <p>
+                        Saved records exist, but none is current, live evidence for an exact part match. Verify the supplier listing or record a current quote.
+                      </p>
                     ) : (
-                      <p>No live or user-entered exact-part price tier covers this quantity with the recorded MOQ and pack terms.</p>
+                      <p>
+                        No supplier offers or saved quotes are recorded for this part yet. Add a supplier quote below after you receive one.
+                      </p>
                     )}
-                    <small>Only exact-identity live offers and user-entered quotes are compared; synthetic preview data is excluded. Unknown MOQ, pack, stock, validity, freight, duty/tax, or qualification terms still need confirmation before a purchase decision.</small>
+                    <small>
+                      Only exact MPN and manufacturer matches can appear in the price ranking. Missing MOQ, pack, stock, validity, freight, duty/tax, and qualification details remain unconfirmed.
+                    </small>
                   </div>
                 ) : null}
 
@@ -727,15 +888,12 @@ function ProcurementPageInner() {
                   <table className="cv-table cv-quote-table">
                     <thead>
                       <tr>
-                        <th>Supplier / reference</th>
-                        <th>Part identity</th>
-                        <th>Unit price / breaks</th>
-                        <th>MOQ</th>
-                        <th>Pack quantity</th>
-                        <th>Lead time</th>
-                        <th>Stock</th>
-                        <th>Quote validity</th>
-                        <th>Source / time</th>
+                        <th>Supplier</th>
+                        <th>Part match</th>
+                        <th>Price</th>
+                        <th>Availability</th>
+                        <th>Order terms</th>
+                        <th>Source</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -745,26 +903,63 @@ function ProcurementPageInner() {
                         const requestedManufacturer = String(selectedPart?.manufacturer || "");
                         const needsEngineeringComparison = Boolean(row.offeredMpn)
                           && row.offeredMpn.trim().toLowerCase() !== requestedMpn.trim().toLowerCase();
-        const validity = row.validUntil
-                          ? row.validUntil < today ? `Expired ${row.validUntil}` : `Through ${row.validUntil}`
-          : row.kind.startsWith("Saved catalog offer") ? "Not reported" : "Not stated";
-                        const priceLabel = row.priceBreaks.length
-                          ? row.priceBreaks.map((priceBreak) => `${priceBreak.quantity}+ units: ${row.currency || "Currency unknown"} ${priceBreak.unit_price}`).join(" · ")
-                          : row.unitPrice === null
-                            ? "Price not reported"
-                            : `${row.currency || "Currency unknown"} ${row.unitPrice} · break quantity not reported`;
+                        const quantity = Number(comparisonQuantity);
+                        const validQuantity = Number.isSafeInteger(quantity) && quantity > 0;
+                        const tier = validQuantity
+                          ? [...row.priceBreaks]
+                              .filter((priceBreak) => priceBreak.quantity <= quantity)
+                              .sort((a, b) => b.quantity - a.quantity)[0]
+                          : null;
+                        const isExpired = Boolean(row.validUntil && row.validUntil < today);
+                        const orderTermsAllowQuantity = validQuantity
+                          && (row.minimumOrderQuantity === null || quantity >= row.minimumOrderQuantity)
+                          && (row.packQuantity === null || (row.packQuantity > 0 && quantity % row.packQuantity === 0));
+                        const canUsePrice = Boolean(
+                          tier
+                          && row.canPriceCompare
+                          && row.exactPart
+                          && row.currency
+                          && !isExpired
+                          && orderTermsAllowQuantity,
+                        );
+                        const priceLabel = validQuantity
+                          ? canUsePrice
+                            ? row.currency + " " + tier!.unit_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 }) + " / unit"
+                            : row.exactPart
+                              ? "No verified tier at this quantity"
+                              : "Identity needs verification"
+                          : row.priceBreaks.length
+                            ? row.currency + " " + row.priceBreaks[0].unit_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 }) + " from " + row.priceBreaks[0].quantity.toLocaleString() + "+ units"
+                            : row.unitPrice === null
+                              ? "Price not provided"
+                              : row.currency
+                                ? row.currency + " " + row.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 }) + " · break quantity not provided"
+                                : "Currency not provided";
+                        const missingTerms = [
+                          row.minimumOrderQuantity === null ? "MOQ" : "",
+                          row.packQuantity === null ? "pack size" : "",
+                          row.leadTimeWeeks === null ? "lead time" : "",
+                          row.stock === null ? "stock" : "",
+                          !row.validUntil ? "validity" : "",
+                        ].filter(Boolean);
+                        const availability = [
+                          row.stock === null ? "Stock not provided" : "Stock " + row.stock.toLocaleString(),
+                          row.leadTimeWeeks === null ? "" : row.leadTimeWeeks + " week lead time",
+                        ].filter(Boolean).join(" · ");
                         return (
                           <tr key={row.id}>
                             <td>
                               <strong>{row.supplier}</strong>
-                              <small className="cv-procurement-description">{cleanUserText(row.kind)}{row.quoteReference ? ` · ${cleanUserText(row.quoteReference)}` : ""}</small>
+                              <small className="cv-procurement-description">
+                                {cleanUserText(row.kind)}{row.quoteReference ? " · " + cleanUserText(row.quoteReference) : ""}
+                              </small>
                             </td>
                             <td>
-                              <span className={`cv-badge ${row.exactPart ? "green" : "amber"}`}>
+                              <span className={"cv-badge " + (row.exactPart ? "green" : "amber")}>
                                 {row.identityStatus}
                               </span>
                               <small className="cv-procurement-description">
-                                Quoted: {row.offeredMpn || "MPN not recorded"}{row.offeredManufacturer ? ` · ${row.offeredManufacturer}` : " · manufacturer not reported"}
+                                {row.offeredMpn || "MPN not recorded"}{row.offeredManufacturer ? " · " + row.offeredManufacturer : " · manufacturer not reported"}
                               </small>
                               {needsEngineeringComparison ? (
                                 <Link className="cv-quote-review-link" href={engineeringComparisonHref(
@@ -774,32 +969,50 @@ function ProcurementPageInner() {
                                   row.offeredMpn,
                                   row.offeredManufacturer,
                                 )}>
-                                  Open engineering comparison
+                                  Review alternate fit
                                 </Link>
                               ) : null}
                             </td>
-                            <td>{priceLabel}</td>
-                            <td>{row.minimumOrderQuantity === null ? "Unknown" : row.minimumOrderQuantity}</td>
-                            <td>{row.packQuantity === null ? "Unknown" : row.packQuantity}</td>
-                            <td>{row.leadTimeWeeks === null ? "Unknown" : `${row.leadTimeWeeks} weeks`}</td>
-                            <td>{row.stock === null ? "Unknown" : row.stock.toLocaleString()}</td>
-                            <td>{validity}</td>
+                            <td>
+                              <strong>{priceLabel}</strong>
+                              {validQuantity && tier && !canUsePrice ? (
+                                <small className="cv-procurement-description">A required identity or order term is not confirmed.</small>
+                              ) : !validQuantity && row.priceBreaks.length > 1 ? (
+                                <small className="cv-procurement-description">{row.priceBreaks.length} price tiers · enter quantity to see applicable tier</small>
+                              ) : null}
+                            </td>
+                            <td>{availability || "Availability not provided"}</td>
+                            <td>
+                              <span className={"cv-badge " + (missingTerms.length ? "amber" : "green")}>
+                                {missingTerms.length ? missingTerms.length + " terms not provided" : "Key terms recorded"}
+                              </span>
+                              {missingTerms.length ? (
+                                <small className="cv-procurement-description">Missing: {missingTerms.join(", ")}</small>
+                              ) : null}
+                              {row.validUntil && isExpired ? (
+                                <small className="cv-procurement-description">Expired {row.validUntil}</small>
+                              ) : null}
+                            </td>
                             <td>
                               {row.sourceUrl.startsWith("https://") || row.sourceUrl.startsWith("http://") ? (
-                                <a href={row.sourceUrl} target="_blank" rel="noreferrer">Open source</a>
-                              ) : <span>{row.kind === "User-entered quote" ? "No source link recorded" : "Supplier page not recorded"}</span>}
+                                <a href={row.sourceUrl} target="_blank" rel="noreferrer">Open supplier listing</a>
+                              ) : (
+                                <span>{row.kind.startsWith("User-entered") ? "Quote source not linked" : "Supplier listing not linked"}</span>
+                              )}
                               <small className="cv-procurement-timestamp">
                                 {row.sourceTime
-                                  ? `${row.kind === "User-entered quote" ? "Recorded" : "Retrieved"}: ${row.sourceTime}`
-                                  : "Time not recorded"}
+                                  ? (row.kind.startsWith("User-entered") ? "Recorded: " : "Retrieved: ") + row.sourceTime
+                                  : "Source date not recorded"}
                               </small>
-                              {row.notes ? <small className="cv-procurement-description">{row.notes}</small> : null}
+                              {!row.canPriceCompare ? (
+                                <small className="cv-procurement-description">Saved snapshot; not confirmed as live evidence.</small>
+                              ) : null}
                             </td>
                           </tr>
                         );
                       })}
                       {!comparisonRows.length ? (
-                        <tr><td colSpan={9}>No saved offers or entered quotes for this BOM part yet. Record a supplier quote below.</td></tr>
+                        <tr><td colSpan={6}>No offers are saved for this part yet. Record a supplier quote to compare it here.</td></tr>
                       ) : null}
                     </tbody>
                   </table>
@@ -917,6 +1130,104 @@ function ProcurementPageInner() {
               </section>
             </div>
           </div>
+          {offersDialogPart ? (
+            <div
+              className="cv-procurement-modal-backdrop"
+              role="presentation"
+              onClick={() => setOffersDialogPart(null)}
+            >
+              <section
+                className="cv-procurement-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="cv-procurement-offers-title"
+                aria-describedby="cv-procurement-offers-description"
+                onClick={(event) => event.stopPropagation()}
+                tabIndex={-1}
+              >
+                <header className="cv-procurement-modal-header">
+                  <div>
+                    <span className="cv-procurement-guide-eyebrow">Supplier evidence</span>
+                    <h2 id="cv-procurement-offers-title">
+                      Saved offers for {display(offersDialogPart.mpn, "this part")}
+                    </h2>
+                    <p id="cv-procurement-offers-description">
+                      These are saved supplier snapshots, not guaranteed current inventory or a binding quote. Confirm part identity, current price, stock, and order terms on the supplier listing before ordering.
+                    </p>
+                  </div>
+                  <button
+                    className="cv-button"
+                    type="button"
+                    autoFocus
+                    onClick={() => setOffersDialogPart(null)}
+                  >
+                    Close
+                  </button>
+                </header>
+                <div className="cv-procurement-modal-body">
+                  {Array.isArray(offersDialogPart.supplier_offers) && offersDialogPart.supplier_offers.length ? (
+                    offersDialogPart.supplier_offers.map((offer: Record<string, unknown>, index) => {
+                      const identity = describeCatalogIdentity(
+                        String(offersDialogPart.mpn || ""),
+                        String(offersDialogPart.manufacturer || ""),
+                        String(offer.offered_mpn || ""),
+                        String(offer.offered_manufacturer || ""),
+                      );
+                      const productUrl = String(offer.product_url || "");
+                      const priceBreaks = Array.isArray(offer.price_breaks)
+                        ? offer.price_breaks.flatMap((raw) => {
+                            if (!raw || typeof raw !== "object") return [];
+                            const priceBreak = raw as Record<string, unknown>;
+                            const quantity = optionalNumber(priceBreak.quantity);
+                            const unitPrice = optionalNumber(priceBreak.unit_price);
+                            return quantity !== null && unitPrice !== null
+                              ? [quantity.toLocaleString() + "+ units: " + String(offer.currency || "") + " " + unitPrice]
+                              : [];
+                          })
+                        : [];
+                      return (
+                        <article className="cv-procurement-offer-card" key={String(offer.supplier || "supplier") + "-" + index}>
+                          <div className="cv-procurement-offer-card-heading">
+                            <div>
+                              <strong>{display(offer.supplier, "Supplier not recorded")}</strong>
+                              <small>{identity}</small>
+                            </div>
+                            <span className={"cv-badge " + (identity === "Exact MPN and manufacturer" ? "green" : "amber")}>
+                              {identity === "Exact MPN and manufacturer" ? "Identity matches" : "Verify part identity"}
+                            </span>
+                          </div>
+                          <div className="cv-procurement-offer-facts">
+                            <div><span>Offered part</span><strong>{display(offer.offered_mpn, "MPN not provided")}</strong></div>
+                            <div><span>Unit price</span><strong>{offer.unit_price == null ? "Not provided" : String(offer.unit_price) + (offer.currency ? " " + String(offer.currency) : " · currency not provided")}</strong></div>
+                            <div><span>Stock</span><strong>{display(offer.stock, "Not provided")}</strong></div>
+                            <div><span>Lead time</span><strong>{offer.lead_time_weeks == null ? "Not provided" : String(offer.lead_time_weeks) + " weeks"}</strong></div>
+                            <div><span>Minimum quantity</span><strong>{display(offer.minimum_order_quantity, "Not provided")}</strong></div>
+                            <div><span>Pack multiple</span><strong>{display(offer.pack_quantity, "Not provided")}</strong></div>
+                          </div>
+                          {priceBreaks.length ? (
+                            <p className="cv-procurement-offer-breaks"><strong>Price breaks:</strong> {priceBreaks.join(" · ")}</p>
+                          ) : null}
+                          <div className="cv-procurement-offer-footer">
+                            <span>
+                              {offer.retrieved_at ? "Retrieved " + String(offer.retrieved_at) : "Retrieval date not provided"}
+                              {offer.region ? " · " + String(offer.region) : ""}
+                            </span>
+                            {productUrl.startsWith("https://") || productUrl.startsWith("http://") ? (
+                              <a href={productUrl} target="_blank" rel="noreferrer">Open supplier listing</a>
+                            ) : (
+                              <span>Supplier listing not linked</span>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })
+                  ) : (
+                    <p className="cv-small-note">No saved supplier offers are attached to this BOM part.</p>
+                  )}
+                </div>
+              </section>
+            </div>
+          ) : null}
         </>
       ) : null}
     </Shell>
