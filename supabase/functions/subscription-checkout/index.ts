@@ -85,6 +85,15 @@ function stripeErrorSummary(error: unknown): StripeErrorSummary {
   };
 }
 
+function asId(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (value && typeof value === "object" && "id" in value) {
+    const id = (value as { id?: unknown }).id;
+    return typeof id === "string" && id.trim() ? id.trim() : null;
+  }
+  return null;
+}
+
 function marketingAttribution(user: { user_metadata?: unknown }): Record<string, string> {
   const metadata = user.user_metadata && typeof user.user_metadata === "object"
     ? user.user_metadata as Record<string, unknown>
@@ -1079,7 +1088,7 @@ serve(async (request) => {
   }
 
   let planToken = "unknown";
-  const supportReference = crypto.randomUUID();
+  const supportReference = `BILL-${crypto.randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`;
   let supportStage = "profile_lookup";
   try {
     const profile = await profileFor(auth.user.id);
