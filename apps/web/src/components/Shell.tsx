@@ -53,11 +53,12 @@ export function Shell({
   const [navOpen, setNavOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [verifiedPlan, setVerifiedPlan] = useState<string | null>(null);
+  const maintenanceCacheKey = session.user_id || session.email.trim().toLowerCase();
   const [maintenanceSnapshot, setMaintenanceSnapshot] = useState(() => ({
-    userId: session.user_id,
-    status: runtimeMaintenanceByUser.get(session.user_id) ?? null,
+    userKey: maintenanceCacheKey,
+    status: runtimeMaintenanceByUser.get(maintenanceCacheKey) ?? null,
   }));
-  const maintenanceStatus = maintenanceSnapshot.userId === session.user_id
+  const maintenanceStatus = maintenanceSnapshot.userKey === maintenanceCacheKey
     ? maintenanceSnapshot.status
     : null;
   const title = crumbTitle(pathname);
@@ -93,8 +94,8 @@ export function Shell({
       void fetchRuntimeMaintenance(session.access_token)
         .then((status) => {
           if (current) {
-            runtimeMaintenanceByUser.set(session.user_id, status);
-            setMaintenanceSnapshot({ userId: session.user_id, status });
+            runtimeMaintenanceByUser.set(maintenanceCacheKey, status);
+            setMaintenanceSnapshot({ userKey: maintenanceCacheKey, status });
           }
         })
         .catch(() => {
@@ -109,8 +110,8 @@ export function Shell({
               planned_maintenance_starts_at: null,
               planned_maintenance_ends_at: null,
             };
-            runtimeMaintenanceByUser.set(session.user_id, fallbackStatus);
-            setMaintenanceSnapshot({ userId: session.user_id, status: fallbackStatus });
+            runtimeMaintenanceByUser.set(maintenanceCacheKey, fallbackStatus);
+            setMaintenanceSnapshot({ userKey: maintenanceCacheKey, status: fallbackStatus });
           }
         });
     };
@@ -120,7 +121,7 @@ export function Shell({
       current = false;
       window.clearInterval(timer);
     };
-  }, [session.access_token, session.platform_role, session.user_id]);
+  }, [session.access_token, session.platform_role, maintenanceCacheKey]);
 
   useEffect(() => {
     let current = true;
