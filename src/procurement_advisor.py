@@ -954,6 +954,17 @@ def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, 
         and lead_source.casefold() != current_supplier.casefold()
     ):
         current_lead = None
+    lead_time_snapshot = _aware_timestamp(
+        _first(part, "lead_time_retrieved_at", "Lead Time Retrieved At")
+    )
+    current_lead_live_source = bool(
+        current_lead is not None
+        and "lead_time_weeks" not in manual_fields
+        and current_supplier
+        and lead_source.casefold() == current_supplier.casefold()
+        and _authorized_distributor_name(lead_source)
+        and lead_time_snapshot is not None
+    )
     if current_supplier:
         match = next((row for row in rows if row["supplier"].casefold() == current_supplier.casefold()), None)
         if match is None:
@@ -980,7 +991,7 @@ def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, 
                 "stock_verified": current_stock is not None and (
                     "stock_available" in manual_fields or bool(matching_stock)
                 ),
-                "lead_time_verified": current_lead is not None,
+                "lead_time_verified": current_lead_live_source,
             })
         else:
             match["is_current"] = bool(
@@ -997,7 +1008,29 @@ def normalize_supplier_offer_records(part: Mapping[str, Any]) -> list[dict[str, 
                 match["lead_time_weeks"] = current_lead
             match["price_verified"] = bool(match.get("price_verified") or current_price_verified)
             match["stock_verified"] = bool(match.get("stock_verified") or (current_stock is not None and ("stock_available" in manual_fields or matching_stock)))
-            match["lead_time_verified"] = bool(match.get("lead_time_verified") or current_lead is not None)
+            match["lead_time_verified"] = bool(match.get("lead_time_verified") or current_lead_live_source)
+
+    # A saved supplier listing can have several price-break rows. Lead time
+    # belongs to the exact product listing, not a particular unit-price tier.
+    # Backfill older rows only when supplier, MPN, listing URL, and retrieval
+    # time match the current lead-time evidence.
+    if current_lead_live_source and lead_time_snapshot is not None:
+        for offer_row in rows:
+            offer_retrieved = _aware_timestamp(offer_row.get("retrieved_at"))
+            if (
+                str(offer_row.get("supplier") or "").casefold() != lead_source.casefold()
+                or not _is_exact_mpn(offer_row.get("offered_mpn"), requested_mpn)
+                or offer_retrieved is None
+                or offer_retrieved != lead_time_snapshot
+                or not _supplier_product_url_matches_supplier(
+                    lead_source, offer_row.get("product_url")
+                )
+            ):
+                continue
+            if offer_row.get("lead_time_weeks") is None:
+                offer_row["lead_time_weeks"] = current_lead
+            offer_row["lead_time_verified"] = True
+            offer_row["is_current"] = True
     return rows
 
 
