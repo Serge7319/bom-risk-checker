@@ -3,7 +3,7 @@ import Link from "next/link";
 export type AnalysisStage = "risks" | "evidence" | "decision" | "monitor";
 
 const stages: Array<{ id: AnalysisStage; label: string; path: string }> = [
-  { id: "risks", label: "Risks", path: "/detailed-risk-report" },
+  { id: "risks", label: "Risks", path: "/reports" },
   { id: "evidence", label: "Evidence", path: "/evidence-review" },
   { id: "decision", label: "Decision", path: "/engineering-decisions" },
   { id: "monitor", label: "Monitor", path: "/monitoring" },
@@ -21,7 +21,9 @@ export function AnalysisStageNavigation({
   return (
     <nav className="cv-analysis-stage-nav" aria-label="Review this analysis">
       {stages.map((stage) => {
-        const href = `${stage.path}?analysis_id=${encodeURIComponent(analysisId)}`;
+        const href = stage.id === "risks"
+          ? `/reports/${encodeURIComponent(analysisId)}`
+          : `${stage.path}?analysis_id=${encodeURIComponent(analysisId)}`;
         const active = stage.id === current;
         return (
           <Link

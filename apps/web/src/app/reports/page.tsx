@@ -44,6 +44,29 @@ function bomNameDraftsFor(projects: Array<Record<string, unknown>>): Record<stri
   return drafts;
 }
 
+function reportRecordId(report: Record<string, unknown>): string {
+  return String(report.analysis_id || report.id || "").trim();
+}
+
+function reportRevisionLabel(report: Record<string, unknown>): string {
+  const revision = String(report.revision || "").trim();
+  if (revision) return `Rev ${revision}`;
+  const saved = report.created_at ? new Date(String(report.created_at)).toLocaleDateString() : "Saved report";
+  return saved;
+}
+
+function reportSavedDate(report: Record<string, unknown>): string {
+  if (!report.created_at) return "Date not recorded";
+  const date = new Date(String(report.created_at));
+  return Number.isNaN(date.getTime()) ? "Date not recorded" : date.toLocaleString();
+}
+
+function healthLabel(value: unknown): string {
+  if (value === null || value === undefined || String(value).trim() === "") return "Not scored";
+  const score = Number(value);
+  return Number.isFinite(score) ? `${score}/100` : "Not scored";
+}
+
 function ReportsInner() {
   const session = useRequireSession();
   const search = useSearchParams();
@@ -273,7 +296,7 @@ function ReportsInner() {
       {<EvidenceNotice gap={gap} />}
 
       {!busy && projects.length ? (
-        <section className="cv-card pad" style={{ marginBottom: 18 }} data-testid="saved-bom-management">
+        <section className="cv-card pad cv-saved-bom-management" style={{ marginBottom: 18 }} data-testid="saved-bom-management">
           <div className="cv-section-heading cv-section-heading--card">
             <div>
               <h2>Manage saved BOMs</h2>
@@ -288,8 +311,8 @@ function ReportsInner() {
             const boms = (project.boms || []) as Array<Record<string, unknown>>;
             if (!boms.length) return null;
             return (
-              <div key={projectId} style={{ marginTop: 18 }} data-testid={`saved-project-${projectId}`}>
-                <div className="cv-form-grid" style={{ gridTemplateColumns: "minmax(220px, 1fr) auto", alignItems: "end" }}>
+              <div key={projectId} className="cv-saved-project" data-testid={`saved-project-${projectId}`}>
+                <div className="cv-saved-project-heading">
                   <label className="cv-field">
                     <span>Project name</span>
                     <input
@@ -301,106 +324,122 @@ function ReportsInner() {
                   </label>
                   <button
                     type="button"
-                    className="cv-button small"
+                    className="cv-button secondary"
                     disabled={managementBusy !== "" || !String(projectDrafts[projectId] ?? projectName).trim()}
                     onClick={() => void onRenameProject(projectId)}
                   >
                     {managementBusy === projectId ? "Saving…" : "Save project name"}
                   </button>
                 </div>
-                <div className="cv-table-wrap" style={{ marginTop: 10 }}>
-                  <table className="cv-table">
-                    <thead>
-                      <tr>
-                        <th>BOM name</th>
-                        <th>Saved revisions</th>
-                        <th>Latest analysis</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {boms.map((bom) => {
-                        const bomId = String(bom.id || "");
-                        const bomName = userFacingLabel(bom.name, "Saved BOM");
-                        const bomReports = reports.filter((report) => String(report.bom_id || "") === bomId);
-                        const revisions = [...new Set(bomReports.map((report) => String(report.revision || "").trim()).filter(Boolean))];
-                        const latest = (bom.latest_analysis || {}) as Record<string, unknown>;
-                        const latestId = String(bom.latest_analysis_id || latest.id || "");
-                        return (
-                          <tr key={bomId}>
-                            <td>
-                              <input
-                                value={bomDrafts[bomId] ?? bomName}
-                                onChange={(event) => setBomDrafts((current) => ({ ...current, [bomId]: event.target.value }))}
-                                maxLength={160}
-                                aria-label={`BOM name for ${bomName}`}
-                              />
-                            </td>
-                            <td>{revisions.length ? revisions.join(", ") : "—"}</td>
-                            <td>
-                              {latestId ? (
-                                <Link href={`/reports/${encodeURIComponent(latestId)}`}>
-                                  Open {String(latest.revision || "latest")}
-                                </Link>
-                              ) : "No saved analysis"}
-                            </td>
-                            <td>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button
-                                  type="button"
-                                  className="cv-button small"
-                                  disabled={managementBusy !== "" || !String(bomDrafts[bomId] ?? bomName).trim()}
-                                  onClick={() => void onRenameBom(bomId)}
-                                >
-                                  {managementBusy === bomId ? "Saving…" : "Save name"}
-                                </button>
-                                {latestId ? (
-                                  <Link className="cv-button small secondary" href={`/reports/${encodeURIComponent(latestId)}`}>
-                                    Edit BOM
-                                  </Link>
-                                ) : null}
-                                <label className="cv-field" style={{ minWidth: 160, margin: 0 }}>
-                                  <span>Move to project</span>
-                                  <select
-                                    aria-label={`Move ${bomName} to project`}
-                                    value={bomProjectDrafts[bomId] ?? projectId}
-                                    onChange={(event) => setBomProjectDrafts((current) => ({ ...current, [bomId]: event.target.value }))}
+                <div className="cv-saved-bom-list">
+                  {boms.map((bom) => {
+                    const bomId = String(bom.id || "");
+                    const bomName = userFacingLabel(bom.name, "Saved BOM");
+                    const bomReports = reports
+                      .filter((report) => String(report.bom_id || "") === bomId && reportRecordId(report))
+                      .sort((a, b) => Date.parse(String(b.created_at || "")) - Date.parse(String(a.created_at || "")));
+                    const latest = (bom.latest_analysis || {}) as Record<string, unknown>;
+                    const latestId = String(bom.latest_analysis_id || latest.id || "");
+                    const revisionCount = new Set(bomReports.map((report) => reportRevisionLabel(report))).size;
+                    return (
+                      <article key={bomId} className="cv-saved-bom-card" data-testid={`saved-bom-${bomId}`}>
+                        <div className="cv-saved-bom-heading">
+                          <div>
+                            <span className="cv-eyebrow">Saved BOM</span>
+                            <h3>{bomName}</h3>
+                          </div>
+                          <span className="cv-saved-bom-count">{revisionCount} revision{revisionCount === 1 ? "" : "s"}</span>
+                        </div>
+                        <div className="cv-saved-bom-name-row">
+                          <label className="cv-field">
+                            <span>BOM name</span>
+                            <input
+                              value={bomDrafts[bomId] ?? bomName}
+                              onChange={(event) => setBomDrafts((current) => ({ ...current, [bomId]: event.target.value }))}
+                              maxLength={160}
+                              aria-label={`BOM name for ${bomName}`}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="cv-button secondary"
+                            disabled={managementBusy !== "" || !String(bomDrafts[bomId] ?? bomName).trim()}
+                            onClick={() => void onRenameBom(bomId)}
+                          >
+                            {managementBusy === bomId ? "Saving…" : "Save BOM name"}
+                          </button>
+                          {latestId ? (
+                            <Link className="cv-button primary" href={`/reports/${encodeURIComponent(latestId)}`}>
+                              Open to edit BOM
+                            </Link>
+                          ) : null}
+                        </div>
+                        <div className="cv-saved-revisions">
+                          <div className="cv-saved-revisions-title">
+                            <strong>Open a saved revision</strong>
+                            <span>Each link opens that exact report snapshot.</span>
+                          </div>
+                          {bomReports.length ? (
+                            <div className="cv-revision-links" aria-label={`Saved revisions for ${bomName}`}>
+                              {bomReports.map((savedReport) => {
+                                const savedId = reportRecordId(savedReport);
+                                const revisionLabel = reportRevisionLabel(savedReport);
+                                return (
+                                  <Link
+                                    key={savedId}
+                                    className="cv-revision-link"
+                                    href={`/reports/${encodeURIComponent(savedId)}`}
+                                    aria-label={`Open ${revisionLabel} of ${bomName}, saved ${reportSavedDate(savedReport)}`}
                                   >
-                                    {projects.map((option) => (
-                                      <option key={String(option.id)} value={String(option.id)}>
-                                        {userFacingLabel(option.name, "Project")}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                                <button
-                                  type="button"
-                                  className="cv-button small secondary"
-                                  disabled={managementBusy !== "" || (bomProjectDrafts[bomId] ?? projectId) === projectId}
-                                  onClick={() => void onMoveBom(bomId, projectId)}
-                                >
-                                  {managementBusy === bomId ? "Saving…" : "Move"}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="cv-button small"
-                                  style={{ color: "#b42318", borderColor: "#f3b6b3" }}
-                                  disabled={managementBusy !== ""}
-                                  onClick={() => void onDeleteBom({
-                                    ...bom,
-                                    analysis_count: bomReports.length,
-                                    revision_count: revisions.length,
-                                  })}
-                                >
-                                  Delete BOM
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                                    <strong>{revisionLabel}</strong>
+                                    <span>{reportSavedDate(savedReport)}</span>
+                                  </Link>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="cv-small-note">No saved report revisions are available yet.</p>
+                          )}
+                        </div>
+                        <div className="cv-saved-bom-actions">
+                          <label className="cv-field">
+                            <span>Move to project</span>
+                            <select
+                              aria-label={`Move ${bomName} to project`}
+                              value={bomProjectDrafts[bomId] ?? projectId}
+                              onChange={(event) => setBomProjectDrafts((current) => ({ ...current, [bomId]: event.target.value }))}
+                            >
+                              {projects.map((option) => (
+                                <option key={String(option.id)} value={String(option.id)}>
+                                  {userFacingLabel(option.name, "Project")}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <button
+                            type="button"
+                            className="cv-button secondary"
+                            disabled={managementBusy !== "" || (bomProjectDrafts[bomId] ?? projectId) === projectId}
+                            onClick={() => void onMoveBom(bomId, projectId)}
+                          >
+                            {managementBusy === bomId ? "Saving…" : "Move BOM"}
+                          </button>
+                          <button
+                            type="button"
+                            className="cv-button cv-button-danger"
+                            disabled={managementBusy !== ""}
+                            onClick={() => void onDeleteBom({
+                              ...bom,
+                              analysis_count: bomReports.length,
+                              revision_count: revisionCount,
+                            })}
+                          >
+                            Delete BOM
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -569,8 +608,8 @@ function ReportsInner() {
               </div>
               <span className="cv-data-note">{reports.length} report{reports.length === 1 ? "" : "s"}</span>
             </div>
-            <div className="cv-table-wrap">
-              <table className="cv-table">
+            <div className="cv-table-wrap cv-saved-reports-table-wrap">
+              <table className="cv-table cv-saved-reports-table">
                 <thead>
                   <tr>
                     <th>Analysis</th>
@@ -584,14 +623,34 @@ function ReportsInner() {
                 <tbody>
                   {reports.map((row) => {
                     const id = String(row.id || row.analysis_id || "");
+                    const score = healthLabel(row.health_score);
+                    const scored = score !== "Not scored";
+                    const revision = row.revision ? `Rev ${String(row.revision)}` : "Saved analysis";
                     return (
                       <tr key={id}>
-                      <td><strong>{userFacingLabel(row.bom_name || row.filename || row.project_name, "Saved analysis")}</strong></td>
-                        <td>{row.health_score == null ? "Not scored" : `${String(row.health_score)}/100`}</td>
+                        <td>
+                          <strong>{userFacingLabel(row.bom_name || row.filename || row.project_name, "Saved analysis")}</strong>
+                          <small className="cv-saved-report-revision">{revision}{row.project_label ? ` · ${userFacingLabel(row.project_label, "Project")}` : ""}</small>
+                        </td>
+                        <td>
+                          <div className="cv-report-health-cell">
+                            <strong>{score}</strong>
+                            <span className={`cv-badge ${scored ? "green" : "amber"}`}>
+                              {userFacingLabel(row.health_status, scored ? "Scored" : "Needs verification")}
+                            </span>
+                            {!scored ? (
+                              <small title={String(row.summary_message || "A complete evidence check is required for every BOM line before Cadivor calculates the overall score.")}>
+                                {Number(row.needs_verification_count) > 0
+                                  ? `${String(row.needs_verification_count)} component${Number(row.needs_verification_count) === 1 ? "" : "s"} need evidence verification`
+                                  : "Score withheld until evidence is complete"}
+                              </small>
+                            ) : null}
+                          </div>
+                        </td>
                         <td>{String(row.total_parts ?? "—")}</td>
                         <td>{String(row.high_risk_count ?? "—")}</td>
                         <td>{row.created_at ? new Date(String(row.created_at)).toLocaleDateString() : "—"}</td>
-                        <td><Link className="cv-button small" href={`/reports/${encodeURIComponent(id)}`}>Open &amp; download</Link></td>
+                        <td><Link className="cv-button secondary" href={`/reports/${encodeURIComponent(id)}`}>Open report</Link></td>
                       </tr>
                     );
                   })}

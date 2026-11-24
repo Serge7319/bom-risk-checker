@@ -143,6 +143,10 @@ export function ReportOverview({ report }: { report: Report }) {
         : "amber";
   const healthNumber = report.health_score == null ? Number.NaN : Number(report.health_score);
   const health = Number.isFinite(healthNumber) ? healthNumber : null;
+  const scoreReason = cleanUserText(report.summary_message) ||
+    (Number(report.needs_verification_count) > 0
+      ? `The overall score is withheld until all BOM lines have complete, current evidence. ${report.needs_verification_count} component(s) still need verification.`
+      : "The overall score is withheld because one or more BOM lines do not have complete, current evidence.");
   const slices: RiskSlice[] = RISK_SLICES.map((slice) => ({ ...slice, count: profile.counts[slice.key] }));
   const visibleSlices = slices.filter((slice) => slice.count > 0);
   let angle = -90;
@@ -160,7 +164,7 @@ export function ReportOverview({ report }: { report: Report }) {
             {status}
           </span>
         </div>
-        <p className="cv-report-executive-lead">{summary}</p>
+        <p className="cv-report-executive-lead">{health === null ? "Use the component findings below to review risk while Cadivor verifies evidence coverage." : summary}</p>
         <dl className="cv-report-summary-facts">
           <div>
             <dt>Health score</dt>
@@ -171,13 +175,20 @@ export function ReportOverview({ report }: { report: Report }) {
             <dd>{profile.total}</dd>
           </div>
           <div>
-            <dt>Risk ratings</dt>
+            <dt>Risk labels recorded</dt>
             <dd>{profile.total - profile.counts.unassessed} of {profile.total} rated</dd>
           </div>
         </dl>
         <p className="cv-small-note" style={{ margin: "8px 0 0" }}>
           Health is a screening index: 100 minus the average recorded component risk score. It is not a failure probability or compliance certification.
         </p>
+        {health === null ? (
+          <div className="cv-report-score-hold" role="note" data-testid="health-score-withheld">
+            <strong>Why no overall score?</strong>
+            <p>{scoreReason}</p>
+            <small>Risk labels can be present for some components even when the BOM does not yet meet the stricter evidence requirement for an overall score.</small>
+          </div>
+        ) : null}
         <div className="cv-report-summary-note">
           <strong>Evidence coverage</strong>
           <p>{evidenceLine(report)}</p>

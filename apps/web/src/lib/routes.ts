@@ -36,8 +36,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Intelligence",
     items: [
       { id: "portfolio", href: "/portfolio-intelligence", label: "Portfolio Intelligence" },
-      { id: "risk", href: "/detailed-risk-report", label: "Detailed Risk Report" },
-      { id: "ei", href: "/engineering-intelligence", label: "Engineering Intelligence" },
     ],
   },
   {
@@ -170,17 +168,17 @@ export const PAGE_META: Record<string, PageMeta> = {
   },
   risk: {
     icon: "risk",
-    title: "Detailed Risk Report",
-    eyebrow: "Detailed risk report",
+    title: "Component risk evidence",
+    eyebrow: "Saved report · risk detail",
     description:
-      "A component-level view of risk signals, source quality, and recommended review.",
+      "Inspect field-level risk signals and source quality for one saved report revision.",
   },
   ei: {
     icon: "ei",
-    title: "Engineering Intelligence",
-    eyebrow: "Engineering report",
+    title: "Saved BOM report",
+    eyebrow: "Saved analysis",
     description:
-      "Review the saved analysis, component signals, and source-backed exceptions.",
+      "Review the risk summary, component evidence, revision history, and linked review workflow.",
   },
   settings: {
     icon: "settings",
