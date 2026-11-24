@@ -250,6 +250,10 @@ class AuthContext:
     trial_ends_at: str | None = None
     trial_status: str | None = None
     trial_days_remaining: int | None = None
+    # Current platform maintenance state is trusted only when loaded from the
+    # Supabase runtime access RPC in production. Sandbox auth leaves it unset.
+    maintenance_mode: bool | None = None
+    maintenance_message: str | None = None
     # This is supplied only by verified production billing entitlements. It is
     # not inferred from workspace membership or a browser-visible plan.
     platform_role: str | None = None
@@ -276,6 +280,10 @@ class AuthContext:
             payload["trial_status"] = self.trial_status
         if self.trial_days_remaining is not None:
             payload["trial_days_remaining"] = self.trial_days_remaining
+        if self.maintenance_mode is not None:
+            payload["maintenance_mode"] = self.maintenance_mode
+        if self.maintenance_message is not None:
+            payload["maintenance_message"] = self.maintenance_message
         if self.platform_role is not None:
             payload["platform_role"] = self.platform_role
         if self.api_access_addon_active is not None:

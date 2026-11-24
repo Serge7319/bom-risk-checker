@@ -1644,6 +1644,48 @@ export async function listWorkspaceActivity(token: string, limit = 40) {
   );
 }
 
+export type RuntimeMaintenanceStatus = {
+  maintenance_mode: boolean;
+  maintenance_message: string;
+  is_admin: boolean;
+};
+
+export async function fetchRuntimeMaintenance(token: string) {
+  return apiJson<RuntimeMaintenanceStatus>("/runtime/maintenance", { token });
+}
+
+export type AdminPlatformOverview = {
+  registered_users?: number;
+  active_now?: number;
+  active_last_30_days?: number;
+  suspended_users?: number;
+  maintenance_mode: boolean;
+  maintenance_message: string;
+};
+
+export async function fetchAdminPlatformSettings(token: string) {
+  return apiJson<{ ok: boolean; overview: AdminPlatformOverview }>("/admin/platform-settings", { token });
+}
+
+export async function updateAdminMaintenanceMode(
+  token: string,
+  body: {
+    maintenance_mode: boolean;
+    maintenance_message: string;
+    confirmation: string;
+  },
+) {
+  return apiJson<{
+    ok: boolean;
+    maintenance_mode: boolean;
+    maintenance_message: string;
+  }>("/admin/platform-settings/maintenance", {
+    method: "PUT",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
 export async function fetchAdminAccountEntitlements(token: string, email: string) {
   return apiJson<{
     ok: boolean;

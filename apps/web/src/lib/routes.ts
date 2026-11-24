@@ -187,6 +187,12 @@ export const PAGE_META: Record<string, PageMeta> = {
     description:
       "Review account, plan usage, and integration readiness.",
   },
+  platform: {
+    icon: "settings",
+    title: "Maintenance mode",
+    eyebrow: "Platform administration",
+    description: "Review platform availability and manage the maintenance notice shown to customers.",
+  },
   apis: {
     icon: "api",
     title: "APIs",

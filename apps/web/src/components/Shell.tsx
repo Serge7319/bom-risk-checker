@@ -5,7 +5,14 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, NAV_ICONS } from "@/components/Icons";
 import { BrandLink } from "@/components/BrandLink";
-import { clearSession, fetchPlanUsage, logout, type Session } from "@/lib/api";
+import {
+  clearSession,
+  fetchPlanUsage,
+  fetchRuntimeMaintenance,
+  logout,
+  type RuntimeMaintenanceStatus,
+  type Session,
+} from "@/lib/api";
 import { workspaceDisplayName } from "@/lib/display";
 import { NAV_GROUPS } from "@/lib/routes";
 
@@ -17,6 +24,7 @@ function crumbTitle(pathname: string): string {
   if (pathname.startsWith("/admin/users")) return "User accounts";
   if (pathname.startsWith("/admin/entitlements")) return "Account entitlements";
   if (pathname.startsWith("/admin/marketing-analytics")) return "Growth analytics";
+  if (pathname.startsWith("/admin/platform")) return "Maintenance mode";
   for (const group of NAV_GROUPS) {
     for (const item of group.items) {
       if (item.href === "/") continue;
@@ -40,6 +48,11 @@ export function Shell({
   const [navOpen, setNavOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [verifiedPlan, setVerifiedPlan] = useState<string | null>(null);
+  const [maintenanceStatus, setMaintenanceStatus] = useState<RuntimeMaintenanceStatus | null>(
+    session.platform_role === "admin"
+      ? { maintenance_mode: false, maintenance_message: "", is_admin: true }
+      : null,
+  );
   const title = crumbTitle(pathname);
   const remainingDays = session.trial_ends_at
     ? Math.max(0, Math.ceil((Date.parse(session.trial_ends_at) - Date.now()) / 86400000))
@@ -68,6 +81,34 @@ export function Shell({
   }, [pathname]);
 
   useEffect(() => {
+    if (session.platform_role === "admin") {
+      setMaintenanceStatus({ maintenance_mode: false, maintenance_message: "", is_admin: true });
+      return;
+    }
+    let current = true;
+    const refreshAvailability = () => {
+      void fetchRuntimeMaintenance(session.access_token)
+        .then((status) => {
+          if (current) setMaintenanceStatus(status);
+        })
+        .catch(() => {
+          // Keep the app usable if the status check itself has a transient error;
+          // authenticated API routes still enforce maintenance server-side.
+          if (current) {
+            setMaintenanceStatus({ maintenance_mode: false, maintenance_message: "", is_admin: false });
+          }
+        });
+    };
+    setMaintenanceStatus(null);
+    refreshAvailability();
+    const timer = window.setInterval(refreshAvailability, 30_000);
+    return () => {
+      current = false;
+      window.clearInterval(timer);
+    };
+  }, [session.access_token, session.platform_role, session.user_id]);
+
+  useEffect(() => {
     let current = true;
     setVerifiedPlan(null);
     void fetchPlanUsage(session.access_token)
@@ -82,6 +123,57 @@ export function Shell({
       current = false;
     };
   }, [session.access_token, session.user_id]);
+
+  if (session.platform_role !== "admin" && maintenanceStatus === null) {
+    return (
+      <main className="cv-maintenance-checking" role="status" aria-live="polite">
+        <div className="cv-maintenance-card">
+          <span className="cv-maintenance-mark" aria-hidden="true">C</span>
+          <p className="cv-eyebrow">Cadivor service status</p>
+          <h1>Checking service availability</h1>
+          <p>One moment while we check whether the workspace is available.</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (session.platform_role !== "admin" && maintenanceStatus?.maintenance_mode) {
+    return (
+      <main className="cv-maintenance-checking" role="main">
+        <section className="cv-maintenance-card" aria-labelledby="cv-maintenance-heading">
+          <span className="cv-maintenance-mark" aria-hidden="true">C</span>
+          <p className="cv-eyebrow">Scheduled maintenance</p>
+          <h1 id="cv-maintenance-heading">We’re improving Cadivor.</h1>
+          <p className="cv-maintenance-message">
+            {maintenanceStatus.maintenance_message || "Cadivor is undergoing scheduled maintenance. Please try again shortly."}
+          </p>
+          <div className="cv-maintenance-assurance">
+            <strong>Your engineering data is safe.</strong>
+            <span>Your workspace and saved analyses will be available again when service is restored.</span>
+          </div>
+          <p className="cv-maintenance-contact">
+            Please check back shortly. For a launch blocker, contact{" "}
+            <a href="mailto:beta@cadivor.com?subject=Cadivor%20Beta%20Blocker">beta@cadivor.com</a>.
+          </p>
+          <button
+            type="button"
+            className="cv-button"
+            onClick={async () => {
+              try {
+                if (session.access_token) await logout(session.access_token);
+              } catch {
+                // Always clear local session even if revoke fails.
+              }
+              clearSession();
+              router.replace("/login");
+            }}
+          >
+            Sign out
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   function onSearch(event: FormEvent) {
     event.preventDefault();
@@ -162,6 +254,15 @@ export function Shell({
               >
                 <Icon name="spark" />
                 <span>Growth analytics</span>
+              </Link>
+              <Link
+                href="/admin/platform"
+                className={pathname === "/admin/platform" ? "active" : undefined}
+                aria-current={pathname === "/admin/platform" ? "page" : undefined}
+                onClick={() => setNavOpen(false)}
+              >
+                <Icon name="settings" />
+                <span>Maintenance mode</span>
               </Link>
             </div>
           ) : null}

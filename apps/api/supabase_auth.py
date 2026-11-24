@@ -330,16 +330,43 @@ def _rpc(access_token: str, function_name: str, payload: dict[str, Any] | None =
     return getattr(result, "data", result)
 
 
-def require_active_account(access_token: str) -> None:
-    """Reject suspended accounts before they can use an authenticated API route."""
+def admin_runtime_access(access_token: str) -> dict[str, Any]:
+    """Read the caller's active-account and maintenance state from Supabase."""
     result = _rpc(access_token, "cadivor_admin_runtime_access")
     if not isinstance(result, list) or not result or not isinstance(result[0], dict):
-        raise AuthError("Account access could not be verified.", 503)
-    status = str(result[0].get("account_status") or "").strip().lower()
+        raise AuthError("Platform access could not be verified.", 503)
+    access = result[0]
+    if not isinstance(access.get("maintenance_mode"), bool):
+        raise AuthError("Platform availability could not be verified.", 503)
+    return access
+
+
+def require_active_account(access_token: str) -> dict[str, Any]:
+    """Reject suspended accounts and return their trusted runtime state."""
+    access = admin_runtime_access(access_token)
+    status = str(access.get("account_status") or "").strip().lower()
     if status == "suspended":
         raise AuthError("This account is suspended. Contact Cadivor support for help.", 403)
     if status != "active":
         raise AuthError("Account access could not be verified.", 503)
+    return access
+
+
+def admin_platform_overview(access_token: str) -> dict[str, Any]:
+    result = _rpc(access_token, "cadivor_admin_overview")
+    if not isinstance(result, list) or not result or not isinstance(result[0], dict):
+        raise AuthError("Platform settings could not be loaded.", 503)
+    return result[0]
+
+
+def admin_set_maintenance_mode(
+    *, access_token: str, enabled: bool, message: str
+) -> None:
+    _rpc(
+        access_token,
+        "cadivor_admin_set_maintenance",
+        {"next_enabled": bool(enabled), "next_message": message},
+    )
 
 
 def admin_list_accounts(access_token: str) -> list[dict[str, Any]]:
@@ -870,7 +897,7 @@ def resolve_bearer(access_token: str) -> AuthContext:
     user_id, email = _user_payload(user)
     if not user_email_verified(user):
         raise AuthError("Verify your email address before using Cadivor", 403)
-    require_active_account(access_token)
+    runtime_access = require_active_account(access_token)
     membership = ensure_owner_membership(
         user_id=user_id,
         email=email,
@@ -899,6 +926,8 @@ def resolve_bearer(access_token: str) -> AuthContext:
         trial_ends_at=trial_ends,
         trial_status=entitlements.get("trial_status"),
         trial_days_remaining=entitlements.get("trial_days_remaining"),
+        maintenance_mode=bool(runtime_access.get("maintenance_mode")),
+        maintenance_message=str(runtime_access.get("maintenance_message") or ""),
         platform_role=entitlements.get("platform_role"),
         api_access_addon_active=entitlements.get("api_access_addon_active", False),
         monitored_parts_addon_capacity=entitlements.get("monitored_parts_addon_capacity", 0),
