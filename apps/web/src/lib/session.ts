@@ -45,7 +45,16 @@ export function useRequireSession(): Session | null {
       if (!current) router.replace("/login");
     }
     window.addEventListener("storage", syncSessionAcrossTabs);
-    return () => window.removeEventListener("storage", syncSessionAcrossTabs);
+    const syncSessionInCurrentTab = () => {
+      const current = getSession();
+      setSession(current);
+      if (!current) router.replace("/login");
+    };
+    window.addEventListener("cadivor-session-updated", syncSessionInCurrentTab);
+    return () => {
+      window.removeEventListener("storage", syncSessionAcrossTabs);
+      window.removeEventListener("cadivor-session-updated", syncSessionInCurrentTab);
+    };
   }, [router]);
 
   useEffect(() => {

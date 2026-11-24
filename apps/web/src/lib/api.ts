@@ -37,6 +37,21 @@ export type Session = {
   trial_days_remaining?: number;
 };
 
+export type PendingMfaSession = {
+  mfa_required: true;
+  access_token: string;
+  refresh_token?: string;
+  email: string;
+  user_id: string;
+  mode: string;
+  mfa_factors: Array<{
+    id: string;
+    factor_type: string;
+    status: string;
+    friendly_name: string;
+  }>;
+};
+
 export type AnalyzeSummary = {
   analysis_id: string;
   total_parts: number;
@@ -151,6 +166,7 @@ function persistAccessToken(accessToken: string) {
     SESSION_KEY,
     JSON.stringify({ ...current, access_token: accessToken }),
   );
+  window.dispatchEvent(new Event("cadivor-session-updated"));
 }
 
 async function refreshSupabaseAccessToken(): Promise<string | null> {
@@ -189,6 +205,10 @@ async function refreshSupabaseAccessToken(): Promise<string | null> {
     });
   }
   return refreshInFlight;
+}
+
+export async function refreshCadivorSession(): Promise<string | null> {
+  return refreshSupabaseAccessToken();
 }
 
 async function currentSupabaseAccessToken(fallback: string): Promise<string> {
@@ -308,6 +328,25 @@ export async function setSession(session: Session): Promise<void> {
   delete safeSession.refresh_token;
   window.localStorage.setItem(SESSION_KEY, JSON.stringify(safeSession));
   window.localStorage.removeItem(LEGACY_SESSION_KEY);
+  window.dispatchEvent(new Event("cadivor-session-updated"));
+}
+
+/** Seed Supabase Auth during MFA without creating a Cadivor app session yet. */
+export async function stageSupabaseSession(
+  session: Pick<PendingMfaSession, "access_token" | "refresh_token">,
+): Promise<void> {
+  const client = getSupabaseBrowserClient();
+  if (!client || !session.refresh_token) {
+    throw new Error("Multi-factor sign-in could not start. Please try again or contact support.");
+  }
+  const { data, error } = await client.auth.setSession({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+  });
+  if (error || !data.session) {
+    void client.auth.signOut({ scope: "local" }).catch(() => undefined);
+    throw new Error("Multi-factor sign-in could not start. Please try again or contact support.");
+  }
 }
 
 export function clearSession() {
@@ -317,10 +356,25 @@ export function clearSession() {
   if (client) void client.auth.signOut({ scope: "local" }).catch(() => undefined);
 }
 
-export async function login(email: string, password: string): Promise<Session> {
-  return apiJson<Session>("/auth/login", {
+export async function login(
+  email: string,
+  password: string,
+  inviteToken?: string,
+): Promise<Session | PendingMfaSession> {
+  return apiJson<Session | PendingMfaSession>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, invite_token: inviteToken }),
+  });
+}
+
+export async function completeMfaLogin(
+  accessToken: string,
+  inviteToken?: string,
+): Promise<Session | PendingMfaSession> {
+  return apiJson<Session | PendingMfaSession>("/auth/login/complete", {
+    method: "POST",
+    token: accessToken,
+    body: JSON.stringify({ invite_token: inviteToken }),
   });
 }
 

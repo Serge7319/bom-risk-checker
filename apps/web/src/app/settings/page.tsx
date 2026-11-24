@@ -42,6 +42,7 @@ import {
   requestPasswordReset,
   resendWorkspaceInvitation,
   revokeOtherSessions,
+  refreshCadivorSession,
   switchWorkspace,
   updatePreferences,
   updateProfile,
@@ -51,6 +52,7 @@ import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 import { cleanUserText, userFacingError, userFacingLabel, workspaceDisplayName } from "@/lib/display";
 import { trackMarketingEvent, trackMarketingEventOnce } from "@/lib/marketingAnalytics";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 type TabId = "profile" | "preferences" | "workspace" | "security" | "billing";
 
@@ -213,6 +215,19 @@ export default function Page() {
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [mfaSetup, setMfaSetup] = useState<{
+    factorId: string;
+    qrCode: string;
+    secret: string;
+  } | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaRemoval, setMfaRemoval] = useState<{
+    factorId: string;
+    challengeId: string;
+  } | null>(null);
+  const [passkeys, setPasskeys] = useState<Array<Record<string, unknown>>>([]);
+  const [passkeyError, setPasskeyError] = useState("");
+  const [passkeysLoading, setPasskeysLoading] = useState(false);
 
   const notificationPrefs = useMemo(
     () => asRecord(preferences.notification_preferences),
@@ -348,6 +363,211 @@ export default function Page() {
     setBusy(false);
   }
 
+  async function refreshSecurityStatus() {
+    if (!session) return;
+    const status = await fetchSecurityStatus(session.access_token);
+    setSecurity(status);
+  }
+
+  async function refreshPasskeys() {
+    const client = getSupabaseBrowserClient();
+    if (!client) {
+      setPasskeyError("Passkey management is unavailable in this environment.");
+      return;
+    }
+    setPasskeysLoading(true);
+    setPasskeyError("");
+    try {
+      const result = await client.auth.passkey.list();
+      if (result.error) throw result.error;
+      setPasskeys(asRows(result.data));
+    } catch (err) {
+      setPasskeys([]);
+      const message = settingsErrorMessage(err, "Passkeys could not be loaded.");
+      setPasskeyError(/passkey_disabled/i.test(message)
+        ? "Passkey management is not available yet. Please try again later or contact support."
+        : message);
+    } finally {
+      setPasskeysLoading(false);
+    }
+  }
+
+  async function registerPasskey() {
+    const client = getSupabaseBrowserClient();
+    if (!client) {
+      setPasskeyError("Passkey registration is unavailable in this environment.");
+      return;
+    }
+    setSaving("passkey-register");
+    setPasskeyError("");
+    setNotice("");
+    try {
+      const result = await client.auth.registerPasskey();
+      if (result.error) throw result.error;
+      await refreshPasskeys();
+      setNotice("Passkey added. You can use it to sign in on this device or through its synced passkey provider.");
+    } catch (err) {
+      const message = settingsErrorMessage(err, "Passkey registration could not be completed.");
+      setPasskeyError(/passkey_disabled/i.test(message)
+        ? "Passkey registration is not available yet. Please try again later or contact support."
+        : message);
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function removePasskey(passkeyId: string) {
+    if (!window.confirm("Remove this passkey from your account? You can still sign in with your password or another saved passkey.")) return;
+    const client = getSupabaseBrowserClient();
+    if (!client) return;
+    setSaving("passkey-remove");
+    setPasskeyError("");
+    setNotice("");
+    try {
+      const result = await client.auth.passkey.delete({ passkeyId });
+      if (result.error) throw result.error;
+      await refreshPasskeys();
+      setNotice("Passkey removed from this account.");
+    } catch (err) {
+      setPasskeyError(settingsErrorMessage(err, "Passkey could not be removed."));
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function startMfaEnrollment() {
+    const client = getSupabaseBrowserClient();
+    if (!client) {
+      setError("Authenticator setup is unavailable in this environment.");
+      return;
+    }
+    setSaving("mfa-enroll");
+    setError("");
+    setNotice("");
+    try {
+      const result = await client.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: "Cadivor authenticator",
+      });
+      if (result.error) throw result.error;
+      const qrCode = result.data.totp?.qr_code;
+      const secret = result.data.totp?.secret;
+      if (!qrCode || !secret) {
+        throw new Error("Cadivor could not display the authenticator setup. Please try again.");
+      }
+      setMfaSetup({ factorId: result.data.id, qrCode, secret });
+      setMfaCode("");
+      setNotice("Scan the QR code with an authenticator app, then enter its current code to verify setup.");
+    } catch (err) {
+      setError(settingsErrorMessage(err, "Authenticator setup could not start"));
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function verifyMfaEnrollment(event: FormEvent) {
+    event.preventDefault();
+    if (!mfaSetup) return;
+    const client = getSupabaseBrowserClient();
+    if (!client) return;
+    setSaving("mfa-verify");
+    setError("");
+    setNotice("");
+    try {
+      const challenge = await client.auth.mfa.challenge({ factorId: mfaSetup.factorId });
+      if (challenge.error) throw challenge.error;
+      const verified = await client.auth.mfa.verify({
+        factorId: mfaSetup.factorId,
+        challengeId: challenge.data.id,
+        code: mfaCode.trim(),
+      });
+      if (verified.error) throw verified.error;
+      setMfaSetup(null);
+      setMfaCode("");
+      await refreshSecurityStatus();
+      setNotice("Authenticator app verification is enabled for this account.");
+    } catch (err) {
+      setError(settingsErrorMessage(err, "The authenticator code could not be verified"));
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function removeMfaFactorNow(factorId: string) {
+    const client = getSupabaseBrowserClient();
+    if (!client) throw new Error("Authenticator management is unavailable.");
+    const removed = await client.auth.mfa.unenroll({ factorId });
+    if (removed.error) throw removed.error;
+    const existingFactors = asRows(asRecord(security.two_factor).factors).filter(
+      (factor) => factor.factor_type === "totp" && factor.status === "verified",
+    );
+    if (existingFactors.length <= 1) {
+      await refreshCadivorSession();
+    }
+    setMfaRemoval(null);
+    setMfaCode("");
+    await refreshSecurityStatus();
+    setNotice("Authenticator removed from this account.");
+  }
+
+  async function beginMfaRemoval(factorId: string) {
+    if (!window.confirm("Remove this authenticator from your account?")) return;
+    const client = getSupabaseBrowserClient();
+    if (!client) return;
+    setSaving("mfa-remove");
+    setError("");
+    setNotice("");
+    try {
+      const factor = asRows(asRecord(security.two_factor).factors).find(
+        (item) => item.id === factorId,
+      );
+      if (factor?.status !== "verified") {
+        await removeMfaFactorNow(factorId);
+        return;
+      }
+      const assurance = await client.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (assurance.error) throw assurance.error;
+      if (assurance.data.currentLevel !== "aal2") {
+        const challenge = await client.auth.mfa.challenge({ factorId });
+        if (challenge.error) throw challenge.error;
+        setMfaRemoval({ factorId, challengeId: challenge.data.id });
+        setMfaCode("");
+        setNotice("Enter the current code from this authenticator to confirm its removal.");
+      } else {
+        await removeMfaFactorNow(factorId);
+      }
+    } catch (err) {
+      setError(settingsErrorMessage(err, "Authenticator could not be removed"));
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function confirmMfaRemoval(event: FormEvent) {
+    event.preventDefault();
+    if (!mfaRemoval) return;
+    const client = getSupabaseBrowserClient();
+    if (!client) return;
+    setSaving("mfa-remove");
+    setError("");
+    setNotice("");
+    try {
+      const challenge = await client.auth.mfa.challenge({ factorId: mfaRemoval.factorId });
+      if (challenge.error) throw challenge.error;
+      const verified = await client.auth.mfa.verify({
+        factorId: mfaRemoval.factorId,
+        challengeId: challenge.data.id,
+        code: mfaCode.trim(),
+      });
+      if (verified.error) throw verified.error;
+      await removeMfaFactorNow(mfaRemoval.factorId);
+    } catch (err) {
+      setError(settingsErrorMessage(err, "Authenticator removal could not be confirmed"));
+    } finally {
+      setSaving("");
+    }
+  }
+
   useEffect(() => {
     if (!session || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -368,6 +588,13 @@ export default function Page() {
     }).catch(() => undefined);
     return () => { active = false; };
   }, [session]);
+
+  useEffect(() => {
+    if (tab !== "security" || !session) return;
+    void refreshPasskeys();
+    // Refresh when the user opens Security or switches account sessions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, session?.access_token]);
 
   useEffect(() => {
     if (!session) return;
@@ -417,6 +644,9 @@ export default function Page() {
   }
   const password = asRecord(security.password);
   const twoFactor = asRecord(security.two_factor);
+  const mfaFactors = asRows(twoFactor.factors).filter(
+    (factor) => factor.factor_type === "totp",
+  );
   const sessions = asRecord(security.sessions);
   const canAdminister = workspace.can_administer === true;
 
@@ -1328,6 +1558,218 @@ export default function Page() {
                   </dd>
                 </div>
               </dl>
+
+              <section className="cv-card pad" style={{ marginTop: 16 }}>
+                <h4 className="cv-card-title">Two-step verification</h4>
+                <p className="cv-card-subtitle">
+                  Add an authenticator app as an optional second step when signing in. Cadivor asks for its current code after your password.
+                </p>
+                {twoFactor.status === "unavailable" ? (
+                  <p className="cv-small-note" style={{ marginTop: 12 }}>
+                    Authenticator setup is available for accounts managed by Supabase Auth.
+                  </p>
+                ) : (
+                  <>
+                    {mfaFactors.length ? (
+                      <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+                        {mfaFactors.map((factor, index) => (
+                          <div
+                            key={String(factor.id || index)}
+                            className="cv-fact"
+                            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}
+                          >
+                            <div>
+                              <strong>{String(factor.friendly_name || `Authenticator ${index + 1}`)}</strong>
+                              <p className="cv-small-note" style={{ margin: "4px 0 0" }}>
+                                {factor.status === "verified" ? "Verified and ready for sign-in" : "Setup incomplete"}
+                              </p>
+                            </div>
+                            <button
+                              className="cv-button"
+                              type="button"
+                              disabled={saving === "mfa-remove"}
+                              onClick={() => void beginMfaRemoval(String(factor.id || ""))}
+                            >
+                              {factor.status === "verified" ? "Remove" : "Discard setup"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="cv-small-note" style={{ marginTop: 12 }}>
+                        No authenticator app is connected to this account.
+                      </p>
+                    )}
+
+                    {mfaSetup ? (
+                      <div className="cv-card pad" style={{ marginTop: 14, padding: 14 }}>
+                        <p className="cv-small-note" style={{ marginTop: 0 }}>
+                          Scan this code with your authenticator app. Keep the setup secret private.
+                        </p>
+                        <img
+                          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(mfaSetup.qrCode)}`}
+                          alt="Authenticator app setup QR code"
+                          width={180}
+                          height={180}
+                          style={{ display: "block", maxWidth: "100%", background: "#fff", padding: 8, borderRadius: 8 }}
+                        />
+                        <p className="cv-small-note" style={{ marginBottom: 4 }}>Manual setup key</p>
+                        <code style={{ display: "block", overflowWrap: "anywhere", userSelect: "all" }}>
+                          {mfaSetup.secret}
+                        </code>
+                        <form onSubmit={verifyMfaEnrollment} style={{ marginTop: 14 }}>
+                          <label htmlFor="mfa-enrollment-code">Current authenticator code</label>
+                          <input
+                            id="mfa-enrollment-code"
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            pattern="[0-9]{6,10}"
+                            maxLength={10}
+                            value={mfaCode}
+                            onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, ""))}
+                            required
+                          />
+                          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                            <button className="cv-button primary" type="submit" disabled={saving === "mfa-verify"}>
+                              {saving === "mfa-verify" ? "Verifying…" : "Verify and enable"}
+                            </button>
+                            <button
+                              className="cv-button"
+                              type="button"
+                              disabled={saving === "mfa-verify"}
+                              onClick={() => {
+                                setMfaSetup(null);
+                                setMfaCode("");
+                                setNotice("");
+                              }}
+                            >
+                              Cancel setup
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    ) : !mfaRemoval ? (
+                      <button
+                        className="cv-button primary"
+                        type="button"
+                        style={{ marginTop: 14 }}
+                        disabled={saving === "mfa-enroll"}
+                        onClick={() => void startMfaEnrollment()}
+                      >
+                        {saving === "mfa-enroll" ? "Preparing setup…" : mfaFactors.some((factor) => factor.status === "verified") ? "Add backup authenticator" : "Set up authenticator app"}
+                      </button>
+                    ) : null}
+
+                    {mfaRemoval ? (
+                      <form onSubmit={confirmMfaRemoval} style={{ marginTop: 14 }}>
+                        <label htmlFor="mfa-removal-code">Confirm removal with the current code</label>
+                        <input
+                          id="mfa-removal-code"
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          pattern="[0-9]{6,10}"
+                          maxLength={10}
+                          value={mfaCode}
+                          onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, ""))}
+                          required
+                        />
+                        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                          <button className="cv-button primary" type="submit" disabled={saving === "mfa-remove"}>
+                            {saving === "mfa-remove" ? "Removing…" : "Confirm removal"}
+                          </button>
+                          <button
+                            className="cv-button"
+                            type="button"
+                            disabled={saving === "mfa-remove"}
+                            onClick={() => {
+                              setMfaRemoval(null);
+                              setMfaCode("");
+                              setNotice("");
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : null}
+
+                    <p className="cv-small-note" style={{ marginTop: 14 }}>
+                      {String(twoFactor.recovery_note || "Supabase does not provide recovery codes. Add a backup authenticator on a separate device before relying on two-step verification.")}
+                    </p>
+                  </>
+                )}
+              </section>
+
+              {twoFactor.status !== "unavailable" ? (
+                <section className="cv-card pad" style={{ marginTop: 16 }}>
+                  <h4 className="cv-card-title">Passkeys</h4>
+                  <p className="cv-card-subtitle">
+                    Sign in with a device passkey, such as Face ID, Touch ID, Windows Hello, or a security key. Passkeys are phishing-resistant and help protect against fake sign-in pages.
+                  </p>
+                  {passkeyError ? (
+                    <p className="cv-error" role="status" style={{ marginTop: 12 }}>
+                      {passkeyError}
+                    </p>
+                  ) : null}
+                  {passkeys.length ? (
+                    <div style={{ display: "grid", gap: 8, marginTop: 14 }}>
+                      {passkeys.map((passkey, index) => (
+                        <div
+                          key={String(passkey.id || index)}
+                          className="cv-fact"
+                          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}
+                        >
+                          <div>
+                            <strong>{String(passkey.friendly_name || `Passkey ${index + 1}`)}</strong>
+                            <p className="cv-small-note" style={{ margin: "4px 0 0" }}>
+                              {passkey.last_used_at
+                                ? `Last used ${String(passkey.last_used_at)}`
+                                : passkey.created_at
+                                  ? `Added ${String(passkey.created_at)}`
+                                  : "Available for passkey sign-in"}
+                            </p>
+                          </div>
+                          <button
+                            className="cv-button"
+                            type="button"
+                            disabled={saving === "passkey-remove"}
+                            onClick={() => void removePasskey(String(passkey.id || ""))}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : !passkeyError && !passkeysLoading ? (
+                    <p className="cv-small-note" style={{ marginTop: 12 }}>
+                      No passkeys are registered for this account.
+                    </p>
+                  ) : null}
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+                    <button
+                      className="cv-button primary"
+                      type="button"
+                      disabled={saving === "passkey-register" || passkeysLoading}
+                      onClick={() => void registerPasskey()}
+                    >
+                      {saving === "passkey-register" ? "Waiting for your device…" : "Add a passkey"}
+                    </button>
+                    <button
+                      className="cv-button"
+                      type="button"
+                      disabled={passkeysLoading}
+                      onClick={() => void refreshPasskeys()}
+                    >
+                      {passkeysLoading ? "Refreshing…" : "Refresh passkeys"}
+                    </button>
+                  </div>
+                  <p className="cv-small-note" style={{ marginTop: 12 }}>
+                    Keep another sign-in method or a second passkey available in case you lose access to this device.
+                  </p>
+                </section>
+              ) : null}
 
               {password.reset_available ? (
                 <div style={{ marginTop: 16 }}>

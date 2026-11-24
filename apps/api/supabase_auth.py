@@ -10,7 +10,9 @@ when ``is_production_runtime()`` is true.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
 import os
 import re
 import threading
@@ -34,6 +36,9 @@ TRIAL_DAYS = 14
 _ENTITLEMENT_CACHE_TTL_SECONDS = 20
 _ENTITLEMENT_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _ENTITLEMENT_CACHE_LOCK = threading.RLock()
+_MFA_FACTOR_CACHE_TTL_SECONDS = 5
+_MFA_FACTOR_CACHE: dict[str, tuple[float, list[dict[str, str]]]] = {}
+_MFA_FACTOR_CACHE_LOCK = threading.RLock()
 
 
 def supabase_url() -> str:
@@ -286,6 +291,179 @@ def _client(*, flow_type: str | None = None):
 
         return create_client(url, key, options=ClientOptions(flow_type=flow_type))
     return create_client(url, key)
+
+
+def _verified_jwt_claims(access_token: str) -> dict[str, Any]:
+    """Read claims after Supabase Auth has validated the token with get_user()."""
+    parts = (access_token or "").split(".")
+    if len(parts) != 3:
+        return {}
+    try:
+        payload = parts[1].replace("-", "+").replace("_", "/")
+        payload += "=" * (-len(payload) % 4)
+        claims = json.loads(base64.b64decode(payload).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return claims if isinstance(claims, dict) else {}
+
+
+def _mfa_factor_rows(
+    access_token: str,
+    user_id: str,
+    *,
+    force_refresh: bool = False,
+) -> list[dict[str, str]]:
+    """Read safe factor metadata from Supabase Auth; never cache TOTP secrets."""
+    if not _verified_jwt_claims(access_token):
+        # Supabase access tokens are JWTs. This also keeps isolated auth mocks
+        # that use opaque fixture tokens from reaching the real Auth service.
+        return []
+    now = time.monotonic()
+    with _MFA_FACTOR_CACHE_LOCK:
+        cached = _MFA_FACTOR_CACHE.get(user_id)
+        if (
+            not force_refresh
+            and cached is not None
+            and now - cached[0] < _MFA_FACTOR_CACHE_TTL_SECONDS
+        ):
+            return [dict(row) for row in cached[1]]
+
+    import urllib.request
+
+    url, key = _require_configured()
+    req = urllib.request.Request(
+        # Supabase exposes the authenticated user's factor inventory through
+        # PostgREST, not the Auth service's /auth/v1 route.
+        f"{url.rstrip('/')}/rest/v1/auth/factors",
+        method="GET",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "apikey": key,
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:  # noqa: S310 — Auth host from env
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        raise AuthError(
+            "Cadivor could not verify your authenticator settings. Try again shortly.",
+            503,
+        ) from exc
+
+    if isinstance(payload, list):
+        rows = payload
+    elif isinstance(payload, dict):
+        rows = payload.get("all")
+        if not isinstance(rows, list):
+            rows = [
+                *(payload.get("totp") if isinstance(payload.get("totp"), list) else []),
+                *(payload.get("phone") if isinstance(payload.get("phone"), list) else []),
+            ]
+    else:
+        rows = []
+
+    safe_rows: list[dict[str, str]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        factor_id = str(row.get("id") or "").strip()
+        factor_type = str(row.get("factor_type") or row.get("type") or "").strip().lower()
+        status = str(row.get("status") or "").strip().lower()
+        if not factor_id or not factor_type or not status:
+            continue
+        safe_rows.append(
+            {
+                "id": factor_id,
+                "factor_type": factor_type,
+                "status": status,
+                "friendly_name": str(row.get("friendly_name") or "Authenticator app")[:80],
+            }
+        )
+
+    with _MFA_FACTOR_CACHE_LOCK:
+        _MFA_FACTOR_CACHE[user_id] = (time.monotonic(), [dict(row) for row in safe_rows])
+        if len(_MFA_FACTOR_CACHE) > 2048:
+            for stale_id, (cached_at, _) in list(_MFA_FACTOR_CACHE.items()):
+                if time.monotonic() - cached_at >= _MFA_FACTOR_CACHE_TTL_SECONDS:
+                    _MFA_FACTOR_CACHE.pop(stale_id, None)
+    return safe_rows
+
+
+def _require_mfa_step_up(
+    access_token: str,
+    user_id: str,
+    *,
+    force_refresh: bool = False,
+) -> None:
+    claims = _verified_jwt_claims(access_token)
+    if claims.get("aal", "aal1") == "aal2":
+        return
+    verified_totp = [
+        row
+        for row in _mfa_factor_rows(access_token, user_id, force_refresh=force_refresh)
+        if row["factor_type"] == "totp" and row["status"] == "verified"
+    ]
+    if verified_totp:
+        raise AuthError(
+            "Enter a current authenticator code to finish signing in.",
+            401,
+        )
+
+
+def mfa_status(access_token: str, user_id: str, *, force_refresh: bool = False) -> dict[str, Any]:
+    factors = [
+        row
+        for row in _mfa_factor_rows(access_token, user_id, force_refresh=force_refresh)
+        if row["factor_type"] == "totp"
+    ]
+    enabled = any(row["status"] == "verified" for row in factors)
+    return {
+        "status": "enabled" if enabled else "not_enabled",
+        "enabled": enabled,
+        "label": (
+            "Enabled · authenticator app"
+            if enabled
+            else "Optional · not enabled"
+        ),
+        "factors": factors,
+        "recovery_note": (
+            "Supabase does not issue recovery codes. Add a backup authenticator "
+            "on a separate device before relying on two-step verification."
+        ),
+    }
+
+
+def _pending_mfa_login(
+    access_token: str,
+    user_id: str,
+    email: str,
+    *,
+    refresh_token: str = "",
+    expires_in: int = 3600,
+) -> dict[str, Any] | None:
+    """Return a limited pending session when a verified TOTP must be completed."""
+    claims = _verified_jwt_claims(access_token)
+    if claims.get("aal", "aal1") == "aal2":
+        return None
+    verified_totp = [
+        row
+        for row in _mfa_factor_rows(access_token, user_id, force_refresh=True)
+        if row["factor_type"] == "totp" and row["status"] == "verified"
+    ]
+    if not verified_totp:
+        return None
+    return {
+        "mfa_required": True,
+        "access_token": access_token,
+        **({"refresh_token": refresh_token} if refresh_token else {}),
+        "token_type": "bearer",
+        "expires_in": expires_in,
+        "email": email,
+        "user_id": user_id,
+        "mfa_factors": verified_totp,
+        "mode": "supabase-jwt",
+    }
 
 
 def _user_scoped_client(access_token: str):
@@ -843,6 +1021,40 @@ def login(
         raise AuthError("Invalid credentials")
     require_active_account(access_token)
     user_id, user_email = _user_payload(user)
+    expires_in = int(
+        getattr(session, "expires_in", None)
+        or (session.get("expires_in") if isinstance(session, dict) else 0)
+        or 3600
+    )
+    pending_mfa = _pending_mfa_login(
+        access_token,
+        user_id,
+        user_email,
+        refresh_token=refresh_token,
+        expires_in=expires_in,
+    )
+    if pending_mfa:
+        return pending_mfa
+    return _complete_authenticated_login(
+        access_token,
+        user,
+        invite_token=invite_token,
+        refresh_token=refresh_token,
+        session=session,
+    )
+
+
+def _complete_authenticated_login(
+    access_token: str,
+    user: Any,
+    *,
+    invite_token: str | None = None,
+    refresh_token: str = "",
+    session: Any = None,
+) -> dict[str, Any]:
+    """Create Cadivor workspace state only after Supabase MFA is satisfied."""
+    user_id, user_email = _user_payload(user)
+    _require_mfa_step_up(access_token, user_id, force_refresh=True)
     membership = ensure_owner_membership(
         user_id=user_id,
         email=user_email,
@@ -878,9 +1090,11 @@ def login(
             trial_payload["trial_days_remaining"] = membership_trial.get(
                 "trial_days_remaining"
             )
+    claims = _verified_jwt_claims(access_token)
     expires_in = int(
         getattr(session, "expires_in", None)
         or (session.get("expires_in") if isinstance(session, dict) else 0)
+        or max(0, int(claims.get("exp", 0) or 0) - int(time.time()))
         or 3600
     )
     return {
@@ -899,6 +1113,39 @@ def login(
         "production_auth": True,
         **trial_payload,
     }
+
+
+def complete_login_session(
+    access_token: str,
+    *,
+    invite_token: str | None = None,
+) -> dict[str, Any]:
+    """Exchange a verified Supabase MFA session for a Cadivor app session."""
+    _require_configured()
+    if not access_token:
+        raise AuthError("Missing bearer token")
+    client = _client()
+    try:
+        response = client.auth.get_user(access_token)
+    except Exception as exc:  # noqa: BLE001
+        raise AuthError("Invalid token") from exc
+    user = getattr(response, "user", None) or (
+        response.get("user") if isinstance(response, dict) else None
+    )
+    if user is None:
+        raise AuthError("Invalid token")
+    if not user_email_verified(user):
+        raise AuthError("Verify your email address before signing in", 403)
+    require_active_account(access_token)
+    user_id, user_email = _user_payload(user)
+    pending_mfa = _pending_mfa_login(access_token, user_id, user_email)
+    if pending_mfa:
+        return pending_mfa
+    return _complete_authenticated_login(
+        access_token,
+        user,
+        invite_token=invite_token,
+    )
 
 
 def logout(access_token: str) -> None:
@@ -948,6 +1195,7 @@ def resolve_bearer(access_token: str) -> AuthContext:
     user_id, email = _user_payload(user)
     if not user_email_verified(user):
         raise AuthError("Verify your email address before using Cadivor", 403)
+    _require_mfa_step_up(access_token, user_id)
     runtime_access = require_active_account(access_token)
     membership = ensure_owner_membership(
         user_id=user_id,

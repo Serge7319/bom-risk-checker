@@ -10,9 +10,12 @@ import {
   fetchPublicServiceStatus,
   getSession,
   login,
+  completeMfaLogin,
   lookupInvitation,
   registerFromInvitation,
   setSession,
+  stageSupabaseSession,
+  type PendingMfaSession,
   type Session,
   type PublicServiceStatus,
 } from "@/lib/api";
@@ -45,6 +48,13 @@ type InvitePreview = {
 };
 
 type ConfirmPhase = "none" | "ready" | "success" | "invalid";
+type TotpFactorChoice = { id: string; friendly_name: string };
+
+function isPendingMfaSession(
+  session: Session | PendingMfaSession,
+): session is PendingMfaSession {
+  return (session as PendingMfaSession).mfa_required === true;
+}
 
 function LoginInner() {
   const router = useRouter();
@@ -68,6 +78,10 @@ function LoginInner() {
   const [inviteError, setInviteError] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [serviceStatus, setServiceStatus] = useState<PublicServiceStatus | null>(null);
+  const [mfaPendingSession, setMfaPendingSession] = useState<PendingMfaSession | null>(null);
+  const [mfaFactors, setMfaFactors] = useState<TotpFactorChoice[]>([]);
+  const [mfaSelectedFactor, setMfaSelectedFactor] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
 
   // Signup email confirmation: stage hash in memory; never verifyOtp in an effect.
   const stagedTokenHash = useRef<string | null>(null);
@@ -304,35 +318,177 @@ function LoginInner() {
     setMode("signin");
   }
 
+  async function showMfaChallenge(result: PendingMfaSession) {
+    const client = getSupabaseBrowserClient();
+    if (!client) throw new Error("Authenticator verification is unavailable. Please try again.");
+    const listed = await client.auth.mfa.listFactors();
+    if (listed.error) throw listed.error;
+    const factors = listed.data.totp
+      .filter((factor) => factor.status === "verified")
+      .map((factor) => ({
+        id: factor.id,
+        friendly_name: factor.friendly_name || "Authenticator app",
+      }));
+    if (!factors.length) {
+      throw new Error("No verified authenticator was found. Contact Cadivor support before continuing.");
+    }
+    const serverFactorIds = new Set(result.mfa_factors.map((factor) => factor.id));
+    const firstFactor = factors.find((factor) => serverFactorIds.has(factor.id)) || factors[0];
+    setEmail(result.email);
+    setMfaPendingSession(result);
+    setMfaFactors(factors);
+    setMfaSelectedFactor(firstFactor.id);
+    setPassword("");
+  }
+
+  async function cancelMfaSignIn() {
+    const client = getSupabaseBrowserClient();
+    if (client) await client.auth.signOut({ scope: "local" }).catch(() => undefined);
+    setMfaPendingSession(null);
+    setMfaFactors([]);
+    setMfaSelectedFactor("");
+    setMfaCode("");
+    setError("");
+  }
+
+  async function enterWorkspace(session: Session) {
+    await setSession(session);
+    let newlyConfirmed = false;
+    try {
+      newlyConfirmed = marketingAnalyticsAllowed() && sessionStorage.getItem("cadivor_signup_confirmed_pending") === "1";
+      if (newlyConfirmed) sessionStorage.removeItem("cadivor_signup_confirmed_pending");
+    } catch { /* analytics is optional */ }
+    if (newlyConfirmed && session.trial_status === "trialing") {
+      trackMarketingEventOnce(
+        "trial_started",
+        `trial_started:${session.user_id || ""}`,
+        { intent: "trial" },
+        "/login",
+      );
+    }
+    const stressHandoff = consumeStressReportPending();
+    router.replace(
+      stressHandoff.pending
+        ? reportsHandoffHref(stressHandoff.reportId)
+        : "/",
+    );
+  }
+
   async function onSignIn(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError("");
     setNotice("");
+    let stagedAuthSession = false;
     try {
-      const session = await login(email, password);
-      await setSession(session);
-      let newlyConfirmed = false;
-      try {
-        newlyConfirmed = marketingAnalyticsAllowed() && sessionStorage.getItem("cadivor_signup_confirmed_pending") === "1";
-        if (newlyConfirmed) sessionStorage.removeItem("cadivor_signup_confirmed_pending");
-      } catch { /* analytics is optional */ }
-      if (newlyConfirmed && session.trial_status === "trialing") {
-        trackMarketingEventOnce(
-          "trial_started",
-          `trial_started:${session.user_id || ""}`,
-          { intent: "trial" },
-          "/login",
-        );
+      const result = await login(email, password, inviteToken || undefined);
+      if (isPendingMfaSession(result)) {
+        await stageSupabaseSession(result);
+        stagedAuthSession = true;
+        await showMfaChallenge(result);
+        return;
       }
-      const stressHandoff = consumeStressReportPending();
-      router.replace(
-        stressHandoff.pending
-          ? reportsHandoffHref(stressHandoff.reportId)
-          : "/",
-      );
+      await enterWorkspace(result);
     } catch (err) {
+      if (stagedAuthSession) {
+        const client = getSupabaseBrowserClient();
+        if (client) await client.auth.signOut({ scope: "local" }).catch(() => undefined);
+        setMfaPendingSession(null);
+        setMfaFactors([]);
+        setMfaSelectedFactor("");
+      }
       setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onPasskeySignIn() {
+    const client = getSupabaseBrowserClient();
+    if (!client) {
+      setError("Passkey sign-in is unavailable in this environment.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    let authenticated = false;
+    try {
+      const { data, error: passkeyError } = await client.auth.signInWithPasskey();
+      if (passkeyError) throw passkeyError;
+      const authSession = data.session;
+      if (!authSession) throw new Error("Passkey sign-in did not return an active session.");
+      authenticated = true;
+      const result = await completeMfaLogin(
+        authSession.access_token,
+        inviteToken || undefined,
+      );
+      if (isPendingMfaSession(result)) {
+        await showMfaChallenge(result);
+        return;
+      }
+      await enterWorkspace({
+        ...result,
+        access_token: authSession.access_token,
+        refresh_token: authSession.refresh_token,
+      });
+    } catch (err) {
+      if (authenticated) await client.auth.signOut({ scope: "local" }).catch(() => undefined);
+      setMfaPendingSession(null);
+      setMfaFactors([]);
+      setMfaSelectedFactor("");
+      const message = err instanceof Error ? err.message : "Passkey sign-in failed.";
+      setError(/passkey_disabled/i.test(message)
+        ? "Passkey sign-in is not available yet. Use your password or contact Cadivor support."
+        : message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onVerifyMfa(event: FormEvent) {
+    event.preventDefault();
+    if (!mfaPendingSession || !mfaSelectedFactor) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const client = getSupabaseBrowserClient();
+      if (!client) throw new Error("Authenticator verification is unavailable. Please try again.");
+      const challenge = await client.auth.mfa.challenge({ factorId: mfaSelectedFactor });
+      if (challenge.error) throw challenge.error;
+      const verified = await client.auth.mfa.verify({
+        factorId: mfaSelectedFactor,
+        challengeId: challenge.data.id,
+        code: mfaCode.trim(),
+      });
+      if (verified.error) throw verified.error;
+      const [{ data: authData, error: authError }, { data: aalData, error: aalError }] =
+        await Promise.all([
+          client.auth.getSession(),
+          client.auth.mfa.getAuthenticatorAssuranceLevel(),
+        ]);
+      if (authError || !authData.session || aalError || aalData.currentLevel !== "aal2") {
+        throw new Error("The authenticator code was not accepted. Check the current code and try again.");
+      }
+      const completed = await completeMfaLogin(
+        authData.session.access_token,
+        inviteToken || undefined,
+      );
+      if (isPendingMfaSession(completed)) {
+        throw new Error("Authenticator verification did not complete. Please try the current code again.");
+      }
+      setMfaPendingSession(null);
+      setMfaFactors([]);
+      setMfaSelectedFactor("");
+      setMfaCode("");
+      await enterWorkspace({
+        ...completed,
+        access_token: authData.session.access_token,
+        refresh_token: authData.session.refresh_token,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Authenticator verification failed.");
     } finally {
       setBusy(false);
     }
@@ -484,7 +640,13 @@ function LoginInner() {
     <div className="cv-login">
       <form
         className="cv-card cv-login-card"
-        onSubmit={mode === "create" ? onCreateFromInvite : onSignIn}
+        onSubmit={
+          mode === "create"
+            ? onCreateFromInvite
+            : mfaPendingSession
+              ? onVerifyMfa
+              : onSignIn
+        }
       >
         <BrandLink href="https://www.cadivor.com/" ariaLabel="Cadivor homepage" compact />
         <div className="cv-eyebrow">Cadivor Auth</div>
@@ -520,7 +682,7 @@ function LoginInner() {
           </div>
         ) : null}
 
-        {inviteToken && invitationsEnabled ? (
+        {!mfaPendingSession && inviteToken && invitationsEnabled ? (
           <div className="cv-segment" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
             <button
               type="button"
@@ -539,47 +701,107 @@ function LoginInner() {
           </div>
         ) : null}
 
-        <label htmlFor="email">Email</label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          readOnly={Boolean(invite)}
-        />
-        <label htmlFor="password">Password</label>
-        <input
-          id="password"
-          type="password"
-          autoComplete={mode === "create" ? "new-password" : "current-password"}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={mode === "create" ? 12 : undefined}
-        />
-        {mode === "create" ? (
-          <>
-            <label htmlFor="confirm-password">Confirm password</label>
+        {mfaPendingSession ? (
+          <div className="cv-card pad" style={{ margin: "12px 0", padding: 14 }}>
+            <div className="cv-eyebrow">Two-step verification</div>
+            <p className="cv-page-description" style={{ margin: "6px 0 12px" }}>
+              Enter the current code from your authenticator app to finish signing in as {email}.
+            </p>
+            {mfaFactors.length > 1 ? (
+              <>
+                <label htmlFor="mfa-factor">Authenticator</label>
+                <select
+                  id="mfa-factor"
+                  value={mfaSelectedFactor}
+                  onChange={(event) => {
+                    const factorId = event.target.value;
+                    setMfaSelectedFactor(factorId);
+                    setMfaCode("");
+                    setError("");
+                  }}
+                  disabled={busy}
+                >
+                  {mfaFactors.map((factor, index) => (
+                    <option key={factor.id} value={factor.id}>
+                      {factor.friendly_name || `Authenticator ${index + 1}`}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : null}
+            <label htmlFor="mfa-code">Authenticator code</label>
             <input
-              id="confirm-password"
-              type="password"
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
+              id="mfa-code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]{6,10}"
+              maxLength={10}
+              value={mfaCode}
+              onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, ""))}
               required
-              minLength={12}
+              aria-describedby="mfa-code-help"
             />
-            <TermsAcceptance
-              checked={acceptedTerms}
-              onChange={setAcceptedTerms}
-              disabled={busy}
+            <p id="mfa-code-help" className="cv-small-note" style={{ marginTop: 6 }}>
+              Use the current code shown in your authenticator app.
+            </p>
+          </div>
+        ) : (
+          <>
+            <label htmlFor="email">Email</label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              readOnly={Boolean(invite)}
             />
+            <label htmlFor="password">Password</label>
+            <input
+              id="password"
+              type="password"
+              autoComplete={mode === "create" ? "new-password" : "current-password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={mode === "create" ? 12 : undefined}
+            />
+            {mode === "signin" ? (
+              <button
+                className="cv-button"
+                style={{ width: "100%", marginTop: 12 }}
+                type="button"
+                onClick={() => void onPasskeySignIn()}
+                disabled={busy}
+              >
+                {busy ? "Waiting for passkey…" : "Sign in with a passkey"}
+              </button>
+            ) : null}
+            {mode === "create" ? (
+              <>
+                <label htmlFor="confirm-password">Confirm password</label>
+                <input
+                  id="confirm-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={12}
+                />
+                <TermsAcceptance
+                  checked={acceptedTerms}
+                  onChange={setAcceptedTerms}
+                  disabled={busy}
+                />
+              </>
+            ) : null}
           </>
-        ) : null}
+        )}
         {error ? <div className="cv-error" role="alert">{error}</div> : null}
-        {mode === "signin" ? (
+        {mode === "signin" && !mfaPendingSession ? (
           <p className="cv-auth-switch" style={{ marginTop: 8, marginBottom: 0 }}>
             <Link href="/reset-password">Forgot password?</Link>
           </p>
@@ -597,12 +819,26 @@ function LoginInner() {
           {busy
             ? mode === "create"
               ? "Creating account…"
-              : "Signing in…"
+              : mfaPendingSession
+                ? "Verifying code…"
+                : "Signing in…"
             : mode === "create"
               ? "Create account and join workspace"
-              : "Continue"}
+              : mfaPendingSession
+                ? "Verify and continue"
+                : "Continue"}
         </button>
-        {mode === "signin" && signupEnabled ? (
+        {mfaPendingSession ? (
+          <button
+            className="cv-button"
+            style={{ width: "100%", marginTop: 10 }}
+            type="button"
+            onClick={() => void cancelMfaSignIn()}
+            disabled={busy}
+          >
+            Cancel sign-in
+          </button>
+        ) : mode === "signin" && signupEnabled ? (
           <p className="cv-auth-switch">
             <Link href="/signup">Create an account · Start a 14-day trial</Link>
           </p>
