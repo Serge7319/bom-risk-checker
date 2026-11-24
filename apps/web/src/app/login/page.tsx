@@ -7,17 +7,20 @@ import {
   clearSession,
   fetchAuthConfig,
   fetchMe,
+  fetchPublicServiceStatus,
   getSession,
   login,
   lookupInvitation,
   registerFromInvitation,
   setSession,
   type Session,
+  type PublicServiceStatus,
 } from "@/lib/api";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { cleanUserText, userFacingLabel } from "@/lib/display";
 import { TermsAcceptance } from "@/components/TermsAcceptance";
 import { BrandLink } from "@/components/BrandLink";
+import { ServiceNotices } from "@/components/ServiceNotices";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
 import { marketingAnalyticsAllowed, trackMarketingEvent, trackMarketingEventOnce } from "@/lib/marketingAnalytics";
 import {
@@ -64,6 +67,7 @@ function LoginInner() {
   const [invite, setInvite] = useState<InvitePreview | null>(null);
   const [inviteError, setInviteError] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [serviceStatus, setServiceStatus] = useState<PublicServiceStatus | null>(null);
 
   // Signup email confirmation: stage hash in memory; never verifyOtp in an effect.
   const stagedTokenHash = useRef<string | null>(null);
@@ -163,6 +167,20 @@ function LoginInner() {
         setSignupEnabled(false);
         setInvitationsEnabled(true);
       });
+  }, []);
+
+  useEffect(() => {
+    let current = true;
+    void fetchPublicServiceStatus()
+      .then((status) => {
+        if (current) setServiceStatus(status);
+      })
+      .catch(() => {
+        if (current) setServiceStatus(null);
+      });
+    return () => {
+      current = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -478,6 +496,8 @@ function LoginInner() {
             ? "Use the email address on your workspace invitation."
             : "Sign in to your Cadivor workspace. Supplier prices and availability may include sample estimates; check the source label before acting."}
         </p>
+
+        <ServiceNotices status={serviceStatus} showUnavailable />
 
         {invite ? (
           <div className="cv-card pad" style={{ marginBottom: 14, padding: 12 }} role="status">

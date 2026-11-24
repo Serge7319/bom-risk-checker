@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   getSession,
+  LEGACY_SESSION_KEY,
+  SESSION_KEY,
   type AnalyzeSummary,
   type Session,
 } from "@/lib/api";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 const LAST_ANALYSIS_KEY = "cadivor_next_last_analysis";
 
@@ -26,6 +29,59 @@ export function useRequireSession(): Session | null {
       return;
     }
     setSession(current);
+  }, [router]);
+
+  useEffect(() => {
+    function syncSessionAcrossTabs(event: StorageEvent) {
+      if (
+        event.key !== null &&
+        event.key !== SESSION_KEY &&
+        event.key !== LEGACY_SESSION_KEY
+      ) {
+        return;
+      }
+      const current = getSession();
+      setSession(current);
+      if (!current) router.replace("/login");
+    }
+    window.addEventListener("storage", syncSessionAcrossTabs);
+    return () => window.removeEventListener("storage", syncSessionAcrossTabs);
+  }, [router]);
+
+  useEffect(() => {
+    const client = getSupabaseBrowserClient();
+    if (!client) return;
+    const { data } = client.auth.onAuthStateChange((_event, authSession) => {
+      // The app's display session and Supabase's refresh-token session are
+      // stored separately. If a second tab changes accounts, discard the old
+      // app snapshot instead of rendering admin controls for a different JWT.
+      window.setTimeout(() => {
+        const current = getSession();
+        if (!current) {
+          setSession(null);
+          router.replace("/login");
+          return;
+        }
+
+        const authUser = authSession?.user;
+        const matches = Boolean(
+          authUser &&
+            (current.user_id
+              ? current.user_id === authUser.id
+              : current.email.trim().toLowerCase() ===
+                (authUser.email || "").trim().toLowerCase()),
+        );
+        if (matches) return;
+
+        // Keep Supabase's newly selected account intact so the user can sign
+        // in again; remove only Cadivor's stale UI snapshot.
+        window.localStorage.removeItem(SESSION_KEY);
+        window.localStorage.removeItem(LEGACY_SESSION_KEY);
+        setSession(null);
+        router.replace("/login?reason=session-refresh");
+      }, 0);
+    });
+    return () => data.subscription.unsubscribe();
   }, [router]);
 
   return session;

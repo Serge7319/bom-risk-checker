@@ -254,6 +254,9 @@ class AuthContext:
     # Supabase runtime access RPC in production. Sandbox auth leaves it unset.
     maintenance_mode: bool | None = None
     maintenance_message: str | None = None
+    planned_maintenance_message: str | None = None
+    planned_maintenance_starts_at: str | None = None
+    planned_maintenance_ends_at: str | None = None
     # This is supplied only by verified production billing entitlements. It is
     # not inferred from workspace membership or a browser-visible plan.
     platform_role: str | None = None
@@ -284,6 +287,12 @@ class AuthContext:
             payload["maintenance_mode"] = self.maintenance_mode
         if self.maintenance_message is not None:
             payload["maintenance_message"] = self.maintenance_message
+        if self.planned_maintenance_message is not None:
+            payload["planned_maintenance_message"] = self.planned_maintenance_message
+        if self.planned_maintenance_starts_at is not None:
+            payload["planned_maintenance_starts_at"] = self.planned_maintenance_starts_at
+        if self.planned_maintenance_ends_at is not None:
+            payload["planned_maintenance_ends_at"] = self.planned_maintenance_ends_at
         if self.platform_role is not None:
             payload["platform_role"] = self.platform_role
         if self.api_access_addon_active is not None:

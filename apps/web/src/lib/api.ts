@@ -113,8 +113,8 @@ export type OneTimeReportStatus = {
   max_components: number;
 };
 
-const SESSION_KEY = "cadivor_next_session";
-const LEGACY_SESSION_KEY = "cadivor_next_sandbox_session";
+export const SESSION_KEY = "cadivor_next_session";
+export const LEGACY_SESSION_KEY = "cadivor_next_sandbox_session";
 let refreshInFlight: Promise<string | null> | null = null;
 
 function sessionMatchesSupabaseUser(
@@ -128,6 +128,20 @@ function sessionMatchesSupabaseUser(
       authUser.email &&
       appSession.email.trim().toLowerCase() === authUser.email.trim().toLowerCase(),
   );
+}
+
+function tokenBelongsToSession(token: string, session: Session): boolean {
+  try {
+    const segment = token.split(".")[1];
+    if (!segment) return true;
+    const base64 = segment.replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="))) as {
+      sub?: string;
+    };
+    return !session.user_id || !payload.sub || session.user_id === payload.sub;
+  } catch {
+    return true;
+  }
 }
 
 function persistAccessToken(accessToken: string) {
@@ -182,6 +196,13 @@ async function currentSupabaseAccessToken(fallback: string): Promise<string> {
     const client = getSupabaseBrowserClient();
     const appSession = getSession();
     if (!client || !appSession) return fallback;
+    if (!tokenBelongsToSession(fallback, appSession)) {
+      throw new ApiError(
+        "Your Cadivor account changed in another tab. Refresh this page before continuing.",
+        409,
+        { code: "session_account_mismatch" },
+      );
+    }
 
     const { data, error } = await client.auth.getSession();
     const authSession = data.session;
@@ -198,7 +219,8 @@ async function currentSupabaseAccessToken(fallback: string): Promise<string> {
 
     persistAccessToken(authSession.access_token);
     return authSession.access_token;
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
     return fallback;
   }
 }
@@ -1648,10 +1670,25 @@ export type RuntimeMaintenanceStatus = {
   maintenance_mode: boolean;
   maintenance_message: string;
   is_admin: boolean;
+  planned_maintenance_message?: string;
+  planned_maintenance_starts_at?: string | null;
+  planned_maintenance_ends_at?: string | null;
 };
 
+export type PublicServiceStatus = {
+  maintenance_mode: boolean;
+  maintenance_message: string;
+  planned_maintenance_message: string;
+  planned_maintenance_starts_at: string | null;
+  planned_maintenance_ends_at: string | null;
+};
+
+export async function fetchPublicServiceStatus() {
+  return apiJson<PublicServiceStatus>("/public/service-status", { cache: "no-store" });
+}
+
 export async function fetchRuntimeMaintenance(token: string) {
-  return apiJson<RuntimeMaintenanceStatus>("/runtime/maintenance", { token });
+  return apiJson<RuntimeMaintenanceStatus>("/runtime/maintenance", { token, cache: "no-store" });
 }
 
 export type AdminPlatformOverview = {
@@ -1661,10 +1698,13 @@ export type AdminPlatformOverview = {
   suspended_users?: number;
   maintenance_mode: boolean;
   maintenance_message: string;
+  planned_maintenance_message: string;
+  planned_maintenance_starts_at: string | null;
+  planned_maintenance_ends_at: string | null;
 };
 
 export async function fetchAdminPlatformSettings(token: string) {
-  return apiJson<{ ok: boolean; overview: AdminPlatformOverview }>("/admin/platform-settings", { token });
+  return apiJson<{ ok: boolean; overview: AdminPlatformOverview }>("/admin/platform-settings", { token, cache: "no-store" });
 }
 
 export async function updateAdminMaintenanceMode(
@@ -1680,6 +1720,26 @@ export async function updateAdminMaintenanceMode(
     maintenance_mode: boolean;
     maintenance_message: string;
   }>("/admin/platform-settings/maintenance", {
+    method: "PUT",
+    token,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateAdminPlannedMaintenance(
+  token: string,
+  body: {
+    message: string;
+    starts_at: string | null;
+    ends_at: string | null;
+  },
+) {
+  return apiJson<{
+    ok: boolean;
+    planned_maintenance_message: string;
+    planned_maintenance_starts_at: string | null;
+    planned_maintenance_ends_at: string | null;
+  }>("/admin/platform-settings/planned-maintenance", {
     method: "PUT",
     token,
     body: JSON.stringify(body),

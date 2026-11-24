@@ -4108,8 +4108,41 @@ async def runtime_maintenance_get(request: Request) -> JSONResponse:
             "maintenance_mode": bool(ctx.get("maintenance_mode")),
             "maintenance_message": str(ctx.get("maintenance_message") or ""),
             "is_admin": ctx.get("platform_role") == "admin",
+            "planned_maintenance_message": str(
+                ctx.get("planned_maintenance_message") or ""
+            ),
+            "planned_maintenance_starts_at": ctx.get(
+                "planned_maintenance_starts_at"
+            ),
+            "planned_maintenance_ends_at": ctx.get(
+                "planned_maintenance_ends_at"
+            ),
         }
     )
+
+
+async def public_service_status_get(request: Request) -> JSONResponse:
+    """Return public maintenance notices for the sign-in screen."""
+    if not _use_supabase_auth():
+        return _json(
+            {
+                "maintenance_mode": False,
+                "maintenance_message": "",
+                "planned_maintenance_message": "",
+                "planned_maintenance_starts_at": None,
+                "planned_maintenance_ends_at": None,
+            }
+        )
+    try:
+        status = await run_in_threadpool(supabase_auth.public_service_status)
+    except AuthNotConfiguredError:
+        return _json({"detail": "Cadivor service status is temporarily unavailable."}, 503)
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    except Exception:  # noqa: BLE001
+        logging.exception("public_service_status_failed")
+        return _json({"detail": "Cadivor service status is temporarily unavailable."}, 503)
+    return _json(status)
 
 
 async def admin_platform_settings_get(request: Request) -> JSONResponse:
@@ -4178,6 +4211,69 @@ async def admin_platform_maintenance_put(request: Request) -> JSONResponse:
             "maintenance_mode": enabled,
             "maintenance_message": message
             or "Cadivor is undergoing scheduled maintenance. Please try again shortly.",
+        }
+    )
+
+
+async def admin_platform_planned_maintenance_put(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request, enforce_maintenance=False)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    if not _use_supabase_auth():
+        return _json({"detail": "Platform settings require production Supabase Auth."}, 503)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON."}, 400)
+
+    message = str(body.get("message") or "").strip()
+    starts_at_raw = str(body.get("starts_at") or "").strip()
+    ends_at_raw = str(body.get("ends_at") or "").strip()
+    if len(message) > 280:
+        return _json({"detail": "The notice must be 280 characters or fewer."}, 400)
+    if bool(message) != bool(starts_at_raw) or bool(message) != bool(ends_at_raw):
+        return _json(
+            {"detail": "Enter a notice and both dates, or clear all three fields."},
+            400,
+        )
+
+    def parse_notice_time(value: str) -> datetime | None:
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo is not None else None
+
+    starts_at = parse_notice_time(starts_at_raw)
+    ends_at = parse_notice_time(ends_at_raw)
+    if bool(starts_at_raw) and (starts_at is None or ends_at is None):
+        return _json({"detail": "Enter valid start and end dates with a time zone."}, 400)
+    if starts_at and ends_at and ends_at <= starts_at:
+        return _json({"detail": "The end time must be after the start time."}, 400)
+
+    try:
+        await run_in_threadpool(
+            supabase_auth.admin_set_planned_maintenance,
+            access_token=str(ctx.get("access_token") or ""),
+            message=message,
+            starts_at=starts_at.isoformat() if starts_at else None,
+            ends_at=ends_at.isoformat() if ends_at else None,
+        )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    except Exception:  # noqa: BLE001
+        logging.exception("admin_platform_planned_maintenance_update_failed")
+        return _json({"detail": "The planned maintenance notice could not be saved."}, 503)
+
+    return _json(
+        {
+            "ok": True,
+            "planned_maintenance_message": message,
+            "planned_maintenance_starts_at": starts_at.isoformat() if starts_at else None,
+            "planned_maintenance_ends_at": ends_at.isoformat() if ends_at else None,
         }
     )
 
@@ -5890,6 +5986,7 @@ app = Starlette(
         Route("/billing/one-time-report/checkout", one_time_report_checkout_post, methods=["POST"]),
         Route("/plan/usage", plan_usage_get, methods=["GET"]),
         Route("/runtime/maintenance", runtime_maintenance_get, methods=["GET"]),
+        Route("/public/service-status", public_service_status_get, methods=["GET"]),
         Route("/integrations/connectors", connectors_get, methods=["GET"]),
         Route("/integrations/connectors/sync", connectors_sync_post, methods=["POST"]),
         Route("/integrations/service-readiness", service_readiness_get, methods=["GET"]),
@@ -5904,6 +6001,7 @@ app = Starlette(
         Route("/admin/marketing-analytics", marketing_analytics_admin_get, methods=["GET"]),
         Route("/admin/platform-settings", admin_platform_settings_get, methods=["GET"]),
         Route("/admin/platform-settings/maintenance", admin_platform_maintenance_put, methods=["PUT"]),
+        Route("/admin/platform-settings/planned-maintenance", admin_platform_planned_maintenance_put, methods=["PUT"]),
         Route("/admin/account-entitlements", account_entitlements_admin_get, methods=["GET"]),
         Route("/admin/account-entitlements", account_entitlements_admin_put, methods=["PUT"]),
         Route("/admin/users", admin_users_get, methods=["GET"]),
