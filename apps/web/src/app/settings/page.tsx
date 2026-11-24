@@ -1451,7 +1451,7 @@ export default function Page() {
                   <div>
                     <h3 className="cv-card-title">Plans and billing</h3>
                     <p className="cv-card-subtitle">
-                      Your plan controls analysis limits, monitoring, and team access. Annual checkout appears only when a discounted annual Stripe price is configured.
+                      Your plan controls analysis limits, monitoring, and team access. Annual billing appears when discounted yearly pricing is available.
                     </p>
                   </div>
                   {canManageBilling ? (
@@ -1762,7 +1762,7 @@ export default function Page() {
                   <li>
                     <div className="cv-service-readiness-copy">
                       <strong>Billing checkout</strong>
-                      <small className="cv-small-note">Stripe plan upgrades and portal</small>
+                      <small className="cv-small-note">Plan upgrades and billing portal</small>
                     </div>
                     <span className="cv-badge gray">
                       {readinessUnknown
