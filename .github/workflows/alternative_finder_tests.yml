@@ -58,6 +58,9 @@ jobs:
       - name: Install Next.js web dependencies
         run: npm ci --prefix apps/web
 
+      - name: Check Priority 1 production smoke runner syntax
+        run: node --check apps/web/scripts/priority1_production_smoke.mjs
+
       - name: Lint Next.js web app
         run: npm run lint --prefix apps/web
 
