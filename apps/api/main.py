@@ -196,7 +196,9 @@ def describe_auth() -> dict[str, Any]:
     return describe_sandbox_auth()
 
 
-def _auth_context(request: Request) -> tuple[dict[str, str] | None, JSONResponse | None]:
+def _auth_context(
+    request: Request, *, enforce_maintenance: bool = True
+) -> tuple[dict[str, Any] | None, JSONResponse | None]:
     """Verify bearer JWT and derive workspace from membership (never from client)."""
     authorization = request.headers.get("authorization") or ""
     if not authorization.startswith("Bearer "):
@@ -218,6 +220,21 @@ def _auth_context(request: Request) -> tuple[dict[str, str] | None, JSONResponse
     except AuthError as exc:
         return None, _json({"detail": exc.detail}, exc.status_code)
     payload = ctx.as_dict()
+    if (
+        enforce_maintenance
+        and _use_supabase_auth()
+        and payload.get("maintenance_mode") is True
+        and payload.get("platform_role") != "admin"
+    ):
+        message = str(payload.get("maintenance_message") or "").strip()
+        return None, _json(
+            {
+                "detail": message
+                or "Cadivor is undergoing scheduled maintenance. Please try again shortly.",
+                "code": "maintenance_mode",
+            },
+            503,
+        )
     payload["entitlement_overrides"] = plan_limits.account_feature_overrides(
         str(payload.get("user_id") or "")
     )
@@ -4081,6 +4098,90 @@ async def marketing_analytics_admin_get(request: Request) -> JSONResponse:
         return _json({"detail": "Marketing analytics summary is unavailable."}, 503)
 
 
+async def runtime_maintenance_get(request: Request) -> JSONResponse:
+    """Return the maintenance notice so signed-in users can see a branded screen."""
+    ctx, denied = _auth_context(request, enforce_maintenance=False)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    return _json(
+        {
+            "maintenance_mode": bool(ctx.get("maintenance_mode")),
+            "maintenance_message": str(ctx.get("maintenance_message") or ""),
+            "is_admin": ctx.get("platform_role") == "admin",
+        }
+    )
+
+
+async def admin_platform_settings_get(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request, enforce_maintenance=False)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    if not _use_supabase_auth():
+        return _json({"detail": "Platform settings require production Supabase Auth."}, 503)
+    try:
+        overview = await run_in_threadpool(
+            supabase_auth.admin_platform_overview,
+            str(ctx.get("access_token") or ""),
+        )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    except Exception:  # noqa: BLE001
+        logging.exception("admin_platform_overview_failed")
+        return _json({"detail": "Platform settings are temporarily unavailable."}, 503)
+    return _json({"ok": True, "overview": overview})
+
+
+async def admin_platform_maintenance_put(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request, enforce_maintenance=False)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    if ctx.get("platform_role") != "admin":
+        return _json({"detail": "Platform administrator access is required."}, 403)
+    if not _use_supabase_auth():
+        return _json({"detail": "Platform settings require production Supabase Auth."}, 503)
+    body, bad = await _read_json_object(request)
+    if bad is not None or body is None:
+        return bad or _json({"detail": "Invalid JSON."}, 400)
+    enabled = body.get("maintenance_mode")
+    if not isinstance(enabled, bool):
+        return _json({"detail": "Choose whether maintenance mode should be enabled."}, 400)
+    message = str(body.get("maintenance_message") or "").strip()
+    if len(message) > 280:
+        return _json({"detail": "The maintenance message must be 280 characters or fewer."}, 400)
+    if enabled and not message:
+        return _json({"detail": "Add a customer message before enabling maintenance mode."}, 400)
+    current_enabled = bool(ctx.get("maintenance_mode"))
+    expected_confirmation = (
+        ("ENABLE MAINTENANCE" if enabled else "DISABLE MAINTENANCE")
+        if enabled != current_enabled
+        else "UPDATE MAINTENANCE MESSAGE"
+    )
+    if str(body.get("confirmation") or "").strip() != expected_confirmation:
+        return _json({"detail": f"Type {expected_confirmation} exactly to apply this change."}, 400)
+    try:
+        await run_in_threadpool(
+            supabase_auth.admin_set_maintenance_mode,
+            access_token=str(ctx.get("access_token") or ""),
+            enabled=enabled,
+            message=message,
+        )
+    except AuthError as exc:
+        return _json({"detail": exc.detail}, exc.status_code)
+    except Exception:  # noqa: BLE001
+        logging.exception("admin_platform_maintenance_update_failed")
+        return _json({"detail": "Cadivor could not update maintenance mode. No change was confirmed."}, 503)
+    return _json(
+        {
+            "ok": True,
+            "maintenance_mode": enabled,
+            "maintenance_message": message
+            or "Cadivor is undergoing scheduled maintenance. Please try again shortly.",
+        }
+    )
+
+
 async def account_entitlements_admin_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -5788,6 +5889,7 @@ app = Starlette(
         Route("/billing/one-time-report", one_time_report_status_get, methods=["GET"]),
         Route("/billing/one-time-report/checkout", one_time_report_checkout_post, methods=["POST"]),
         Route("/plan/usage", plan_usage_get, methods=["GET"]),
+        Route("/runtime/maintenance", runtime_maintenance_get, methods=["GET"]),
         Route("/integrations/connectors", connectors_get, methods=["GET"]),
         Route("/integrations/connectors/sync", connectors_sync_post, methods=["POST"]),
         Route("/integrations/service-readiness", service_readiness_get, methods=["GET"]),
@@ -5800,6 +5902,8 @@ app = Starlette(
         Route("/public/contact", public_contact_post, methods=["POST"]),
         Route("/public/analytics", public_marketing_analytics_post, methods=["POST"]),
         Route("/admin/marketing-analytics", marketing_analytics_admin_get, methods=["GET"]),
+        Route("/admin/platform-settings", admin_platform_settings_get, methods=["GET"]),
+        Route("/admin/platform-settings/maintenance", admin_platform_maintenance_put, methods=["PUT"]),
         Route("/admin/account-entitlements", account_entitlements_admin_get, methods=["GET"]),
         Route("/admin/account-entitlements", account_entitlements_admin_put, methods=["PUT"]),
         Route("/admin/users", admin_users_get, methods=["GET"]),
