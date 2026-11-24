@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon, NAV_ICONS } from "@/components/Icons";
 import { BrandLink } from "@/components/BrandLink";
+import { ServiceNotices } from "@/components/ServiceNotices";
 import {
   clearSession,
   fetchPlanUsage,
@@ -48,11 +49,7 @@ export function Shell({
   const [navOpen, setNavOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [verifiedPlan, setVerifiedPlan] = useState<string | null>(null);
-  const [maintenanceStatus, setMaintenanceStatus] = useState<RuntimeMaintenanceStatus | null>(
-    session.platform_role === "admin"
-      ? { maintenance_mode: false, maintenance_message: "", is_admin: true }
-      : null,
-  );
+  const [maintenanceStatus, setMaintenanceStatus] = useState<RuntimeMaintenanceStatus | null>(null);
   const title = crumbTitle(pathname);
   const remainingDays = session.trial_ends_at
     ? Math.max(0, Math.ceil((Date.parse(session.trial_ends_at) - Date.now()) / 86400000))
@@ -81,10 +78,6 @@ export function Shell({
   }, [pathname]);
 
   useEffect(() => {
-    if (session.platform_role === "admin") {
-      setMaintenanceStatus({ maintenance_mode: false, maintenance_message: "", is_admin: true });
-      return;
-    }
     let current = true;
     const refreshAvailability = () => {
       void fetchRuntimeMaintenance(session.access_token)
@@ -95,7 +88,14 @@ export function Shell({
           // Keep the app usable if the status check itself has a transient error;
           // authenticated API routes still enforce maintenance server-side.
           if (current) {
-            setMaintenanceStatus({ maintenance_mode: false, maintenance_message: "", is_admin: false });
+            setMaintenanceStatus({
+              maintenance_mode: false,
+              maintenance_message: "",
+              is_admin: session.platform_role === "admin",
+              planned_maintenance_message: "",
+              planned_maintenance_starts_at: null,
+              planned_maintenance_ends_at: null,
+            });
           }
         });
     };
@@ -338,6 +338,15 @@ export function Shell({
           </div>
         </header>
         <main className="cv-main">
+          <ServiceNotices
+            status={maintenanceStatus ? {
+              maintenance_mode: maintenanceStatus.maintenance_mode,
+              maintenance_message: maintenanceStatus.maintenance_message,
+              planned_maintenance_message: maintenanceStatus.planned_maintenance_message || "",
+              planned_maintenance_starts_at: maintenanceStatus.planned_maintenance_starts_at || null,
+              planned_maintenance_ends_at: maintenanceStatus.planned_maintenance_ends_at || null,
+            } : null}
+          />
           {children}
         </main>
       </div>

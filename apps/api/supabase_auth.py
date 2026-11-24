@@ -356,7 +356,58 @@ def admin_platform_overview(access_token: str) -> dict[str, Any]:
     result = _rpc(access_token, "cadivor_admin_overview")
     if not isinstance(result, list) or not result or not isinstance(result[0], dict):
         raise AuthError("Platform settings could not be loaded.", 503)
-    return result[0]
+    planned = _rpc(access_token, "cadivor_admin_get_planned_maintenance")
+    if not isinstance(planned, list) or not planned or not isinstance(planned[0], dict):
+        raise AuthError("Planned maintenance settings could not be loaded.", 503)
+    return {**result[0], **planned[0]}
+
+
+def admin_set_planned_maintenance(
+    *,
+    access_token: str,
+    message: str,
+    starts_at: str | None,
+    ends_at: str | None,
+) -> None:
+    _rpc(
+        access_token,
+        "cadivor_admin_set_planned_maintenance",
+        {
+            "next_message": message,
+            "next_starts_at": starts_at,
+            "next_ends_at": ends_at,
+        },
+    )
+
+
+def public_service_status() -> dict[str, Any]:
+    """Read the minimal public status fields under anon RLS and column grants."""
+    response = (
+        _client()
+        .table("admin_platform_settings")
+        .select(
+            "maintenance_mode,maintenance_message,planned_maintenance_message,"
+            "planned_maintenance_starts_at,planned_maintenance_ends_at"
+        )
+        .eq("singleton", True)
+        .limit(1)
+        .execute()
+    )
+    rows = getattr(response, "data", response)
+    if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+        raise AuthError("Cadivor service status is temporarily unavailable.", 503)
+    status = rows[0]
+    return {
+        "maintenance_mode": bool(status.get("maintenance_mode")),
+        "maintenance_message": str(status.get("maintenance_message") or ""),
+        "planned_maintenance_message": str(status.get("planned_maintenance_message") or ""),
+        "planned_maintenance_starts_at": _normalize_datetime(
+            status.get("planned_maintenance_starts_at")
+        ),
+        "planned_maintenance_ends_at": _normalize_datetime(
+            status.get("planned_maintenance_ends_at")
+        ),
+    }
 
 
 def admin_set_maintenance_mode(
@@ -928,6 +979,15 @@ def resolve_bearer(access_token: str) -> AuthContext:
         trial_days_remaining=entitlements.get("trial_days_remaining"),
         maintenance_mode=bool(runtime_access.get("maintenance_mode")),
         maintenance_message=str(runtime_access.get("maintenance_message") or ""),
+        planned_maintenance_message=str(
+            runtime_access.get("planned_maintenance_message") or ""
+        ),
+        planned_maintenance_starts_at=_normalize_datetime(
+            runtime_access.get("planned_maintenance_starts_at")
+        ),
+        planned_maintenance_ends_at=_normalize_datetime(
+            runtime_access.get("planned_maintenance_ends_at")
+        ),
         platform_role=entitlements.get("platform_role"),
         api_access_addon_active=entitlements.get("api_access_addon_active", False),
         monitored_parts_addon_capacity=entitlements.get("monitored_parts_addon_capacity", 0),

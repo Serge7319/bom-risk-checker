@@ -6220,6 +6220,49 @@ button {
   margin-top: 10px;
 }
 
+.cv-service-notices {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 18px;
+}
+
+.cv-service-notice {
+  padding: 14px 16px;
+  border: 1px solid #e8c878;
+  border-radius: 12px;
+  background: #fff9e8;
+  color: #573f16;
+  line-height: 1.5;
+}
+
+.cv-service-notice strong {
+  display: block;
+  color: #3e3218;
+}
+
+.cv-service-notice p {
+  margin: 5px 0;
+}
+
+.cv-service-notice small {
+  display: block;
+  color: #76633c;
+}
+
+.cv-service-notice.is-unavailable {
+  border-color: #efb7b7;
+  background: #fff4f3;
+  color: #6b2525;
+}
+
+.cv-service-notice.is-unavailable strong {
+  color: #8b2424;
+}
+
+.cv-service-notice.is-unavailable small {
+  color: #774646;
+}
+
 .cv-platform-status-card,
 .cv-platform-maintenance-heading {
   display: flex;
@@ -6238,8 +6281,16 @@ button {
 }
 
 .cv-platform-maintenance-card,
+.cv-platform-scheduled-card,
 .cv-platform-summary-card {
   margin-bottom: 16px;
+}
+
+.cv-platform-unsaved-note {
+  margin: 8px 0 0;
+  color: #956410;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .cv-platform-maintenance-form {
@@ -6284,6 +6335,16 @@ button {
 .cv-platform-maintenance-form .cv-field textarea {
   min-height: 104px;
   resize: vertical;
+}
+
+.cv-platform-scheduled-card .cv-platform-maintenance-form .cv-field textarea {
+  min-height: 88px;
+}
+
+.cv-platform-notice-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .cv-platform-confirm-row {
@@ -6334,7 +6395,8 @@ button {
   }
 
   .cv-platform-confirm-row,
-  .cv-platform-summary-grid {
+  .cv-platform-summary-grid,
+  .cv-platform-notice-time-grid {
     grid-template-columns: 1fr;
   }
 }
