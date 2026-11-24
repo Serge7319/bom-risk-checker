@@ -300,7 +300,7 @@ def normalize_mouser_part(part: dict) -> dict:
         "unit_price_currency": _mouser_recorded_currency(part),
         "price_breaks": price_breaks_from_payload(part.get("PriceBreaks")),
         "supplier_count": 1,
-        "lead_time_weeks": None,
+        "lead_time_weeks": extract_mouser_lead_time_weeks(part),
         "has_alternates": False,
         "source": "Mouser",
         "manufacturer": part.get("Manufacturer", ""),
@@ -426,6 +426,50 @@ def extract_voltage_limits(voltage_text: str):
 def extract_stock_number(availability: str) -> int | None:
     """Return on-hand stock only when Mouser text explicitly reports it."""
     return parse_stock_total(availability)
+
+
+def extract_mouser_lead_time_weeks(part: dict) -> int | float | None:
+    """Parse Mouser's explicit product lead-time field into weeks.
+
+    Mouser reports this at the product level, so it applies to the listing's
+    price tiers. Unknown units and ranges remain unknown instead of being
+    guessed.
+    """
+    if not isinstance(part, dict):
+        return None
+    raw = next(
+        (
+            part.get(key)
+            for key in (
+                "LeadTime",
+                "Lead Time",
+                "lead_time",
+                "leadTime",
+                "FactoryLeadTime",
+                "Factory Lead Time",
+            )
+            if part.get(key) not in (None, "")
+        ),
+        None,
+    )
+    text = " ".join(str(raw or "").strip().split())
+    if not text or re.search(r"\d+(?:\.\d+)?\s*(?:-|–|to)\s*\d+(?:\.\d+)?", text, re.IGNORECASE):
+        return None
+    match = re.search(
+        r"(?<![\d.])(?P<amount>\d+(?:\.\d+)?)\s*(?P<unit>weeks?|wks?|wk|days?|d)\b",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    try:
+        amount = float(match.group("amount"))
+    except (TypeError, ValueError):
+        return None
+    weeks = amount / 7 if match.group("unit").lower().startswith("d") else amount
+    if weeks <= 0:
+        return None
+    return int(weeks) if weeks.is_integer() else weeks
 
 
 def extract_mouser_price(part: dict) -> float | None:
