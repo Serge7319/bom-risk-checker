@@ -332,9 +332,9 @@ def _mfa_factor_rows(
 
     url, key = _require_configured()
     req = urllib.request.Request(
-        # Supabase exposes the authenticated user's factor inventory through
-        # PostgREST, not the Auth service's /auth/v1 route.
-        f"{url.rstrip('/')}/rest/v1/auth/factors",
+        # The user's factor inventory is served by Supabase Auth and scoped
+        # to this access token.
+        f"{url.rstrip('/')}/auth/v1/factors",
         method="GET",
         headers={
             "Authorization": f"Bearer {access_token}",
