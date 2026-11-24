@@ -194,6 +194,9 @@ def account_entitlements(access_token: str) -> dict[str, Any]:
                     snapshot[field] = result[field]
             if isinstance(result.get("api_access_addon_active"), bool):
                 snapshot["api_access_addon_active"] = result["api_access_addon_active"]
+            addon_capacity = result.get("monitored_parts_addon_capacity")
+            if isinstance(addon_capacity, int) and not isinstance(addon_capacity, bool):
+                snapshot["monitored_parts_addon_capacity"] = max(0, min(100_000, addon_capacity))
             credits = result.get("usage_credits")
             if isinstance(credits, dict):
                 snapshot["usage_credits"] = {
@@ -214,6 +217,14 @@ def account_entitlements(access_token: str) -> dict[str, Any]:
             while len(_ENTITLEMENT_CACHE) > 512:
                 _ENTITLEMENT_CACHE.pop(next(iter(_ENTITLEMENT_CACHE)))
     return snapshot
+
+
+def invalidate_account_entitlements(access_token: str) -> None:
+    """Drop a cached billing snapshot after a successful billing mutation."""
+    if not access_token:
+        return
+    with _ENTITLEMENT_CACHE_LOCK:
+        _ENTITLEMENT_CACHE.pop(_token_fingerprint(access_token), None)
 
 
 def trial_expired(context: dict[str, Any]) -> bool:
@@ -890,6 +901,7 @@ def resolve_bearer(access_token: str) -> AuthContext:
         trial_days_remaining=entitlements.get("trial_days_remaining"),
         platform_role=entitlements.get("platform_role"),
         api_access_addon_active=entitlements.get("api_access_addon_active", False),
+        monitored_parts_addon_capacity=entitlements.get("monitored_parts_addon_capacity", 0),
         usage_credits=entitlements.get("usage_credits", {}),
     )
 

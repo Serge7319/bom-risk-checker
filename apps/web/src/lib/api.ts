@@ -1272,9 +1272,34 @@ export async function beginProfessionalApiAddonCheckout(token: string) {
   });
 }
 
+export async function beginMonitoredPartsAddonCheckout(
+  token: string,
+  billingInterval: "month" | "year",
+) {
+  return apiJson<{
+    ok: boolean;
+    addon_added?: boolean;
+    capacity?: number;
+    billing_interval?: "month" | "year";
+    detail?: string;
+    code?: string;
+  }>("/billing/addons/monitored-parts/checkout", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ billing_interval: billingInterval }),
+  });
+}
+
+export async function removeMonitoredPartsAddon(token: string) {
+  return apiJson<{ ok: boolean; addon_removed?: boolean; detail?: string }>(
+    "/billing/addons/monitored-parts/remove",
+    { method: "POST", token, body: JSON.stringify({}) },
+  );
+}
+
 export async function beginUsageOverageCheckout(
   token: string,
-  creditKind: "bom_analysis" | "monitored_part",
+  creditKind: "bom_analysis",
 ) {
   return apiJson<{
     ok: boolean;

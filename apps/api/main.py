@@ -2648,7 +2648,7 @@ async def monitoring_preferences_put(request: Request) -> JSONResponse:
                         "code": "monitored_parts_limit",
                         "detail": (
                             f"This workspace has {desired_parts:,} component slots to monitor, above the "
-                            f"included limit of {int(base_limit):,}. Buy a monitored parts pack or remove analyses "
+                            f"included limit of {int(base_limit):,}. Add monitored-parts capacity or remove analyses "
                             "from monitoring before enabling scheduled checks."
                         ),
                         "required_overage_credits": over_limit,
@@ -2816,6 +2816,19 @@ async def plan_usage_get(request: Request) -> JSONResponse:
     return _json({"ok": True, **plan_limits.usage_snapshot(ctx["workspace_id"], ctx)})
 
 
+def _sync_workspace_monitoring_entitlement(
+    ctx: dict[str, Any],
+    *,
+    addon_capacity: int,
+) -> None:
+    updated = {**ctx, "monitored_parts_addon_capacity": max(0, int(addon_capacity))}
+    capacity = plan_limits.effective_plan(updated).get("monitored_parts_limit")
+    monitoring_store.set_workspace_monitoring_capacity(
+        str(ctx["workspace_id"]),
+        None if capacity is None else max(0, int(capacity)),
+    )
+
+
 async def billing_status_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -2884,6 +2897,75 @@ async def billing_professional_api_addon_checkout_post(request: Request) -> JSON
     return _json(result, status)
 
 
+async def billing_monitored_parts_addon_checkout_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Invalid request"}, 400)
+    interval = str(body.get("billing_interval") or "").strip().lower()
+    if interval not in {"month", "year"}:
+        return _json({"detail": "Choose monthly or annual billing."}, 400)
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="monitored_parts_addon_checkout",
+            payload={"billing_interval": interval},
+            origin=request.headers.get("origin", ""),
+        )
+    except subscription_billing_service.SubscriptionBillingError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    if status == 200 and result.get("addon_added") is True:
+        try:
+            _sync_workspace_monitoring_entitlement(
+                ctx,
+                addon_capacity=int(result.get("capacity") or 0),
+            )
+            supabase_auth.invalidate_account_entitlements(token)
+            result["monitoring_capacity_synced"] = True
+        except Exception as exc:  # noqa: BLE001
+            logging.warning("monitored_parts_capacity_sync_failed exception=%s", type(exc).__name__)
+            result["monitoring_capacity_synced"] = False
+            result["detail"] = (
+                str(result.get("detail") or "Capacity is active.")
+                + " The monitoring schedule will refresh its capacity shortly."
+            )
+    return _json(result, status)
+
+
+async def billing_monitored_parts_addon_remove_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="monitored_parts_addon_remove",
+            origin=request.headers.get("origin", ""),
+        )
+    except subscription_billing_service.SubscriptionBillingError as exc:
+        return _json({"ok": False, "detail": str(exc)}, 503)
+    if status == 200 and result.get("addon_removed") is True:
+        try:
+            _sync_workspace_monitoring_entitlement(ctx, addon_capacity=0)
+            supabase_auth.invalidate_account_entitlements(token)
+            result["monitoring_capacity_synced"] = True
+        except Exception as exc:  # noqa: BLE001
+            logging.warning("monitored_parts_capacity_sync_failed exception=%s", type(exc).__name__)
+            result["monitoring_capacity_synced"] = False
+            result["detail"] = (
+                str(result.get("detail") or "Capacity was removed.")
+                + " The monitoring schedule will refresh its capacity shortly."
+            )
+    return _json(result, status)
+
+
 async def billing_usage_overage_checkout_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -2895,7 +2977,7 @@ async def billing_usage_overage_checkout_post(request: Request) -> JSONResponse:
     if not isinstance(body, dict):
         return _json({"detail": "Invalid request"}, 400)
     kind = str(body.get("credit_kind") or "").strip()
-    if kind not in {"bom_analysis", "monitored_part"}:
+    if kind != "bom_analysis":
         return _json({"detail": "Choose a supported usage pack."}, 400)
     token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
     try:
@@ -3180,6 +3262,12 @@ async def _developer_api_key_context(request: Request) -> tuple[dict[str, Any] |
         "plan": str(result.get("plan") or "Subscription inactive"),
         "trial_status": result.get("trial_status"),
         "api_access_addon_active": result.get("api_access_addon_active") is True,
+        "monitored_parts_addon_capacity": (
+            max(0, min(100_000, int(result.get("monitored_parts_addon_capacity") or 0)))
+            if isinstance(result.get("monitored_parts_addon_capacity", 0), (int, float))
+            and not isinstance(result.get("monitored_parts_addon_capacity", 0), bool)
+            else 0
+        ),
         "usage_credits": credits if isinstance(credits, dict) else {},
     }
     ctx["entitlement_overrides"] = plan_limits.account_feature_overrides(user_id)
@@ -3324,7 +3412,7 @@ async def billing_public_catalog_get(request: Request) -> JSONResponse:
 
 
 async def billing_public_addons_catalog_get(request: Request) -> JSONResponse:
-    """Expose configured one-time usage-pack amounts without Stripe identifiers."""
+    """Expose configured add-on amounts without Stripe identifiers."""
     try:
         result, status = subscription_billing_service.request_public_action(
             action="addons_catalog"
@@ -3336,17 +3424,24 @@ async def billing_public_addons_catalog_get(request: Request) -> JSONResponse:
 
     raw_addons = result.get("addons") if isinstance(result.get("addons"), dict) else {}
     addons: dict[str, dict[str, Any]] = {}
-    for key in ("bom_analysis", "monitored_parts"):
-        value = raw_addons.get(key) if isinstance(raw_addons.get(key), dict) else {}
-        amount = value.get("amount")
-        credits = value.get("credits")
-        addons[key] = {
-            "enabled": value.get("enabled") is True,
-            "amount": amount if isinstance(amount, int) and not isinstance(amount, bool) else None,
-            "currency": str(value.get("currency") or "").lower(),
-            "credits": credits if isinstance(credits, int) and not isinstance(credits, bool) and credits > 0 else None,
-            "interval": "one_time",
-        }
+    analysis = raw_addons.get("bom_analysis") if isinstance(raw_addons.get("bom_analysis"), dict) else {}
+    analysis_amount = analysis.get("amount")
+    analysis_credits = analysis.get("credits")
+    addons["bom_analysis"] = {
+        "enabled": analysis.get("enabled") is True,
+        "amount": analysis_amount if isinstance(analysis_amount, int) and not isinstance(analysis_amount, bool) else None,
+        "currency": str(analysis.get("currency") or "").lower(),
+        "credits": analysis_credits if isinstance(analysis_credits, int) and not isinstance(analysis_credits, bool) and analysis_credits > 0 else None,
+        "interval": "one_time",
+    }
+    monitored = raw_addons.get("monitored_parts") if isinstance(raw_addons.get("monitored_parts"), dict) else {}
+    monitored_capacity = monitored.get("capacity")
+    addons["monitored_parts"] = {
+        "enabled": monitored.get("enabled") is True,
+        "capacity": monitored_capacity if isinstance(monitored_capacity, int) and not isinstance(monitored_capacity, bool) and monitored_capacity > 0 else None,
+        "monthly": monitored.get("monthly") if isinstance(monitored.get("monthly"), dict) else {},
+        "annual": monitored.get("annual") if isinstance(monitored.get("annual"), dict) else {},
+    }
     response = _json({"ok": True, "addons": addons}, 200)
     response.headers["Cache-Control"] = "public, max-age=300"
     return response
@@ -5553,6 +5648,8 @@ app = Starlette(
         Route("/billing/status", billing_status_get, methods=["GET"]),
         Route("/billing/checkout", billing_checkout_post, methods=["POST"]),
         Route("/billing/addons/professional-api/checkout", billing_professional_api_addon_checkout_post, methods=["POST"]),
+        Route("/billing/addons/monitored-parts/checkout", billing_monitored_parts_addon_checkout_post, methods=["POST"]),
+        Route("/billing/addons/monitored-parts/remove", billing_monitored_parts_addon_remove_post, methods=["POST"]),
         Route("/billing/addons/usage-overage/checkout", billing_usage_overage_checkout_post, methods=["POST"]),
         Route("/developer/api-keys", developer_api_keys_get, methods=["GET"]),
         Route("/developer/api-keys", developer_api_keys_post, methods=["POST"]),

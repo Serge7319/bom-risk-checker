@@ -21,6 +21,8 @@ ALLOWED_ACTIONS = frozenset({
     "portal",
     "addons_catalog",
     "professional_api_addon_checkout",
+    "monitored_parts_addon_checkout",
+    "monitored_parts_addon_remove",
     "usage_overage_checkout",
     "reserve_usage_credit",
     "finish_usage_credit",

@@ -107,9 +107,72 @@ async function applySnapshot(
     data === "skipped_stale" ||
     data === "admin_untouched"
   ) {
+    await applyMonitoredPartsAddonSnapshot(event, subscription, userId, decision.plan);
     return data;
   }
   throw new Error("Unexpected billing snapshot result.");
+}
+
+function positiveCapacity(): number | null {
+  const raw = String(Deno.env.get("CADIVOR_MONITORED_PARTS_ADDON_CAPACITY") || "").trim();
+  if (!/^\d+$/.test(raw)) return null;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value > 0 && value <= 100_000 ? value : null;
+}
+
+async function applyMonitoredPartsAddonSnapshot(
+  event: Stripe.Event,
+  subscription: Stripe.Subscription,
+  userId: string,
+  currentPlan: string | null,
+): Promise<void> {
+  const monthlyPriceId = String(Deno.env.get("STRIPE_MONITORED_PARTS_MONTHLY_PRICE_ID") || "").trim();
+  const annualPriceId = String(Deno.env.get("STRIPE_MONITORED_PARTS_ANNUAL_PRICE_ID") || "").trim();
+  const configuredPriceIds = new Set([monthlyPriceId, annualPriceId].filter(Boolean));
+  const items = subscription.items?.data || [];
+  const addonItem = items.find((item) => configuredPriceIds.has(asId(item.price) || ""));
+  const { data: existing, error: existingError } = await supabase
+    .from("cadivor_monitored_parts_addons")
+    .select("price_id,capacity")
+    .eq("subscription_id", subscription.id)
+    .maybeSingle();
+  if (existingError) throw new Error("Monitored-parts subscription record could not be loaded.");
+
+  const markedItem = items.find((item) =>
+    String(item.metadata?.cadivor_addon || "") === "monitored_parts_capacity"
+  );
+  let selectedItem = addonItem || (markedItem && existing ? markedItem : null);
+  if (selectedItem && ENTITLING_STATUSES.has(String(subscription.status || "").toLowerCase()) &&
+      !["Starter", "Professional"].includes(String(currentPlan || ""))) {
+    await stripe.subscriptionItems.del(selectedItem.id, { proration_behavior: "create_prorations" });
+    selectedItem = null;
+  }
+  if (!selectedItem && !existing) return;
+
+  const priceId = asId(selectedItem?.price) || String(existing?.price_id || "").trim();
+  const capacity = positiveCapacity() || Number(existing?.capacity || 0);
+  if (!priceId || !Number.isSafeInteger(capacity) || capacity <= 0) {
+    throw new WebhookConfigurationError("Monitored-parts add-on capacity is not configured.");
+  }
+  if (selectedItem && !configuredPriceIds.has(priceId) && !(existing && markedItem === selectedItem)) {
+    throw new WebhookConfigurationError("Monitored-parts add-on price is not mapped.");
+  }
+  const status = selectedItem
+    ? subscription.status
+    : ENTITLING_STATUSES.has(String(subscription.status || "").toLowerCase())
+      ? "canceled"
+      : subscription.status;
+  const { data, error } = await supabase.rpc("cadivor_set_monitored_parts_addon", {
+    p_user_id: userId,
+    p_subscription_id: subscription.id,
+    p_price_id: priceId,
+    p_status: status,
+    p_capacity: capacity,
+    p_event_created: new Date(event.created * 1000).toISOString(),
+  });
+  if (error || (data !== "applied" && data !== "skipped_stale")) {
+    throw new Error("Unable to update monitored-parts add-on status.");
+  }
 }
 
 async function applyProfessionalApiAddonSnapshot(

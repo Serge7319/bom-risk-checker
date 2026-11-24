@@ -196,7 +196,7 @@ async function verifyInternalActionProof(
 async function profileFor(userId: string) {
   const { data, error } = await supabase
     .from("users")
-    .select("plan,role,trial_started_at,trial_ends_at,plan_grandfather_source,stripe_customer_id,stripe_subscription_id,stripe_subscription_status,stripe_current_period_end")
+    .select("plan,role,trial_started_at,trial_ends_at,plan_grandfather_source,stripe_customer_id,stripe_subscription_id,stripe_subscription_status,stripe_current_period_end,stripe_price_id")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw new Error("Billing profile could not be loaded.");
@@ -318,15 +318,22 @@ function clearedStripeMetadata(metadata: Record<string, string> | null | undefin
 }
 
 async function cancelAndAnonymizeBilling(targetUserId: string, profile: Record<string, unknown>) {
-  const { data: addon, error: addonError } = await supabase
+  const [{ data: apiAddon, error: apiAddonError }, { data: monitoredAddon, error: monitoredAddonError }] = await Promise.all([
+    supabase
     .from("cadivor_professional_api_addons")
     .select("subscription_id")
     .eq("user_id", targetUserId)
-    .maybeSingle();
-  if (addonError) throw new Error("Subscription records could not be loaded.");
+    .maybeSingle(),
+    supabase
+      .from("cadivor_monitored_parts_addons")
+      .select("subscription_id")
+      .eq("user_id", targetUserId)
+      .maybeSingle(),
+  ]);
+  if (apiAddonError || monitoredAddonError) throw new Error("Subscription records could not be loaded.");
 
   const subscriptionIds = new Set<string>();
-  for (const value of [profile.stripe_subscription_id, addon?.subscription_id]) {
+  for (const value of [profile.stripe_subscription_id, apiAddon?.subscription_id, monitoredAddon?.subscription_id]) {
     const id = String(value || "").trim();
     if (id) subscriptionIds.add(id);
   }
@@ -378,7 +385,7 @@ function positiveUnits(name: string): number | null {
 async function configuredPrice(
   envName: string,
   type: "one_time" | "recurring",
-  interval?: "month",
+  interval?: "month" | "year",
 ): Promise<{ configured: boolean; enabled: boolean; amount: number | null; currency: string | null; interval: string | null }> {
   const id = String(Deno.env.get(envName) || "").trim();
   const empty = { configured: Boolean(id), enabled: false, amount: null, currency: null, interval: null };
@@ -404,15 +411,33 @@ async function configuredPrice(
 
 async function addonCatalog() {
   const analysisCredits = positiveUnits("CADIVOR_BOM_ANALYSIS_OVERAGE_CREDITS");
-  const monitoredParts = positiveUnits("CADIVOR_MONITORED_PARTS_OVERAGE_CREDITS");
-  const [analysisPrice, monitoredPrice, apiPrice] = await Promise.all([
+  const monitoredPartsCapacity = positiveUnits("CADIVOR_MONITORED_PARTS_ADDON_CAPACITY");
+  const [analysisPrice, monitoredMonthly, monitoredAnnual, apiPrice] = await Promise.all([
     configuredPrice("STRIPE_BOM_ANALYSIS_OVERAGE_PRICE_ID", "one_time"),
-    configuredPrice("STRIPE_MONITORED_PARTS_OVERAGE_PRICE_ID", "one_time"),
+    configuredPrice("STRIPE_MONITORED_PARTS_MONTHLY_PRICE_ID", "recurring", "month"),
+    configuredPrice("STRIPE_MONITORED_PARTS_ANNUAL_PRICE_ID", "recurring", "year"),
     configuredPrice("STRIPE_PROFESSIONAL_API_ADDON_PRICE_ID", "recurring", "month"),
   ]);
+  const monitoredMonthlyMatches = monitoredMonthly.amount === 2900;
+  const monitoredAnnualMatches = monitoredAnnual.amount === 29000;
   return {
     bom_analysis: { ...analysisPrice, enabled: analysisPrice.enabled && analysisCredits !== null, credits: analysisCredits },
-    monitored_parts: { ...monitoredPrice, enabled: monitoredPrice.enabled && monitoredParts !== null, credits: monitoredParts },
+    monitored_parts: {
+      enabled: monitoredPartsCapacity !== null &&
+        ((monitoredMonthly.enabled && monitoredMonthlyMatches) ||
+          (monitoredAnnual.enabled && monitoredAnnualMatches)),
+      capacity: monitoredPartsCapacity,
+      monthly: {
+        ...monitoredMonthly,
+        enabled: monitoredMonthly.enabled && monitoredMonthlyMatches && monitoredPartsCapacity !== null,
+        price_matches_catalog: monitoredMonthlyMatches,
+      },
+      annual: {
+        ...monitoredAnnual,
+        enabled: monitoredAnnual.enabled && monitoredAnnualMatches && monitoredPartsCapacity !== null,
+        price_matches_catalog: monitoredAnnualMatches,
+      },
+    },
     professional_api: apiPrice,
   };
 }
@@ -426,6 +451,23 @@ async function apiAddonFor(userId: string) {
   if (error) throw new Error("API add-on status could not be loaded.");
   const active = ["active", "trialing"].includes(String(data?.status || "").toLowerCase());
   return { active, subscription_id: active ? data?.subscription_id || null : null };
+}
+
+async function monitoredPartsAddonFor(userId: string) {
+  const { data, error } = await supabase
+    .from("cadivor_monitored_parts_addons")
+    .select("subscription_id,status,price_id,capacity")
+    .eq("user_id", userId)
+    .in("status", ["active", "trialing"])
+    .maybeSingle();
+  if (error) throw new Error("Monitored-parts add-on status could not be loaded.");
+  const active = ["active", "trialing"].includes(String(data?.status || "").toLowerCase());
+  return {
+    active,
+    subscription_id: active ? data?.subscription_id || null : null,
+    price_id: active ? data?.price_id || null : null,
+    capacity: active ? Math.max(0, Number(data?.capacity) || 0) : 0,
+  };
 }
 
 async function apiAccessEnabled(userId: string, profile: Record<string, unknown>): Promise<boolean> {
@@ -477,6 +519,11 @@ async function resolveDeveloperApiKey(apiKey: string) {
   }
   const effective = effectivePlan(profile);
   const apiAddon = await apiAddonFor(String(data.user_id));
+  const monitoredAddon = await monitoredPartsAddonFor(String(data.user_id));
+  const monitoredCapacity = hasCurrentPaidSubscription(profile) && monitoredAddon.active &&
+      ["Starter", "Professional"].includes(effective.plan)
+    ? monitoredAddon.capacity
+    : 0;
   const { error: touchError } = await supabase
     .from("cadivor_developer_api_keys")
     .update({ last_used_at: new Date().toISOString() })
@@ -491,6 +538,7 @@ async function resolveDeveloperApiKey(apiKey: string) {
     plan: effective.plan,
     trial_status: effective.trial_status,
     api_access_addon_active: apiAddon.active,
+    monitored_parts_addon_capacity: monitoredCapacity,
   });
 }
 
@@ -563,10 +611,16 @@ function effectivePlan(profile: Record<string, unknown>, now = new Date()): {
 
 async function entitlementSnapshot(userId: string, profile: Record<string, unknown>) {
   const effective = effectivePlan(profile);
-  const [apiAddon, usageCredits] = await Promise.all([
+  const [apiAddon, monitoredAddon, usageCredits] = await Promise.all([
     apiAddonFor(userId),
+    monitoredPartsAddonFor(userId),
     usageCreditsFor(userId),
   ]);
+  const monitoredPartsAddonCapacity =
+    hasCurrentPaidSubscription(profile) && monitoredAddon.active &&
+      ["Starter", "Professional"].includes(effective.plan)
+      ? monitoredAddon.capacity
+      : 0;
   return {
     ok: true,
     plan: effective.plan,
@@ -576,6 +630,7 @@ async function entitlementSnapshot(userId: string, profile: Record<string, unkno
     trial_status: effective.trial_status,
     trial_days_remaining: effective.trial_days_remaining,
     api_access_addon_active: apiAddon.active,
+    monitored_parts_addon_capacity: monitoredPartsAddonCapacity,
     usage_credits: usageCredits,
   };
 }
@@ -1130,6 +1185,15 @@ serve(async (request) => {
         )
       );
       const active = hasCurrentPaidSubscription(profile);
+      const monitoredAddon = await monitoredPartsAddonFor(auth.user.id);
+      const monitoredAddonCapacity = active && monitoredAddon.active &&
+          ["Starter", "Professional"].includes(effectivePlan(profile).plan)
+        ? monitoredAddon.capacity
+        : 0;
+      const storedPriceId = String(profile.stripe_price_id || "").trim();
+      const annualPlanPrices = ["STRIPE_STARTER_ANNUAL_PRICE_ID", "STRIPE_PRO_ANNUAL_PRICE_ID", "STRIPE_BUSINESS_ANNUAL_PRICE_ID"]
+        .map((name) => String(Deno.env.get(name) || "").trim())
+        .filter(Boolean);
       return response({
         ok: true,
         current_plan: effectivePlan(profile).plan,
@@ -1143,6 +1207,9 @@ serve(async (request) => {
         addons: await addonCatalog(),
         usage_credits: await usageCreditsFor(auth.user.id),
         api_access_addon_active: (await apiAddonFor(auth.user.id)).active,
+        monitored_parts_addon_active: monitoredAddonCapacity > 0,
+        monitored_parts_addon_capacity: monitoredAddonCapacity,
+        subscription_billing_interval: annualPlanPrices.includes(storedPriceId) ? "year" : "month",
       }, 200, origin);
     }
 
@@ -1187,6 +1254,145 @@ serve(async (request) => {
       return response({ ok: true, checkout: { state: "open", url: session.url } }, 200, origin);
     }
 
+    if (action === "monitored_parts_addon_checkout") {
+      const currentPlan = effectivePlan(profile).plan;
+      if (!["Starter", "Professional"].includes(currentPlan) || !hasCurrentPaidSubscription(profile)) {
+        return response({ ok: false, detail: "The monitored-parts capacity add-on requires an active Starter or Professional subscription." }, 409, origin);
+      }
+      const interval = body.billing_interval === "year" ? "year" : body.billing_interval === "month" ? "month" : "";
+      if (!interval) return response({ ok: false, detail: "Choose monthly or annual billing." }, 400, origin);
+      const capacity = positiveUnits("CADIVOR_MONITORED_PARTS_ADDON_CAPACITY");
+      const priceEnv = interval === "year"
+        ? "STRIPE_MONITORED_PARTS_ANNUAL_PRICE_ID"
+        : "STRIPE_MONITORED_PARTS_MONTHLY_PRICE_ID";
+      const priceId = String(Deno.env.get(priceEnv) || "").trim();
+      if (!capacity || !priceId) {
+        return response({ ok: false, detail: "The monitored-parts capacity add-on is not configured for purchase yet." }, 503, origin);
+      }
+      const configured = await configuredPrice(priceEnv, "recurring", interval);
+      const expectedAmount = interval === "year" ? 29000 : 2900;
+      if (!configured.enabled || configured.amount !== expectedAmount) {
+        return response({ ok: false, detail: "The monitored-parts add-on price needs review before purchase." }, 503, origin);
+      }
+      const existingAddon = await monitoredPartsAddonFor(auth.user.id);
+      if (existingAddon.active) {
+        return response({ ok: false, code: "addon_already_active", detail: "Monitored-parts capacity is already active on this account." }, 409, origin);
+      }
+
+      let subscription: Stripe.Subscription | null = null;
+      const savedSubscriptionId = String(profile.stripe_subscription_id || "").trim();
+      if (savedSubscriptionId) {
+        try {
+          subscription = await stripe.subscriptions.retrieve(savedSubscriptionId);
+        } catch (error) {
+          if (!isMissingStripeSubscription(error)) throw error;
+        }
+      }
+      if (!subscription || String(subscription.metadata?.user_id || "").trim() !== auth.user.id ||
+          subscription.status !== "active" || subscription.cancel_at_period_end) {
+        return response({ ok: false, detail: "Cadivor could not verify an active, non-canceling Stripe subscription for this account. Open Manage subscription or contact support before adding capacity." }, 409, origin);
+      }
+      const configuredPlanPrices = planPrices.flatMap((item) => [
+        { plan: item.name, interval: "month", price_id: String(Deno.env.get(item.env) || "").trim() },
+        { plan: item.name, interval: "year", price_id: String(Deno.env.get(item.annualEnv) || "").trim() },
+      ]).filter((item) => item.price_id);
+      const planItem = subscription.items.data.find((item) => {
+        const id = typeof item.price === "string" ? item.price : item.price.id;
+        return configuredPlanPrices.some((candidate) => candidate.price_id === id);
+      });
+      if (!planItem) {
+        return response({ ok: false, detail: "Cadivor could not identify the plan price on this Stripe subscription. Contact support before changing billing." }, 409, origin);
+      }
+      const planPriceId = typeof planItem.price === "string" ? planItem.price : planItem.price.id;
+      const planPrice = configuredPlanPrices.find((candidate) => candidate.price_id === planPriceId);
+      if (!planPrice || planPrice.plan.toLowerCase() !== currentPlan.toLowerCase() || planPrice.interval !== interval) {
+        return response({ ok: false, code: "billing_interval_mismatch", detail: "The add-on must renew on the same monthly or annual schedule as your current plan. Choose the matching billing option." }, 409, origin);
+      }
+      const currentAddonPrices = new Set([
+        String(Deno.env.get("STRIPE_MONITORED_PARTS_MONTHLY_PRICE_ID") || "").trim(),
+        String(Deno.env.get("STRIPE_MONITORED_PARTS_ANNUAL_PRICE_ID") || "").trim(),
+      ].filter(Boolean));
+      if (subscription.items.data.some((item) => {
+        const id = typeof item.price === "string" ? item.price : item.price.id;
+        return currentAddonPrices.has(id);
+      })) {
+        return response({ ok: false, code: "addon_already_active", detail: "Monitored-parts capacity is already included in this subscription." }, 409, origin);
+      }
+
+      const userId = auth.user.id;
+      const item = await stripe.subscriptionItems.create({
+        subscription: subscription.id,
+        price: priceId,
+        quantity: 1,
+        proration_behavior: "create_prorations",
+        metadata: { cadivor_addon: "monitored_parts_capacity", user_id: userId },
+      }, { idempotencyKey: `cadivor_monitored_parts_${userId}_${subscription.id}_${priceId}_${supportReference}` });
+      const { data: applied, error: applyError } = await supabase.rpc("cadivor_set_monitored_parts_addon", {
+        p_user_id: userId,
+        p_subscription_id: subscription.id,
+        p_price_id: priceId,
+        p_status: subscription.status,
+        p_capacity: capacity,
+        p_event_created: new Date().toISOString(),
+      });
+      if (applyError || applied !== "applied") {
+        console.error("monitored_parts_addon_entitlement_sync_failed", {
+          subscription_id: subscription.id,
+          subscription_item_id: item.id,
+          error_code: applyError?.code || null,
+        });
+        return response({ ok: false, detail: "Stripe added the capacity price, but Cadivor could not confirm the entitlement yet. Refresh billing status or contact support." }, 503, origin);
+      }
+      return response({
+        ok: true,
+        addon_added: true,
+        capacity,
+        billing_interval: interval,
+        detail: "Monitored-parts capacity is active. Stripe applies any partial-period charge to the next subscription invoice.",
+      }, 200, origin);
+    }
+
+    if (action === "monitored_parts_addon_remove") {
+      const addon = await monitoredPartsAddonFor(auth.user.id);
+      if (!addon.active || !addon.subscription_id || !addon.price_id) {
+        return response({ ok: false, detail: "There is no active monitored-parts capacity add-on to remove." }, 409, origin);
+      }
+      const subscription = await stripe.subscriptions.retrieve(addon.subscription_id);
+      if (String(subscription.metadata?.user_id || "").trim() !== auth.user.id ||
+          !["active", "trialing"].includes(subscription.status)) {
+        return response({ ok: false, detail: "Cadivor could not verify the subscription that owns this add-on. Contact support before changing billing." }, 409, origin);
+      }
+      const addonItem = subscription.items.data.find((item) => {
+        const itemPriceId = typeof item.price === "string" ? item.price : item.price.id;
+        return itemPriceId === addon.price_id || String(item.metadata?.cadivor_addon || "") === "monitored_parts_capacity";
+      });
+      if (!addonItem) {
+        return response({ ok: false, detail: "Stripe no longer lists this add-on on the account subscription. Refresh billing status or contact support." }, 409, origin);
+      }
+      await stripe.subscriptionItems.del(addonItem.id, { proration_behavior: "create_prorations" });
+      const { data: removed, error: removeError } = await supabase.rpc("cadivor_set_monitored_parts_addon", {
+        p_user_id: auth.user.id,
+        p_subscription_id: subscription.id,
+        p_price_id: addon.price_id,
+        p_status: "canceled",
+        p_capacity: addon.capacity,
+        p_event_created: new Date().toISOString(),
+      });
+      if (removeError || removed !== "applied") {
+        console.error("monitored_parts_addon_removal_sync_failed", {
+          subscription_id: subscription.id,
+          subscription_item_id: addonItem.id,
+          error_code: removeError?.code || null,
+        });
+        return response({ ok: false, detail: "Stripe removed the add-on, but Cadivor could not update its entitlement yet. Refresh billing status or contact support." }, 503, origin);
+      }
+      return response({
+        ok: true,
+        addon_removed: true,
+        detail: "Monitored-parts capacity was removed. Stripe will prorate unused time on the subscription invoice.",
+      }, 200, origin);
+    }
+
     if (action === "usage_overage_checkout") {
       const currentPlan = effectivePlan(profile).plan;
       if (!["Starter", "Professional", "Business"].includes(currentPlan) ||
@@ -1196,9 +1402,7 @@ serve(async (request) => {
       const kind = String(body.credit_kind || "").trim();
       const item = kind === "bom_analysis"
         ? { priceEnv: "STRIPE_BOM_ANALYSIS_OVERAGE_PRICE_ID", unitsEnv: "CADIVOR_BOM_ANALYSIS_OVERAGE_CREDITS" }
-        : kind === "monitored_part"
-          ? { priceEnv: "STRIPE_MONITORED_PARTS_OVERAGE_PRICE_ID", unitsEnv: "CADIVOR_MONITORED_PARTS_OVERAGE_CREDITS" }
-          : null;
+        : null;
       if (!item) return response({ ok: false, detail: "Choose a supported usage pack." }, 400, origin);
       const priceId = String(Deno.env.get(item.priceEnv) || "").trim();
       const credits = positiveUnits(item.unitsEnv);
