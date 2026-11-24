@@ -332,9 +332,10 @@ def _mfa_factor_rows(
 
     url, key = _require_configured()
     req = urllib.request.Request(
-        # The user's factor inventory is served by Supabase Auth and scoped
-        # to this access token.
-        f"{url.rstrip('/')}/auth/v1/factors",
+        # Supabase returns the signed-in user's MFA factors in the authenticated
+        # user record. This is the same user-scoped source used by
+        # supabase.auth.mfa.listFactors(); there is no GET /factors route.
+        f"{url.rstrip('/')}/auth/v1/user",
         method="GET",
         headers={
             "Authorization": f"Bearer {access_token}",
@@ -351,17 +352,19 @@ def _mfa_factor_rows(
             503,
         ) from exc
 
-    if isinstance(payload, list):
-        rows = payload
-    elif isinstance(payload, dict):
-        rows = payload.get("all")
-        if not isinstance(rows, list):
-            rows = [
-                *(payload.get("totp") if isinstance(payload.get("totp"), list) else []),
-                *(payload.get("phone") if isinstance(payload.get("phone"), list) else []),
-            ]
-    else:
+    if not isinstance(payload, dict) or str(payload.get("id") or "").strip() != user_id:
+        raise AuthError(
+            "Cadivor could not verify your authenticator settings. Try again shortly.",
+            503,
+        )
+    rows = payload.get("factors")
+    if rows is None:
         rows = []
+    if not isinstance(rows, list):
+        raise AuthError(
+            "Cadivor could not verify your authenticator settings. Try again shortly.",
+            503,
+        )
 
     safe_rows: list[dict[str, str]] = []
     for row in rows:
