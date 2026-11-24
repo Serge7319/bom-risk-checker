@@ -85,6 +85,15 @@ function stripeErrorSummary(error: unknown): StripeErrorSummary {
   };
 }
 
+function safeSupportMessage(message: string | undefined): string | undefined {
+  if (!message) return undefined;
+  return message
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]+\b/gi, "[redacted-key]")
+    .replace(/\bBearer\s+[^\s,]+/gi, "Bearer [redacted]")
+    .slice(0, 240);
+}
+
 function marketingAttribution(user: { user_metadata?: unknown }): Record<string, string> {
   const metadata = user.user_metadata && typeof user.user_metadata === "object"
     ? user.user_metadata as Record<string, unknown>
@@ -1080,6 +1089,7 @@ serve(async (request) => {
 
   let planToken = "unknown";
   const supportReference = crypto.randomUUID();
+  let supportStage = "profile_lookup";
   try {
     const profile = await profileFor(auth.user.id);
 
@@ -1095,7 +1105,7 @@ serve(async (request) => {
       if (action === "admin_manual_plan_billing_list") {
         const { data, error } = await supabase
           .from("cadivor_manual_plan_invoices")
-          .select("id,plan,billing_interval,amount_minor,currency,status,hosted_invoice_url,invoice_pdf,invoice_sent_at,due_at,created_at,paid_at,payment_method,payment_reference,payment_recorded_at,grant_starts_at,grant_ends_at,stripe_invoice_id")
+          .select("id,plan,billing_interval,amount_minor,currency,status,due_days,hosted_invoice_url,invoice_pdf,invoice_sent_at,due_at,created_at,paid_at,payment_method,payment_reference,payment_recorded_at,grant_starts_at,grant_ends_at,stripe_invoice_id")
           .eq("user_id", targetUserId)
           .order("created_at", { ascending: false })
           .limit(30);
@@ -1118,6 +1128,7 @@ serve(async (request) => {
         if (await accountIsSuspended(targetUserId)) {
           return response({ ok: false, detail: "Restore the customer account before issuing an invoice." }, 409, origin);
         }
+        supportStage = "manual_invoice_validate_plan";
         const planName = String(body.plan || "").trim();
         const billingInterval = String(body.billing_interval || "month").trim().toLowerCase();
         const rawDueDays = body.due_days == null ? 30 : Number(body.due_days);
@@ -1126,6 +1137,8 @@ serve(async (request) => {
             !Number.isSafeInteger(rawDueDays) || rawDueDays < 1 || rawDueDays > 90) {
           return response({ ok: false, detail: "Choose a valid plan, billing term, and due date." }, 400, origin);
         }
+        planToken = selectedPlan.token;
+        supportStage = "manual_invoice_verify_customer_email";
         const { data: authResult, error: authError } = await supabase.auth.admin.getUserById(targetUserId);
         if (authError || !authResult?.user?.email) {
           const status = Number((authError as unknown as Record<string, unknown> | null)?.status || 0);
@@ -1136,6 +1149,7 @@ serve(async (request) => {
         }
         const customerEmail = String(authResult.user.email).trim().toLowerCase();
 
+        supportStage = "manual_invoice_check_subscription";
         const activeSubscriptions: Stripe.Subscription[] = [];
         for (const status of ["active", "trialing"] as const) {
           const result = await stripe.subscriptions.search({
@@ -1155,6 +1169,7 @@ serve(async (request) => {
         const priceEnv = billingInterval === "year" ? selectedPlan.annualEnv : selectedPlan.env;
         const priceId = String(Deno.env.get(priceEnv) || "").trim();
         if (!priceId) return response({ ok: false, detail: "This plan term has no configured Stripe price." }, 503, origin);
+        supportStage = "manual_invoice_verify_price";
         const price = await stripe.prices.retrieve(priceId);
         const monthlyValid = billingInterval === "month" && price.recurring?.interval === "month" &&
           (price.recurring.interval_count || 1) === 1 && price.unit_amount === selectedPlan.expected;
@@ -1168,6 +1183,7 @@ serve(async (request) => {
 
         let stripeCustomerId = String(targetProfile.stripe_customer_id || "").trim();
         let customer: Stripe.Customer;
+        supportStage = "manual_invoice_verify_or_create_customer";
         if (stripeCustomerId) {
           const existingCustomer = await stripe.customers.retrieve(stripeCustomerId);
           if ("deleted" in existingCustomer && existingCustomer.deleted) {
@@ -1200,6 +1216,7 @@ serve(async (request) => {
         }
         stripeCustomerId = customer.id;
 
+        supportStage = "manual_invoice_reserve_record";
         const invoiceRecordId = crypto.randomUUID();
         const { data: reserveData, error: reserveError } = await supabase.rpc("cadivor_admin_reserve_manual_plan_invoice", {
           p_invoice_id: invoiceRecordId,
@@ -1244,8 +1261,10 @@ serve(async (request) => {
         let invoice: Stripe.Invoice;
         const linkedInvoiceId = String(invoiceRecord.stripe_invoice_id || "").trim();
         if (linkedInvoiceId) {
+          supportStage = "manual_invoice_resume_stripe_invoice";
           invoice = await stripe.invoices.retrieve(linkedInvoiceId);
         } else {
+          supportStage = "manual_invoice_create_stripe_invoice";
           invoice = await stripe.invoices.create({
             customer: stripeCustomerId,
             collection_method: "send_invoice",
@@ -1266,8 +1285,10 @@ serve(async (request) => {
           return response({ ok: false, detail: "Stripe invoice ownership could not be verified. No access was changed." }, 409, origin);
         }
         if (invoice.status === "draft") {
+          supportStage = "manual_invoice_check_draft_lines";
           const lines = await stripe.invoices.listLineItems(invoice.id, { limit: 5 });
           if (lines.data.length === 0) {
+            supportStage = "manual_invoice_add_draft_line";
             await stripe.invoiceItems.create({
               customer: stripeCustomerId,
               invoice: invoice.id,
@@ -1279,14 +1300,17 @@ serve(async (request) => {
           } else if (lines.data.length !== 1 || lines.data[0].amount !== price.unit_amount) {
             throw new Error("Draft invoice line items did not match the configured plan price.");
           }
+          supportStage = "manual_invoice_finalize";
           invoice = await stripe.invoices.finalizeInvoice(invoice.id, { auto_advance: false });
         } else {
+          supportStage = "manual_invoice_verify_existing_lines";
           const lines = await stripe.invoices.listLineItems(invoice.id, { limit: 5 });
           if (lines.data.length !== 1 || lines.data[0].amount !== price.unit_amount) {
             throw new Error("Invoice line items did not match the configured plan price.");
           }
         }
         if (invoice.status !== "open" || invoice.amount_due !== price.unit_amount || invoice.currency !== price.currency) {
+          supportStage = "manual_invoice_close_amount_mismatch";
           if (invoice.status === "open") await stripe.invoices.voidInvoice(invoice.id);
           const { error: voidError } = await supabase.rpc("cadivor_admin_void_manual_plan_invoice", {
             p_actor_user_id: auth.user.id,
@@ -1295,6 +1319,7 @@ serve(async (request) => {
           if (voidError) throw new Error("Invoice amount validation failed and the invoice could not be closed.");
           return response({ ok: false, detail: "Stripe added an amount or currency that differs from the configured plan price. The invoice was voided; review customer tax or balance settings." }, 409, origin);
         }
+        supportStage = "manual_invoice_save_payment_link";
         const { error: saveInvoiceError } = await supabase
           .from("cadivor_manual_plan_invoices")
           .update({
@@ -2166,16 +2191,22 @@ serve(async (request) => {
       reference: supportReference,
       action,
       plan: planToken,
+      stage: supportStage,
+      error_name: error instanceof Error ? error.name : typeof error,
       error_type: summary.type,
       error_code: summary.code,
       error_status: summary.statusCode,
       error_param: summary.param,
       stripe_request_id: summary.requestId,
+      error_message: safeSupportMessage(summary.message),
     });
+    const detail = action === "admin_manual_plan_invoice_create"
+      ? `Invoice setup did not finish. No access was granted or invoice email sent. Refresh this profile; if an incomplete invoice appears, use Resume invoice setup. Reference: ${supportReference}.`
+      : "Billing could not be started. Please try again or contact support.";
     return response({
       ok: false,
       code: "checkout_unavailable",
-      detail: "Billing could not be started. Please try again or contact support.",
+      detail,
       support_reference: supportReference,
     }, 503, origin);
   }

@@ -188,6 +188,30 @@ export default function AdminUsersPage() {
       setManualBillingNotice("Invoice created. Review it below, then email the invoice or share its payment link.");
     } catch (cause) {
       setManualBillingError(cause instanceof Error ? cause.message : "Invoice could not be created.");
+      await refreshManualInvoices(selectedProfile.id, session.access_token).catch(() => undefined);
+    } finally {
+      setManualBusy("");
+    }
+  }
+
+  async function resumeManualInvoice(invoice: AdminManualPlanInvoice) {
+    if (!session || !selectedProfile || invoice.status !== "creating") return;
+    setManualBusy(`resume:${invoice.id}`);
+    setManualBillingError("");
+    setManualBillingNotice("");
+    try {
+      await adminManualPlanBillingAction(session.access_token, selectedProfile.id, {
+        action: "create_invoice",
+        plan: invoice.plan,
+        billing_interval: invoice.billing_interval,
+        due_days: invoice.due_days || 30,
+      });
+      await refreshManualInvoices(selectedProfile.id, session.access_token);
+      setInvoiceFormOpen(false);
+      setManualBillingNotice("Invoice setup resumed. Review the payment link below; it has not been emailed.");
+    } catch (cause) {
+      setManualBillingError(cause instanceof Error ? cause.message : "Invoice setup could not be resumed.");
+      await refreshManualInvoices(selectedProfile.id, session.access_token).catch(() => undefined);
     } finally {
       setManualBusy("");
     }
@@ -549,7 +573,7 @@ export default function AdminUsersPage() {
                   {manualInvoices.map((invoice) => {
                     const currentGrant = invoice.status === "paid" && invoice.grant_starts_at && invoice.grant_ends_at &&
                       Date.parse(invoice.grant_starts_at) <= Date.now() && Date.parse(invoice.grant_ends_at) > Date.now();
-                    const statusLabel = invoice.status === "creating" ? "Preparing" :
+                    const statusLabel = invoice.status === "creating" ? invoice.stripe_invoice_id ? "Draft saved · setup incomplete" : "Setup incomplete" :
                       invoice.status === "open" ? "Awaiting payment" :
                         invoice.status === "payment_recorded" ? "Payment recorded" :
                           invoice.status === "paid" ? currentGrant ? "Paid · access active" : "Paid · term complete or upcoming" : "Voided";
@@ -568,6 +592,13 @@ export default function AdminUsersPage() {
                             ) : null}
                             {invoice.invoice_sent_at ? <small style={{ display: "block" }}>Invoice emailed {formatDate(invoice.invoice_sent_at)}</small> : null}
                           </div>
+                          {invoice.status === "creating" ? (
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "start" }}>
+                              <button className="cv-button primary" type="button" disabled={Boolean(manualBusy)} onClick={() => void resumeManualInvoice(invoice)}>
+                                {manualBusy === `resume:${invoice.id}` ? "Resuming…" : "Resume invoice setup"}
+                              </button>
+                            </div>
+                          ) : null}
                           {invoice.status === "open" || invoice.status === "payment_recorded" ? (
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "start" }}>
                               {invoice.hosted_invoice_url ? <a className="cv-button" href={invoice.hosted_invoice_url} target="_blank" rel="noreferrer">Open payment page</a> : null}
@@ -598,6 +629,11 @@ export default function AdminUsersPage() {
                             </div>
                           ) : null}
                         </div>
+                        {invoice.status === "creating" ? (
+                          <p className="cv-small-note" style={{ margin: "10px 0 0" }}>
+                            No invoice email was sent and no access was granted. Resume continues this invoice record instead of creating another.
+                          </p>
+                        ) : null}
                         {voidConfirmInvoiceId === invoice.id ? (
                           <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "#fff7f5", border: "1px solid #efc4ba" }}>
                             <p style={{ margin: "0 0 8px" }}>Void this unpaid invoice? The payment link will stop working.</p>
