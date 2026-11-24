@@ -1702,6 +1702,7 @@ export type AdminManualPlanInvoice = {
   amount_minor: number;
   currency: string;
   status: "creating" | "open" | "payment_recorded" | "paid" | "void";
+  due_days?: number | null;
   hosted_invoice_url?: string | null;
   invoice_pdf?: string | null;
   invoice_sent_at?: string | null;
