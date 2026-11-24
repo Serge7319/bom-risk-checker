@@ -642,7 +642,7 @@ export default function Page() {
   }
 
   async function removeMonitoredCapacity() {
-    if (!session || !window.confirm("Remove the monitored-parts capacity add-on? Stripe will prorate any unused time on the subscription invoice.")) return;
+    if (!session || !window.confirm("Remove the monitored-parts capacity add-on? Any unused time is prorated on your next subscription invoice.")) return;
     setBillingAction("addon-monitored_parts_remove");
     setBillingError("");
     setBillingNotice("");
@@ -1675,7 +1675,7 @@ export default function Page() {
               <section className="cv-card pad" style={{ marginBottom: 14 }}>
                 <h3 className="cv-card-title">Usage add-ons</h3>
                 <p className="cv-card-subtitle">
-                  Buy extra BOM analysis credits or recurring monitoring capacity. Stripe prorates monitoring capacity to align with your plan renewal.
+                  Buy extra BOM analysis credits or monitored-parts capacity when you need it. Monitoring capacity renews with your plan; any prorated adjustment appears on your next subscription invoice.
                 </p>
                 <div className="cv-addon-grid">
                   <article className="cv-addon-card">
