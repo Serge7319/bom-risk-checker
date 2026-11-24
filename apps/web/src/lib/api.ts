@@ -1684,11 +1684,11 @@ export type PublicServiceStatus = {
 };
 
 export async function fetchPublicServiceStatus() {
-  return apiJson<PublicServiceStatus>("/public/service-status");
+  return apiJson<PublicServiceStatus>("/public/service-status", { cache: "no-store" });
 }
 
 export async function fetchRuntimeMaintenance(token: string) {
-  return apiJson<RuntimeMaintenanceStatus>("/runtime/maintenance", { token });
+  return apiJson<RuntimeMaintenanceStatus>("/runtime/maintenance", { token, cache: "no-store" });
 }
 
 export type AdminPlatformOverview = {
@@ -1704,7 +1704,7 @@ export type AdminPlatformOverview = {
 };
 
 export async function fetchAdminPlatformSettings(token: string) {
-  return apiJson<{ ok: boolean; overview: AdminPlatformOverview }>("/admin/platform-settings", { token });
+  return apiJson<{ ok: boolean; overview: AdminPlatformOverview }>("/admin/platform-settings", { token, cache: "no-store" });
 }
 
 export async function updateAdminMaintenanceMode(
