@@ -467,6 +467,7 @@ def _offer(
     stock: Any = None,
     product_url: Any = "",
     retrieved_at: Any = "",
+    lead_time_weeks: Any = None,
 ) -> dict[str, Any] | None:
     name = "" if _blank(distributor) else str(distributor).strip()
     if name.casefold() in _MISSING_TEXT:
@@ -475,7 +476,7 @@ def _offer(
     if price is None:
         return None
     retrieved = "" if _blank(retrieved_at) else str(retrieved_at).strip()
-    return {
+    offer = {
         "mpn": str(mpn or "").strip(),
         "distributor": name,
         "unit_price": price,
@@ -485,6 +486,10 @@ def _offer(
         "product_url": http_url(product_url),
         "retrieved_at": retrieved,
     }
+    lead_time = positive_number(lead_time_weeks)
+    if lead_time is not None:
+        offer["lead_time_weeks"] = int(lead_time) if lead_time.is_integer() else lead_time
+    return offer
 
 
 def normalize_saved_offers(offers: Any, *, mpn: str = "") -> list[dict[str, Any]]:
@@ -506,6 +511,7 @@ def normalize_saved_offers(offers: Any, *, mpn: str = "") -> list[dict[str, Any]
             stock=item.get("stock", item.get("stock_total")),
             product_url=item.get("product_url") or item.get("product_detail_url"),
             retrieved_at=item.get("retrieved_at"),
+            lead_time_weeks=item.get("lead_time_weeks", item.get("lead_time")),
         )
         if offer:
             saved.append(offer)
@@ -584,6 +590,7 @@ def collect_supplier_offers(results: Any, *, mpn: str) -> list[dict[str, Any]]:
                 stock=stock,
                 product_url=product_url,
                 retrieved_at=retrieved_at,
+                lead_time_weeks=result.get("lead_time_weeks"),
             )
             if offer:
                 offers.append(offer)
