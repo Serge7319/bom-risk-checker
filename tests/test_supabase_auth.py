@@ -120,6 +120,7 @@ def supabase_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClie
     monkeypatch.setenv("CADIVOR_FORCE_PRODUCTION_AUTH", "1")
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_KEY", "public-anon-key-for-tests")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key-for-tests")
     monkeypatch.setenv("CADIVOR_ALLOW_EPHEMERAL_FILE_STORE", "1")
     monkeypatch.delenv("CADIVOR_MIGRATION_DATABASE_URL", raising=False)
     monkeypatch.delenv("CADIVOR_SANDBOX_AUTH_SECRET", raising=False)
@@ -425,6 +426,7 @@ def test_sandbox_hs256_blocked_when_production_runtime_forced(
     monkeypatch.setenv("CADIVOR_ALLOW_SANDBOX_JWT", "1")
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_KEY", "public-anon-key-for-tests")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service-role-key-for-tests")
     monkeypatch.setenv("CADIVOR_ALLOW_EPHEMERAL_FILE_STORE", "1")
     monkeypatch.delenv("CADIVOR_MIGRATION_DATABASE_URL", raising=False)
 
@@ -509,6 +511,22 @@ def test_self_serve_signup_is_disabled_by_default(supabase_client: TestClient):
     )
     assert response.status_code == 503
     assert supabase_client.app.state.fake_auth.signup_payloads == []
+
+
+def test_self_serve_signup_requires_server_side_trial_writer(
+    supabase_client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("CADIVOR_SELF_SERVE_SIGNUP_ENABLED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_EMAIL_CONFIRMATION_CONFIRMED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_ABUSE_PROTECTION_CONFIRMED", "1")
+    monkeypatch.setenv("CADIVOR_SIGNUP_REDIRECT_URL", "https://app.cadivor.com/login")
+    monkeypatch.setenv("CADIVOR_WEB_ORIGINS", "https://app.cadivor.com")
+    monkeypatch.delenv("SUPABASE_SERVICE_ROLE_KEY", raising=False)
+
+    assert supabase_auth.signup_enabled() is False
+    status = supabase_auth.describe_supabase_auth()
+    assert status["server_side_trial_provisioning_ready"] is False
+    assert any("SUPABASE_SERVICE_ROLE_KEY" in message for message in status["setup_required"])
 
 
 def test_unprovisioned_supabase_account_cannot_enter_when_signup_is_closed(

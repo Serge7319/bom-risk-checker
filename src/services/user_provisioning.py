@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import time
-from typing import Any
+from typing import Any, Callable
 
 from src.supabase_read import SupabaseReadTransportError, execute_supabase_read
 from src.signup_intent import is_report_only_signup
@@ -80,6 +80,8 @@ def repair_recent_default_trial_profile(
     supabase: Any,
     auth_user: Any,
     profile: dict[str, Any],
+    *,
+    trusted_write_client_factory: Callable[[], Any] | None = None,
 ) -> dict[str, Any]:
     """Promote an eligible Starter row to Trial starting at this sign-in.
 
@@ -91,6 +93,11 @@ def repair_recent_default_trial_profile(
     if not _eligible_starter_trial_repair(auth_user, profile):
         return profile
 
+    auth_user_id = _safe_text(getattr(auth_user, "id", ""))
+    profile_id = _safe_text(profile.get("id"))
+    if not auth_user_id or auth_user_id != profile_id:
+        raise UserProvisioningError("Billing profile identity mismatch.")
+
     now = datetime.now(timezone.utc)
     trial_start = now.isoformat()
     trial_end = (now + timedelta(days=TRIAL_DAYS)).isoformat()
@@ -101,8 +108,13 @@ def repair_recent_default_trial_profile(
     }
 
     try:
+        writer = (
+            trusted_write_client_factory()
+            if trusted_write_client_factory is not None
+            else supabase
+        )
         query = (
-            supabase.table("users")
+            writer.table("users")
             .update(payload)
             .eq("id", profile.get("id"))
             .eq("plan", profile.get("plan"))
@@ -223,6 +235,7 @@ def ensure_user_profile(
     auth_user: Any,
     *,
     operation: str = "ensure_user_profile",
+    trusted_write_client_factory: Callable[[], Any] | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Ensure a Cadivor users row exists for the authenticated Supabase user.
 
@@ -239,7 +252,12 @@ def ensure_user_profile(
 
     if existing.data:
         profile = existing.data[0]
-        repaired = repair_recent_default_trial_profile(supabase, auth_user, profile)
+        repaired = repair_recent_default_trial_profile(
+            supabase,
+            auth_user,
+            profile,
+            trusted_write_client_factory=trusted_write_client_factory,
+        )
         return repaired, False
 
     row = build_default_user_row(auth_user)
@@ -247,7 +265,12 @@ def ensure_user_profile(
         raise UserProvisioningError("Provisioning identity mismatch.")
 
     try:
-        insert_response = supabase.table("users").insert(row).execute()
+        writer = (
+            trusted_write_client_factory()
+            if trusted_write_client_factory is not None
+            else supabase
+        )
+        insert_response = writer.table("users").insert(row).execute()
     except Exception as exc:
         # Another login may have created the row concurrently; re-read once.
         try:
@@ -262,7 +285,12 @@ def ensure_user_profile(
             ) from read_exc
         if retry.data:
             profile = retry.data[0]
-            repaired = repair_recent_default_trial_profile(supabase, auth_user, profile)
+            repaired = repair_recent_default_trial_profile(
+                supabase,
+                auth_user,
+                profile,
+                trusted_write_client_factory=trusted_write_client_factory,
+            )
             return repaired, False
         raise UserProvisioningError("Cadivor could not create the user profile.") from exc
 

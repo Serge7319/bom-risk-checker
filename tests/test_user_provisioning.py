@@ -124,6 +124,82 @@ class UserProvisioningTests(unittest.TestCase):
         update_query.is_.assert_any_call("trial_ends_at", "null")
         update_query.is_.assert_any_call("trial_started_at", "null")
 
+    def test_trial_repair_uses_trusted_writer_for_restricted_billing_columns(self):
+        auth_user = self._auth_user()
+        auth_user.user_metadata["cadivor_signup_intent"] = "standard_trial"
+        auth_created_at = datetime.now(timezone.utc) - timedelta(days=15)
+        existing = {
+            "id": "user-1",
+            "email": "user@example.com",
+            "plan": "Starter",
+            "trial_started_at": None,
+            "trial_ends_at": None,
+            "stripe_customer_id": None,
+            "stripe_subscription_id": None,
+            "stripe_price_id": None,
+            "stripe_subscription_status": None,
+            "plan_grandfather_source": None,
+            "role": "user",
+            "created_at": auth_created_at.isoformat(),
+        }
+        user_scoped = MagicMock()
+        trusted_writer = MagicMock()
+        trusted_writer_factory = MagicMock(return_value=trusted_writer)
+        update_query = MagicMock()
+        update_query.eq.return_value = update_query
+        update_query.is_.return_value = update_query
+        update_query.select.return_value = update_query
+        trusted_writer.table.return_value.update.return_value = update_query
+
+        def capture_update(payload):
+            updated = {**existing, **payload}
+            update_query.execute.return_value = types.SimpleNamespace(data=[updated])
+            return update_query
+
+        trusted_writer.table.return_value.update.side_effect = capture_update
+
+        with patch(
+            "src.services.user_provisioning.execute_supabase_read",
+            return_value=types.SimpleNamespace(data=[existing]),
+        ):
+            profile, created = ensure_user_profile(
+                user_scoped,
+                auth_user,
+                trusted_write_client_factory=trusted_writer_factory,
+            )
+
+        self.assertFalse(created)
+        self.assertEqual(profile["plan"], "Trial")
+        self.assertEqual(trusted_writer_factory.call_count, 1)
+        trusted_writer.table.return_value.update.assert_called_once()
+        user_scoped.table.return_value.update.assert_not_called()
+
+    def test_missing_profile_insert_uses_trusted_writer(self):
+        auth_user = self._auth_user()
+        user_scoped = MagicMock()
+        trusted_writer = MagicMock()
+        trusted_writer_factory = MagicMock(return_value=trusted_writer)
+        expected_row = build_default_user_row(auth_user)
+        trusted_writer.table.return_value.insert.return_value.execute.return_value = (
+            types.SimpleNamespace(data=[expected_row])
+        )
+
+        with patch(
+            "src.services.user_provisioning.execute_supabase_read",
+            return_value=types.SimpleNamespace(data=[]),
+        ):
+            profile, created = ensure_user_profile(
+                user_scoped,
+                auth_user,
+                trusted_write_client_factory=trusted_writer_factory,
+            )
+
+        self.assertTrue(created)
+        self.assertEqual(profile, expected_row)
+        trusted_writer_factory.assert_called_once_with()
+        trusted_writer.table.return_value.insert.assert_called_once_with(expected_row)
+        user_scoped.table.return_value.insert.assert_not_called()
+
     def test_starter_with_prior_trial_history_is_not_converted(self):
         auth_user = self._auth_user()
         auth_user.user_metadata["cadivor_signup_intent"] = "standard_trial"
