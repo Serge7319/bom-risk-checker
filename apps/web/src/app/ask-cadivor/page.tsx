@@ -133,7 +133,7 @@ function userFacingAskGap(value: unknown): string {
   if (/OpenAI was not active/i.test(text)) {
     return "The AI response service was unavailable; Cadivor used its saved report evidence and built-in review rules.";
   }
-  return text.replace(/\\bOpenAI\\b/gi, "AI");
+  return text.replace(/OpenAI/gi, "AI");
 }
 
 function readStoredThreads(key: string): AskConversation[] {
