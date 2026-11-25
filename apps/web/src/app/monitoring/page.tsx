@@ -294,7 +294,7 @@ function MonitoringPageInner() {
               >
                 {requestedPartIsInAnalysis ? (
                   <>
-                    Supplier refresh is scoped to <strong>{requestedPartNumber}</strong>. It queries configured distributors and stores verified measurements in Monitoring. It does not rewrite Procurement’s saved offer rows; re-run the BOM analysis for a new offer snapshot. Recalculate saved alerts only reuses saved analysis data.
+                    Refresh supplier data checks configured distributors for <strong>{requestedPartNumber}</strong> and saves verified results to Monitoring; it may update alerts. Procurement offers remain unchanged. Recalculate saved alerts uses the saved snapshot without contacting suppliers.
                   </>
                 ) : (
                   <>The linked part <strong>{requestedPartNumber}</strong> is not in this saved analysis. No supplier lookup will run; open the matching BOM analysis and try again.</>
