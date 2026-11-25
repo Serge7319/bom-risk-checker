@@ -281,6 +281,7 @@ function MonitoringPageInner() {
       ) : null}
       {<EvidenceNotice gap={data?.gap} />}
       {busy ? <LoadingCard label="Loading monitoring signals from saved analyses…" /> : null}
+      {refreshNote ? <div className="cv-evidence-context" role="status">{refreshNote}</div> : null}
       {error ? <div className="cv-error" role="alert">Monitoring could not load. {error}</div> : null}
       {!busy && data ? (
         <>
@@ -360,7 +361,6 @@ function MonitoringPageInner() {
               </button>
               {!activeAnalysisId ? <span className="cv-card-subtitle"> Select an analysis to refresh it.</span> : null}
             </div>
-            {refreshNote ? <div className="cv-evidence-context" role="status" style={{ marginTop: 10 }}>{refreshNote}</div> : null}
             {monitoringActionNote ? <div className="cv-evidence-context" role="status" style={{ marginTop: 10 }}>{monitoringActionNote}</div> : null}
             {liveRefreshOutcome ? (
               <div
