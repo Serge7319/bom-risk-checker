@@ -957,7 +957,7 @@ def get_live_snapshot(
 
 
 def list_live_snapshots(workspace_id: str, analysis_id: str) -> list[dict[str, Any]]:
-    """List identity-verified supplier snapshots for one workspace analysis."""
+    """List saved live supplier snapshots for one workspace analysis."""
     wid = str(workspace_id or "").strip()
     aid = str(analysis_id or "").strip()
     if not wid or not aid:
