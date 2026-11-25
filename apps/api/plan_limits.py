@@ -186,21 +186,26 @@ def finish_ai_credit(
         return False
     from apps.api import subscription_billing_service
 
-    try:
-        result, status = subscription_billing_service.request_action(
-            access_token=token,
-            action="finish_ai_question_credit",
-            payload={
-                "reservation_id": reservation_id,
-                "commit": bool(commit),
-                "workspace_id": workspace_id,
-            },
-            timeout_seconds=5,
-            internal_context={"user_id": user_id, "workspace_id": workspace_id},
-        )
-    except subscription_billing_service.SubscriptionBillingError:
-        return False
-    return status == 200 and result.get("ok") is True and result.get("finished") is True
+    for attempt in range(2):
+        try:
+            result, status = subscription_billing_service.request_action(
+                access_token=token,
+                action="finish_ai_question_credit",
+                payload={
+                    "reservation_id": reservation_id,
+                    "commit": bool(commit),
+                    "workspace_id": workspace_id,
+                },
+                timeout_seconds=5,
+                internal_context={"user_id": user_id, "workspace_id": workspace_id},
+            )
+        except subscription_billing_service.SubscriptionBillingError:
+            continue
+        if status == 200 and result.get("ok") is True:
+            return result.get("finished") is True
+        if status < 500:
+            return False
+    return False
 
 
 def ai_credit_status(
@@ -322,8 +327,20 @@ def reserve_ai_credit(
             internal_context={"user_id": user_id, "workspace_id": workspace_id},
         )
     except subscription_billing_service.SubscriptionBillingError:
+        finish_ai_credit(
+            row,
+            reservation_id=reservation_id,
+            source="topup",
+            commit=False,
+        )
         return {"reserved": False, "usage": status, "cost": cost, "code": "ai_credits_unavailable"}
     if result_status != 200 or result.get("ok") is not True:
+        finish_ai_credit(
+            row,
+            reservation_id=reservation_id,
+            source="topup",
+            commit=False,
+        )
         return {"reserved": False, "usage": status, "cost": cost, "code": "ai_credits_unavailable"}
     if result.get("reserved") is not True:
         return {
