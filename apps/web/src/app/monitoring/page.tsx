@@ -326,11 +326,11 @@ function MonitoringPageInner() {
               </div>
               <div>
                 <strong>Recalculate saved alerts:</strong>{" "}
-                uses saved Monitoring evidence only; no supplier lookup runs.
+                uses the saved analysis and latest verified Monitoring snapshots to update alerts; no supplier lookup runs.
               </div>
               <div>
                 <strong>Procurement offers:</strong>{" "}
-                unchanged by either Monitoring action. Run a new BOM analysis and upload the BOM again for a new Procurement offer snapshot.
+                unchanged by either Monitoring action. To create a new Procurement snapshot, analyze this saved BOM again; Cadivor preloads its component list so you do not need to upload the file again.
               </div>
             </div>
             {requestedPartNumber && !requestedPartIsInAnalysis ? (
@@ -402,9 +402,15 @@ function MonitoringPageInner() {
                 )}
                 <p style={{ margin: 0 }}>
                   This refresh updates Monitoring evidence and alerts. It does not replace the saved Procurement offers.
-                  To get new offers, run a new BOM analysis with the same BOM, then select that new report in Procurement.
+                  To create new offers, analyze this saved BOM again. Cadivor preloads the saved component list and project details; after analysis, open the new report in Procurement.
                 </p>
-                <div><PrimaryLink href="/bom-analyzer">Run a new BOM analysis</PrimaryLink></div>
+                {!liveRefreshOutcome.error && activeAnalysisId ? (
+                  <div>
+                    <PrimaryLink href={`/bom-analyzer?source_analysis_id=${encodeURIComponent(activeAnalysisId)}`}>
+                      Analyze this saved BOM again
+                    </PrimaryLink>
+                  </div>
+                ) : null}
               </div>
             ) : null}
             <div style={{ marginTop: 12 }}>
