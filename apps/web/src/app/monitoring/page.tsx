@@ -409,7 +409,7 @@ function MonitoringPageInner() {
             <div style={{ marginTop: 12 }}>
               <h4 style={{ margin: "0 0 4px" }}>Latest verified supplier evidence</h4>
               <p className="cv-small-note" style={{ margin: 0 }}>
-                Exact-MPN-matched values saved for Monitoring. Each field shows when the supplier last returned it.
+                Exact-MPN-matched values saved for Monitoring. Field dates distinguish values returned now from older saved observations.
               </p>
               {visibleLiveEvidence.length ? (
                 visibleLiveEvidence.map((row, index) => {
@@ -442,17 +442,23 @@ function MonitoringPageInner() {
                         <span className="cv-badge green">Exact MPN matched</span>
                       </div>
                       <p className="cv-small-note" style={{ margin: "4px 0 0" }}>
-                        Requested MPN matched {cleanUserText(String(row.manufacturer || "the supplier listing"))}
-                        {row.manufacturer_part_number ? ` (${cleanUserText(String(row.manufacturer_part_number))})` : ""}.
+                        Supplier listing matched MPN {cleanUserText(String(row.manufacturer_part_number || row.part_number || ""))}.
+                        {row.manufacturer ? ` Supplier-reported manufacturer: ${cleanUserText(String(row.manufacturer))}.` : ""}
                       </p>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginTop: 10 }}>
                         {fields.map((field) => {
                           const observedAt = fieldTimes[field.key];
-                          const freshnessLabel = observed.has(field.key)
-                            ? "Returned in this refresh"
-                            : observedAt
-                              ? `Last returned ${new Date(String(observedAt)).toLocaleString()}`
-                              : "Not returned in this refresh";
+                          const freshnessLabel = field.key === "risk_level"
+                            ? observed.has(field.key)
+                              ? "Recomputed after this refresh"
+                              : observedAt
+                                ? `Last recomputed ${new Date(String(observedAt)).toLocaleString()}`
+                                : "Not assessed in this refresh"
+                            : observed.has(field.key)
+                              ? "Returned in this refresh"
+                              : observedAt
+                                ? `Last returned ${new Date(String(observedAt)).toLocaleString()}`
+                                : "Not returned in this refresh";
                           return (
                             <div key={field.key} style={{ border: "1px solid var(--cv-border, #d7e1ed)", borderRadius: 8, padding: 8 }}>
                               <small>{field.label}</small>
@@ -570,7 +576,8 @@ function MonitoringPageInner() {
             <h3 className="cv-card-title">Alerts and changes</h3>
             <p className="cv-card-subtitle">
               Active signals for this selection only. Inactive/reconciled alerts are hidden.
-              Supplier checks use live provider data only when configured. Email alerts require your opt-in and the delivery service to be enabled.
+              “Alert not saved” means an alert record has not been persisted; it does not report whether a supplier refresh ran. Check the Data freshness result above for the live-check outcome.
+              Email alerts require your opt-in and the delivery service to be enabled.
             </p>
             {alerts.length ? (
               <div className="cv-table-wrap" style={{ marginTop: 12 }}>
