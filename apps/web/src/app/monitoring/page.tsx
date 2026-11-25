@@ -377,6 +377,7 @@ function MonitoringPageInner() {
                       Checked {String(liveRefreshOutcome.result?.supplier_calls ?? 0)} part check(s).
                       {" "}Saved verified Monitoring evidence for {String(liveRefreshOutcome.result?.updated_parts ?? 0)} part(s)
                       {" "}and detected {String(liveRefreshOutcome.result?.alert_count ?? 0)} change alert(s).
+                      {" "}Email was not sent — use Notify for delivery.
                     </p>
                     {failedRefreshParts.length ? (
                       <ul style={{ margin: 0, paddingLeft: 20 }}>
