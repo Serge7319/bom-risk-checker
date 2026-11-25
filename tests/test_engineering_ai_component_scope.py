@@ -267,9 +267,10 @@ class EngineeringAIComponentScopeTests(unittest.TestCase):
             },
         )
 
-        self.assertIn("does not mark", response.answer)
-        self.assertIn("LM358DR", response.answer)
-        self.assertNotIn("No component is explicitly marked", response.answer)
+        self.assertEqual(response.provider, "cadivor-grounded")
+        self.assertTrue(response.grounded)
+        self.assertIn("No component is explicitly marked **Needs verification**", response.answer)
+        self.assertNotIn("LM358DR", response.answer)
 
 
 if __name__ == "__main__":
