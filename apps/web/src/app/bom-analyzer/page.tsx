@@ -138,7 +138,7 @@ function createSavedBomFile(report: Record<string, unknown>): {
     ["reference_designators", "Reference Designators"],
     ["bom_level", "BOM Level"],
     ["supplier_part_number", "Supplier Part Number"],
-    ...(supplierSpecific ? [["supplier", "Supplier"]] : []),
+    ...(supplierSpecific ? [["supplier", "Supplier"] as [string, string]] : []),
   ];
   const csv = [
     headers.map(([, label]) => csvCell(label)).join(","),
