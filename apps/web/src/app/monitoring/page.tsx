@@ -401,10 +401,12 @@ function MonitoringPageInner() {
                   </>
                 )}
                 <p style={{ margin: 0 }}>
-                  This refresh updates Monitoring evidence and alerts. It does not replace the saved Procurement offers.
-                  To create new offers, analyze this saved BOM again. Cadivor preloads the saved component list and project details; after analysis, open the new report in Procurement.
+                  {liveRefreshOutcome.error
+                    ? "The supplier refresh did not complete. It did not change the saved Procurement offers."
+                    : "This refresh updated Monitoring evidence and alerts. It did not replace the saved Procurement offers."}
+                  {" "}To create new offers, analyze this saved BOM again. Cadivor preloads the saved component list and project details; after analysis, open the new report in Procurement.
                 </p>
-                {!liveRefreshOutcome.error && activeAnalysisId ? (
+                {activeAnalysisId ? (
                   <div>
                     <PrimaryLink href={`/bom-analyzer?source_analysis_id=${encodeURIComponent(activeAnalysisId)}`}>
                       Analyze this saved BOM again
