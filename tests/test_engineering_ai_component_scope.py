@@ -209,5 +209,68 @@ class EngineeringAIComponentScopeTests(unittest.TestCase):
         self.assertNotIn("Open **Datasheet Q&A**", electrical_priority)
 
 
+    def test_verification_question_names_unmatched_part_instead_of_lifecycle_priority(self):
+        ai = _load_engineering_ai()
+        client = self._unconfigured_client(ai)
+        context = {
+            "analysis": {"project_name": "TEST - Synthetic QA BOM"},
+            "components": [
+                {
+                    "part_number": "ATmega328P-PU",
+                    "mpn": "ATmega328P-PU",
+                    "manufacturer": "Microchip Technology",
+                    "risk_level": "Medium",
+                    "risk_score": 45,
+                    "lifecycle_status": "NRND",
+                    "supplier_count": 2,
+                    "stock_available": 6151,
+                    "lead_time_weeks": 8.57,
+                },
+                {
+                    "part_number": "2N3904",
+                    "mpn": "2N3904",
+                    "manufacturer": "onsemi",
+                    "risk_level": "Needs verification",
+                    "risk_reasons": "No exact supplier match",
+                    "evidence_source": "No exact supplier match",
+                },
+            ],
+        }
+
+        response = client.ask(
+            question="Which component needs verification, and why?",
+            context=context,
+        )
+
+        self.assertEqual(response.provider, "cadivor-grounded")
+        self.assertTrue(response.grounded)
+        self.assertIn("2N3904", response.answer)
+        self.assertIn("no exact supplier match", response.answer.lower())
+        self.assertIn("Needs verification", response.answer)
+        self.assertNotIn("ATmega328P-PU", response.answer)
+
+    def test_verification_question_does_not_invent_a_missing_component(self):
+        ai = _load_engineering_ai()
+        client = self._unconfigured_client(ai)
+        response = client.ask(
+            question="Which component needs verification, and why?",
+            context={
+                "analysis": {"project_name": "TEST - Synthetic QA BOM"},
+                "components": [
+                    {
+                        "part_number": "LM358DR",
+                        "risk_level": "Medium",
+                        "lifecycle_status": "Active",
+                        "risk_reasons": "Recorded lead time is 26 weeks",
+                    }
+                ],
+            },
+        )
+
+        self.assertIn("does not mark", response.answer)
+        self.assertIn("LM358DR", response.answer)
+        self.assertNotIn("No component is explicitly marked", response.answer)
+
+
 if __name__ == "__main__":
     unittest.main()
