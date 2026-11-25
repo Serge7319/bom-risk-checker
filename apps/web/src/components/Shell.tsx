@@ -139,19 +139,6 @@ export function Shell({
     };
   }, [session.access_token, session.user_id]);
 
-  if (session.platform_role !== "admin" && maintenanceStatus === null) {
-    return (
-      <main className="cv-maintenance-checking" role="status" aria-live="polite">
-        <div className="cv-maintenance-card">
-          <span className="cv-maintenance-mark" aria-hidden="true">C</span>
-          <p className="cv-eyebrow">Cadivor service status</p>
-          <h1>Checking service availability</h1>
-          <p>One moment while we check whether the workspace is available.</p>
-        </div>
-      </main>
-    );
-  }
-
   if (session.platform_role !== "admin" && maintenanceStatus?.maintenance_mode) {
     return (
       <main className="cv-maintenance-checking" role="main">
