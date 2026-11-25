@@ -472,6 +472,11 @@ def run_live_analysis_refresh(
             "quantity": _optional_number(_first_value(part, "Quantity", "quantity")),
         })
         current["risk_level"] = str(assessed_risk.get("risk_level") or "Needs verification")
+        current["risk_reasons"] = [
+            str(reason).strip()
+            for reason in assessed_risk.get("risk_reasons") or []
+            if str(reason).strip()
+        ]
         previous = monitoring_store.get_live_snapshot(wid, aid, mpn) or _baseline(part)
         observed_fields = []
         field_retrieved_at = dict(previous.get("field_retrieved_at") or {})
