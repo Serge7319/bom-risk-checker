@@ -2669,10 +2669,18 @@ async def ask_cadivor_post(request: Request) -> JSONResponse:
             analysis_id=str(body.get("analysis_id") or ""),
             question=str(body.get("question") or ""),
             history=clean_history,
+            user_context=ctx,
         )
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
-    status = 200 if result.get("ok") else 400
+    if result.get("ok"):
+        status = 200
+    elif result.get("code") == "ai_credit_limit":
+        status = 429
+    elif result.get("code") == "ai_credits_unavailable":
+        status = 503
+    else:
+        status = 400
     return _json(result, status)
 
 

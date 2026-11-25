@@ -287,6 +287,10 @@ def delete_migration_account_data(*, user_id: str, email: str) -> dict[str, int]
                     (normalized_user_id,),
                 )
                 conn.execute(
+                    "DELETE FROM migration_ai_credit_usage WHERE user_id = %s",
+                    (normalized_user_id,),
+                )
+                conn.execute(
                     "DELETE FROM migration_users WHERE id = %s",
                     (normalized_user_id,),
                 )

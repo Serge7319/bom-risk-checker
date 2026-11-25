@@ -1570,6 +1570,7 @@ def ask_cadivor_payload(
     analysis_id: str,
     question: str,
     history: list[dict[str, str]] | None = None,
+    user_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Grounded Ask Cadivor against a saved analysis (local fallback without OpenAI)."""
     from src.services.engineering_ai import EngineeringAI, EngineeringAIError
@@ -1669,19 +1670,86 @@ def ask_cadivor_payload(
         "alternatives": [],
         "decisions": [],
     }
+    assistant = EngineeringAI()
+    plan_limits_module = None
+    credit_reservation: dict[str, Any] | None = None
+    if assistant.configured:
+        from apps.api import plan_limits as plan_limits_module
+
+        try:
+            credit_reservation = plan_limits_module.reserve_ai_credit(
+                user_context,
+                action="question",
+            )
+        except Exception:  # noqa: BLE001
+            return {
+                "ok": False,
+                "status": STATUS_FAILED,
+                "detail": "Cadivor could not verify your monthly AI credit balance. Please try again.",
+                "code": "ai_credits_unavailable",
+            }
+        if not credit_reservation.get("reserved"):
+            usage = credit_reservation.get("usage") or {}
+            if credit_reservation.get("code") in {"missing_user", "usage_store_unavailable"}:
+                return {
+                    "ok": False,
+                    "status": STATUS_FAILED,
+                    "detail": "Cadivor could not verify your monthly AI credit balance. Please try again.",
+                    "code": "ai_credits_unavailable",
+                }
+            plan_name = str(usage.get("plan") or "current")
+            allowance = max(0, int(usage.get("allowance") or 0))
+            used = max(0, int(usage.get("used") or 0))
+            if allowance < 1:
+                detail = f"OpenAI-backed Ask Cadivor is not included with the {plan_name} plan."
+            else:
+                detail = (
+                    f"You have used {used} of {allowance} monthly Ask Cadivor AI credits "
+                    f"on the {plan_name} plan. Credits reset next month."
+                )
+            return {
+                "ok": False,
+                "status": STATUS_FAILED,
+                "detail": detail,
+                "code": "ai_credit_limit",
+                "ai_usage": usage,
+            }
+
     try:
-        response = EngineeringAI().ask(
+        response = assistant.ask(
             question=clean_q,
             context=context,
             history=history or [],
         )
     except EngineeringAIError as exc:
+        if (
+            credit_reservation
+            and credit_reservation.get("reserved")
+            and not (credit_reservation.get("usage") or {}).get("is_admin")
+            and plan_limits_module is not None
+        ):
+            plan_limits_module.release_ai_credit(
+                user_context,
+                usage_month=str((credit_reservation.get("usage") or {}).get("month") or ""),
+                cost=int(credit_reservation.get("cost") or 1),
+            )
         return {
             "ok": False,
             "status": STATUS_FAILED,
             "detail": str(exc),
             "code": getattr(exc, "code", "error"),
         }
+
+    ai_usage = None
+    if credit_reservation and credit_reservation.get("reserved"):
+        if response.provider == "openai":
+            ai_usage = credit_reservation.get("usage")
+        elif not (credit_reservation.get("usage") or {}).get("is_admin") and plan_limits_module is not None:
+            plan_limits_module.release_ai_credit(
+                user_context,
+                usage_month=str((credit_reservation.get("usage") or {}).get("month") or ""),
+                cost=int(credit_reservation.get("cost") or 1),
+            )
 
     return _json_safe(
         {
@@ -1693,10 +1761,19 @@ def ask_cadivor_payload(
             "provider": response.provider,
             "model": response.model,
             "grounded": bool(response.grounded),
+            "ai_usage": ai_usage,
             "gap": (
-                None
-                if response.provider != "cadivor-grounded"
-                else "Answer is grounded in this saved analysis. Cloud AI assist is optional and was not required."
+                (
+                    "OpenAI response used one monthly plan credit; "
+                    + str((ai_usage or {}).get("remaining"))
+                    + " remain."
+                )
+                if response.provider == "openai" and not (ai_usage or {}).get("is_admin")
+                else (
+                    "OpenAI processed this response. Admin requests do not consume plan credits."
+                    if response.provider == "openai"
+                    else "OpenAI was not active for this response; Cadivor used its local evidence rules."
+                )
             ),
         }
     )

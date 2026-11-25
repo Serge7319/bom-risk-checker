@@ -74,24 +74,32 @@ class EngineeringAIComponentScopeTests(unittest.TestCase):
             model="synthetic-test",
             base_url="https://example.invalid/v1",
         )
+        provider_response = MagicMock()
+        provider_response.read.return_value = json.dumps(
+            {"output_text": "TARGET-123 is ranked first because its saved evidence shows a single-source exposure."}
+        ).encode("utf-8")
+        provider_response.__enter__.return_value = provider_response
 
         with patch.object(
             ai.request,
             "urlopen",
-            side_effect=AssertionError("component-scoped recommendations must use scoped saved evidence"),
+            return_value=provider_response,
         ) as provider_request:
             response = client.ask(
                 question="Why is TARGET-123 ranked first?",
                 context=context,
             )
 
-        self.assertEqual(response.provider, "cadivor-grounded")
+        self.assertEqual(response.provider, "openai")
         self.assertIn("TARGET-123", response.answer)
-        self.assertNotIn("UNRELATED-999", response.answer)
-        self.assertNotIn("UNRELATED-ALT", response.answer)
-        self.assertNotIn("Unrelated Synthetic Supplier", response.answer)
-        provider_request.assert_not_called()
-
+        provider_request.assert_called_once()
+        request_data = provider_request.call_args.args[0].data
+        request_text = json.loads(request_data.decode("utf-8"))["input"][0]["content"][0]["text"]
+        self.assertIn('"TARGET-123"', request_text)
+        self.assertIn('"TARGET-ALT"', request_text)
+        self.assertNotIn("UNRELATED-999", request_text)
+        self.assertNotIn("UNRELATED-ALT", request_text)
+        self.assertNotIn("Unrelated Synthetic Supplier", request_text)
 
     def test_component_mention_requires_a_complete_identifier(self):
         ai = _load_engineering_ai()

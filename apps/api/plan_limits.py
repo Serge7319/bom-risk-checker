@@ -137,6 +137,96 @@ def _finish_overage_credit(
     return status == 200 and result.get("ok") is True and result.get("finished") is True
 
 
+def ai_credit_status(
+    ctx: dict[str, Any] | None,
+    *,
+    store: Any | None = None,
+) -> dict[str, Any]:
+    """Return the authenticated user's monthly Ask Cadivor credit balance."""
+    row = ctx or {}
+    plan = effective_plan(row)
+    plan_name = effective_plan_name(row)
+    allowance = max(0, int(plan.get("ai_credits", 0) or 0))
+    user_id = str(row.get("user_id") or "").strip()
+    admin = str(row.get("platform_role") or row.get("role") or "").strip().lower() == "admin"
+    month = _month_key()
+    selected_store = store or get_store()
+    usage_reader = getattr(selected_store, "get_ai_credit_usage", None)
+    used = (
+        max(0, int(usage_reader(user_id=user_id, usage_month=month) or 0))
+        if user_id and callable(usage_reader)
+        else 0
+    )
+    remaining = max(0, allowance - used)
+    return {
+        "plan": plan_name,
+        "allowance": allowance,
+        "used": used,
+        "remaining": None if admin else remaining,
+        "month": month,
+        "reset_label": "Resets on the first day of next month",
+        "is_admin": admin,
+        "can_use": admin or remaining > 0,
+    }
+
+
+def reserve_ai_credit(
+    ctx: dict[str, Any] | None,
+    *,
+    action: str = "question",
+) -> dict[str, Any]:
+    """Reserve plan-included AI credits before calling the external provider."""
+    row = ctx or {}
+    status = ai_credit_status(row)
+    if status["is_admin"]:
+        return {"reserved": True, "usage": status, "cost": 1}
+    user_id = str(row.get("user_id") or "").strip()
+    allowance = int(status["allowance"])
+    cost = max(1, int({"question": 1}.get(action, 1)))
+    if not user_id:
+        return {"reserved": False, "usage": status, "cost": cost, "code": "missing_user"}
+    if allowance < cost:
+        return {"reserved": False, "usage": status, "cost": cost, "code": "ai_credit_limit"}
+    store = get_store()
+    reserve = getattr(store, "reserve_ai_credits", None)
+    if not callable(reserve):
+        return {"reserved": False, "usage": status, "cost": cost, "code": "usage_store_unavailable"}
+    used = reserve(
+        user_id=user_id,
+        usage_month=str(status["month"]),
+        allowance=allowance,
+        cost=cost,
+    )
+    if used is None:
+        status = ai_credit_status(row)
+        return {"reserved": False, "usage": status, "cost": cost}
+    status = ai_credit_status(row)
+    return {"reserved": True, "usage": status, "cost": cost}
+
+
+def release_ai_credit(
+    ctx: dict[str, Any] | None,
+    *,
+    usage_month: str,
+    cost: int = 1,
+) -> int:
+    """Refund reserved AI credits when the OpenAI request does not complete."""
+    row = ctx or {}
+    if str(row.get("platform_role") or row.get("role") or "").strip().lower() == "admin":
+        return 0
+    user_id = str(row.get("user_id") or "").strip()
+    if not user_id:
+        return 0
+    release = getattr(get_store(), "release_ai_credits", None)
+    if not callable(release):
+        return 0
+    return release(
+        user_id=user_id,
+        usage_month=usage_month,
+        cost=cost,
+    )
+
+
 def usage_snapshot(workspace_id: str, ctx: dict[str, Any] | None = None) -> dict[str, Any]:
     plan_name = effective_plan_name(ctx)
     plan = effective_plan(ctx)
@@ -146,6 +236,7 @@ def usage_snapshot(workspace_id: str, ctx: dict[str, Any] | None = None) -> dict
         production=is_production_runtime(),
     )
     month = _month_key()
+    ai_usage = ai_credit_status(ctx, store=store)
     month_count = sum(1 for r in reports if str(r.get("created_at") or "").startswith(month))
     saved_bom_keys = {
         str(r.get("bom_id") or r.get("id") or "").strip()
@@ -163,11 +254,13 @@ def usage_snapshot(workspace_id: str, ctx: dict[str, Any] | None = None) -> dict
             "api_access": bool(plan.get("api_access")),
             "team_features": bool(plan.get("team_features")),
             "datasheet_comparison": bool(plan.get("datasheet_comparison")),
+            "monthly_ai_credits": ai_usage["allowance"],
         },
         "usage": {
             "saved_boms": len(saved_bom_keys),
             "analyses_this_month": month_count,
             "month": month,
+            "ai_credits": ai_usage,
             "overage_credits": {
                 key: max(0, int(value))
                 for key, value in (ctx or {}).get("usage_credits", {}).items()
