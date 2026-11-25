@@ -194,6 +194,7 @@ export default function BomAnalyzerPage() {
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [sourceAnalysisId, setSourceAnalysisId] = useState<string | null>(null);
   const [savedBomNameForAnalysis, setSavedBomNameForAnalysis] = useState("");
+  const [loadingSavedBom, setLoadingSavedBom] = useState(false);
   const [savedBomLoadError, setSavedBomLoadError] = useState("");
   const [draftReady, setDraftReady] = useState(false);
   const [clearingBom, setClearingBom] = useState(false);
@@ -293,6 +294,7 @@ export default function BomAnalyzerPage() {
         .get("source_analysis_id")
         ?.trim();
       if (sourceId) {
+        setLoadingSavedBom(true);
         setFile(null);
         setSummary(null);
         setAnalysisId(null);
@@ -331,7 +333,10 @@ export default function BomAnalyzerPage() {
             );
           }
         } finally {
-          if (!cancelled) setDraftReady(true);
+          if (!cancelled) {
+            setLoadingSavedBom(false);
+            setDraftReady(true);
+          }
         }
         return;
       }
@@ -594,6 +599,7 @@ export default function BomAnalyzerPage() {
     } else {
       setSourceAnalysisId(null);
       setSavedBomNameForAnalysis("");
+      setLoadingSavedBom(false);
       setSavedBomLoadError("");
     }
     // Synchronously clear previous validation before any await.
@@ -898,6 +904,11 @@ export default function BomAnalyzerPage() {
             <p className="cv-card-subtitle">
               Add project details, upload the file, then review validation before analysis.
             </p>
+            {loadingSavedBom ? (
+              <div className="cv-evidence-context" role="status" style={{ marginTop: 10 }}>
+                Loading the saved BOM and project details. No file upload is needed.
+              </div>
+            ) : null}
             {savedBomLoadError ? (
               <div className="cv-error" role="alert" style={{ marginTop: 10 }}>
                 {savedBomLoadError} You can still choose a BOM file to continue.
@@ -984,9 +995,11 @@ export default function BomAnalyzerPage() {
             <div className="cv-bom-upload-icon" aria-hidden="true">
               <Icon name="upload" />
             </div>
-            <h3>{file ? file.name : "New analysis"}</h3>
+            <h3>{file ? (sourceAnalysisId ? savedBomNameForAnalysis || bomName : file.name) : "New analysis"}</h3>
             <p>
-              Upload a CSV or XLSX BOM. Add Parent MPN and Line Type columns when you want to roll component risk up to assemblies.
+              {sourceAnalysisId
+                ? "This saved BOM is ready to analyze. Review the part list below or choose a different file."
+                : "Upload a CSV or XLSX BOM. Add Parent MPN and Line Type columns when you want to roll component risk up to assemblies."}
             </p>
             <div className="cv-bom-upload-controls">
               <label className="cv-bom-file-picker">
