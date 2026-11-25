@@ -68,23 +68,19 @@ class EngineeringAIResponseContractTests(unittest.TestCase):
         self.assertEqual(urlopen_mock.call_count, 1)
         return captured["payload"]
 
-    def test_normal_prompt_requests_concise_copilot_answer(self):
+    def test_normal_prompt_requests_concise_conversation(self):
         ai = self._load_engineering_ai()
         instructions = ai._system_instruction(detailed=False)
-        self.assertIn("engineering decision copilot, not a report generator", instructions)
-        self.assertIn("2–4 sentences", instructions)
-        self.assertIn("Maximum 3 concise bullet points", instructions)
-        self.assertIn("Maximum 3 concise, actionable next steps", instructions)
+        self.assertIn("thoughtful, conversational colleague", instructions)
+        self.assertIn("short plain-language paragraph", instructions)
+        self.assertIn("Use general engineering knowledge for conceptual questions", instructions)
 
-    def test_normal_prompt_prevents_report_style_duplication(self):
+    def test_normal_prompt_avoids_mandatory_report_sections(self):
         ai = self._load_engineering_ai()
         instructions = ai._system_instruction(detailed=False)
-        self.assertIn("do NOT reproduce those sections", instructions)
-        self.assertIn(
-            "Do not include Executive Summary, Rankings, Workflow, Confidence, or Follow-up Questions.",
-            instructions,
-        )
-        self.assertNotIn("Return distinct sections:", instructions)
+        self.assertIn("do not default to fixed headings", instructions)
+        self.assertIn("Do not append a mandatory intent classification", instructions)
+        self.assertNotIn("Return ONLY these markdown sections", instructions)
 
     def test_normal_payload_uses_reduced_output_token_budget(self):
         payload = self._capture_openai_payload(question="What should I review first in this BOM?")
