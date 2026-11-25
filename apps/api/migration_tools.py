@@ -1685,7 +1685,7 @@ def ask_cadivor_payload(
             return {
                 "ok": False,
                 "status": STATUS_FAILED,
-                "detail": "Cadivor could not verify your monthly AI credit balance. Please try again.",
+                "detail": "Cadivor could not verify your Ask Cadivor credit balance. Please try again.",
                 "code": "ai_credits_unavailable",
             }
         if not credit_reservation.get("reserved"):
@@ -1694,7 +1694,7 @@ def ask_cadivor_payload(
                 return {
                     "ok": False,
                     "status": STATUS_FAILED,
-                    "detail": "Cadivor could not verify your monthly AI credit balance. Please try again.",
+                    "detail": "Cadivor could not verify your Ask Cadivor credit balance. Please try again.",
                     "code": "ai_credits_unavailable",
                 }
             plan_name = str(usage.get("plan") or "current")
