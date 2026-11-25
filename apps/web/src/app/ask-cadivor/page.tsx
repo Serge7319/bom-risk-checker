@@ -242,6 +242,10 @@ function AskCadivorPageInner() {
   }, [storageKey]);
 
   useEffect(() => {
+    setActiveConversation({ analysisId: "", threadId: null });
+  }, [storageKey]);
+
+  useEffect(() => {
     if (
       !storageKey ||
       !threadSnapshot.loaded ||
@@ -360,7 +364,7 @@ function AskCadivorPageInner() {
 
   function updateConversation(next: AskConversation) {
     setThreadSnapshot((current) => {
-      if (current.key !== storageKey || !current.loaded) return current;
+      if (current.key !== storageKey) return current;
       const threads = [
         next,
         ...current.threads.filter((thread) => thread.id !== next.id),
@@ -453,8 +457,14 @@ function AskCadivorPageInner() {
     !reports.some((item) => reportId(item) === requestedAnalysisId);
   const reportRowsForEvidence = sortedContextRows.slice(0, 5);
   const totalParts = Number(report?.total_parts ?? parts.length);
-  const highRiskCount = Number(report?.high_risk_count || 0);
-  const mediumRiskCount = Number(report?.medium_risk_count || 0);
+  const highRiskCount = Number(
+    report?.high_risk_count ??
+      parts.filter((row) => riskTone(riskLabel(row)) === "high").length,
+  );
+  const mediumRiskCount = Number(
+    report?.medium_risk_count ??
+      parts.filter((row) => riskTone(riskLabel(row)) === "medium").length,
+  );
 
   return (
     <Shell session={session}>
@@ -502,6 +512,7 @@ function AskCadivorPageInner() {
               <select
                 value={selectedAnalysisId}
                 onChange={(event) => onReportChange(event.target.value)}
+                disabled={busy || reportBusy}
                 aria-label="Select a saved BOM report"
               >
                 {reportsMissingRequestedId ? (
@@ -909,6 +920,7 @@ function AskCadivorPageInner() {
                           type="button"
                           aria-label={"Open conversation: " + thread.title}
                           aria-current={thread.id === activeThread?.id ? "true" : undefined}
+                          disabled={busy}
                           onClick={() =>
                             setActiveConversation({
                               analysisId: selectedAnalysisId,
