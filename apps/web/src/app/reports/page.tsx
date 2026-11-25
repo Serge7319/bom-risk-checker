@@ -369,9 +369,14 @@ function ReportsInner() {
                             {managementBusy === bomId ? "Saving…" : "Save BOM name"}
                           </button>
                           {latestId ? (
-                            <Link className="cv-button primary" href={`/reports/${encodeURIComponent(latestId)}`}>
-                              Open to edit BOM
-                            </Link>
+                            <>
+                              <Link className="cv-button primary" href={`/reports/${encodeURIComponent(latestId)}`}>
+                                Open to edit BOM
+                              </Link>
+                              <Link className="cv-button" href={`/bom-analyzer?source_analysis_id=${encodeURIComponent(latestId)}`}>
+                                Analyze this BOM again
+                              </Link>
+                            </>
                           ) : null}
                         </div>
                         <div className="cv-saved-revisions">
