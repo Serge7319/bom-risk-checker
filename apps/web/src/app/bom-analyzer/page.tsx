@@ -81,6 +81,18 @@ function csvCell(value: unknown): string {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
+function clearSavedBomSourceQuery(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("source_analysis_id")) return;
+  url.searchParams.delete("source_analysis_id");
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+}
+
 function createSavedBomFile(report: Record<string, unknown>): {
   file: File;
   intake: BomIntakeOptions;
@@ -431,6 +443,7 @@ export default function BomAnalyzerPage() {
             oneTimeReportRequired: false,
           });
           clearFinishedAnalyzeJob(session);
+          clearSavedBomSourceQuery();
           refreshRecentReports();
           void refreshUsageAndBilling();
         }
@@ -510,6 +523,7 @@ export default function BomAnalyzerPage() {
           session,
         );
         clearFinishedAnalyzeJob(session);
+        clearSavedBomSourceQuery();
         refreshRecentReports();
         void refreshUsageAndBilling();
         return;
