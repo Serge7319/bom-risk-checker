@@ -113,7 +113,7 @@
 
 .chatCard {
   display: grid;
-  grid-template-rows: auto auto minmax(300px, 1fr) auto auto;
+  grid-template-rows: auto auto auto minmax(300px, 1fr) auto auto;
 }
 
 .chatHeader {
@@ -198,6 +198,195 @@
   height: 15px;
   flex: none;
   color: #2f6bcf;
+}
+
+.creditMeter {
+  display: grid;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #edf1f6;
+  background: #fff;
+}
+
+.creditMeterHeader,
+.creditMeterCounts,
+.creditMeterFoot,
+.creditPackTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.creditMeterTitle {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.creditMeterTitle strong {
+  color: #19375f;
+  font-size: 11px;
+}
+
+.creditMeterTitle span,
+.creditMeterCounts,
+.creditMeterFoot {
+  color: #75859a;
+  font-size: 9px;
+}
+
+.creditPackToggle {
+  flex: none;
+  padding: 5px 9px;
+  border: 1px solid #cbd8e9;
+  border-radius: 8px;
+  color: #27589a;
+  background: #fff;
+  font-size: 9px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.creditPackToggle:hover {
+  border-color: #87a7d5;
+  background: #f4f8ff;
+}
+
+.creditMeterProgress {
+  display: grid;
+  gap: 5px;
+}
+
+.creditMeterTrack {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #e8eef7;
+}
+
+.creditMeterTrack span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #3470d8;
+  transition: width 180ms ease;
+}
+
+.creditMeterCounts {
+  font-variant-numeric: tabular-nums;
+}
+
+.creditMeterFoot {
+  flex-wrap: wrap;
+}
+
+.creditWarning,
+.creditNotice,
+.creditPackError,
+.creditPackEligibility {
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.creditWarning {
+  padding: 7px 9px;
+  border: 1px solid #f0d69b;
+  border-radius: 8px;
+  color: #775317;
+  background: #fffaf0;
+}
+
+.creditWarning[data-level="high"],
+.creditWarning[data-level="exhausted"] {
+  border-color: #efc3a6;
+  color: #884317;
+  background: #fff5ee;
+}
+
+.creditNotice {
+  color: #38634f;
+}
+
+.creditPackPanel {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #edf1f6;
+}
+
+.creditPackPanelHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: #213a5d;
+  font-size: 10px;
+}
+
+.creditPackPanelHeading span {
+  color: #75859a;
+  font-size: 9px;
+}
+
+.creditPackGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.creditPack {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid #dce5f0;
+  border-radius: 9px;
+  background: #fbfdff;
+}
+
+.creditPackTop {
+  align-items: flex-start;
+  font-size: 9px;
+}
+
+.creditPackTop strong {
+  color: #213b61;
+}
+
+.creditPackTop span {
+  flex: none;
+  padding: 2px 5px;
+  border-radius: 99px;
+  color: #24684f;
+  background: #e8f7ef;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.creditPackPrice {
+  color: #153761;
+  font-size: 15px;
+}
+
+.creditPack small {
+  color: #718198;
+  font-size: 8px;
+}
+
+.creditPackEligibility {
+  color: #718198;
+}
+
+.creditPackEligibility a {
+  color: #245fc2;
+  font-weight: 700;
+}
+
+.creditPackError {
+  color: #9c342c;
 }
 
 .messages {
@@ -836,6 +1025,20 @@
     padding: 9px 11px;
     font-size: 10px;
     line-height: 1.4;
+  }
+
+  .creditMeter {
+    padding: 10px 11px;
+  }
+
+  .creditPackGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .creditPackPanelHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
   }
 
   .messages {
