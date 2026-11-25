@@ -47,6 +47,10 @@ function MonitoringPageInner() {
     if (fromQuery) return fromQuery;
     return "";
   }, [searchParams]);
+  const requestedPartNumber = useMemo(
+    () => (searchParams.get("part_number") || "").trim(),
+    [searchParams],
+  );
 
   useEffect(() => {
     if (!session) return;
@@ -99,11 +103,26 @@ function MonitoringPageInner() {
     };
   }, [session, requestedAnalysisId, reloadTick]);
 
+  useEffect(() => {
+    if (!requestedPartNumber || !data || busy) return;
+    document.getElementById("supplier-refresh")?.scrollIntoView({
+      block: "start",
+      behavior: "smooth",
+    });
+  }, [requestedPartNumber, data, busy]);
+
   if (!session) return null;
   const metrics = (data?.metrics || {}) as Record<string, number>;
   const alerts = (data?.alerts || []) as Array<Record<string, unknown>>;
   const freshness = (data?.freshness || {}) as Record<string, unknown>;
   const partStatus = (data?.part_status || []) as Array<Record<string, unknown>>;
+  const requestedPartStatus = requestedPartNumber
+    ? partStatus.find(
+        (row) => String(row.part_number || "").trim().toLocaleLowerCase()
+          === requestedPartNumber.toLocaleLowerCase(),
+      )
+    : undefined;
+  const requestedPartIsInAnalysis = !requestedPartNumber || Boolean(requestedPartStatus);
   const preferences = (data?.preferences || {}) as Record<string, unknown>;
   const liveRefresh = (data?.live_refresh || {}) as Record<string, unknown>;
   const scheduler = (data?.scheduler || {}) as Record<string, unknown>;
@@ -141,6 +160,13 @@ function MonitoringPageInner() {
 
   async function runLiveRefresh(partNumber?: string) {
     if (!session || !activeAnalysisId || refreshing) return;
+    if (partNumber && !partStatus.some(
+      (row) => String(row.part_number || "").trim().toLocaleLowerCase()
+        === partNumber.trim().toLocaleLowerCase(),
+    )) {
+      setError(`Part ${partNumber} is not in this saved analysis. Open the matching analysis and try again.`);
+      return;
+    }
     setRefreshing(partNumber || "__live_analysis__");
     setRefreshNote("");
     setError("");
@@ -238,7 +264,7 @@ function MonitoringPageInner() {
             <KpiCard icon="bell" tone={Number(metrics.active_alerts ?? 0) > 0 ? "amber" : "green"} label="Alerts to review" value={metrics.active_alerts ?? 0} status={Number(metrics.active_alerts ?? 0) > 0 ? { label: "Needs attention", tone: "amber" } : { label: "No active alerts", tone: "green" }} detail="Signals derived from saved evidence" />
             <KpiCard icon="clock" tone={Number(metrics.lifecycle_changes ?? 0) > 0 ? "amber" : "green"} label="Lifecycle flags" value={metrics.lifecycle_changes ?? 0} status={Number(metrics.lifecycle_changes ?? 0) > 0 ? { label: "Changes detected", tone: "amber" } : { label: "No changes", tone: "green" }} detail="NRND or lifecycle change signals" />
           </div>
-          <section className="cv-card pad" aria-label="Monitoring freshness">
+          <section className="cv-card pad" id="supplier-refresh" aria-label="Monitoring freshness">
             <h3 className="cv-card-title">Data freshness</h3>
             <p className="cv-card-subtitle">
               {lastRefreshAt
@@ -260,14 +286,33 @@ function MonitoringPageInner() {
                 . A provider failure is not the same as &ldquo;no supplier data found&rdquo;.
               </div>
             ) : null}
+            {requestedPartNumber ? (
+              <div
+                className={requestedPartIsInAnalysis ? "cv-evidence-context" : "cv-error"}
+                role={requestedPartIsInAnalysis ? "note" : "alert"}
+                style={{ marginTop: 10 }}
+              >
+                {requestedPartIsInAnalysis ? (
+                  <>
+                    Supplier refresh is scoped to <strong>{requestedPartNumber}</strong>. It queries configured distributors and stores verified measurements in Monitoring. It does not rewrite Procurement’s saved offer rows; re-run the BOM analysis for a new offer snapshot. Recalculate saved alerts only reuses saved analysis data.
+                  </>
+                ) : (
+                  <>The linked part <strong>{requestedPartNumber}</strong> is not in this saved analysis. No supplier lookup will run; open the matching BOM analysis and try again.</>
+                )}
+              </div>
+            ) : null}
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
                 className="cv-button primary"
-                disabled={!activeAnalysisId || Boolean(refreshing)}
-                onClick={() => void runLiveRefresh()}
+                disabled={!activeAnalysisId || Boolean(refreshing) || !requestedPartIsInAnalysis}
+                onClick={() => void runLiveRefresh(requestedPartNumber || undefined)}
               >
-                {refreshing === "__live_analysis__" ? "Checking suppliers…" : "Refresh supplier data"}
+                {refreshing === (requestedPartNumber || "__live_analysis__")
+                  ? "Checking suppliers…"
+                  : requestedPartNumber
+                    ? "Refresh supplier data for " + requestedPartNumber
+                    : "Refresh supplier data"}
               </button>
               <button
                 type="button"
