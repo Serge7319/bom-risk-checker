@@ -1772,7 +1772,7 @@ def ask_cadivor_payload(
                 else (
                     "OpenAI processed this response. Admin requests do not consume plan credits."
                     if response.provider == "openai"
-                    else "OpenAI did not handle this response. Cadivor used its local evidence-based rules, which have limited follow-up reasoning."
+                    else "OpenAI was not active for this response; Cadivor used its local evidence rules."
                 )
             ),
         }
