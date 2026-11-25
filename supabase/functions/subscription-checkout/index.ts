@@ -20,12 +20,21 @@ const planPrices = [
   { name: "Business", token: "business", env: "STRIPE_BUSINESS_PRICE_ID", annualEnv: "STRIPE_BUSINESS_ANNUAL_PRICE_ID", expected: 29900 },
 ] as const;
 
+const askCadivorCreditPacks = [
+  { id: "ask_100", credits: 100, amount: 999, title: "100 credits", unitPrice: 0.0999, savingsPercent: 0 },
+  { id: "ask_500", credits: 500, amount: 3999, title: "500 credits", unitPrice: 0.07998, savingsPercent: 20 },
+  { id: "ask_1500", credits: 1500, amount: 9999, title: "1,500 credits", unitPrice: 0.06666, savingsPercent: 33 },
+] as const;
+
 const internalActions = new Set([
   "developer_api_keys_list",
   "developer_api_key_create",
   "developer_api_key_revoke",
   "reserve_usage_credit",
   "finish_usage_credit",
+  "ai_usage_balance",
+  "reserve_ai_question_credit",
+  "finish_ai_question_credit",
   "allocate_monitored_part_credits",
 ]);
 
@@ -503,6 +512,21 @@ async function addonCatalog() {
       },
     },
     professional_api: apiPrice,
+    ask_cadivor_credits: {
+      enabled: true,
+      billing: "one_time",
+      expires: false,
+      packs: askCadivorCreditPacks.map((pack) => ({
+        id: pack.id,
+        title: pack.title,
+        credits: pack.credits,
+        amount: pack.amount,
+        currency: "usd",
+        unit_price: pack.unitPrice,
+        savings_percent: pack.savingsPercent,
+        enabled: true,
+      })),
+    },
   };
 }
 
@@ -687,9 +711,9 @@ async function usageCreditsFor(userId: string) {
     .select("credit_kind,credits")
     .eq("user_id", userId);
   if (error) throw new Error("Usage credits could not be loaded.");
-  const credits = { bom_analysis: 0, monitored_part: 0 };
+  const credits = { bom_analysis: 0, monitored_part: 0, ask_cadivor: 0 };
   for (const row of data || []) {
-    if (row.credit_kind === "bom_analysis" || row.credit_kind === "monitored_part") {
+    if (row.credit_kind === "bom_analysis" || row.credit_kind === "monitored_part" || row.credit_kind === "ask_cadivor") {
       credits[row.credit_kind] = Math.max(0, Number(row.credits) || 0);
     }
   }
@@ -1960,22 +1984,36 @@ serve(async (request) => {
 
     if (action === "usage_overage_checkout") {
       const currentPlan = effectivePlan(profile).plan;
-      if (!["Starter", "Professional", "Business"].includes(currentPlan) ||
-          !hasCurrentPaidSubscription(profile)) {
-        return response({ ok: false, detail: "Usage overage packs require an active paid subscription." }, 409, origin);
+      const trialEnd = profile.trial_ends_at ? new Date(String(profile.trial_ends_at)) : null;
+      const activeTrial = currentPlan === "Trial" && Boolean(trialEnd && !Number.isNaN(trialEnd.getTime()) && trialEnd > new Date());
+      const eligiblePaidPlan = ["Starter", "Professional", "Business", "Enterprise"].includes(currentPlan);
+      if (!(eligiblePaidPlan && hasCurrentPaidSubscription(profile)) && !activeTrial) {
+        return response({ ok: false, detail: "Credit packs are available to accounts with an active plan or trial." }, 409, origin);
       }
       const kind = String(body.credit_kind || "").trim();
+      const selectedPack = kind === "ask_cadivor"
+        ? askCadivorCreditPacks.find((pack) => pack.id === String(body.pack_id || "").trim())
+        : null;
       const item = kind === "bom_analysis"
         ? { priceEnv: "STRIPE_BOM_ANALYSIS_OVERAGE_PRICE_ID", unitsEnv: "CADIVOR_BOM_ANALYSIS_OVERAGE_CREDITS" }
         : null;
-      if (!item) return response({ ok: false, detail: "Choose a supported usage pack." }, 400, origin);
-      const priceId = String(Deno.env.get(item.priceEnv) || "").trim();
-      const credits = positiveUnits(item.unitsEnv);
-      if (!priceId || !credits) return response({ ok: false, detail: "This usage pack is not configured for purchase yet." }, 503, origin);
-      const price = await stripe.prices.retrieve(priceId);
-      if (!price.active || price.currency !== "usd" || price.recurring ||
-          typeof price.unit_amount !== "number" || price.unit_amount <= 0) {
-        return response({ ok: false, detail: "This usage pack billing details need review." }, 503, origin);
+      if (kind !== "ask_cadivor" && !item) {
+        return response({ ok: false, detail: "Choose a supported usage pack." }, 400, origin);
+      }
+      if (kind === "ask_cadivor" && !selectedPack) {
+        return response({ ok: false, detail: "Choose a supported Ask Cadivor credit pack." }, 400, origin);
+      }
+      const priceId = item ? String(Deno.env.get(item.priceEnv) || "").trim() : "";
+      const credits = selectedPack ? selectedPack.credits : positiveUnits(item!.unitsEnv);
+      if (!credits || (item && !priceId)) {
+        return response({ ok: false, detail: "This usage pack is not configured for purchase yet." }, 503, origin);
+      }
+      if (item) {
+        const price = await stripe.prices.retrieve(priceId);
+        if (!price.active || price.currency !== "usd" || price.recurring ||
+            typeof price.unit_amount !== "number" || price.unit_amount <= 0) {
+          return response({ ok: false, detail: "This usage pack billing details need review." }, 503, origin);
+        }
       }
       const customerId = String(profile.stripe_customer_id || "").trim();
       const metadata = {
@@ -1983,16 +2021,33 @@ serve(async (request) => {
         cadivor_addon: "usage_overage",
         cadivor_credit_kind: kind,
         cadivor_credit_units: String(credits),
+        ...(selectedPack ? { cadivor_credit_pack_id: selectedPack.id } : {}),
       };
-      const idempotencyKey = "cadivor_usage_pack_" + auth.user.id + "_" + kind + "_" + supportReference;
+      const lineItems = selectedPack
+        ? [{
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: "Ask Cadivor " + selectedPack.title,
+                description: "One-time purchase. Credits do not expire.",
+              },
+              unit_amount: selectedPack.amount,
+            },
+            quantity: 1,
+          }]
+        : [{ price: priceId, quantity: 1 }];
+      const idempotencyKey = "cadivor_usage_pack_" + auth.user.id + "_" + kind + "_" +
+        (selectedPack?.id || "default") + "_" + supportReference;
+      const returnPath = selectedPack ? "/ask-cadivor?billing=usage-pack-success" : "/settings?billing=usage-pack-success";
+      const cancelPath = selectedPack ? "/ask-cadivor?billing=usage-pack-cancel" : "/settings?billing=usage-pack-cancel";
       let session: Stripe.Checkout.Session;
       try {
         session = await stripe.checkout.sessions.create({
           mode: "payment",
           ...(customerId ? { customer: customerId } : { customer_email: auth.user.email! }),
-          line_items: [{ price: priceId, quantity: 1 }],
-          success_url: origin + "/settings?billing=usage-pack-success",
-          cancel_url: origin + "/settings?billing=usage-pack-cancel",
+          line_items: lineItems,
+          success_url: origin + returnPath,
+          cancel_url: origin + cancelPath,
           client_reference_id: auth.user.id,
           metadata,
           payment_intent_data: { metadata },
@@ -2000,14 +2055,13 @@ serve(async (request) => {
       } catch (error) {
         if (!customerId || !isMissingStripeCustomer(error)) throw error;
         // One-time packs can use a fresh email-based Checkout Session when a
-        // stored customer belongs to a retired Stripe mode or account. This
-        // does not create or alter a recurring subscription.
+        // stored customer belongs to a retired Stripe mode or account.
         session = await stripe.checkout.sessions.create({
           mode: "payment",
           customer_email: auth.user.email!,
-          line_items: [{ price: priceId, quantity: 1 }],
-          success_url: origin + "/settings?billing=usage-pack-success",
-          cancel_url: origin + "/settings?billing=usage-pack-cancel",
+          line_items: lineItems,
+          success_url: origin + returnPath,
+          cancel_url: origin + cancelPath,
           client_reference_id: auth.user.id,
           metadata,
           payment_intent_data: { metadata },
@@ -2015,6 +2069,39 @@ serve(async (request) => {
       }
       if (!session.url) throw new Error("Stripe did not return a checkout link.");
       return response({ ok: true, checkout: { state: "open", url: session.url } }, 200, origin);
+    }
+
+    if (action === "ai_usage_balance") {
+      const credits = await usageCreditsFor(auth.user.id);
+      return response({ ok: true, credits: credits.ask_cadivor }, 200, origin);
+    }
+
+    if (action === "reserve_ai_question_credit") {
+      const reservationId = String(body.reservation_id || "").trim();
+      if (!reservationId || reservationId.length > 100) {
+        return response({ ok: false, detail: "Invalid Ask Cadivor credit reservation." }, 400, origin);
+      }
+      const { data, error } = await supabase.rpc("cadivor_reserve_ai_question_credit", {
+        p_user_id: auth.user.id,
+        p_reservation_id: reservationId,
+      });
+      if (error) throw new Error("Ask Cadivor credit could not be reserved.");
+      return response({ ok: true, reserved: data === true }, 200, origin);
+    }
+
+    if (action === "finish_ai_question_credit") {
+      const reservationId = String(body.reservation_id || "").trim();
+      const commit = body.commit === true;
+      if (!reservationId || reservationId.length > 100) {
+        return response({ ok: false, detail: "Invalid Ask Cadivor credit reservation." }, 400, origin);
+      }
+      const { data, error } = await supabase.rpc("cadivor_finish_ai_question_credit", {
+        p_user_id: auth.user.id,
+        p_reservation_id: reservationId,
+        p_commit: commit,
+      });
+      if (error) throw new Error("Ask Cadivor credit could not be reconciled.");
+      return response({ ok: true, finished: data === true }, 200, origin);
     }
 
     if (action === "reserve_usage_credit") {
