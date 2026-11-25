@@ -1764,15 +1764,15 @@ def ask_cadivor_payload(
             "ai_usage": ai_usage,
             "gap": (
                 (
-                    "OpenAI response used one monthly plan credit; "
-                    + str((ai_usage or {}).get("remaining"))
-                    + " remain."
+                    "This answer used one monthly Cadivor AI credit; "
+                    + str((ai_usage or {}).get("remaining") or 0)
+                    + " remain this month."
                 )
                 if response.provider == "openai" and not (ai_usage or {}).get("is_admin")
                 else (
-                    "OpenAI processed this response. Admin requests do not consume plan credits."
+                    None
                     if response.provider == "openai"
-                    else "OpenAI was not active for this response; Cadivor used its local evidence rules."
+                    else "The AI response service was unavailable; Cadivor used its saved report evidence and built-in review rules."
                 )
             ),
         }
