@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, KeyboardEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatCadivorAnswer } from "@/components/AskCadivorPanel";
 import { EmptyState } from "@/components/EmptyState";
@@ -9,7 +9,15 @@ import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { Icon } from "@/components/Icons";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { Shell } from "@/components/Shell";
-import { askCadivor, fetchReport, listReports, type Report } from "@/lib/api";
+import {
+  askCadivor,
+  beginUsageOverageCheckout,
+  fetchBillingStatus,
+  fetchPlanUsage,
+  fetchReport,
+  listReports,
+  type Report,
+} from "@/lib/api";
 import { cleanUserText, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
@@ -182,6 +190,18 @@ function conversationTitle(question: string): string {
   return singleLine.length > 64 ? singleLine.slice(0, 61) + "…" : singleLine;
 }
 
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function moneyLabel(minorAmount: unknown): string {
+  const amount = Number(minorAmount);
+  if (!Number.isFinite(amount) || amount < 0) return "Price unavailable";
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(amount / 100);
+}
+
 function AskCadivorPageInner() {
   const session = useRequireSession();
   const accessToken = session?.access_token || "";
@@ -199,6 +219,13 @@ function AskCadivorPageInner() {
   const [pendingQuestion, setPendingQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [aiUsage, setAiUsage] = useState<Record<string, unknown> | null>(null);
+  const [askCreditPacks, setAskCreditPacks] = useState<Array<Record<string, unknown>>>([]);
+  const [canBuyAskCredits, setCanBuyAskCredits] = useState(false);
+  const [showAskCreditPacks, setShowAskCreditPacks] = useState(false);
+  const [creditCheckoutBusy, setCreditCheckoutBusy] = useState("");
+  const [creditCheckoutError, setCreditCheckoutError] = useState("");
+  const [creditNotice, setCreditNotice] = useState("");
   const [threadSnapshot, setThreadSnapshot] = useState<ThreadSnapshot>({
     key: "",
     loaded: false,
@@ -219,6 +246,54 @@ function AskCadivorPageInner() {
   const storageKey = storageIdentity
     ? "cadivor_ask_conversations_v1:" + encodeURIComponent(storageIdentity)
     : "";
+
+  const refreshCreditMeter = useCallback(async () => {
+    if (!accessToken) return;
+    const [usageResult, billingResult] = await Promise.allSettled([
+      fetchPlanUsage(accessToken),
+      fetchBillingStatus(accessToken),
+    ]);
+    if (usageResult.status === "fulfilled") {
+      const usage = objectValue(objectValue(usageResult.value).usage);
+      setAiUsage(objectValue(usage.ai_credits));
+    }
+    if (billingResult.status === "fulfilled") {
+      const billing = objectValue(billingResult.value);
+      const addons = objectValue(billing.addons);
+      const packCatalog = objectValue(addons.ask_cadivor_credits);
+      setAskCreditPacks(Array.isArray(packCatalog.packs)
+        ? (packCatalog.packs as Array<Record<string, unknown>>)
+        : []);
+      const currentPlan = String(billing.current_plan || "");
+      setCanBuyAskCredits(
+        billing.has_active_subscription === true ||
+        currentPlan === "Trial",
+      );
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    void refreshCreditMeter();
+  }, [refreshCreditMeter]);
+
+  const billingReturn = searchParams.get("billing") || "";
+  useEffect(() => {
+    if (billingReturn === "usage-pack-success") {
+      setCreditNotice("Payment received. Your credit balance is updating.");
+      void refreshCreditMeter();
+      let attempts = 0;
+      const timer = window.setInterval(() => {
+        attempts += 1;
+        void refreshCreditMeter();
+        if (attempts >= 8) window.clearInterval(timer);
+      }, 1500);
+      return () => window.clearInterval(timer);
+    }
+    if (billingReturn === "usage-pack-cancel") {
+      setCreditNotice("Checkout was canceled. No credits were purchased.");
+    }
+    return undefined;
+  }, [billingReturn, refreshCreditMeter]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -369,6 +444,37 @@ function AskCadivorPageInner() {
     (report as unknown as Record<string, unknown> | null) ||
       selectedReportRecord,
   );
+  const allowance = Math.max(0, Number(aiUsage?.allowance || 0));
+  const usedCredits = Math.max(0, Number(aiUsage?.used || 0));
+  const includedRemaining = aiUsage?.remaining == null
+    ? null
+    : Math.max(0, Number(aiUsage.remaining || 0));
+  const topupCredits = Math.max(0, Number(aiUsage?.topup_credits || 0));
+  const isCreditAdmin = aiUsage?.is_admin === true;
+  const usagePercent = allowance > 0
+    ? Math.min(100, Math.floor((usedCredits / allowance) * 100))
+    : 0;
+  const resetAt = aiUsage?.reset_at ? new Date(String(aiUsage.reset_at)) : null;
+  const resetLabel = resetAt && !Number.isNaN(resetAt.getTime())
+    ? resetAt.toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "the start of next month";
+  const monthlyExhausted = allowance > 0 && includedRemaining === 0;
+  const creditWarning = isCreditAdmin
+    ? ""
+    : monthlyExhausted
+      ? (topupCredits > 0
+          ? `Monthly credits are used. ${topupCredits.toLocaleString()} prepaid credits remain; monthly credits reset ${resetLabel}.`
+          : `You’ve used all monthly credits. They reset ${resetLabel}. Add a one-time pack to keep asking.`)
+      : allowance > 0 && usagePercent >= 80
+        ? `You’ve used ${usagePercent}% of monthly credits; ${includedRemaining?.toLocaleString() || 0} remain. They reset ${resetLabel}.`
+        : allowance > 0 && usagePercent >= 50
+          ? `You’ve used ${usagePercent}% of monthly credits. They reset ${resetLabel}.`
+          : "";
 
   useEffect(() => {
     if (messageListRef.current) {
@@ -438,6 +544,9 @@ function AskCadivorPageInner() {
         grounded: data.grounded === true,
         gap: userFacingAskGap(data.gap),
       };
+      if (data.ai_usage && typeof data.ai_usage === "object") {
+        setAiUsage(objectValue(data.ai_usage));
+      }
       const nextThread: AskConversation = {
         id: threadId,
         analysisId: selectedAnalysisId,
@@ -457,6 +566,29 @@ function AskCadivorPageInner() {
     } finally {
       setPendingQuestion("");
       setBusy(false);
+      void refreshCreditMeter();
+    }
+  }
+
+  async function buyAskCreditPack(packId: string) {
+    if (!session || !canBuyAskCredits) return;
+    setCreditCheckoutBusy(packId);
+    setCreditCheckoutError("");
+    try {
+      const result = await beginUsageOverageCheckout(
+        session.access_token,
+        "ask_cadivor",
+        packId as "ask_100" | "ask_500" | "ask_1500",
+      );
+      const url = String(result.checkout?.url || "").trim();
+      if (!result.ok || !url) {
+        throw new Error(String(result.detail || "Credit checkout could not be opened."));
+      }
+      window.location.assign(url);
+    } catch (err) {
+      setCreditCheckoutError(err instanceof Error ? err.message : "Credit checkout could not be opened.");
+    } finally {
+      setCreditCheckoutBusy("");
     }
   }
 
