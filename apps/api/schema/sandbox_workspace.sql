@@ -461,3 +461,13 @@ CREATE TABLE IF NOT EXISTS migration_usage_events (
 
 CREATE INDEX IF NOT EXISTS migration_usage_events_ws_month_idx
   ON migration_usage_events (workspace_id, created_at DESC);
+ 
+-- Per-user monthly AI credits for Ask Cadivor. The API reserves a credit before
+-- calling an external provider and refunds it when the request fails.
+CREATE TABLE IF NOT EXISTS migration_ai_credit_usage (
+  user_id TEXT NOT NULL,
+  usage_month TEXT NOT NULL,
+  used_credits INTEGER NOT NULL DEFAULT 0 CHECK (used_credits >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, usage_month)
+);
