@@ -20,7 +20,6 @@ type AskMessage = {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
-  provider?: string;
   grounded?: boolean;
   gap?: string;
 };
@@ -121,6 +120,22 @@ function makeId(): string {
   return "ask-" + Date.now() + "-" + Math.random().toString(36).slice(2, 9);
 }
 
+function userFacingAskGap(value: unknown): string {
+  const text = cleanUserText(value).trim();
+  if (!text) return "";
+  if (/admin requests do not consume plan credits/i.test(text)) return "";
+  if (/OpenAI response used one monthly plan credit/i.test(text)) {
+    const remaining = text.match(/(\d+)\s+remain/i)?.[1];
+    return remaining
+      ? `This answer used one monthly Cadivor AI credit; ${remaining} remain this month.`
+      : "This answer used one monthly Cadivor AI credit.";
+  }
+  if (/OpenAI was not active/i.test(text)) {
+    return "The AI response service was unavailable; Cadivor used its saved report evidence and built-in review rules.";
+  }
+  return text.replace(/\\bOpenAI\\b/gi, "AI");
+}
+
 function readStoredThreads(key: string): AskConversation[] {
   try {
     const raw = window.localStorage.getItem(key);
@@ -138,13 +153,22 @@ function readStoredThreads(key: string): AskConversation[] {
       )
       .map((item) => ({
         ...item,
-        messages: item.messages.filter(
-          (message: AskMessage) =>
-            message &&
-            typeof message.id === "string" &&
-            (message.role === "user" || message.role === "assistant") &&
-            typeof message.content === "string",
-        ),
+        messages: item.messages
+          .filter(
+            (message: AskMessage) =>
+              message &&
+              typeof message.id === "string" &&
+              (message.role === "user" || message.role === "assistant") &&
+              typeof message.content === "string",
+          )
+          .map((message: AskMessage) => ({
+            id: message.id,
+            role: message.role,
+            content: message.content,
+            createdAt: message.createdAt,
+            grounded: message.grounded,
+            gap: userFacingAskGap(message.gap),
+          })),
       }))
       .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
       .slice(0, 25);
@@ -411,9 +435,8 @@ function AskCadivorPageInner() {
         role: "assistant",
         content: answer,
         createdAt: now,
-        provider: cleanUserText(data.provider),
         grounded: data.grounded === true,
-        gap: cleanUserText(data.gap),
+        gap: userFacingAskGap(data.gap),
       };
       const nextThread: AskConversation = {
         id: threadId,
