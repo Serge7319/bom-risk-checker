@@ -618,7 +618,7 @@ function ProcurementPageInner() {
             Cadivor does not place orders or create binding quotes.
           </p>
           <p className="cv-small-note">
-            Saved offers stay tied to this BOM analysis. Use a part’s Monitoring link to request a fresh supplier check. Monitoring stores verified refresh evidence separately; it does not rewrite these offer rows. Re-run the BOM analysis to create a new Procurement offer snapshot. Recalculate saved alerts reuses saved analysis data and does not contact suppliers.
+            Offers are saved with this report. Check each offer’s retrieval time for its age. Run a new BOM analysis for a new Procurement offer snapshot; Monitoring refreshes update Monitoring evidence and alerts only.
           </p>
         </div>
         <ol>
@@ -792,8 +792,11 @@ function ProcurementPageInner() {
                                   aria-label={"Open Monitoring supplier refresh for " + display(p.mpn, "this part")}
                                   title="Opens Monitoring with this part selected"
                                 >
-                                  Open Monitoring refresh
+                                  Open part in Monitoring
                                 </Link>
+                                <small className="cv-procurement-description">
+                                  Monitoring refresh does not change these offers.
+                                </small>
                               ) : null}
                             </div>
                           </td>
@@ -1185,21 +1188,44 @@ function ProcurementPageInner() {
                   </button>
                 </header>
                 <div className="cv-procurement-modal-body">
-                  <div className="cv-evidence-context" role="note" style={{ marginBottom: 12 }}>
-                    <p style={{ margin: 0 }}>
-                      Refresh supplier data in Monitoring re-queries configured distributors for this exact MPN and stores any verified measurements in Monitoring. It does not rewrite the offers attached to this BOM analysis; re-run the analysis to create a new Procurement offer snapshot. Recalculate saved alerts only reuses saved analysis data.
-                    </p>
-                    {activeAnalysisId && String(offersDialogPart.mpn || "").trim() ? (
-                      <Link
-                        className="cv-button primary"
-                        href={supplierRefreshHref(activeAnalysisId, String(offersDialogPart.mpn).trim())}
-                        aria-label={"Open Monitoring supplier refresh for " + String(offersDialogPart.mpn).trim()}
-                      >
-                        Open supplier refresh in Monitoring
+                  <div
+                    className="cv-procurement-refresh-options"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: 10,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <section className="cv-card pad" style={{ boxShadow: "none" }}>
+                      <span className="cv-procurement-guide-eyebrow">Procurement offers</span>
+                      <h3 className="cv-card-title" style={{ marginTop: 5 }}>Need new supplier offers?</h3>
+                      <p className="cv-card-subtitle">
+                        Run a new BOM analysis and upload the BOM again to create a new offer snapshot. This saved report will stay unchanged.
+                      </p>
+                      <Link className="cv-button" href="/bom-analyzer" style={{ marginTop: 10 }}>
+                        Run new BOM analysis
                       </Link>
-                    ) : (
-                      <span className="cv-small-note">A saved MPN and BOM analysis are required to open a part-specific refresh.</span>
-                    )}
+                    </section>
+                    <section className="cv-card pad" style={{ boxShadow: "none" }}>
+                      <span className="cv-procurement-guide-eyebrow">Monitoring only</span>
+                      <h3 className="cv-card-title" style={{ marginTop: 5 }}>Need updated monitoring evidence?</h3>
+                      <p className="cv-card-subtitle">
+                        Refresh checks configured distributors for this exact MPN and saves verified results to Monitoring. It may update alerts, but these Procurement offers will not change.
+                      </p>
+                      {activeAnalysisId && String(offersDialogPart.mpn || "").trim() ? (
+                        <Link
+                          className="cv-button primary"
+                          href={supplierRefreshHref(activeAnalysisId, String(offersDialogPart.mpn).trim())}
+                          aria-label={"Open Monitoring for " + String(offersDialogPart.mpn).trim()}
+                          style={{ marginTop: 10 }}
+                        >
+                          Open this part in Monitoring
+                        </Link>
+                      ) : (
+                        <span className="cv-small-note">A saved MPN and BOM analysis are required for a part-specific Monitoring view.</span>
+                      )}
+                    </section>
                   </div>
                   {Array.isArray(offersDialogPart.supplier_offers) && offersDialogPart.supplier_offers.length ? (
                     offersDialogPart.supplier_offers.map((offer: Record<string, unknown>, index) => {
