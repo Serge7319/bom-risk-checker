@@ -956,6 +956,37 @@ def get_live_snapshot(
         return dict(row) if row else None
 
 
+def list_live_snapshots(workspace_id: str, analysis_id: str) -> list[dict[str, Any]]:
+    """List identity-verified supplier snapshots for one workspace analysis."""
+    wid = str(workspace_id or "").strip()
+    aid = str(analysis_id or "").strip()
+    if not wid or not aid:
+        return []
+    if _use_postgres():
+        with _pg_connect() as conn:
+            rows = conn.execute(
+                "SELECT payload FROM migration_monitoring_snapshots "
+                "WHERE workspace_id = %s AND analysis_id = %s ORDER BY part_number",
+                (wid, aid),
+            ).fetchall()
+        snapshots: list[dict[str, Any]] = []
+        for row in rows:
+            payload = row["payload"]
+            snapshot = json.loads(payload) if isinstance(payload, str) else dict(payload)
+            if isinstance(snapshot, dict):
+                snapshots.append(snapshot)
+        return snapshots
+    with _lock:
+        state = _load_state()
+        bucket = (state.get("workspaces") or {}).get(wid) or {}
+        rows = (bucket.get("snapshots") or {}).get(aid) or {}
+        return [
+            dict(snapshot)
+            for _, snapshot in sorted(rows.items())
+            if isinstance(snapshot, dict)
+        ]
+
+
 def save_live_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     """Upsert a matched live supplier observation for one analysis part."""
     wid = str(snapshot.get("workspace_id") or "").strip()
