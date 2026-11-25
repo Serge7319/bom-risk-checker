@@ -270,7 +270,7 @@ function MonitoringPageInner() {
               {lastRefreshAt
                 ? `Last refresh: ${new Date(lastRefreshAt).toLocaleString()}.`
                 : "Never refreshed."}{" "}
-              Opening this page does not refresh or save anything. Recalculate alerts uses saved analysis data; Refresh supplier data contacts configured distributors for exact MPNs and stores the returned evidence. Supplier refresh never sends email automatically from this button.
+              Opening this page does not update data. The actions below affect Monitoring only; these buttons do not send email.
             </p>
             {freshness.stale === true ? (
               <div className="cv-error" role="status">
@@ -286,19 +286,30 @@ function MonitoringPageInner() {
                 . A provider failure is not the same as &ldquo;no supplier data found&rdquo;.
               </div>
             ) : null}
-            {requestedPartNumber ? (
-              <div
-                className={requestedPartIsInAnalysis ? "cv-evidence-context" : "cv-error"}
-                role={requestedPartIsInAnalysis ? "note" : "alert"}
-                style={{ marginTop: 10 }}
-              >
-                {requestedPartIsInAnalysis ? (
-                  <>
-                    Refresh supplier data checks configured distributors for <strong>{requestedPartNumber}</strong> and saves verified results to Monitoring; it may update alerts. Procurement offers remain unchanged. Recalculate saved alerts uses the saved snapshot without contacting suppliers.
-                  </>
-                ) : (
-                  <>The linked part <strong>{requestedPartNumber}</strong> is not in this saved analysis. No supplier lookup will run; open the matching BOM analysis and try again.</>
-                )}
+            <div
+              className="cv-evidence-context"
+              role="note"
+              style={{ marginTop: 10, display: "grid", gap: 7 }}
+            >
+              <div>
+                <strong>Refresh supplier data:</strong>{" "}
+                {requestedPartNumber
+                  ? <>checks configured distributors for <strong>{requestedPartNumber}</strong></>
+                  : "checks configured distributors for exact MPNs in this analysis"}{" "}
+                and saves verified results to Monitoring; it may update alerts.
+              </div>
+              <div>
+                <strong>Recalculate saved alerts:</strong>{" "}
+                uses saved Monitoring evidence only; no supplier lookup runs.
+              </div>
+              <div>
+                <strong>Procurement offers:</strong>{" "}
+                unchanged by either Monitoring action. Run a new BOM analysis and upload the BOM again for a new Procurement offer snapshot.
+              </div>
+            </div>
+            {requestedPartNumber && !requestedPartIsInAnalysis ? (
+              <div className="cv-error" role="alert" style={{ marginTop: 8 }}>
+                The linked part <strong>{requestedPartNumber}</strong> is not in this saved analysis. No supplier lookup will run; open the matching BOM analysis and try again.
               </div>
             ) : null}
             <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
