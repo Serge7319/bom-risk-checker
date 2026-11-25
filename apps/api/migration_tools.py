@@ -462,8 +462,9 @@ def monitoring_payload(
     """READ-ONLY monitoring view.
 
     Loads persisted alerts / refresh history and derives the view from the saved
-    analysis in memory. Never calls ``persist_alerts`` or ``record_refresh`` —
-    use :func:`monitoring_refresh_payload` for an explicit refresh.
+    analysis plus any verified Monitoring snapshots. Never calls
+    ``persist_alerts`` or ``record_refresh`` — use
+    :func:`monitoring_refresh_payload` for an explicit recalculation.
     """
     report = _require_analysis(analysis_id, workspace_id=workspace_id)
     if not report:
@@ -605,7 +606,7 @@ def monitoring_refresh_payload(
     part_number: str | None = None,
     portfolio: bool = False,
 ) -> dict[str, Any]:
-    """EXPLICIT refresh: re-derive alerts from saved analysis, persist, record.
+    """EXPLICIT recalculation: use saved analysis and Monitoring snapshots, persist, record.
 
     Scope is always labeled in the response:
     - ``part``: one MPN within ``analysis_id``
