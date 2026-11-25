@@ -10,8 +10,8 @@ import { oneTimeBOMAction } from "./one_time_bom_event.ts";
 
 // Versioned webhook source. JWT verification is disabled in
 // supabase/config.toml because Stripe signs the raw request instead.
-// Apply both billing migrations and prove a sandbox destination before
-// replacing the live destination. The one-time product stays off until then.
+// Deploy this update to the existing function slug to preserve the live
+// webhook URL and signing secret. Apply the matching database migration first.
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2024-06-20",
