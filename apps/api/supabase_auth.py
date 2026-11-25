@@ -1,8 +1,9 @@
 """Production Cadivor Supabase Auth for the Next.js migration API.
 
 Verifies Supabase-issued access tokens server-side via Auth ``get_user`` using
-the anon/publishable key (same pattern as Streamlit). Never requires or exposes
-a service-role key. Workspace membership is stored only in the dedicated
+the anon/publishable key. The API uses a service-role client only for restricted
+billing-profile writes after a verified sign-in; that key never reaches the web
+client. Workspace membership is stored only in the dedicated
 ``CADIVOR_MIGRATION_DATABASE_URL`` store — not in Streamlit production tables.
 
 Sandbox HS256 auth remains in ``apps.api.sandbox_auth`` and stays fail-closed
@@ -53,6 +54,11 @@ def supabase_anon_key() -> str:
     )
 
 
+def supabase_service_role_key() -> str:
+    """Return the server-only key used for verified billing-profile writes."""
+    return (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
+
+
 def missing_config_vars() -> list[str]:
     """Return required env var *names* that are unset (never values)."""
     from apps.api.workspace_store import allow_ephemeral_file_store
@@ -81,6 +87,7 @@ def signup_enabled() -> bool:
         and (os.environ.get("CADIVOR_SIGNUP_EMAIL_CONFIRMATION_CONFIRMED") or "").strip() == "1"
         and (os.environ.get("CADIVOR_SIGNUP_ABUSE_PROTECTION_CONFIRMED") or "").strip() == "1"
         and supabase_auth_configured()
+        and bool(supabase_service_role_key())
         and bool(_signup_redirect_url())
         and (os.environ.get("CADIVOR_SIGNUP_CAPTCHA_REQUIRED") or "").strip() != "1"
     )
@@ -245,6 +252,23 @@ def trial_expired(context: dict[str, Any]) -> bool:
 def describe_supabase_auth() -> dict[str, Any]:
     missing = missing_config_vars()
     ready = not missing
+    service_role_ready = bool(supabase_service_role_key())
+    setup_required = [f"Set {name} on the production Next API service only." for name in missing]
+    if not service_role_ready:
+        setup_required.append(
+            "Set SUPABASE_SERVICE_ROLE_KEY on the production Next API service only; "
+            "never set it on the Next web service."
+        )
+    if missing:
+        setup_required.extend(
+            [
+                "CADIVOR_MIGRATION_DATABASE_URL must be a dedicated production "
+                "migration Postgres — not the Streamlit Supabase database URL "
+                "and not the sandbox migration DB.",
+                "Keep CADIVOR_SANDBOX_AUTH_SECRET unset/unused on production; "
+                "sandbox HS256 remains fail-closed.",
+            ]
+        )
     return {
         "mode": "supabase-jwt-membership" if ready else "unconfigured",
         "production_auth": True,
@@ -253,22 +277,11 @@ def describe_supabase_auth() -> dict[str, Any]:
         "token_verification": "server-side-supabase-get-user" if ready else None,
         "workspace_source": "migration_membership_table" if ready else None,
         "client_workspace_id_trusted": False,
-        "service_role_used": False,
+        "service_role_used": service_role_ready,
+        "server_side_trial_provisioning_ready": service_role_ready,
         "migration_database_separate_from_streamlit_store": True,
         "missing_config_vars": missing,
-        "setup_required": (
-            [f"Set {name} on the production Next API service only." for name in missing]
-            + [
-                "CADIVOR_MIGRATION_DATABASE_URL must be a dedicated production "
-                "migration Postgres — not the Streamlit Supabase database URL "
-                "and not the sandbox migration DB.",
-                "Do not set SUPABASE_SERVICE_ROLE_KEY on the Next web service.",
-                "Keep CADIVOR_SANDBOX_AUTH_SECRET unset/unused on production; "
-                "sandbox HS256 remains fail-closed.",
-            ]
-            if missing
-            else []
-        ),
+        "setup_required": setup_required,
     }
 
 
@@ -290,6 +303,21 @@ def _client(*, flow_type: str | None = None):
         from supabase import ClientOptions
 
         return create_client(url, key, options=ClientOptions(flow_type=flow_type))
+    return create_client(url, key)
+
+
+def _service_role_client():
+    """Create an API-only client for writes after Supabase Auth verified a user."""
+    from supabase import create_client
+
+    url = supabase_url()
+    key = supabase_service_role_key()
+    if not url:
+        raise AuthNotConfiguredError(
+            "Supabase URL is not configured for billing provisioning."
+        )
+    if not key:
+        raise AuthNotConfiguredError("Server-side billing provisioning is not configured.")
     return create_client(url, key)
 
 
@@ -470,7 +498,7 @@ def _pending_mfa_login(
 
 
 def _user_scoped_client(access_token: str):
-    """Anon-key client authorized as this user for ``public.users`` RLS writes."""
+    """Anon-key client authorized as this user for scoped reads and RLS-aware RPCs."""
     client = _client()
     token = (access_token or "").strip()
     if not token:
@@ -696,6 +724,9 @@ def provision_billing_after_verified_signin(
         ensure_user_profile,
     )
 
+    if not user_email_verified(user):
+        raise AuthError("Verify your email address before signing in", 403)
+
     user_id, _email = _user_payload(user)
     try:
         scoped = _user_scoped_client(access_token)
@@ -703,6 +734,7 @@ def provision_billing_after_verified_signin(
             scoped,
             user,
             operation="next_api_verified_signin_provision",
+            trusted_write_client_factory=_service_role_client,
         )
     except UserProvisioningError as exc:
         raise AuthError(str(exc) or "Could not start your trial. Sign in again.", 503) from exc
