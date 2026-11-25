@@ -218,13 +218,61 @@ def _part_mpn(part: dict[str, Any]) -> str:
     return str(part.get("MPN") or part.get("mpn") or "").strip()
 
 
+def _verified_live_snapshots_by_mpn(
+    workspace_id: str, analysis_id: str
+) -> dict[str, dict[str, Any]]:
+    """Return exact, identity-verified supplier snapshots keyed by normalized MPN."""
+    from src.bom_intake import normalize_part_number
+
+    verified: dict[str, dict[str, Any]] = {}
+    for snapshot in monitoring_store.list_live_snapshots(workspace_id, analysis_id):
+        if not isinstance(snapshot, dict):
+            continue
+        if (
+            snapshot.get("evidence_source") != "live-authorized-supplier"
+            or snapshot.get("identity_verified") is not True
+        ):
+            continue
+        requested = normalize_part_number(snapshot.get("part_number"))
+        returned = normalize_part_number(snapshot.get("manufacturer_part_number"))
+        if requested and returned and requested == returned:
+            verified[requested] = snapshot
+    return verified
+
+
+def _live_snapshot_risk_reasons(snapshot: dict[str, Any]) -> list[str]:
+    saved = snapshot.get("risk_reasons")
+    reasons = [str(value).strip() for value in saved] if isinstance(saved, list) else []
+    reasons = [value for value in reasons if value]
+    if reasons:
+        return reasons
+
+    # Snapshots saved before reasons were persisted still carry the lead-time
+    # measurement, so explain the most common live risk without reusing stale
+    # analysis-only provenance warnings.
+    try:
+        lead_time = float(snapshot.get("lead_time_weeks"))
+    except (TypeError, ValueError):
+        lead_time = None
+    if lead_time is not None and lead_time >= 52:
+        return ["Verified manufacturer lead time is 52 weeks or longer"]
+    if lead_time is not None and lead_time >= 26:
+        return ["Verified manufacturer lead time is 26 weeks or longer"]
+    if lead_time is not None and lead_time >= 12:
+        return ["Verified manufacturer lead time is 12 weeks or longer"]
+    if lead_time is not None and lead_time >= 8:
+        return ["Verified manufacturer lead time is 8 weeks or longer"]
+    return ["Risk was recalculated using the latest verified supplier evidence"]
+
+
 def _derive_monitoring_alerts(
     report: dict[str, Any],
     *,
     workspace_id: str,
     part_number: str | None = None,
+    live_snapshots: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Pure derivation of alert rows from a saved analysis (no store access)."""
+    """Derive alerts from the saved analysis and any newer verified Monitoring evidence."""
     alerts: list[dict[str, Any]] = []
     now = datetime.now(timezone.utc).isoformat()
     wanted = str(part_number or "").strip().casefold()
@@ -248,10 +296,23 @@ def _derive_monitoring_alerts(
             else ""
         )
         assessment = calculate_risk(part)
+        from src.bom_intake import normalize_part_number
+
+        live_snapshot = (live_snapshots or {}).get(normalize_part_number(mpn))
         risk = str(assessment.get("risk_level") or "Needs verification")
         evidence_source = _monitoring_evidence_source(part, report)
         evidence_phrase = _monitoring_evidence_phrase(evidence_source)
         reasons = "; ".join(assessment.get("risk_reasons") or []) or "see report"
+        if live_snapshot:
+            current_risk = str(live_snapshot.get("risk_level") or "").strip()
+            if current_risk in {"High", "Medium", "Low", "Needs verification"}:
+                risk = current_risk
+            reasons = "; ".join(_live_snapshot_risk_reasons(live_snapshot))
+            evidence_source = "live-authorized-supplier"
+            evidence_phrase = _monitoring_evidence_phrase(evidence_source)
+            current_lifecycle = str(live_snapshot.get("lifecycle_status") or "").strip()
+            if current_lifecycle.casefold() not in {"", "unknown", "none", "nan"}:
+                lifecycle = current_lifecycle
         if any(term in lifecycle.casefold() for term in ("nrnd", "not recommended", "obsolete", "end of life", "eol")):
             alerts.append(
                 {
@@ -279,7 +340,11 @@ def _derive_monitoring_alerts(
                         report["id"],
                         mpn,
                         "Risk Signal",
-                        f"{level} risk in latest analysis: {reasons}",
+                        (
+                            f"{level} risk after latest verified supplier refresh: {reasons}"
+                            if live_snapshot
+                            else f"{level} risk in latest analysis: {reasons}"
+                        ),
                         level,
                         "—",
                         risk,
