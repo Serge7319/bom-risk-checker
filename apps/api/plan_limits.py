@@ -282,15 +282,26 @@ def reserve_ai_credit(
             cost=cost,
         )
         if used is not None:
+            status = dict(status)
+            used_after = max(0, int(used))
+            remaining_after = max(0, allowance - used_after)
+            status.update({
+                "used": used_after,
+                "remaining": remaining_after,
+                "total_remaining": remaining_after,
+                "can_use": remaining_after > 0,
+            })
             return {
                 "reserved": True,
-                "usage": ai_credit_status(row),
+                "usage": status,
                 "cost": cost,
                 "source": "monthly",
             }
         status = ai_credit_status(row)
         if int(status.get("remaining") or 0) >= cost:
             return {"reserved": False, "usage": status, "cost": cost, "code": "usage_store_unavailable"}
+    else:
+        status = ai_credit_status(row)
 
     if not status.get("topup_balance_available"):
         return {"reserved": False, "usage": status, "cost": cost, "code": "ai_credits_unavailable"}
@@ -321,9 +332,17 @@ def reserve_ai_credit(
             "cost": cost,
             "code": "ai_credit_limit",
         }
+    status = dict(status)
+    topup_after = max(0, int(status.get("topup_credits") or 0) - cost)
+    remaining = max(0, int(status.get("remaining") or 0))
+    status.update({
+        "topup_credits": topup_after,
+        "total_remaining": remaining + topup_after,
+        "can_use": remaining + topup_after > 0,
+    })
     return {
         "reserved": True,
-        "usage": ai_credit_status(row),
+        "usage": status,
         "cost": cost,
         "source": "topup",
         "reservation_id": reservation_id,
