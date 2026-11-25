@@ -220,6 +220,9 @@ function AskCadivorPageInner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [aiUsage, setAiUsage] = useState<Record<string, unknown> | null>(null);
+  const [creditMeterLoaded, setCreditMeterLoaded] = useState(false);
+  const [creditMeterError, setCreditMeterError] = useState(false);
+  const [creditPackCatalogError, setCreditPackCatalogError] = useState(false);
   const [askCreditPacks, setAskCreditPacks] = useState<Array<Record<string, unknown>>>([]);
   const [canBuyAskCredits, setCanBuyAskCredits] = useState(false);
   const [showAskCreditPacks, setShowAskCreditPacks] = useState(false);
@@ -255,21 +258,29 @@ function AskCadivorPageInner() {
     ]);
     if (usageResult.status === "fulfilled") {
       const usage = objectValue(objectValue(usageResult.value).usage);
-      setAiUsage(objectValue(usage.ai_credits));
+      const credits = objectValue(usage.ai_credits);
+      setAiUsage(Object.keys(credits).length ? credits : null);
+      setCreditMeterError(Object.keys(credits).length === 0);
+    } else {
+      setAiUsage(null);
+      setCreditMeterError(true);
     }
     if (billingResult.status === "fulfilled") {
       const billing = objectValue(billingResult.value);
       const addons = objectValue(billing.addons);
       const packCatalog = objectValue(addons.ask_cadivor_credits);
-      setAskCreditPacks(Array.isArray(packCatalog.packs)
+      const packs = Array.isArray(packCatalog.packs)
         ? (packCatalog.packs as Array<Record<string, unknown>>)
-        : []);
-      const currentPlan = String(billing.current_plan || "");
-      setCanBuyAskCredits(
-        billing.has_active_subscription === true ||
-        currentPlan === "Trial",
-      );
+        : [];
+      setAskCreditPacks(packs);
+      setCanBuyAskCredits(packCatalog.enabled === true && packs.length > 0);
+      setCreditPackCatalogError(false);
+    } else {
+      setAskCreditPacks([]);
+      setCanBuyAskCredits(false);
+      setCreditPackCatalogError(true);
     }
+    setCreditMeterLoaded(true);
   }, [accessToken]);
 
   useEffect(() => {
@@ -464,17 +475,20 @@ function AskCadivorPageInner() {
       })
     : "the start of next month";
   const monthlyExhausted = allowance > 0 && includedRemaining === 0;
-  const creditWarning = isCreditAdmin
+  const noCreditsAvailable = allowance === 0 && topupCredits === 0;
+  const creditWarning = !creditMeterLoaded || creditMeterError || isCreditAdmin
     ? ""
     : monthlyExhausted
       ? (topupCredits > 0
           ? `Monthly credits are used. ${topupCredits.toLocaleString()} prepaid credits remain; monthly credits reset ${resetLabel}.`
           : `You’ve used all monthly credits. They reset ${resetLabel}. Add a one-time pack to keep asking.`)
-      : allowance > 0 && usagePercent >= 80
-        ? `You’ve used ${usagePercent}% of monthly credits; ${includedRemaining?.toLocaleString() || 0} remain. They reset ${resetLabel}.`
-        : allowance > 0 && usagePercent >= 50
-          ? `You’ve used ${usagePercent}% of monthly credits. They reset ${resetLabel}.`
-          : "";
+      : noCreditsAvailable
+        ? "This plan has no monthly Ask Cadivor credits. Add a one-time pack to start asking questions."
+        : allowance > 0 && usagePercent >= 80
+          ? `You’ve used ${usagePercent}% of monthly credits; ${includedRemaining?.toLocaleString() || 0} remain. They reset ${resetLabel}.`
+          : allowance > 0 && usagePercent >= 50
+            ? `You’ve used ${usagePercent}% of monthly credits; ${includedRemaining?.toLocaleString() || 0} remain. They reset ${resetLabel}.`
+            : "";
 
   useEffect(() => {
     if (messageListRef.current) {
@@ -544,9 +558,6 @@ function AskCadivorPageInner() {
         grounded: data.grounded === true,
         gap: userFacingAskGap(data.gap),
       };
-      if (data.ai_usage && typeof data.ai_usage === "object") {
-        setAiUsage(objectValue(data.ai_usage));
-      }
       const nextThread: AskConversation = {
         id: threadId,
         analysisId: selectedAnalysisId,
@@ -765,7 +776,11 @@ function AskCadivorPageInner() {
                 <div className={styles.creditMeterHeader}>
                   <div className={styles.creditMeterTitle}>
                     <strong>Ask Cadivor credits</strong>
-                    {isCreditAdmin ? (
+                    {!creditMeterLoaded ? (
+                      <span>Checking your credit balance…</span>
+                    ) : creditMeterError ? (
+                      <span>Credit balance could not be loaded. Refresh the page to try again.</span>
+                    ) : isCreditAdmin ? (
                       <span>Administrator use is not metered.</span>
                     ) : allowance > 0 ? (
                       <span>{usedCredits.toLocaleString()} of {allowance.toLocaleString()} monthly credits used</span>
@@ -782,13 +797,14 @@ function AskCadivorPageInner() {
                         setCreditCheckoutError("");
                       }}
                       aria-expanded={showAskCreditPacks}
+                      disabled={!creditMeterLoaded}
                     >
-                      {showAskCreditPacks ? "Hide packs" : "Get more credits"}
+                      {!creditMeterLoaded ? "Loading credits…" : showAskCreditPacks ? "Hide packs" : "Get more credits"}
                     </button>
                   ) : null}
                 </div>
 
-                {!isCreditAdmin && allowance > 0 ? (
+                {!isCreditAdmin && creditMeterLoaded && !creditMeterError && allowance > 0 ? (
                   <div className={styles.creditMeterProgress}>
                     <div className={styles.creditMeterCounts}>
                       <span>{includedRemaining?.toLocaleString() || 0} monthly credits left</span>
@@ -807,7 +823,7 @@ function AskCadivorPageInner() {
                   </div>
                 ) : null}
 
-                {!isCreditAdmin ? (
+                {!isCreditAdmin && creditMeterLoaded && !creditMeterError ? (
                   <div className={styles.creditMeterFoot}>
                     <span>
                       {topupCredits.toLocaleString()} prepaid credits
@@ -820,8 +836,8 @@ function AskCadivorPageInner() {
                 {creditWarning ? (
                   <p
                     className={styles.creditWarning}
-                    data-level={monthlyExhausted ? "exhausted" : usagePercent >= 80 ? "high" : "notice"}
-                    role={monthlyExhausted ? "alert" : "status"}
+                    data-level={monthlyExhausted || noCreditsAvailable ? "exhausted" : usagePercent >= 80 ? "high" : "notice"}
+                    role={monthlyExhausted || noCreditsAvailable ? "alert" : "status"}
                   >
                     {creditWarning}
                   </p>
@@ -867,9 +883,13 @@ function AskCadivorPageInner() {
                         );
                       })}
                     </div>
-                    {!canBuyAskCredits ? (
+                    {creditPackCatalogError ? (
                       <p className={styles.creditPackEligibility}>
-                        Packs are available during an active trial or plan. <Link href="/settings">Review billing</Link>
+                        Credit packs could not load. Refresh this page to try again.
+                      </p>
+                    ) : askCreditPacks.length === 0 ? (
+                      <p className={styles.creditPackEligibility}>
+                        Credit packs are temporarily unavailable.
                       </p>
                     ) : null}
                     {creditCheckoutError ? (
