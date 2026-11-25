@@ -217,7 +217,7 @@ def ai_credit_status(
     user_id = str(row.get("user_id") or "").strip()
     admin = str(row.get("platform_role") or row.get("role") or "").strip().lower() == "admin"
     now = datetime.now(timezone.utc)
-    month = _month_key(now)
+    month = _month_key()
     next_month = datetime(now.year + (now.month == 12), 1 if now.month == 12 else now.month + 1, 1, tzinfo=timezone.utc)
     reset_at = next_month.isoformat()
     selected_store = store or get_store()
