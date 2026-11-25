@@ -1062,6 +1062,14 @@ function ReportPageInner() {
             token={session.access_token}
             analysisId={String(report.analysis_id || report.id)}
           />
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -5, marginBottom: 14 }}>
+            <Link
+              className="cv-button small"
+              href={"/ask-cadivor?analysis_id=" + encodeURIComponent(String(report.analysis_id || report.id))}
+            >
+              Continue in Ask Cadivor workspace →
+            </Link>
+          </div>
 
           <section className="cv-card pad" style={{ marginBottom: 14 }}>
             <div className="cv-eyebrow">Engineering decision record</div>
