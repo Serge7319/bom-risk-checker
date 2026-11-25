@@ -761,6 +761,124 @@ function AskCadivorPageInner() {
                 </span>
               </div>
 
+              <section className={styles.creditMeter} aria-label="Ask Cadivor credit usage">
+                <div className={styles.creditMeterHeader}>
+                  <div className={styles.creditMeterTitle}>
+                    <strong>Ask Cadivor credits</strong>
+                    {isCreditAdmin ? (
+                      <span>Administrator use is not metered.</span>
+                    ) : allowance > 0 ? (
+                      <span>{usedCredits.toLocaleString()} of {allowance.toLocaleString()} monthly credits used</span>
+                    ) : (
+                      <span>No monthly credits are included with this plan.</span>
+                    )}
+                  </div>
+                  {!isCreditAdmin ? (
+                    <button
+                      className={styles.creditPackToggle}
+                      type="button"
+                      onClick={() => {
+                        setShowAskCreditPacks((open) => !open);
+                        setCreditCheckoutError("");
+                      }}
+                      aria-expanded={showAskCreditPacks}
+                    >
+                      {showAskCreditPacks ? "Hide packs" : "Get more credits"}
+                    </button>
+                  ) : null}
+                </div>
+
+                {!isCreditAdmin && allowance > 0 ? (
+                  <div className={styles.creditMeterProgress}>
+                    <div className={styles.creditMeterCounts}>
+                      <span>{includedRemaining?.toLocaleString() || 0} monthly credits left</span>
+                      <span>{usagePercent}% used</span>
+                    </div>
+                    <div
+                      className={styles.creditMeterTrack}
+                      role="progressbar"
+                      aria-label="Monthly Ask Cadivor credit usage"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={usagePercent}
+                    >
+                      <span style={{ width: usagePercent + "%" }} />
+                    </div>
+                  </div>
+                ) : null}
+
+                {!isCreditAdmin ? (
+                  <div className={styles.creditMeterFoot}>
+                    <span>
+                      {topupCredits.toLocaleString()} prepaid credits
+                      {allowance > 0 ? " · monthly credits are used first" : ""}
+                    </span>
+                    {allowance > 0 ? <span>Resets {resetLabel}</span> : null}
+                  </div>
+                ) : null}
+
+                {creditWarning ? (
+                  <p
+                    className={styles.creditWarning}
+                    data-level={monthlyExhausted ? "exhausted" : usagePercent >= 80 ? "high" : "notice"}
+                    role={monthlyExhausted ? "alert" : "status"}
+                  >
+                    {creditWarning}
+                  </p>
+                ) : null}
+                {creditNotice ? <p className={styles.creditNotice} role="status">{creditNotice}</p> : null}
+
+                {showAskCreditPacks && !isCreditAdmin ? (
+                  <div className={styles.creditPackPanel}>
+                    <div className={styles.creditPackPanelHeading}>
+                      <strong>One-time credit packs</strong>
+                      <span>Credits don’t expire. Monthly credits are used first.</span>
+                    </div>
+                    <div className={styles.creditPackGrid}>
+                      {askCreditPacks.map((pack) => {
+                        const packId = String(pack.id || "");
+                        const credits = Math.max(0, Number(pack.credits || 0));
+                        const unitPrice = Number(pack.unit_price);
+                        const savings = Math.max(0, Number(pack.savings_percent || 0));
+                        return (
+                          <article className={styles.creditPack} key={packId}>
+                            <div className={styles.creditPackTop}>
+                              <strong>{String(pack.title || credits.toLocaleString() + " credits")}</strong>
+                              {savings > 0 ? <span>Save {savings}%</span> : null}
+                            </div>
+                            <strong className={styles.creditPackPrice}>{moneyLabel(pack.amount)}</strong>
+                            <small>
+                              {credits.toLocaleString()} questions
+                              {Number.isFinite(unitPrice) ? " · $" + unitPrice.toFixed(2) + " each" : ""}
+                            </small>
+                            <button
+                              className="cv-button small"
+                              type="button"
+                              disabled={
+                                !canBuyAskCredits ||
+                                pack.enabled !== true ||
+                                Boolean(creditCheckoutBusy)
+                              }
+                              onClick={() => void buyAskCreditPack(packId)}
+                            >
+                              {creditCheckoutBusy === packId ? "Opening checkout…" : "Buy pack"}
+                            </button>
+                          </article>
+                        );
+                      })}
+                    </div>
+                    {!canBuyAskCredits ? (
+                      <p className={styles.creditPackEligibility}>
+                        Packs are available during an active trial or plan. <Link href="/settings">Review billing</Link>
+                      </p>
+                    ) : null}
+                    {creditCheckoutError ? (
+                      <p className={styles.creditPackError} role="alert">{creditCheckoutError}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+
               <div
                 className={styles.messages}
                 ref={messageListRef}
