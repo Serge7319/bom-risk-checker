@@ -144,9 +144,9 @@ function MonitoringPageInner() {
           === requestedPartNumber.toLocaleLowerCase(),
       )
     : liveEvidence;
-  const failedRefreshParts = Array.isArray(liveRefreshOutcome?.result?.failed_parts)
-    ? liveRefreshOutcome.result.failed_parts as Array<Record<string, unknown>>
-    : [];
+  const failedRefreshParts = (Array.isArray(liveRefreshOutcome?.result?.failed_parts)
+    ? liveRefreshOutcome?.result?.failed_parts
+    : []) as Array<Record<string, unknown>>;
   const staleReasons: Record<string, string> = {
     never_refreshed: "Monitoring has never been refreshed for this analysis.",
     refresh_older_than_threshold: `The last refresh is older than ${String(freshness.stale_after_hours ?? 24)} hours.`,
@@ -439,7 +439,7 @@ function MonitoringPageInner() {
                     <div className="cv-card" key={`${String(row.part_number)}-${index}`} style={{ padding: 12, marginTop: 10 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                         <strong>{cleanUserText(String(row.supplier || "Configured distributor"))} · {cleanUserText(String(row.part_number || ""))}</strong>
-                        <span className="cv-badge green">Identity verified</span>
+                        <span className="cv-badge green">Exact MPN matched</span>
                       </div>
                       <p className="cv-small-note" style={{ margin: "4px 0 0" }}>
                         Requested MPN matched {cleanUserText(String(row.manufacturer || "the supplier listing"))}
