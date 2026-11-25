@@ -64,6 +64,7 @@ def _empty() -> dict[str, Any]:
         "developer_webhooks": {},
         "developer_webhook_deliveries": {},
         "procurement_quotes": {},
+        "ai_credit_usage": {},
     }
 
 
@@ -112,6 +113,48 @@ class WorkspaceStore:
         with _LOCK:
             self._data = _empty()
             self.save()
+
+    def get_ai_credit_usage(self, *, user_id: str, usage_month: str) -> int:
+        """Return persisted AI credits consumed by one user in a calendar month."""
+        key = f"{str(user_id or '').strip()}:{str(usage_month or '').strip()}"
+        with _LOCK:
+            self.load()
+            return max(0, int(self._data.setdefault("ai_credit_usage", {}).get(key, 0) or 0))
+
+    def reserve_ai_credits(
+        self, *, user_id: str, usage_month: str, allowance: int, cost: int = 1
+    ) -> int | None:
+        """Atomically reserve plan credits in the local preview store."""
+        key = f"{str(user_id or '').strip()}:{str(usage_month or '').strip()}"
+        limit = max(0, int(allowance))
+        quantity = max(1, int(cost))
+        with _LOCK:
+            self.load()
+            usage = self._data.setdefault("ai_credit_usage", {})
+            used = max(0, int(usage.get(key, 0) or 0))
+            if not user_id or not usage_month or used + quantity > limit:
+                return None
+            used += quantity
+            usage[key] = used
+            self.save()
+            return used
+
+    def release_ai_credits(
+        self, *, user_id: str, usage_month: str, cost: int = 1
+    ) -> int:
+        """Refund a reserved credit when a provider request fails."""
+        key = f"{str(user_id or '').strip()}:{str(usage_month or '').strip()}"
+        quantity = max(1, int(cost))
+        with _LOCK:
+            self.load()
+            usage = self._data.setdefault("ai_credit_usage", {})
+            remaining_used = max(0, int(usage.get(key, 0) or 0) - quantity)
+            if remaining_used:
+                usage[key] = remaining_used
+            else:
+                usage.pop(key, None)
+            self.save()
+            return remaining_used
 
     def _require_workspace(self, workspace_id: str) -> str:
         wid = str(workspace_id or "").strip()
