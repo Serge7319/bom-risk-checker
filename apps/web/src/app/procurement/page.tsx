@@ -786,17 +786,19 @@ function ProcurementPageInner() {
                                 <span className="cv-small-note">No saved offers</span>
                               )}
                               {activeAnalysisId && String(p.mpn || "").trim() ? (
-                                <Link
-                                  className="cv-button small"
-                                  href={supplierRefreshHref(activeAnalysisId, String(p.mpn).trim())}
-                                  aria-label={"Open Monitoring supplier refresh for " + display(p.mpn, "this part")}
-                                  title="Opens Monitoring with this part selected"
-                                >
-                                  Open part in Monitoring
-                                </Link>
-                                <small className="cv-procurement-description">
-                                  Monitoring refresh does not change these offers.
-                                </small>
+                                <>
+                                  <Link
+                                    className="cv-button small"
+                                    href={supplierRefreshHref(activeAnalysisId, String(p.mpn).trim())}
+                                    aria-label={"Open Monitoring supplier refresh for " + display(p.mpn, "this part")}
+                                    title="Opens Monitoring with this part selected"
+                                  >
+                                    Open part in Monitoring
+                                  </Link>
+                                  <small className="cv-procurement-description">
+                                    Monitoring refresh does not change these offers.
+                                  </small>
+                                </>
                               ) : null}
                             </div>
                           </td>
