@@ -34,6 +34,11 @@ function withAnalysisId(href: string, analysisId: string) {
   return `${href}${joiner}analysis_id=${encodeURIComponent(analysisId)}`;
 }
 
+function supplierRefreshHref(analysisId: string, partNumber: string) {
+  const query = new URLSearchParams({ analysis_id: analysisId, part_number: partNumber });
+  return `/monitoring?${query.toString()}#supplier-refresh`;
+}
+
 function engineeringComparisonHref(
   analysisId: string,
   requestedMpn: string,
@@ -612,6 +617,9 @@ function ProcurementPageInner() {
             Choose a saved BOM revision, review parts that need verification, then confirm the supplier listing or record a current quote.
             Cadivor does not place orders or create binding quotes.
           </p>
+          <p className="cv-small-note">
+            Saved offers stay tied to this BOM analysis. Use a part’s Monitoring link to request a fresh supplier check. Monitoring stores verified refresh evidence separately; it does not rewrite these offer rows. Re-run the BOM analysis to create a new Procurement offer snapshot. Recalculate saved alerts reuses saved analysis data and does not contact suppliers.
+          </p>
         </div>
         <ol>
           <li><strong>Pick the revision</strong><span>Keep the sourcing review tied to the BOM you intend to build.</span></li>
@@ -763,19 +771,31 @@ function ProcurementPageInner() {
                             ) : null}
                           </td>
                           <td>
-                            {offers.length ? (
-                              <button
-                                className="cv-procurement-offers-button"
-                                type="button"
-                                onClick={() => setOffersDialogPart(p)}
-                                aria-label={"View " + offers.length + " saved offers for " + display(p.mpn, "this part")}
-                                aria-haspopup="dialog"
-                              >
-                                View {offers.length} offer{offers.length === 1 ? "" : "s"}
-                              </button>
-                            ) : (
-                              <span className="cv-small-note">No saved offers</span>
-                            )}
+                            <div style={{ display: "grid", gap: 6, justifyItems: "start" }}>
+                              {offers.length ? (
+                                <button
+                                  className="cv-procurement-offers-button"
+                                  type="button"
+                                  onClick={() => setOffersDialogPart(p)}
+                                  aria-label={"View " + offers.length + " saved offers for " + display(p.mpn, "this part")}
+                                  aria-haspopup="dialog"
+                                >
+                                  View {offers.length} offer{offers.length === 1 ? "" : "s"}
+                                </button>
+                              ) : (
+                                <span className="cv-small-note">No saved offers</span>
+                              )}
+                              {activeAnalysisId && String(p.mpn || "").trim() ? (
+                                <Link
+                                  className="cv-button small"
+                                  href={supplierRefreshHref(activeAnalysisId, String(p.mpn).trim())}
+                                  aria-label={"Open Monitoring supplier refresh for " + display(p.mpn, "this part")}
+                                  title="Opens Monitoring with this part selected"
+                                >
+                                  Open Monitoring refresh
+                                </Link>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1165,6 +1185,22 @@ function ProcurementPageInner() {
                   </button>
                 </header>
                 <div className="cv-procurement-modal-body">
+                  <div className="cv-evidence-context" role="note" style={{ marginBottom: 12 }}>
+                    <p style={{ margin: 0 }}>
+                      Refresh supplier data in Monitoring re-queries configured distributors for this exact MPN and stores any verified measurements in Monitoring. It does not rewrite the offers attached to this BOM analysis; re-run the analysis to create a new Procurement offer snapshot. Recalculate saved alerts only reuses saved analysis data.
+                    </p>
+                    {activeAnalysisId && String(offersDialogPart.mpn || "").trim() ? (
+                      <Link
+                        className="cv-button primary"
+                        href={supplierRefreshHref(activeAnalysisId, String(offersDialogPart.mpn).trim())}
+                        aria-label={"Open Monitoring supplier refresh for " + String(offersDialogPart.mpn).trim()}
+                      >
+                        Open supplier refresh in Monitoring
+                      </Link>
+                    ) : (
+                      <span className="cv-small-note">A saved MPN and BOM analysis are required to open a part-specific refresh.</span>
+                    )}
+                  </div>
                   {Array.isArray(offersDialogPart.supplier_offers) && offersDialogPart.supplier_offers.length ? (
                     offersDialogPart.supplier_offers.map((offer: Record<string, unknown>, index) => {
                       const identity = describeCatalogIdentity(
