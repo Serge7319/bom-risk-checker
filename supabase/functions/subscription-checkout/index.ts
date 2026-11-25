@@ -1983,14 +1983,22 @@ serve(async (request) => {
     }
 
     if (action === "usage_overage_checkout") {
-      const currentPlan = effectivePlan(profile).plan;
-      const trialEnd = profile.trial_ends_at ? new Date(String(profile.trial_ends_at)) : null;
-      const activeTrial = currentPlan === "Trial" && Boolean(trialEnd && !Number.isNaN(trialEnd.getTime()) && trialEnd > new Date());
-      const eligiblePaidPlan = ["Starter", "Professional", "Business", "Enterprise"].includes(currentPlan);
-      if (!(eligiblePaidPlan && hasCurrentPaidSubscription(profile)) && !activeTrial) {
-        return response({ ok: false, detail: "Credit packs are available to accounts with an active plan or trial." }, 409, origin);
-      }
       const kind = String(body.credit_kind || "").trim();
+      if (kind !== "ask_cadivor" && kind !== "bom_analysis") {
+        return response({ ok: false, detail: "Choose a supported usage pack." }, 400, origin);
+      }
+      // BOM analysis overage remains plan-gated. Ask Cadivor packs are
+      // prepaid purchases, so any authenticated account can buy them without
+      // starting or renewing a subscription.
+      if (kind === "bom_analysis") {
+        const currentPlan = effectivePlan(profile).plan;
+        const trialEnd = profile.trial_ends_at ? new Date(String(profile.trial_ends_at)) : null;
+        const activeTrial = currentPlan === "Trial" && Boolean(trialEnd && !Number.isNaN(trialEnd.getTime()) && trialEnd > new Date());
+        const eligiblePaidPlan = ["Starter", "Professional", "Business", "Enterprise"].includes(currentPlan);
+        if (!(eligiblePaidPlan && hasCurrentPaidSubscription(profile)) && !activeTrial) {
+          return response({ ok: false, detail: "BOM analysis packs are available to accounts with an active plan or trial." }, 409, origin);
+        }
+      }
       const selectedPack = kind === "ask_cadivor"
         ? askCadivorCreditPacks.find((pack) => pack.id === String(body.pack_id || "").trim())
         : null;
