@@ -325,7 +325,12 @@ def _is_short_follow_up(question: str) -> bool:
         "what evidence",
         "what source",
         "what does that",
+        "what does it mean",
+        "what does that mean",
         "what is that",
+        "what is meant by",
+        "can you clarify",
+        "could you clarify",
     )
     if any(phrase in lower for phrase in phrases):
         return True
@@ -761,7 +766,8 @@ def _s473_route(question: str, history: list[dict[str, str]] | None = None) -> t
         explanation_follow_up = any(
             phrase in text
             for phrase in (
-                "why", "explain", "clarify", "elaborate", "what do you mean", "how so"
+                "why", "explain", "clarify", "elaborate", "what do you mean",
+                "what does", "what is meant by", "how so", "how come",
             )
         )
         if explanation_follow_up:
@@ -2095,8 +2101,20 @@ class EngineeringAI:
             history,
         )
         resolved_question = _conversation_question(clean_question, history)
+        previous_question, _ = _history_turn(history)
+        clarification_follow_up = bool(
+            previous_question
+            and _is_short_follow_up(clean_question)
+            and any(
+                phrase in clean_question.lower()
+                for phrase in (
+                    "why", "explain", "clarify", "what do you mean", "what does",
+                    "what is meant by", "how so", "how come", "what about",
+                )
+            )
+        )
         if not self.configured:
-            if _asks_component_verification(clean_question):
+            if _asks_component_verification(clean_question) and not clarification_follow_up:
                 return EngineeringAIResponse(
                     answer=_component_verification_answer(
                         resolved_question,
