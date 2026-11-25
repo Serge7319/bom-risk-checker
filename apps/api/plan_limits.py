@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+import uuid
 
 from src.plans import (
     PLAN_TRIAL,
@@ -137,19 +138,87 @@ def _finish_overage_credit(
     return status == 200 and result.get("ok") is True and result.get("finished") is True
 
 
+
+
+def _ask_credit_topup_balance(ctx: dict[str, Any]) -> tuple[int, bool]:
+    """Read prepaid Ask Cadivor credits through the signed billing bridge."""
+    token = str(ctx.get("access_token") or "").strip()
+    user_id = str(ctx.get("user_id") or "").strip()
+    workspace_id = str(ctx.get("workspace_id") or "").strip()
+    if not token or not user_id or not workspace_id:
+        return 0, False
+    from apps.api import subscription_billing_service
+
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="ai_usage_balance",
+            payload={"workspace_id": workspace_id},
+            timeout_seconds=5,
+            internal_context={"user_id": user_id, "workspace_id": workspace_id},
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return 0, False
+    if status != 200 or result.get("ok") is not True:
+        return 0, False
+    try:
+        balance = max(0, int(result.get("credits") or 0))
+    except (TypeError, ValueError):
+        return 0, False
+    return balance, True
+
+
+def finish_ai_credit(
+    ctx: dict[str, Any] | None,
+    *,
+    reservation_id: str,
+    source: str,
+    commit: bool,
+) -> bool:
+    """Commit or refund a prepaid credit reservation."""
+    if source != "topup":
+        return True
+    row = ctx or {}
+    token = str(row.get("access_token") or "").strip()
+    user_id = str(row.get("user_id") or "").strip()
+    workspace_id = str(row.get("workspace_id") or "").strip()
+    if not token or not user_id or not workspace_id or not reservation_id:
+        return False
+    from apps.api import subscription_billing_service
+
+    try:
+        result, status = subscription_billing_service.request_action(
+            access_token=token,
+            action="finish_ai_question_credit",
+            payload={
+                "reservation_id": reservation_id,
+                "commit": bool(commit),
+                "workspace_id": workspace_id,
+            },
+            timeout_seconds=5,
+            internal_context={"user_id": user_id, "workspace_id": workspace_id},
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return False
+    return status == 200 and result.get("ok") is True and result.get("finished") is True
+
+
 def ai_credit_status(
     ctx: dict[str, Any] | None,
     *,
     store: Any | None = None,
 ) -> dict[str, Any]:
-    """Return the authenticated user's monthly Ask Cadivor credit balance."""
+    """Return the authenticated user's included and prepaid Ask Cadivor balance."""
     row = ctx or {}
     plan = effective_plan(row)
     plan_name = effective_plan_name(row)
     allowance = max(0, int(plan.get("ai_credits", 0) or 0))
     user_id = str(row.get("user_id") or "").strip()
     admin = str(row.get("platform_role") or row.get("role") or "").strip().lower() == "admin"
-    month = _month_key()
+    now = datetime.now(timezone.utc)
+    month = _month_key(now)
+    next_month = datetime(now.year + (now.month == 12), 1 if now.month == 12 else now.month + 1, 1, tzinfo=timezone.utc)
+    reset_at = next_month.isoformat()
     selected_store = store or get_store()
     usage_reader = getattr(selected_store, "get_ai_credit_usage", None)
     used = (
@@ -158,15 +227,23 @@ def ai_credit_status(
         else 0
     )
     remaining = max(0, allowance - used)
+    topup_balance, topup_balance_available = (
+        (0, True) if admin else _ask_credit_topup_balance(row)
+    )
+    total_remaining = remaining + topup_balance
     return {
         "plan": plan_name,
         "allowance": allowance,
         "used": used,
         "remaining": None if admin else remaining,
+        "topup_credits": None if admin else topup_balance,
+        "topup_balance_available": topup_balance_available,
+        "total_remaining": None if admin else total_remaining,
         "month": month,
-        "reset_label": "Resets on the first day of next month",
+        "reset_at": reset_at,
+        "reset_label": "Monthly credits reset at the start of next month",
         "is_admin": admin,
-        "can_use": admin or remaining > 0,
+        "can_use": admin or total_remaining > 0,
     }
 
 
@@ -175,33 +252,77 @@ def reserve_ai_credit(
     *,
     action: str = "question",
 ) -> dict[str, Any]:
-    """Reserve plan-included AI credits before calling the external provider."""
+    """Reserve an included monthly credit first, then a prepaid credit."""
     row = ctx or {}
     status = ai_credit_status(row)
     if status["is_admin"]:
-        return {"reserved": True, "usage": status, "cost": 1}
+        return {"reserved": True, "usage": status, "cost": 1, "source": "admin"}
     user_id = str(row.get("user_id") or "").strip()
+    workspace_id = str(row.get("workspace_id") or "").strip()
+    token = str(row.get("access_token") or "").strip()
     allowance = int(status["allowance"])
     cost = max(1, int({"question": 1}.get(action, 1)))
     if not user_id:
         return {"reserved": False, "usage": status, "cost": cost, "code": "missing_user"}
-    if allowance < cost:
-        return {"reserved": False, "usage": status, "cost": cost, "code": "ai_credit_limit"}
+
     store = get_store()
     reserve = getattr(store, "reserve_ai_credits", None)
     if not callable(reserve):
         return {"reserved": False, "usage": status, "cost": cost, "code": "usage_store_unavailable"}
-    used = reserve(
-        user_id=user_id,
-        usage_month=str(status["month"]),
-        allowance=allowance,
-        cost=cost,
-    )
-    if used is None:
+    if allowance >= cost:
+        used = reserve(
+            user_id=user_id,
+            usage_month=str(status["month"]),
+            allowance=allowance,
+            cost=cost,
+        )
+        if used is not None:
+            return {
+                "reserved": True,
+                "usage": ai_credit_status(row),
+                "cost": cost,
+                "source": "monthly",
+            }
         status = ai_credit_status(row)
-        return {"reserved": False, "usage": status, "cost": cost}
-    status = ai_credit_status(row)
-    return {"reserved": True, "usage": status, "cost": cost}
+        if int(status.get("remaining") or 0) >= cost:
+            return {"reserved": False, "usage": status, "cost": cost, "code": "usage_store_unavailable"}
+
+    if not status.get("topup_balance_available"):
+        return {"reserved": False, "usage": status, "cost": cost, "code": "ai_credits_unavailable"}
+    if int(status.get("topup_credits") or 0) < cost:
+        return {"reserved": False, "usage": status, "cost": cost, "code": "ai_credit_limit"}
+    if not token or not workspace_id:
+        return {"reserved": False, "usage": status, "cost": cost, "code": "ai_credits_unavailable"}
+
+    reservation_id = uuid.uuid4().hex
+    from apps.api import subscription_billing_service
+
+    try:
+        result, result_status = subscription_billing_service.request_action(
+            access_token=token,
+            action="reserve_ai_question_credit",
+            payload={"reservation_id": reservation_id, "workspace_id": workspace_id},
+            timeout_seconds=5,
+            internal_context={"user_id": user_id, "workspace_id": workspace_id},
+        )
+    except subscription_billing_service.SubscriptionBillingError:
+        return {"reserved": False, "usage": status, "cost": cost, "code": "ai_credits_unavailable"}
+    if result_status != 200 or result.get("ok") is not True:
+        return {"reserved": False, "usage": status, "cost": cost, "code": "ai_credits_unavailable"}
+    if result.get("reserved") is not True:
+        return {
+            "reserved": False,
+            "usage": ai_credit_status(row),
+            "cost": cost,
+            "code": "ai_credit_limit",
+        }
+    return {
+        "reserved": True,
+        "usage": ai_credit_status(row),
+        "cost": cost,
+        "source": "topup",
+        "reservation_id": reservation_id,
+    }
 
 
 def release_ai_credit(
@@ -209,22 +330,27 @@ def release_ai_credit(
     *,
     usage_month: str,
     cost: int = 1,
+    source: str = "monthly",
+    reservation_id: str = "",
 ) -> int:
-    """Refund reserved AI credits when the OpenAI request does not complete."""
+    """Refund a reserved monthly or prepaid credit after a failed AI call."""
     row = ctx or {}
     if str(row.get("platform_role") or row.get("role") or "").strip().lower() == "admin":
         return 0
+    if source == "topup":
+        return int(finish_ai_credit(
+            row,
+            reservation_id=reservation_id,
+            source="topup",
+            commit=False,
+        ))
     user_id = str(row.get("user_id") or "").strip()
     if not user_id:
         return 0
     release = getattr(get_store(), "release_ai_credits", None)
     if not callable(release):
         return 0
-    return release(
-        user_id=user_id,
-        usage_month=usage_month,
-        cost=cost,
-    )
+    return release(user_id=user_id, usage_month=usage_month, cost=cost)
 
 
 def usage_snapshot(workspace_id: str, ctx: dict[str, Any] | None = None) -> dict[str, Any]:
