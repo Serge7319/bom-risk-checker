@@ -1696,7 +1696,7 @@ def ask_cadivor_payload(
             "gap": (
                 None
                 if response.provider != "cadivor-grounded"
-                else "Answer is grounded in this saved analysis. Cloud AI assist is optional and was not required."
+                else "OpenAI did not handle this response. Cadivor used its local evidence-based rules, which have limited follow-up reasoning."
             ),
         }
     )
