@@ -459,6 +459,30 @@ def monitoring_payload(
     part_status = [
         _part_data_status(p) for p in report.get("parts") or [] if isinstance(p, dict) and _part_mpn(p)
     ]
+    live_evidence = [
+        {
+            "part_number": str(snapshot.get("part_number") or "").strip(),
+            "manufacturer_part_number": str(snapshot.get("manufacturer_part_number") or "").strip(),
+            "manufacturer": str(snapshot.get("manufacturer") or "").strip(),
+            "supplier": str(snapshot.get("supplier") or "").strip(),
+            "identity_verified": True,
+            "stock": snapshot.get("stock"),
+            "unit_price": snapshot.get("unit_price"),
+            "currency": str(snapshot.get("currency") or "").strip(),
+            "lead_time_weeks": snapshot.get("lead_time_weeks"),
+            "lifecycle_status": str(snapshot.get("lifecycle_status") or "").strip(),
+            "risk_level": str(snapshot.get("risk_level") or "").strip(),
+            "retrieved_at": snapshot.get("retrieved_at"),
+            "observed_fields": snapshot.get("observed_fields") or [],
+            "field_retrieved_at": snapshot.get("field_retrieved_at") or {},
+            "product_url": str(snapshot.get("product_url") or "").strip(),
+        }
+        for snapshot in monitoring_store.list_live_snapshots(workspace_id, report_id)
+        if isinstance(snapshot, dict)
+        and snapshot.get("evidence_source") == "live-authorized-supplier"
+        and snapshot.get("identity_verified") is True
+        and str(snapshot.get("part_number") or "").strip()
+    ]
     prefs = monitoring_store.get_preferences(workspace_id)
     return _json_safe(
         {
@@ -488,6 +512,7 @@ def monitoring_payload(
             "refresh": scoped_history[0] if scoped_history else None,
             "refresh_history": scoped_history[:10],
             "part_status": part_status,
+            "live_evidence": live_evidence,
         }
     )
 
