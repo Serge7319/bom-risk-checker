@@ -81,10 +81,77 @@ class PostgresWorkspaceStore:
             with self._connect() as conn:
                 conn.execute(
                     "TRUNCATE migration_procurement_quotes, migration_decision_records, migration_reports, migration_analyses, "
-                    "migration_revisions, migration_boms, migration_projects "
+                    "migration_revisions, migration_boms, migration_projects, migration_ai_credit_usage "
                     "CASCADE"
                 )
                 conn.commit()
+
+    def get_ai_credit_usage(self, *, user_id: str, usage_month: str) -> int:
+        """Return persisted AI credits consumed by one user in a calendar month."""
+        uid = str(user_id or "").strip()
+        month = str(usage_month or "").strip()
+        if not uid or not month:
+            return 0
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT used_credits FROM migration_ai_credit_usage WHERE user_id = %s AND usage_month = %s",
+                (uid, month),
+            ).fetchone()
+            return max(0, int(row["used_credits"] or 0)) if row else 0
+
+    def reserve_ai_credits(
+        self, *, user_id: str, usage_month: str, allowance: int, cost: int = 1
+    ) -> int | None:
+        """Atomically reserve plan credits; concurrent requests cannot exceed allowance."""
+        uid = str(user_id or "").strip()
+        month = str(usage_month or "").strip()
+        limit = max(0, int(allowance))
+        quantity = max(1, int(cost))
+        if not uid or not month:
+            return None
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO migration_ai_credit_usage (user_id, usage_month)
+                VALUES (%s, %s)
+                ON CONFLICT (user_id, usage_month) DO NOTHING
+                """,
+                (uid, month),
+            )
+            row = conn.execute(
+                """
+                UPDATE migration_ai_credit_usage
+                SET used_credits = used_credits + %s, updated_at = NOW()
+                WHERE user_id = %s AND usage_month = %s
+                  AND used_credits + %s <= %s
+                RETURNING used_credits
+                """,
+                (quantity, uid, month, quantity, limit),
+            ).fetchone()
+            conn.commit()
+            return int(row["used_credits"]) if row else None
+
+    def release_ai_credits(
+        self, *, user_id: str, usage_month: str, cost: int = 1
+    ) -> int:
+        """Refund reserved credits after an unsuccessful provider request."""
+        uid = str(user_id or "").strip()
+        month = str(usage_month or "").strip()
+        quantity = max(1, int(cost))
+        if not uid or not month:
+            return 0
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                UPDATE migration_ai_credit_usage
+                SET used_credits = GREATEST(0, used_credits - %s), updated_at = NOW()
+                WHERE user_id = %s AND usage_month = %s
+                RETURNING used_credits
+                """,
+                (quantity, uid, month),
+            ).fetchone()
+            conn.commit()
+            return max(0, int(row["used_credits"] or 0)) if row else 0
 
     def _require_workspace(self, workspace_id: str) -> str:
         wid = str(workspace_id or "").strip()
