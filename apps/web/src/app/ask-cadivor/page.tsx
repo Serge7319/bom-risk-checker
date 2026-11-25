@@ -848,7 +848,7 @@ function AskCadivorPageInner() {
                   <div className={styles.creditPackPanel}>
                     <div className={styles.creditPackPanelHeading}>
                       <strong>One-time credit packs</strong>
-                      <span>Credits don’t expire. Monthly credits are used first.</span>
+                      <span>One-time purchase with no recurring charge. Credits don’t expire; monthly credits are used first.</span>
                     </div>
                     <div className={styles.creditPackGrid}>
                       {askCreditPacks.map((pack) => {
@@ -865,7 +865,7 @@ function AskCadivorPageInner() {
                             <strong className={styles.creditPackPrice}>{moneyLabel(pack.amount)}</strong>
                             <small>
                               {credits.toLocaleString()} questions
-                              {Number.isFinite(unitPrice) ? " · $" + unitPrice.toFixed(2) + " each" : ""}
+                              {Number.isFinite(unitPrice) ? " · " + (unitPrice * 100).toFixed(2) + "¢ per question" : ""}
                             </small>
                             <button
                               className="cv-button small"
