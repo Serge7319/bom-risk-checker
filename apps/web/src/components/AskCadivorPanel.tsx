@@ -3,7 +3,7 @@
 import { type FormEvent, type ReactNode, useState } from "react";
 import { EvidenceNotice } from "@/components/GapBanner";
 import { askCadivor } from "@/lib/api";
-import { cleanUserText, userFacingLabel } from "@/lib/display";
+import { cleanUserText } from "@/lib/display";
 
 function renderInline(markdown: string): ReactNode[] {
   const parts = markdown.split(/(\*\*.+?\*\*|__.+?__|\x60[^\x60]+\x60|\*[^*]+\*)/g);
@@ -102,7 +102,6 @@ export function AskCadivorPanel({
   const [error, setError] = useState("");
   const [answer, setAnswer] = useState("");
   const [gap, setGap] = useState("");
-  const [provider, setProvider] = useState("");
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -115,7 +114,6 @@ export function AskCadivorPanel({
       });
       setAnswer(cleanUserText(data.answer));
       setGap(cleanUserText(data.gap));
-      setProvider(userFacingLabel(data.provider, ""));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ask Cadivor failed");
       setAnswer("");
@@ -155,11 +153,6 @@ export function AskCadivorPanel({
       {<EvidenceNotice gap={gap} />}
       {answer ? (
         <div className="cv-ask-answer">
-          {provider ? (
-            <div className="cv-small-note" style={{ marginBottom: 8 }}>
-              Source: {provider}
-            </div>
-          ) : null}
           <div className="cv-ask-answer-body">{formatCadivorAnswer(answer)}</div>
         </div>
       ) : null}
