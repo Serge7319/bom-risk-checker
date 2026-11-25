@@ -78,6 +78,7 @@ export type BomDraftMeta = {
   /** The mapping, corrections, and options the saved validation was run with. */
   intake: BomIntakeOptions;
   analysisId: string | null;
+  sourceAnalysisId: string | null;
   summary: AnalyzeSummary | null;
   analyzeError: string;
   oneTimeReportRequired: boolean;
@@ -141,6 +142,7 @@ export function emptyDraftMeta(): BomDraftMeta {
     validationError: "",
     intake: { ...DEFAULT_BOM_INTAKE_OPTIONS, rowCorrections: {} },
     analysisId: null,
+    sourceAnalysisId: null,
     summary: null,
     analyzeError: "",
     oneTimeReportRequired: false,
@@ -353,6 +355,7 @@ export function startAnalyzeJob(
     projectName?: string;
     bomName?: string;
     revision?: string;
+    sourceAnalysisId?: string;
     intake?: BomIntakeOptions;
   },
   session?: SessionIdentity,
