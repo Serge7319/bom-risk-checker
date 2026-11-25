@@ -482,7 +482,7 @@ async function configuredPrice(
   }
 }
 
-async function addonCatalog() {
+async function addonCatalog(includeAskCadivorPacks = false) {
   const analysisCredits = positiveUnits("CADIVOR_BOM_ANALYSIS_OVERAGE_CREDITS");
   const monitoredPartsCapacity = positiveUnits("CADIVOR_MONITORED_PARTS_ADDON_CAPACITY");
   const [analysisPrice, monitoredMonthly, monitoredAnnual, apiPrice] = await Promise.all([
@@ -513,7 +513,7 @@ async function addonCatalog() {
     },
     professional_api: apiPrice,
     ask_cadivor_credits: {
-      enabled: true,
+      enabled: includeAskCadivorPacks,
       billing: "one_time",
       expires: false,
       packs: askCadivorCreditPacks.map((pack) => ({
@@ -524,7 +524,7 @@ async function addonCatalog() {
         currency: "usd",
         unit_price: pack.unitPrice,
         savings_percent: pack.savingsPercent,
-        enabled: true,
+        enabled: includeAskCadivorPacks,
       })),
     },
   };
@@ -1785,7 +1785,7 @@ serve(async (request) => {
         has_active_subscription: active,
         can_manage_billing: Boolean(active && (profile.stripe_customer_id || profile.stripe_subscription_id)),
         plans,
-        addons: await addonCatalog(),
+        addons: await addonCatalog(String(profile.role || "").trim().toLowerCase() === "admin"),
         usage_credits: await usageCreditsFor(auth.user.id),
         api_access_addon_active: (await apiAddonFor(auth.user.id)).active,
         monitored_parts_addon_active: monitoredAddonCapacity > 0,
@@ -1987,9 +1987,15 @@ serve(async (request) => {
       if (kind !== "ask_cadivor" && kind !== "bom_analysis") {
         return response({ ok: false, detail: "Choose a supported usage pack." }, 400, origin);
       }
-      // BOM analysis overage remains plan-gated. Ask Cadivor packs are
-      // prepaid purchases, so any authenticated account can buy them without
-      // starting or renewing a subscription.
+      if (kind === "ask_cadivor" && String(profile.role || "").trim().toLowerCase() !== "admin") {
+        return response({
+          ok: false,
+          code: "ask_credit_packs_unavailable",
+          detail: "Ask Cadivor credit-pack purchases are temporarily unavailable.",
+        }, 403, origin);
+      }
+      // BOM analysis overage remains plan-gated. Ask Cadivor credit packs are
+      // restricted to the administrator during the production payment check.
       if (kind === "bom_analysis") {
         const currentPlan = effectivePlan(profile).plan;
         const trialEnd = profile.trial_ends_at ? new Date(String(profile.trial_ends_at)) : null;
