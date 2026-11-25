@@ -207,6 +207,7 @@ def ai_credit_status(
     ctx: dict[str, Any] | None,
     *,
     store: Any | None = None,
+    include_topup_balance: bool = True,
 ) -> dict[str, Any]:
     """Return the authenticated user's included and prepaid Ask Cadivor balance."""
     row = ctx or {}
@@ -228,7 +229,11 @@ def ai_credit_status(
     )
     remaining = max(0, allowance - used)
     topup_balance, topup_balance_available = (
-        (0, True) if admin else _ask_credit_topup_balance(row)
+        (0, True)
+        if admin
+        else _ask_credit_topup_balance(row)
+        if include_topup_balance
+        else (0, False)
     )
     total_remaining = remaining + topup_balance
     return {
@@ -254,7 +259,7 @@ def reserve_ai_credit(
 ) -> dict[str, Any]:
     """Reserve an included monthly credit first, then a prepaid credit."""
     row = ctx or {}
-    status = ai_credit_status(row)
+    status = ai_credit_status(row, include_topup_balance=False)
     if status["is_admin"]:
         return {"reserved": True, "usage": status, "cost": 1, "source": "admin"}
     user_id = str(row.get("user_id") or "").strip()
