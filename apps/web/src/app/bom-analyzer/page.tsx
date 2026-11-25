@@ -303,7 +303,7 @@ export default function BomAnalyzerPage() {
         try {
           const [savedReport, projectsPayload] = await Promise.all([
             fetchReport(sourceId, session.access_token),
-            listProjects(session.access_token),
+            listProjects(session.access_token).catch(() => ({ projects: [] })),
           ]);
           if (cancelled) return;
           const report = savedReport as unknown as Record<string, unknown>;
