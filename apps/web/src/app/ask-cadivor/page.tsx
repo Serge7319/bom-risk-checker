@@ -848,7 +848,7 @@ function AskCadivorPageInner() {
                   <div className={styles.creditPackPanel}>
                     <div className={styles.creditPackPanelHeading}>
                       <strong>One-time credit packs</strong>
-                      <span>One credit per answered question. Packs are one-time with no renewal, and purchased credits don’t expire. Monthly credits are used first.</span>
+                      <span>A credit is used when Cadivor answers successfully. Packs are one-time with no renewal; purchased credits don’t expire. Monthly credits are used first.</span>
                     </div>
                     <div className={styles.creditPackGrid}>
                       {askCreditPacks.map((pack) => {
