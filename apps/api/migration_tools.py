@@ -493,7 +493,17 @@ def monitoring_payload(
         seen.add(key)
         saved = persisted_by_key.get(key)
         if saved:
-            scoped.append({**alert, **saved, "persisted": True, "active": True})
+            scoped.append(
+                {
+                    **saved,
+                    **alert,
+                    "id": saved.get("id") or alert.get("id"),
+                    "created_at": saved.get("created_at") or alert.get("created_at"),
+                    "acknowledged": saved.get("acknowledged", False),
+                    "persisted": True,
+                    "active": True,
+                }
+            )
         else:
             scoped.append({**alert, "persisted": False, "active": True})
     # Stale persisted alerts that no longer derive from the analysis are not
