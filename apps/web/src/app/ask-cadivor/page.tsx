@@ -788,7 +788,7 @@ function AskCadivorPageInner() {
                       <span>No monthly credits are included with this plan.</span>
                     )}
                   </div>
-                  {!isCreditAdmin ? (
+                  {canBuyAskCredits ? (
                     <button
                       className={styles.creditPackToggle}
                       type="button"
@@ -844,7 +844,7 @@ function AskCadivorPageInner() {
                 ) : null}
                 {creditNotice ? <p className={styles.creditNotice} role="status">{creditNotice}</p> : null}
 
-                {showAskCreditPacks && !isCreditAdmin ? (
+                {showAskCreditPacks && canBuyAskCredits ? (
                   <div className={styles.creditPackPanel}>
                     <div className={styles.creditPackPanelHeading}>
                       <strong>One-time credit packs</strong>
