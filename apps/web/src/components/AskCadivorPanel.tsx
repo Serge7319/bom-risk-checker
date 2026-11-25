@@ -24,7 +24,7 @@ function renderInline(markdown: string): ReactNode[] {
   });
 }
 
-function formatCadivorAnswer(markdown: string): ReactNode[] {
+export function formatCadivorAnswer(markdown: string): ReactNode[] {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const blocks: ReactNode[] = [];
   let paragraph: string[] = [];

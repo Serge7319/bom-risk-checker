@@ -19,6 +19,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: "monitoring", href: "/monitoring", label: "Monitoring" },
       { id: "replacement", href: "/find-replacement", label: "Find a replacement" },
       { id: "reports", href: "/reports", label: "Reports" },
+      { id: "ask", href: "/ask-cadivor", label: "Ask Cadivor" },
     ],
   },
   {
@@ -74,6 +75,13 @@ export const PAGE_META: Record<string, PageMeta> = {
     eyebrow: "Workspace risk review",
     description:
       "Review current high, medium, and unverified component findings across saved analyses.",
+  },
+  ask: {
+    icon: "spark",
+    title: "Ask Cadivor",
+    eyebrow: "Engineering Q&A",
+    description:
+      "Ask questions about a saved BOM and review answers alongside the report rows available as context.",
   },
   bom: {
     icon: "bom",

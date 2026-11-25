@@ -186,6 +186,7 @@ export const NAV_ICONS: Record<string, IconName> = {
   monitoring: "monitor",
   replacement: "search",
   reports: "report",
+  ask: "spark",
   compare: "compare",
   qa: "file",
   procurement: "procure",
