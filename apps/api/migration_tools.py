@@ -1701,7 +1701,7 @@ def ask_cadivor_payload(
             allowance = max(0, int(usage.get("allowance") or 0))
             used = max(0, int(usage.get("used") or 0))
             if allowance < 1:
-                detail = f"OpenAI-backed Ask Cadivor is not included with the {plan_name} plan."
+                detail = f"Ask Cadivor questions are not included with the {plan_name} plan."
             else:
                 detail = (
                     f"You have used {used} of {allowance} monthly Ask Cadivor AI credits "
