@@ -471,7 +471,13 @@ def monitoring_payload(
 
     report_mode = str(report.get("mode") or "synthetic-preview")
     report_id = str(report["id"])
-    derived = _derive_monitoring_alerts(report, workspace_id=workspace_id)
+    live_snapshots = monitoring_store.list_live_snapshots(workspace_id, report_id)
+    verified_live_by_mpn = _verified_live_snapshots_by_mpn(workspace_id, report_id)
+    derived = _derive_monitoring_alerts(
+        report,
+        workspace_id=workspace_id,
+        live_snapshots=verified_live_by_mpn,
+    )
     persisted = [
         a
         for a in monitoring_store.list_alerts(workspace_id, analysis_id=report_id)
@@ -542,7 +548,7 @@ def monitoring_payload(
             "field_retrieved_at": snapshot.get("field_retrieved_at") or {},
             "product_url": str(snapshot.get("product_url") or "").strip(),
         }
-        for snapshot in monitoring_store.list_live_snapshots(workspace_id, report_id)
+        for snapshot in live_snapshots
         if isinstance(snapshot, dict)
         and snapshot.get("evidence_source") == "live-authorized-supplier"
         and snapshot.get("identity_verified") is True
@@ -612,7 +618,14 @@ def monitoring_refresh_payload(
         ]
         alerts: list[dict[str, Any]] = []
         for report in reports:
-            alerts.extend(_derive_monitoring_alerts(report, workspace_id=workspace_id))
+            report_id = str(report.get("id") or report.get("analysis_id") or "")
+            alerts.extend(
+                _derive_monitoring_alerts(
+                    report,
+                    workspace_id=workspace_id,
+                    live_snapshots=_verified_live_snapshots_by_mpn(workspace_id, report_id),
+                )
+            )
         durable = monitoring_store.persist_alerts(workspace_id, alerts) if alerts else []
         refresh = monitoring_store.record_refresh(
             workspace_id,
@@ -646,7 +659,12 @@ def monitoring_refresh_payload(
         if isinstance(p, dict)
     ):
         raise ValueError("part not found in selected analysis")
-    alerts = _derive_monitoring_alerts(report, workspace_id=workspace_id, part_number=part)
+    alerts = _derive_monitoring_alerts(
+        report,
+        workspace_id=workspace_id,
+        part_number=part,
+        live_snapshots=_verified_live_snapshots_by_mpn(workspace_id, str(report["id"])),
+    )
     report_id = str(report["id"])
     scoped = monitoring_store.reconcile_alerts(
         workspace_id,
