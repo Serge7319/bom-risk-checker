@@ -832,6 +832,137 @@ def _s473_gaps(context: dict[str, Any], components: list[dict[str, Any]]) -> lis
     return gaps or [("Evidence freshness", "Core evidence is present", "Refresh supplier and manufacturer data before final approval.")]
 
 
+def _asks_component_verification(question: str) -> bool:
+    """Recognize direct questions asking which BOM line is marked for verification."""
+    normalized = re.sub(r"[^a-z0-9]+", " ", str(question or "").casefold()).strip()
+    phrases = (
+        "needs verification",
+        "need verification",
+        "requires verification",
+        "require verification",
+        "needs to be verified",
+        "need to be verified",
+        "need to verify",
+        "needs verifying",
+        "unverified component",
+        "unverified part",
+        "no exact supplier match",
+    )
+    return any(phrase in normalized for phrase in phrases)
+
+
+def _component_verification_answer(question: str, context: dict[str, Any]) -> str:
+    """Answer verification questions from explicit saved identity/evidence labels."""
+    components = [
+        row for row in (context.get("components") or [])
+        if isinstance(row, dict)
+    ]
+    named = _mentioned_components(question, components)
+    candidates = named or components
+
+    def verification_reason(row: dict[str, Any]) -> str | None:
+        risk = str(row.get("risk_level") or row.get("Risk Level") or "").strip()
+        identity = " ".join(
+            str(row.get(key) or "")
+            for key in (
+                "identity_status",
+                "identity_match",
+                "part_identity_match",
+                "supplier_identity_status",
+                "verification_status",
+                "evidence_source",
+                "source",
+            )
+        )
+        reasons_value = row.get("risk_reasons") or row.get("Risk Reasons") or ""
+        if isinstance(reasons_value, (list, tuple, set)):
+            reasons = " ".join(str(value) for value in reasons_value)
+        else:
+            reasons = str(reasons_value)
+        evidence_text = f"{identity} {reasons}".casefold()
+        flagged = (
+            risk.casefold() in {"needs verification", "unverified"}
+            or any(token in evidence_text for token in (
+                "no exact supplier match",
+                "no supplier match",
+                "identity unverified",
+                "unverified supplier identity",
+            ))
+        )
+        if not flagged:
+            return None
+        if "no exact supplier match" in evidence_text:
+            return "no exact supplier match was recorded"
+        if "no supplier match" in evidence_text:
+            return "no supplier match was recorded"
+        if "identity unverified" in evidence_text or "unverified supplier identity" in evidence_text:
+            return "the supplier identity is not verified"
+        if reasons.strip():
+            return reasons.strip()
+        return "the saved analysis marks its evidence as needing verification"
+
+    flagged_rows = [
+        (row, verification_reason(row))
+        for row in candidates
+    ]
+    flagged_rows = [(row, reason) for row, reason in flagged_rows if reason]
+    if flagged_rows:
+        lines = []
+        for row, reason in flagged_rows[:8]:
+            name = _part_name(row)
+            manufacturer = str(row.get("manufacturer") or "").strip()
+            part_label = f"{name} ({manufacturer})" if manufacturer else name
+            lines.append(
+                f"- **{part_label}** — saved status: {str(row.get('risk_level') or 'Needs verification')}; "
+                f"reason: {reason}."
+            )
+        if len(flagged_rows) == 1:
+            row, reason = flagged_rows[0]
+            name = _part_name(row)
+            manufacturer = str(row.get("manufacturer") or "").strip()
+            part_label = f"{name} ({manufacturer})" if manufacturer else name
+            direct = (
+                f"**{part_label}** is the component marked **Needs verification** because {reason}. "
+                "The saved evidence does not confirm this exact part identity."
+            )
+        else:
+            direct = (
+                f"**{len(flagged_rows)} component(s)** are explicitly marked **Needs verification** "
+                "in the saved analysis; their recorded reasons are listed below."
+            )
+        actions = (
+            "Confirm the exact MPN and manufacturer against an authorized source, then rerun the BOM analysis "
+            "after verified evidence is available. Keep the affected line unverified until its identity is confirmed."
+        )
+        return (
+            "### Intent\nEvidence Verification\n\n"
+            f"### Direct Answer\n{direct}\n\n"
+            f"### Evidence\n{chr(10).join(lines)}\n\n"
+            f"### Recommended Actions\n{actions}"
+        )
+
+    if named:
+        row = named[0]
+        name = _part_name(row)
+        risk = str(row.get("risk_level") or "Not recorded").strip()
+        direct = (
+            f"The saved analysis does not mark **{name}** as **Needs verification**; "
+            f"its recorded risk label is **{risk or 'Not recorded'}**. "
+            "Field-specific gaps may still require separate review."
+        )
+    else:
+        direct = (
+            "No component is explicitly marked **Needs verification** in the saved analysis. "
+            "This only reports the saved identity status; it does not certify every field as current or complete."
+        )
+    return (
+        "### Intent\nEvidence Verification\n\n"
+        f"### Direct Answer\n{direct}\n\n"
+        "### Evidence\nThe answer uses the saved component identity and verification labels for this BOM.\n\n"
+        "### Recommended Actions\nReview the Evidence page for field-level gaps and verify any missing source records before relying on them."
+    )
+
+
 def _s473_driver(row: dict[str, Any], domain: str) -> tuple[str, str]:
     risk = _known_int(row.get("risk_score"))
     suppliers = _known_int(row.get("supplier_count"))
@@ -1867,6 +1998,17 @@ class EngineeringAI:
             context,
             history,
         )
+        resolved_question = _conversation_question(clean_question, history)
+        if _asks_component_verification(resolved_question):
+            return EngineeringAIResponse(
+                answer=_component_verification_answer(
+                    resolved_question,
+                    component_scoped_context or context,
+                ),
+                provider="cadivor-grounded",
+                model="local-advisory",
+                grounded=True,
+            )
         if component_scoped_context is not None:
             return EngineeringAIResponse(
                 answer=_fallback_answer(
