@@ -17,7 +17,7 @@ ALTER TABLE public.cadivor_usage_credit_grants
 CREATE TABLE IF NOT EXISTS public.cadivor_ai_question_credit_reservations (
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   reservation_id text NOT NULL,
-  status text NOT NULL CHECK (status IN ('reserved', 'committed')),
+  status text NOT NULL CHECK (status IN ('reserved', 'committed', 'refunded')),
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, reservation_id)
 );
@@ -91,6 +91,9 @@ BEGIN
   IF existing_status IN ('reserved', 'committed') THEN
     RETURN true;
   END IF;
+  IF existing_status = 'refunded' THEN
+    RETURN false;
+  END IF;
 
   INSERT INTO public.cadivor_ai_question_credit_reservations
     (user_id, reservation_id, status)
@@ -144,7 +147,8 @@ BEGIN
     RETURN FOUND;
   END IF;
 
-  DELETE FROM public.cadivor_ai_question_credit_reservations
+  UPDATE public.cadivor_ai_question_credit_reservations
+     SET status = 'refunded'
    WHERE user_id = p_user_id AND reservation_id = p_reservation_id AND status = 'reserved';
   did_finish := FOUND;
   IF did_finish THEN
@@ -153,8 +157,16 @@ BEGIN
     ON CONFLICT (user_id, credit_kind) DO UPDATE
       SET credits = public.cadivor_usage_credit_balances.credits + 1,
           updated_at = now();
+    RETURN true;
   END IF;
-  RETURN did_finish;
+
+  RETURN EXISTS (
+    SELECT 1
+      FROM public.cadivor_ai_question_credit_reservations
+     WHERE user_id = p_user_id
+       AND reservation_id = p_reservation_id
+       AND status = 'refunded'
+  );
 END;
 $$;
 
