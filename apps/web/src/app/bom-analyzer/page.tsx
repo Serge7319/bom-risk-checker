@@ -11,6 +11,8 @@ import {
   DEFAULT_BOM_INTAKE_OPTIONS,
   fetchBillingStatus,
   fetchPlanUsage,
+  fetchReport,
+  listProjects,
   listReports,
   validateBom,
   type AnalyzeSummary,
@@ -67,6 +69,102 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+type SavedBomPrefill = {
+  projectName: string;
+  bomName: string;
+  revision: string;
+  sourceAnalysisId: string;
+  intake: BomIntakeOptions;
+};
+
+function csvCell(value: unknown): string {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function clearSavedBomSourceQuery(): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("source_analysis_id")) return;
+  url.searchParams.delete("source_analysis_id");
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+}
+
+function createSavedBomFile(report: Record<string, unknown>): {
+  file: File;
+  intake: BomIntakeOptions;
+} {
+  const parts = Array.isArray(report.parts) ? report.parts.map(asRecord) : [];
+  const rows: Array<Record<string, string>> = [];
+  for (const part of parts) {
+    const sourceRows = Array.isArray(part.source_rows) ? part.source_rows.map(asRecord) : [];
+    if (sourceRows.length) {
+      for (const sourceRow of sourceRows) {
+        const normalized = asRecord(sourceRow.normalized);
+        const row: Record<string, string> = {
+          mpn: String(normalized.mpn || part.MPN || part.mpn || ""),
+          manufacturer: String(normalized.manufacturer || part.Manufacturer || part.manufacturer || ""),
+          description: String(normalized.description || part.Description || part.description || ""),
+          parent_mpn: String(normalized.parent_mpn || part["Parent MPN"] || part.parent_mpn || ""),
+          line_type: String(normalized.line_type || part["Line Type"] || part.line_type || ""),
+          quantity: String(normalized.quantity ?? part["Quantity"] ?? part.quantity ?? "1"),
+          reference_designators: String(normalized.reference_designators || ""),
+          bom_level: String(normalized.bom_level || ""),
+          supplier_part_number: String(normalized.supplier_part_number || ""),
+          supplier: String(normalized.supplier || ""),
+        };
+        if (row.mpn.trim()) rows.push(row);
+      }
+    } else {
+      const row: Record<string, string> = {
+        mpn: String(part.MPN || part.mpn || ""),
+        manufacturer: String(part.Manufacturer || part.manufacturer || ""),
+        description: String(part.Description || part.description || ""),
+        parent_mpn: String(part["Parent MPN"] || part.parent_mpn || ""),
+        line_type: String(part["Line Type"] || part.line_type || ""),
+        quantity: String(part.quantity_per_parent ?? part["Quantity per Parent"] ?? part.Quantity ?? part.quantity ?? "1"),
+        reference_designators: String(part.reference_designators || ""),
+        bom_level: String(part.bom_level || ""),
+        supplier_part_number: String(part.supplier_part_number || ""),
+        supplier: String(part.supplier || ""),
+      };
+      if (row.mpn.trim()) rows.push(row);
+    }
+  }
+  if (!rows.length) {
+    throw new Error("This saved report does not contain reusable BOM rows. Choose the original BOM file to run a new analysis.");
+  }
+
+  const intakeRecord = asRecord(report.intake);
+  const supplierSpecific = intakeRecord.supplier_specific === true;
+  const headers: Array<[string, string]> = [
+    ["mpn", "MPN"],
+    ["manufacturer", "Manufacturer"],
+    ["description", "Description"],
+    ["parent_mpn", "Parent MPN"],
+    ["line_type", "Line Type"],
+    ["quantity", "Quantity"],
+    ["reference_designators", "Reference Designators"],
+    ["bom_level", "BOM Level"],
+    ["supplier_part_number", "Supplier Part Number"],
+    ...(supplierSpecific ? [["supplier", "Supplier"] as [string, string]] : []),
+  ];
+  const csv = [
+    headers.map(([, label]) => csvCell(label)).join(","),
+    ...rows.map((row) => headers.map(([key]) => csvCell(row[key])).join(",")),
+  ].join("\r\n");
+  const stem = String(report.bom_name || report.filename || "Saved-BOM")
+    .replace(/\.(csv|xlsx)$/i, "")
+    .replace(/[^a-z0-9-_]+/gi, "-")
+    .replace(/^-+|-+$/g, "") || "Saved-BOM";
+  const file = new File([csv], `${stem}-saved.csv`, { type: "text/csv" });
+  const intake = { ...freshIntakeOptions(), supplierSpecific };
+  return { file, intake };
+}
+
 function formatPriceFromCents(amount: unknown, currency: unknown): string {
   const cents = Number(amount);
   if (!Number.isFinite(cents) || cents <= 0) return "";
@@ -106,6 +204,10 @@ export default function BomAnalyzerPage() {
   const [analysisPackError, setAnalysisPackError] = useState("");
   const [summary, setSummary] = useState<AnalyzeSummary | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
+  const [sourceAnalysisId, setSourceAnalysisId] = useState<string | null>(null);
+  const [savedBomNameForAnalysis, setSavedBomNameForAnalysis] = useState("");
+  const [loadingSavedBom, setLoadingSavedBom] = useState(false);
+  const [savedBomLoadError, setSavedBomLoadError] = useState("");
   const [draftReady, setDraftReady] = useState(false);
   const [clearingBom, setClearingBom] = useState(false);
   const [ignoredTestDraft, setIgnoredTestDraft] = useState(false);
@@ -135,6 +237,7 @@ export default function BomAnalyzerPage() {
         validationError,
         intake: appliedIntake,
         analysisId,
+        sourceAnalysisId,
         summary,
         analyzeError,
         oneTimeReportRequired,
@@ -153,6 +256,7 @@ export default function BomAnalyzerPage() {
       validationError,
       appliedIntake,
       analysisId,
+      sourceAnalysisId,
       summary,
       analyzeError,
       oneTimeReportRequired,
@@ -198,6 +302,57 @@ export default function BomAnalyzerPage() {
     if (!session) return;
     let cancelled = false;
     (async () => {
+      const sourceId = new URLSearchParams(window.location.search)
+        .get("source_analysis_id")
+        ?.trim();
+      if (sourceId) {
+        setLoadingSavedBom(true);
+        setFile(null);
+        setSummary(null);
+        setAnalysisId(null);
+        setSourceAnalysisId(sourceId);
+        setSavedBomLoadError("");
+        try {
+          const [savedReport, projectsPayload] = await Promise.all([
+            fetchReport(sourceId, session.access_token),
+            listProjects(session.access_token).catch(() => ({ projects: [] })),
+          ]);
+          if (cancelled) return;
+          const report = savedReport as unknown as Record<string, unknown>;
+          const { file: savedFile, intake: savedIntake } = createSavedBomFile(report);
+          const projectId = String(report.project_id || "");
+          const project = (projectsPayload.projects || [])
+            .find((row) => String(row.id || "") === projectId);
+          const reportedProject = String(report.project_name || "");
+          const projectName = String(project?.name || reportedProject.split(" — ")[0] || "");
+          const bomName = String(report.bom_name || report.filename || "Saved BOM");
+          const prefill: SavedBomPrefill = {
+            projectName,
+            bomName,
+            revision: String(report.revision || "A"),
+            sourceAnalysisId: String(report.analysis_id || report.id || sourceId),
+            intake: savedIntake,
+          };
+          setSavedBomNameForAnalysis(bomName);
+          await onFileChosen(savedFile, prefill);
+          if (cancelled) return;
+        } catch (err) {
+          if (!cancelled) {
+            setSavedBomLoadError(
+              err instanceof Error
+                ? err.message
+                : "The saved BOM could not be loaded. Open Saved analyses and try again.",
+            );
+          }
+        } finally {
+          if (!cancelled) {
+            setLoadingSavedBom(false);
+            setDraftReady(true);
+          }
+        }
+        return;
+      }
+
       const meta = readDraftMeta(session);
       if (isInternalTestDraft(meta)) {
         ignoredTestDraftRef.current = true;
@@ -223,6 +378,8 @@ export default function BomAnalyzerPage() {
       setOneTimeReportRequired(Boolean(meta.oneTimeReportRequired));
       setSummary(meta.summary);
       setAnalysisId(meta.analysisId);
+      setSourceAnalysisId(meta.sourceAnalysisId || null);
+      setSavedBomNameForAnalysis(meta.sourceAnalysisId ? meta.bomName : "");
       const restored = await loadDraftFile(session);
       if (cancelled) return;
       if (restored) {
@@ -286,6 +443,7 @@ export default function BomAnalyzerPage() {
             oneTimeReportRequired: false,
           });
           clearFinishedAnalyzeJob(session);
+          clearSavedBomSourceQuery();
           refreshRecentReports();
           void refreshUsageAndBilling();
         }
@@ -365,6 +523,7 @@ export default function BomAnalyzerPage() {
           session,
         );
         clearFinishedAnalyzeJob(session);
+        clearSavedBomSourceQuery();
         refreshRecentReports();
         void refreshUsageAndBilling();
         return;
@@ -438,11 +597,25 @@ export default function BomAnalyzerPage() {
     [session],
   );
 
-  async function onFileChosen(next: File | null) {
+  async function onFileChosen(next: File | null, savedContext?: SavedBomPrefill) {
     // Cancelling the native file picker should leave the current BOM untouched.
     if (!session || !next || clearingBom) return;
     ignoredTestDraftRef.current = false;
     setIgnoredTestDraft(false);
+    const nextIntake = savedContext?.intake || freshIntakeOptions();
+    if (savedContext) {
+      setProjectName(savedContext.projectName);
+      setBomName(savedContext.bomName);
+      setRevision(savedContext.revision);
+      setSourceAnalysisId(savedContext.sourceAnalysisId);
+      setSavedBomNameForAnalysis(savedContext.bomName);
+      setSavedBomLoadError("");
+    } else {
+      setSourceAnalysisId(null);
+      setSavedBomNameForAnalysis("");
+      setLoadingSavedBom(false);
+      setSavedBomLoadError("");
+    }
     // Synchronously clear previous validation before any await.
     const requestId = ++validationRequestIdRef.current;
     selectedFileKeyRef.current = "";
@@ -450,8 +623,8 @@ export default function BomAnalyzerPage() {
     setFile(next);
     setValidation(null);
     // A new file never inherits another file's mapping or corrections.
-    setIntake(freshIntakeOptions());
-    setAppliedIntake(freshIntakeOptions());
+    setIntake(nextIntake);
+    setAppliedIntake(nextIntake);
     setValidationError("");
     setValidatedFileKey("");
     setDraftPersistNotice("");
@@ -467,7 +640,7 @@ export default function BomAnalyzerPage() {
       setValidationError("BOM file must be 10 MB or smaller.");
       return;
     }
-    if (!bomName.trim()) {
+    if (!(savedContext?.bomName || bomName).trim()) {
       setBomName(next.name.replace(/\.(csv|xlsx)$/i, ""));
     }
     let workingFile: File;
@@ -521,7 +694,7 @@ export default function BomAnalyzerPage() {
           : "Draft could not be saved for later resume. Validation continues with the file still in memory.",
       );
     });
-    await runValidation(workingFile, requestId, nextKey, freshIntakeOptions());
+    await runValidation(workingFile, requestId, nextKey, nextIntake);
   }
 
   async function onClearBom() {
@@ -534,6 +707,9 @@ export default function BomAnalyzerPage() {
     setProjectName("");
     setBomName("");
     setRevision("A");
+    setSourceAnalysisId(null);
+    setSavedBomNameForAnalysis("");
+    setSavedBomLoadError("");
     setValidating(false);
     setValidation(null);
     setValidationError("");
@@ -635,6 +811,7 @@ export default function BomAnalyzerPage() {
         projectName: projectName.trim() || undefined,
         bomName: bomName.trim() || file.name.replace(/\.(csv|xlsx)$/i, ""),
         revision: revision.trim() || "A",
+        sourceAnalysisId: sourceAnalysisId || undefined,
         intake: appliedIntake,
       },
       session,
@@ -741,6 +918,23 @@ export default function BomAnalyzerPage() {
             <p className="cv-card-subtitle">
               Add project details, upload the file, then review validation before analysis.
             </p>
+            {loadingSavedBom ? (
+              <div className="cv-evidence-context" role="status" style={{ marginTop: 10 }}>
+                Loading the saved BOM and project details. No file upload is needed.
+              </div>
+            ) : null}
+            {savedBomLoadError ? (
+              <div className="cv-error" role="alert" style={{ marginTop: 10 }}>
+                {savedBomLoadError} You can still choose a BOM file to continue.
+              </div>
+            ) : null}
+            {sourceAnalysisId && file ? (
+              <div className="cv-evidence-context" role="note" style={{ marginTop: 10 }}>
+                <strong>Saved BOM loaded:</strong> {userFacingLabel(savedBomNameForAnalysis || bomName, "BOM")}.
+                {" "}Its saved component list and project details are prefilled; no upload is needed.
+                {" "}Analyzing creates a new report and leaves the current report unchanged.
+              </div>
+            ) : null}
           </div>
 
           {backgroundNote && analyzing ? (
@@ -815,9 +1009,11 @@ export default function BomAnalyzerPage() {
             <div className="cv-bom-upload-icon" aria-hidden="true">
               <Icon name="upload" />
             </div>
-            <h3>{file ? file.name : "New analysis"}</h3>
+            <h3>{file ? (sourceAnalysisId ? savedBomNameForAnalysis || bomName : file.name) : "New analysis"}</h3>
             <p>
-              Upload a CSV or XLSX BOM. Add Parent MPN and Line Type columns when you want to roll component risk up to assemblies.
+              {sourceAnalysisId
+                ? "This saved BOM is ready to analyze. Review the part list below or choose a different file."
+                : "Upload a CSV or XLSX BOM. Add Parent MPN and Line Type columns when you want to roll component risk up to assemblies."}
             </p>
             <div className="cv-bom-upload-controls">
               <label className="cv-bom-file-picker">
@@ -1021,7 +1217,15 @@ export default function BomAnalyzerPage() {
               </p>
               <p className="cv-small-note">
                 Your analysis is saved. Other workspace pages remain available while you review it.
+                {sourceAnalysisId ? " The previous saved report is unchanged; this report contains the new Procurement snapshot." : ""}
               </p>
+              <Link
+                className="cv-button"
+                href={`/procurement?analysis_id=${encodeURIComponent(String(summary.analysis_id || ""))}`}
+                style={{ width: "fit-content" }}
+              >
+                Open this report in Procurement
+              </Link>
               <section className="cv-bom-next-step" aria-labelledby="cv-bom-next-step-title">
                 <span className="cv-eyebrow">Next step</span>
                 <h3 id="cv-bom-next-step-title">Review the highest-priority finding</h3>

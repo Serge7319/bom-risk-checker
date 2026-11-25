@@ -38,6 +38,7 @@ export type AnalyzeRunner = (
     projectName?: string;
     bomName?: string;
     revision?: string;
+    sourceAnalysisId?: string;
     intake?: BomIntakeOptions;
   },
 ) => Promise<AnalyzeJobResult>;
@@ -121,6 +122,7 @@ export function startAnalyzeJobWithRunner(
     projectName?: string;
     bomName?: string;
     revision?: string;
+    sourceAnalysisId?: string;
     intake?: BomIntakeOptions;
   },
   session: JobSessionIdentity | undefined,

@@ -34,6 +34,12 @@ function withAnalysisId(href: string, analysisId: string) {
   return `${href}${joiner}analysis_id=${encodeURIComponent(analysisId)}`;
 }
 
+function savedBomAnalysisHref(analysisId: string) {
+  return analysisId
+    ? `/bom-analyzer?source_analysis_id=${encodeURIComponent(analysisId)}`
+    : "/bom-analyzer";
+}
+
 function supplierRefreshHref(analysisId: string, partNumber: string) {
   const query = new URLSearchParams({ analysis_id: analysisId, part_number: partNumber });
   return `/monitoring?${query.toString()}#supplier-refresh`;
@@ -602,7 +608,9 @@ function ProcurementPageInner() {
         meta={PAGE_META.procurement}
         actions={
           <div className="cv-page-head-actions">
-            <PrimaryLink href="/bom-analyzer">Run new BOM analysis</PrimaryLink>
+            <PrimaryLink href={savedBomAnalysisHref(activeAnalysisId)}>
+              {activeAnalysisId ? "Analyze this BOM again" : "Run new BOM analysis"}
+            </PrimaryLink>
             <SecondaryLink href={withAnalysisId("/cost-optimization", activeAnalysisId)}>Cost optimization</SecondaryLink>
             <SecondaryLink href={withAnalysisId("/compare-parts", activeAnalysisId)}>Compare alternatives</SecondaryLink>
           </div>
@@ -618,7 +626,7 @@ function ProcurementPageInner() {
             Cadivor does not place orders or create binding quotes.
           </p>
           <p className="cv-small-note">
-            Offers are saved with this report. Check each offer’s retrieval time for its age. Run a new BOM analysis for a new Procurement offer snapshot; Monitoring refreshes update Monitoring evidence and alerts only.
+            Offers stay with this report. Check each offer’s retrieval time for its age. To get a new Procurement snapshot, analyze this saved BOM again; Cadivor preloads its component list so you do not need to upload the file again. Monitoring refreshes update Monitoring evidence and alerts only.
           </p>
         </div>
         <ol>
@@ -1203,10 +1211,10 @@ function ProcurementPageInner() {
                       <span className="cv-procurement-guide-eyebrow">Procurement offers</span>
                       <h3 className="cv-card-title" style={{ marginTop: 5 }}>Need new supplier offers?</h3>
                       <p className="cv-card-subtitle">
-                        Run a new BOM analysis and upload the BOM again to create a new offer snapshot. This saved report will stay unchanged.
+                        Cadivor will preload this saved BOM’s component list and project details. Review it, then analyze to create a new report and Procurement offer snapshot; this report stays unchanged.
                       </p>
-                      <Link className="cv-button" href="/bom-analyzer" style={{ marginTop: 10 }}>
-                        Run new BOM analysis
+                      <Link className="cv-button" href={savedBomAnalysisHref(activeAnalysisId)} style={{ marginTop: 10 }}>
+                        Analyze this BOM again
                       </Link>
                     </section>
                     <section className="cv-card pad" style={{ boxShadow: "none" }}>

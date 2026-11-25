@@ -472,6 +472,11 @@ def run_live_analysis_refresh(
             "quantity": _optional_number(_first_value(part, "Quantity", "quantity")),
         })
         current["risk_level"] = str(assessed_risk.get("risk_level") or "Needs verification")
+        current["risk_reasons"] = [
+            str(reason).strip()
+            for reason in assessed_risk.get("risk_reasons") or []
+            if str(reason).strip()
+        ]
         previous = monitoring_store.get_live_snapshot(wid, aid, mpn) or _baseline(part)
         observed_fields = []
         field_retrieved_at = dict(previous.get("field_retrieved_at") or {})
@@ -543,7 +548,34 @@ def run_live_analysis_refresh(
         detected, _messages = detect_monitor_alerts(
             "scheduled-monitor", aid, mpn, previous, comparison_current, workspace_id=wid
         )
+        change_alert_keys = {
+            (str(row.get("part_number") or mpn).casefold(), str(row.get("alert_type") or ""))
+            for row in detected
+        }
+
+        # Save the snapshot before deriving the active risk/lifecycle alerts so
+        # the persisted alert row, the table, and Notify all use the same fresh
+        # identity-verified evidence.
+        monitoring_store.save_live_snapshot(current)
+        derived_alerts = migration_tools._derive_monitoring_alerts(
+            report,
+            workspace_id=wid,
+            part_number=mpn,
+            live_snapshots={normalize_part_number(mpn): current},
+        )
+        active_by_key: dict[tuple[str, str], dict[str, Any]] = {}
         for alert in detected:
+            active_by_key[
+                (str(alert.get("part_number") or mpn).casefold(), str(alert.get("alert_type") or ""))
+            ] = dict(alert)
+        for alert in derived_alerts:
+            key = (
+                str(alert.get("part_number") or mpn).casefold(),
+                str(alert.get("alert_type") or ""),
+            )
+            active_by_key[key] = {**active_by_key.get(key, {}), **alert}
+        active_alerts = list(active_by_key.values())
+        for alert in active_alerts:
             alert.update({
                 "analysis_id": aid,
                 "workspace_id": wid,
@@ -557,18 +589,18 @@ def run_live_analysis_refresh(
                 "datasheet_url": current["datasheet_url"],
             })
         saved_alerts = monitoring_store.reconcile_alerts(
-            wid, analysis_id=aid, active_alerts=detected, part_number=mpn
+            wid, analysis_id=aid, active_alerts=active_alerts, part_number=mpn
         )
-        alert_keys = {
-            (str(row.get("part_number") or "").casefold(), str(row.get("alert_type") or ""))
-            for row in detected
-        }
         new_alerts.extend(
             row for row in saved_alerts
-            if (str(row.get("part_number") or "").casefold(), str(row.get("alert_type") or "")) in alert_keys
+            if (str(row.get("part_number") or "").casefold(), str(row.get("alert_type") or "")) in change_alert_keys
         )
-        monitoring_store.save_live_snapshot(current)
-        checked.append({"part_number": mpn, "status": "updated", "alert_count": len(detected), "retrieved_at": retrieved_at})
+        checked.append({
+            "part_number": mpn,
+            "status": "updated",
+            "alert_count": len(change_alert_keys),
+            "retrieved_at": retrieved_at,
+        })
 
     refresh = monitoring_store.record_refresh(
         wid,
