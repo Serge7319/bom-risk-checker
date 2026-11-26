@@ -84,11 +84,122 @@ def _first(row: Dict[str, Any], *keys: str, default: Any = None) -> Any:
     return default
 
 
+def _select_user_entered_quote(
+    quotes: Iterable[Dict[str, Any]],
+    *,
+    mpn: str,
+    quantity: int,
+    preferred_currency: str = "",
+) -> Dict[str, Any] | None:
+    """Choose an applicable uploaded price without treating it as verified."""
+    from datetime import date
+    from src.normalizer import normalize_part_number
+
+    wanted_mpn = normalize_part_number(mpn)
+    today = date.today().isoformat()
+    candidates: list[Dict[str, Any]] = []
+    for quote in quotes:
+        if not isinstance(quote, dict):
+            continue
+        if normalize_part_number(str(quote.get("requested_mpn") or "")) != wanted_mpn:
+            continue
+        if normalize_part_number(str(quote.get("offered_mpn") or "")) != wanted_mpn:
+            continue
+        if quote.get("identity_status") not in {"exact_part", "manufacturer_unconfirmed"}:
+            continue
+        valid_until = str(quote.get("valid_until") or "").strip()
+        if valid_until and valid_until < today:
+            continue
+        minimum_order = _optional_number(quote.get("minimum_order_quantity"))
+        if minimum_order is not None and quantity < minimum_order:
+            continue
+        pack_quantity = _optional_number(quote.get("pack_quantity"))
+        if pack_quantity is not None and (pack_quantity <= 0 or quantity % int(pack_quantity) != 0):
+            continue
+        breaks = quote.get("price_breaks") if isinstance(quote.get("price_breaks"), list) else []
+        applicable_breaks: list[tuple[int, float]] = []
+        for price_break in breaks:
+            if not isinstance(price_break, dict):
+                continue
+            try:
+                threshold = int(float(price_break.get("quantity")))
+                price = float(price_break.get("unit_price"))
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if threshold > 0 and threshold <= quantity and price > 0:
+                applicable_breaks.append((threshold, price))
+        if not applicable_breaks:
+            try:
+                threshold = int(float(quote.get("price_break_quantity") or 1))
+                price = float(quote.get("unit_price"))
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if threshold <= 0 or threshold > quantity or price <= 0:
+                continue
+            applicable_breaks.append((threshold, price))
+        threshold, price = max(applicable_breaks, key=lambda item: item[0])
+        currency = str(quote.get("currency") or "").strip().upper()
+        if len(currency) != 3 or not currency.isalpha():
+            continue
+        candidates.append({
+            **quote,
+            "mpn": str(quote.get("offered_mpn") or mpn),
+            "distributor": str(quote.get("supplier") or "User price sheet").strip(),
+            "unit_price": price,
+            "currency": currency,
+            "price_break_quantity": threshold,
+            "retrieved_at": str(quote.get("created_at") or ""),
+            "product_url": str(quote.get("source_url") or ""),
+            "source_kind": "user-entered",
+        })
+    if not candidates:
+        return None
+    preferred = str(preferred_currency or "").strip().upper()
+    currencies = {candidate["currency"] for candidate in candidates}
+    if preferred in currencies:
+        candidates = [candidate for candidate in candidates if candidate["currency"] == preferred]
+    elif len(currencies) > 1:
+        # Never silently choose or convert between currencies.
+        return None
+    candidates.sort(key=lambda candidate: (float(candidate["unit_price"]), str(candidate.get("created_at") or "")))
+    return candidates[0]
+
+
+def _latest_user_quote_records(quotes: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Keep the latest saved quote set for each supplier and currency.
+
+    Rows from one spreadsheet import share a batch id, so all of its price
+    tiers survive together while a newer upload supersedes that supplier's
+    older sheet rows. Separately recorded suppliers remain comparable.
+    """
+    groups: Dict[tuple[str, str, str], List[Dict[str, Any]]] = defaultdict(list)
+    for index, quote in enumerate(quotes or []):
+        if not isinstance(quote, dict):
+            continue
+        supplier = _text(quote.get("supplier"), "User price sheet").casefold()
+        currency = _text(quote.get("currency")).upper()
+        batch = _text(quote.get("import_batch_id"))
+        group_id = f"batch:{batch}" if batch else f"record:{_text(quote.get('quote_id') or quote.get('id'), str(index))}"
+        groups[(supplier, currency, group_id)].append(quote)
+
+    latest_by_source: Dict[tuple[str, str], tuple[str, List[Dict[str, Any]]]] = {}
+    for (supplier, currency, _), records in groups.items():
+        created = max((_text(row.get("created_at")) for row in records), default="")
+        key = (supplier, currency)
+        current = latest_by_source.get(key)
+        if current is None or created > current[0]:
+            latest_by_source[key] = (created, records)
+        elif created == current[0]:
+            latest_by_source[key] = (created, current[1] + records)
+    return [record for _, records in latest_by_source.values() for record in records]
+
+
 def build_cost_optimization(
     analyses: Iterable[Dict[str, Any]],
     parts: Iterable[Dict[str, Any]],
     build_quantity: int = 100,
     target_unit_cost: float | None = None,
+    user_entered_quotes: Iterable[Dict[str, Any]] = (),
 ) -> Dict[str, Any]:
     analyses = list(analyses or [])
     parts = list(parts or [])
@@ -105,6 +216,16 @@ def build_cost_optimization(
 
     from src.saved_bom_cost import normalize_saved_offers, select_supplier_offer
     from src.normalizer import normalize_part_number
+
+    quote_lookup: Dict[tuple[str, str, str], List[Dict[str, Any]]] = defaultdict(list)
+    for quote in user_entered_quotes or []:
+        if not isinstance(quote, dict):
+            continue
+        quote_lookup[(
+            _text(quote.get("analysis_id")),
+            normalize_part_number(str(quote.get("requested_mpn") or "")),
+            _text(quote.get("requested_manufacturer")).casefold(),
+        )].append(quote)
 
     def identity(part_number: str, manufacturer: str, index: int) -> tuple[str, str]:
         normalized_mpn = normalize_part_number(part_number)
@@ -182,9 +303,33 @@ def build_cost_optimization(
                 default=None,
             )
 
+        report_manufacturer = _text(row.get("manufacturer")).casefold()
+        part_user_quotes = _latest_user_quote_records(
+            quote_lookup.get((analysis_id, normalize_part_number(part_number), report_manufacturer), [])
+        )
+        manual_quote = _select_user_entered_quote(
+            part_user_quotes,
+            mpn=part_number,
+            quantity=order_qty,
+            preferred_currency=raw_currency,
+        )
+        if manual_quote:
+            # A user-uploaded sheet is explicit price input for this saved BOM.
+            # Keep its provenance separate from API-verified supplier offers.
+            current_quote = manual_quote
+
         unit_price = float(current_quote["unit_price"]) if current_quote else 0.0
         currency = str(current_quote.get("currency") or "") if current_quote else ""
         verified_supplier = str(current_quote.get("distributor") or "") if current_quote else ""
+        price_evidence = (
+            (
+                "User-entered price · manufacturer unconfirmed"
+                if current_quote.get("identity_status") == "manufacturer_unconfirmed"
+                else "User-entered price · supplier not independently verified"
+            )
+            if current_quote and current_quote.get("source_kind") == "user-entered"
+            else "Authorized supplier API snapshot" if current_quote else "Not recorded"
+        )
         suppliers = len({
             str(offer.get("distributor") or "").casefold()
             for offer in quantity_offers
@@ -231,8 +376,22 @@ def build_cost_optimization(
             "Manufacturer": manufacturer,
             "Supplier": verified_supplier or "Not verified",
             "Price Source": verified_supplier or "",
-            "Price Retrieved At": str(current_quote.get("retrieved_at") or "") if current_quote else "",
+            "Price Retrieved At": (
+                str(current_quote.get("retrieved_at") or "")
+                if current_quote and current_quote.get("source_kind") != "user-entered" else ""
+            ),
+            "Price Date": (
+                str(current_quote.get("price_date") or "")
+                if current_quote and current_quote.get("source_kind") == "user-entered"
+                else str(current_quote.get("retrieved_at") or "") if current_quote else ""
+            ),
+            "Price Recorded At": (
+                str(current_quote.get("created_at") or current_quote.get("retrieved_at") or "")
+                if current_quote else ""
+            ),
+            "Price Evidence": price_evidence,
             "Price Source URL": str(current_quote.get("product_url") or "") if current_quote else "",
+            "_User Entered Quotes": part_user_quotes,
             "Quantity per Build": qty,
             "Order Quantity": order_qty,
             "Unit Price": unit_price if current_quote else None,
@@ -322,6 +481,11 @@ def build_cost_optimization(
         risk_context_parts.append(f"{quote_source_count} current authorized price source(s) recorded")
         if risk_score is not None:
             risk_context_parts.append(f"Saved BOM risk score {risk_score}")
+        manual_current = any(str(row.get("Price Evidence") or "").startswith("User-entered") for row in rows)
+        if manual_current:
+            risk_context_parts.append(
+                "Cost baseline includes a user-entered price; Cadivor has not independently verified it"
+            )
         risk_context = "; ".join(risk_context_parts)
         if lifecycle_risk or (risk_score is not None and risk_score >= 70):
             risk_label = "High risk"
@@ -354,7 +518,9 @@ def build_cost_optimization(
                 )
             if offer_lead is not None:
                 details.append(f"Saved supplier lead time: {offer_lead:g} weeks")
-            if lifecycle_risk or (risk_score is not None and risk_score >= 70):
+            if manual_current:
+                label = "Needs verification"
+            elif lifecycle_risk or (risk_score is not None and risk_score >= 70):
                 label = "High risk"
             elif risk_label == "Needs verification" or offer_stock is None:
                 label = "Needs verification"
@@ -371,6 +537,22 @@ def build_cost_optimization(
             currency=current_currency,
             quantity=required_qty,
         )
+        if not source_offer and manual_current:
+            source_offer = next(
+                (
+                    offer for row in rows
+                    for offer in [
+                        _select_user_entered_quote(
+                            quote_lookup.get((str(row.get("Analysis ID") or ""), normalize_part_number(str(row.get("Part Number") or "")), str(row.get("Manufacturer") or "").casefold()), []),
+                            mpn=str(row.get("Part Number") or ""),
+                            quantity=required_qty,
+                            preferred_currency=current_currency,
+                        )
+                    ]
+                    if offer and str(offer.get("distributor") or "").casefold() == current_source.casefold()
+                ),
+                None,
+            )
         if not source_offer:
             continue
         baseline_price = float(source_offer["unit_price"])
@@ -422,7 +604,9 @@ def build_cost_optimization(
                 "Savings Rate": (baseline_price - float(alternate_quote["unit_price"])) / baseline_price if baseline_price else 0,
                 "Currency": current_currency,
                 "Current Price Retrieved At": source_offer.get("retrieved_at"),
+                "Current Price Evidence": "User-entered price · not independently verified" if manual_current else "Authorized supplier API snapshot",
                 "Target Price Retrieved At": alternate_quote.get("retrieved_at"),
+                "Target Price Evidence": "Authorized supplier API snapshot",
                 "Price Source URL": alternate_quote.get("product_url"),
                 "Extra Quantity": 0,
                 "Risk Score": risk_score,
@@ -435,6 +619,97 @@ def build_cost_optimization(
                     "Confirm the supplier quote, freight, tax, MOQ, and availability before acting."
                 ),
             })
+
+        # A spreadsheet can contain one row per price tier (using
+        # minimum_quantity). Expose a volume break from those records too, but
+        # label it Needs verification because the uploaded source is not an
+        # independently checked distributor quote.
+        if manual_current:
+            seen_manual_quotes: set[str] = set()
+            manual_tiers: dict[tuple[int, float, str], Dict[str, Any]] = {}
+            for row in rows:
+                for quote in row.get("_User Entered Quotes") or []:
+                    if not isinstance(quote, dict):
+                        continue
+                    quote_key = str(quote.get("quote_id") or quote.get("id") or "")
+                    if quote_key and quote_key in seen_manual_quotes:
+                        continue
+                    if quote_key:
+                        seen_manual_quotes.add(quote_key)
+                    if str(quote.get("supplier") or "").casefold() != current_source.casefold():
+                        continue
+                    if str(quote.get("currency") or "").upper() != current_currency:
+                        continue
+                    breaks = quote.get("price_breaks") if isinstance(quote.get("price_breaks"), list) else []
+                    if not breaks:
+                        breaks = [{
+                            "quantity": quote.get("price_break_quantity") or 1,
+                            "unit_price": quote.get("unit_price"),
+                        }]
+                    for price_break in breaks:
+                        if not isinstance(price_break, dict):
+                            continue
+                        try:
+                            threshold = int(float(price_break.get("quantity")))
+                            tier_price = float(price_break.get("unit_price"))
+                        except (TypeError, ValueError, OverflowError):
+                            continue
+                        if threshold <= required_qty or tier_price <= 0 or tier_price >= baseline_price:
+                            continue
+                        applicable = _select_user_entered_quote(
+                            [quote],
+                            mpn=reference["Part Number"],
+                            quantity=threshold,
+                            preferred_currency=current_currency,
+                        )
+                        if not applicable or int(applicable.get("price_break_quantity") or 0) != threshold:
+                            continue
+                        tier_price = float(applicable["unit_price"])
+                        if tier_price >= baseline_price:
+                            continue
+                        manual_tiers[(threshold, tier_price, current_source.casefold())] = applicable
+
+            for (purchase_qty, tier_price, _), offer in manual_tiers.items():
+                savings = baseline_total - tier_price * purchase_qty
+                if savings <= 0:
+                    continue
+                label, context = opportunity_risk(offer, purchase_qty)
+                opportunities.append({
+                    "Part Number": reference["Part Number"],
+                    "Analysis ID": reference["Analysis ID"],
+                    "Project": reference["Project"],
+                    "Description": reference["Description"],
+                    "Component Category": reference["Component Category"],
+                    "Image URL": reference["Image URL"],
+                    "Image Context": reference["Image Context"],
+                    "Manufacturer": reference["Manufacturer"],
+                    "Category": "Price break",
+                    "Supplier": current_source,
+                    "Current Supplier": current_source,
+                    "Projects": 1,
+                    "Units per Build": sum(int(row["Quantity per Build"]) for row in rows),
+                    "Required Order Quantity": required_qty,
+                    "Current Unit Price": baseline_price,
+                    "Estimated Target Price": tier_price,
+                    "Estimated Run Savings": savings,
+                    "Savings Rate": (baseline_price - tier_price) / baseline_price if baseline_price else 0,
+                    "Currency": current_currency,
+                    "Current Price Retrieved At": source_offer.get("retrieved_at"),
+                    "Current Price Evidence": "User-entered price · not independently verified",
+                    "Target Price Retrieved At": offer.get("retrieved_at"),
+                    "Target Price Evidence": "User-entered price · not independently verified",
+                    "Price Source URL": offer.get("product_url"),
+                    "Extra Quantity": purchase_qty - required_qty,
+                    "Recommended Purchase Quantity": purchase_qty,
+                    "Risk Score": risk_score,
+                    "Risk Label": label,
+                    "Risk Context": context,
+                    "Reason": (
+                        f"The imported sheet records {current_currency} {tier_price:,.4g} per unit "
+                        f"from {current_source} at a minimum quantity of {purchase_qty:,}. "
+                        "This estimated net saving is based on user-entered data and has not been verified."
+                    ),
+                })
 
         for offer in current_offers:
             if str(offer.get("distributor") or "").casefold() != current_source.casefold():
@@ -480,7 +755,9 @@ def build_cost_optimization(
                 "Savings Rate": (baseline_price - tier_price) / baseline_price if baseline_price else 0,
                 "Currency": current_currency,
                 "Current Price Retrieved At": source_offer.get("retrieved_at"),
+                "Current Price Evidence": "User-entered price · not independently verified" if manual_current else "Authorized supplier API snapshot",
                 "Target Price Retrieved At": offer.get("retrieved_at"),
+                "Target Price Evidence": "Authorized supplier API snapshot",
                 "Price Source URL": offer.get("product_url"),
                 "Extra Quantity": purchase_qty - required_qty,
                 "Recommended Purchase Quantity": purchase_qty,
@@ -521,7 +798,7 @@ def build_cost_optimization(
         driver = drivers.get(key)
         if driver is None:
             driver = {
-                **{name: value for name, value in row.items() if name not in {"Verified Offers", "All Verified Offers", "_Identity"}},
+                **{name: value for name, value in row.items() if name not in {"Verified Offers", "All Verified Offers", "_Identity", "_User Entered Quotes"}},
                 "Quantity per Build": 0,
                 "Extended Cost per Build": 0.0,
                 "Extended Cost at Build Quantity": 0.0,
@@ -590,6 +867,9 @@ def build_cost_optimization(
         "mixed_currency_totals": priced_run_cost,
         "pricing_coverage": pricing_coverage,
         "priced_component_count": len(priced),
+        "user_entered_price_count": sum(
+            1 for row in priced if str(row.get("Price Evidence") or "").startswith("User-entered")
+        ),
         "missing_component_count": len(missing_price),
         "sourcing_risk_cost": sourcing_risk_cost,
         "recommendations": recommendations[:4],

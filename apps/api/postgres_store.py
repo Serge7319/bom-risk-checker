@@ -1167,6 +1167,58 @@ class PostgresWorkspaceStore:
                 conn.commit()
             return saved
 
+    def create_procurement_quotes(
+        self, quotes: list[dict[str, Any]], *, workspace_id: str
+    ) -> list[dict[str, Any]]:
+        """Insert a validated quote batch in one Postgres transaction."""
+        wid = self._require_workspace(workspace_id)
+        if not quotes:
+            return []
+        analysis_id = str(quotes[0].get("analysis_id") or "").strip()
+        if not analysis_id or not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id} was not found")
+        if any(str(quote.get("analysis_id") or "").strip() != analysis_id for quote in quotes):
+            raise ValueError("A quote batch must belong to one saved analysis.")
+        saved_rows: list[dict[str, Any]] = []
+        with _LOCK:
+            with self._connect() as conn:
+                values = []
+                for quote in quotes:
+                    saved = dict(quote)
+                    quote_id = str(saved.get("quote_id") or uuid.uuid4())
+                    created_at = str(saved.get("created_at") or _now())
+                    saved.update(
+                        {
+                            "id": quote_id,
+                            "quote_id": quote_id,
+                            "workspace_id": wid,
+                            "created_at": created_at,
+                        }
+                    )
+                    saved_rows.append(saved)
+                    values.append(
+                        (
+                            quote_id,
+                            wid,
+                            analysis_id,
+                            str(saved.get("requested_mpn") or ""),
+                            str(saved.get("requested_manufacturer") or ""),
+                            created_at,
+                            json.dumps(saved),
+                        )
+                    )
+                conn.executemany(
+                    """
+                    INSERT INTO migration_procurement_quotes
+                      (id, workspace_id, analysis_id, requested_mpn,
+                       requested_manufacturer, created_at, payload)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+                    """,
+                    values,
+                )
+                conn.commit()
+        return saved_rows
+
     def list_procurement_quotes(
         self,
         *,

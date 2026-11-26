@@ -13,7 +13,7 @@ import {
   listReports,
   type CostOptimizationDecision,
 } from "@/lib/api";
-import { cleanUserText, evidenceSourceLabel, userFacingLabel } from "@/lib/display";
+import { cleanUserText, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
 
@@ -57,7 +57,8 @@ function formatDate(value: unknown) {
 }
 
 function csvCell(value: unknown) {
-  const text = value === null || value === undefined ? "" : String(value);
+  const raw = value === null || value === undefined ? "" : String(value);
+  const text = typeof value === "string" && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   return `"${text.replaceAll('"', '""')}"`;
 }
 
@@ -72,19 +73,20 @@ function downloadCostPlan(optimization: CostRow, context: CostRow, buildQuantity
     ["Pricing note", "Saved supplier prices are indicative snapshots, not live quotes or guarantees."],
     [],
     ["BOM line items"],
-    ["Part number", "Manufacturer", "Quantity per build", "Order quantity", "Unit price", "Currency", "Supplier", "Price date", "Extended cost per build", "Extended cost at build quantity"],
+    ["Part number", "Manufacturer", "Quantity per build", "Order quantity", "Unit price", "Currency", "Supplier", "Price evidence", "Source price date", "Recorded at", "Extended cost per build", "Extended cost at build quantity"],
     ...rows.map((row) => [
       row["Part Number"], row.Manufacturer, row["Quantity per Build"], row["Order Quantity"],
-      row["Unit Price"], row.Currency, row["Price Source"], row["Price Retrieved At"],
+      row["Unit Price"], row.Currency, row["Price Source"], row["Price Evidence"], row["Price Date"], row["Price Recorded At"],
       row["Extended Cost per Build"], row["Extended Cost at Build Quantity"],
     ]),
     [],
     ["Savings opportunities"],
-    ["Part number", "Type", "Current supplier", "Suggested supplier", "Order quantity", "Extra quantity", "Current unit price", "Target unit price", "Estimated net savings", "Currency", "Current price date", "Target price date"],
+    ["Part number", "Type", "Current supplier", "Suggested supplier", "Order quantity", "Extra quantity", "Current unit price", "Target unit price", "Estimated net savings", "Currency", "Current price evidence", "Suggested price evidence", "Current price recorded", "Suggested price recorded"],
     ...opportunities.map((row) => [
       row["Part Number"], row.Category, row["Current Supplier"], row.Supplier,
       row["Required Order Quantity"], row["Extra Quantity"], row["Current Unit Price"],
       row["Estimated Target Price"], row["Estimated Run Savings"], row.Currency,
+      row["Current Price Evidence"], row["Target Price Evidence"],
       row["Current Price Retrieved At"], row["Target Price Retrieved At"],
     ]),
   ];
@@ -253,6 +255,7 @@ function CostOptimizationInner() {
   const activeAnalysisId = String(data?.analysis_id || selectedAnalysisId || "").trim();
   const componentCount = Number(opt.component_count || 0);
   const pricedCount = Number(opt.priced_component_count || 0);
+  const userEnteredPriceCount = Number(opt.user_entered_price_count || 0);
   const coverage = componentCount ? Math.round((pricedCount / componentCount) * 100) : 0;
   const currencies = (opt.currencies || []) as string[];
   const currency = String(opt.currency || "");
@@ -300,20 +303,26 @@ function CostOptimizationInner() {
           <PrimaryLink href={procurementFor("")}>Add or refresh quotes</PrimaryLink>
         </div>
       ) : null}
+      {data && userEnteredPriceCount > 0 ? (
+        <div className="cv-notice" role="status" style={{ marginBottom: 12 }}>
+          <strong>{userEnteredPriceCount} priced BOM line{userEnteredPriceCount === 1 ? " uses" : "s use"} a user-entered price.</strong>{" "}
+          Cadivor has not independently verified those prices, supplier identity, availability, or order terms. Review the source sheet or quote before relying on the estimate.
+        </div>
+      ) : null}
       {data && componentCount > 0 ? (
         <details className="cv-card pad" style={{ marginBottom: 14 }}>
           <summary style={{ cursor: "pointer", fontWeight: 700 }}>How Cost Optimization works</summary>
           <div style={{ marginTop: 10 }}>
             <p className="cv-small-note">
-              Cost Optimization uses supplier prices saved to the selected BOM analysis. Changing build quantity does not fetch prices from suppliers; it changes required order quantities and evaluates saved price breaks when you recalculate.
+              Cost Optimization uses prices saved for the selected BOM: supplier snapshots from an analysis or prices you record/import in Procurement Advisor. Changing build quantity does not fetch new prices; it changes required order quantities and applies any saved price tiers when you recalculate.
             </p>
             <ol style={{ margin: "8px 0 12px", paddingLeft: 22 }}>
-              <li>Add or refresh quotes in Procurement Advisor for this BOM. Quotes are saved as price evidence for the selected parts.</li>
+              <li>Import a CSV or .xlsx price sheet for the BOM, or record a supplier quote in Procurement Advisor. You can also rerun analysis to check supplier sources when live integrations are available.</li>
               <li>Return here, enter your build quantity and optional target cost per unit, then select <strong>Recalculate</strong>.</li>
               <li>Review price coverage, the BOM subtotal, savings opportunities, and any parts still missing prices. Partial coverage produces a partial subtotal.</li>
             </ol>
             <p className="cv-small-note" style={{ margin: "0 0 10px" }}>
-              The illustrative example below is fixed sample data; it does not change with your inputs and is not evidence for this BOM. Saved prices are point-in-time indications, not live quotes or guarantees.
+              The illustrative example below is fixed sample data; it does not change with your inputs and is not evidence for this BOM. Supplier snapshots and user-entered prices are point-in-time records, not live quotes or guarantees.
             </p>
             <PrimaryLink href={procurementFor("")}>Open Procurement Advisor for this BOM</PrimaryLink>
           </div>
@@ -420,7 +429,7 @@ function CostOptimizationInner() {
             </p>
           ) : null}
           <p className="cv-small-note" style={{ margin: "10px 0 18px" }}>
-            Saved supplier prices are point-in-time indications, not live quotes or guarantees. Each opportunity uses exact-part, authorized-source evidence at the displayed order quantity; confirm price, availability, freight, tax, and minimum order quantity with the supplier.
+              Prices are point-in-time records, not live quotes or guarantees. User-entered prices have not been independently verified; supplier-sourced opportunities show their source. Confirm identity, price, availability, freight, tax, and minimum order quantity before acting.
           </p>
 
           <section className="cv-card pad" style={{ marginBottom: 14 }}>
@@ -463,11 +472,8 @@ function CostOptimizationInner() {
                             <div className="cv-small-note">{cleanUserText(String(row["Risk Context"] || "Check lifecycle, stock, and supplier coverage."))}</div>
                           </td>
                           <td className="cv-cell-wrap">
-                            <strong>{cleanUserText(String(row["Risk Label"] || "Needs evidence"))}</strong>
-                            <div className="cv-small-note">{cleanUserText(String(row["Risk Context"] || "Check lifecycle, stock, and supplier coverage."))}</div>
-                          </td>
-                          <td className="cv-cell-wrap">
-                            <div>{evidenceSourceLabel("authorized supplier snapshot", "Saved supplier snapshot")}</div>
+                            <div>{cleanUserText(String(row["Current Price Evidence"] || "Saved price record"))}</div>
+                            <div className="cv-small-note">Suggested: {cleanUserText(String(row["Target Price Evidence"] || "Saved price record"))}</div>
                             <div className="cv-small-note">Current {formatDate(row["Current Price Retrieved At"])} · suggested {formatDate(row["Target Price Retrieved At"])}</div>
                           </td>
                           <td>
@@ -507,7 +513,7 @@ function CostOptimizationInner() {
                   <div>
                     <div className="cv-data-note" style={{ marginBottom: 5 }}>ILLUSTRATIVE EXAMPLE · NOT FROM THIS BOM</div>
                     <h3 style={{ margin: 0 }}>What a priced BOM result looks like</h3>
-                    <p>Your selected analysis has no verified saved prices, so its actual total and savings cannot be calculated yet.</p>
+                    <p>Your selected analysis has no saved prices applicable at this build quantity, so its actual total and savings cannot be calculated yet.</p>
                   </div>
                   <span className="cv-data-note">Example</span>
                 </div>
@@ -569,25 +575,33 @@ function CostOptimizationInner() {
                 <table className="cv-table">
                   <thead><tr><th>Part</th><th>Manufacturer</th><th className="cv-num">Qty per build unit</th><th className="cv-num">Unit price</th><th>Source / date</th><th className="cv-num">Extended cost</th></tr></thead>
                   <tbody>
-                    {drivers.map((row, index) => (
-                      <tr key={`${String(row["Part Number"])}-${String(row.Currency)}-${index}`}>
-                        <td><strong>{String(row["Part Number"] || "")}</strong></td>
-                        <td>{cleanUserText(String(row.Manufacturer || "Not recorded"))}</td>
-                        <td className="cv-num">{Number(row["Quantity per Build"] || 0).toLocaleString()}</td>
-                        <td className="cv-num">{formatMoney(row["Unit Price"], row.Currency, 4)}</td>
-                        <td>{cleanUserText(String(row["Price Source"] || "Not verified"))}<div className="cv-small-note">{formatDate(row["Price Retrieved At"])}</div></td>
-                        <td className="cv-num"><strong>{formatMoney(row["Extended Cost at Build Quantity"], row.Currency)}</strong></td>
-                      </tr>
-                    ))}
+                    {drivers.map((row, index) => {
+                      const userEntered = String(row["Price Evidence"] || "").startsWith("User-entered");
+                      const sourceDate = userEntered
+                        ? row["Price Date"]
+                          ? `Source price date ${formatDate(row["Price Date"])}`
+                          : `Imported ${formatDate(row["Price Recorded At"])}`
+                        : `Supplier snapshot ${formatDate(row["Price Retrieved At"])}`;
+                      return (
+                        <tr key={`${String(row["Part Number"])}-${String(row.Currency)}-${index}`}>
+                          <td><strong>{String(row["Part Number"] || "")}</strong></td>
+                          <td>{cleanUserText(String(row.Manufacturer || "Not recorded"))}</td>
+                          <td className="cv-num">{Number(row["Quantity per Build"] || 0).toLocaleString()}</td>
+                          <td className="cv-num">{formatMoney(row["Unit Price"], row.Currency, 4)}</td>
+                          <td>{cleanUserText(String(row["Price Source"] || "Not recorded"))}<div className="cv-small-note">{cleanUserText(String(row["Price Evidence"] || "Not recorded"))}</div><div className="cv-small-note">{sourceDate}</div></td>
+                          <td className="cv-num"><strong>{formatMoney(row["Extended Cost at Build Quantity"], row.Currency)}</strong></td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-            ) : <p className="cv-small-note">No verified prices are available to rank cost drivers.</p>}
+            ) : <p className="cv-small-note">No saved prices applicable at this build quantity are available to rank cost drivers.</p>}
           </section>
 
           <section className="cv-card pad">
             <div className="cv-section-heading cv-section-heading--card">
-              <div><h2>Parts missing verified prices</h2><p>Each link opens Procurement Advisor with the BOM and part preselected.</p></div>
+              <div><h2>Parts missing an applicable price</h2><p>Each link opens Procurement Advisor with the BOM and part preselected.</p></div>
               <span className="cv-data-note">{missingRows.length} missing</span>
             </div>
             {missingRows.length ? (
@@ -600,14 +614,14 @@ function CostOptimizationInner() {
                         <td><strong>{String(row["Part Number"] || "")}</strong></td>
                         <td>{cleanUserText(String(row.Manufacturer || "Not recorded"))}</td>
                         <td className="cv-num">{Number(row["Quantity per Build"] || 0).toLocaleString()}</td>
-                        <td>Needs current, exact-part price evidence</td>
+                        <td>No saved price applies at this order quantity</td>
                         <td><PrimaryLink href={procurementFor(row["Part Number"])}>Add quote</PrimaryLink></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            ) : <p className="cv-small-note">Every BOM component line has a verified saved supplier price.</p>}
+            ) : <p className="cv-small-note">Every BOM component line has a saved price that applies at this build quantity. Check the price-evidence label to see whether it is supplier-sourced or user-entered.</p>}
           </section>
           <section className="cv-card pad" style={{ marginTop: 14 }} data-testid="cost-decisions">
             <div className="cv-section-heading cv-section-heading--card">

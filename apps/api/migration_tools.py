@@ -2293,11 +2293,27 @@ def cost_optimization_payload(
             "gap": "Analyze a BOM first.",
             "optimization": {},
         }
+    selected_analysis_ids = {
+        str(row.get("id") or "").strip()
+        for row in analyses
+        if str(row.get("id") or "").strip()
+    }
+    user_entered_quotes = []
+    if selected_analysis_ids:
+        store = get_store()
+        for selected_id in selected_analysis_ids:
+            user_entered_quotes.extend(
+                store.list_procurement_quotes(
+                    workspace_id=workspace_id,
+                    analysis_id=selected_id,
+                )
+            )
     optimization = build_cost_optimization(
         analyses,
         parts,
         build_quantity=max(1, int(build_quantity or 100)),
         target_unit_cost=target_unit_cost,
+        user_entered_quotes=user_entered_quotes,
     )
     annotated = annotate_report_parts({"parts": list(parts or []), "mode": (analyses[0] or {}).get("mode")})
     summary = annotated.get("evidence_summary") or {}
@@ -2316,7 +2332,19 @@ def cost_optimization_payload(
         configured_sources=configured_sources,
         analysis_mode=str((analyses[0] or {}).get("mode") or ""),
     )
-    missing_prices = int(summary.get("missing_price_count") or 0)
+    missing_prices = int(optimization.get("missing_component_count") or 0)
+    user_price_count = int(optimization.get("user_entered_price_count") or 0)
+    # The saved analysis summary predates later Procurement Advisor quote
+    # entries. Keep live/synthetic counts tied to the BOM snapshot, while
+    # reporting applied sheet/quote prices separately for this calculation.
+    summary["missing_price_count"] = missing_prices
+    summary["user_entered_price_count"] = user_price_count
+    if user_price_count:
+        user_price_note = (
+            f" Cost totals include {user_price_count} user-entered price line(s); "
+            "Cadivor has not independently verified those prices or supplier terms."
+        )
+        gap = f"{gap}{user_price_note}" if gap else user_price_note.strip()
     if missing_prices and not gap:
         gap = (
             f"{missing_prices} component(s) have no recorded unit price. "

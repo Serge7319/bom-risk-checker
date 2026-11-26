@@ -3896,6 +3896,82 @@ button {
 .cv-quote-entry > .cv-button {
   justify-self: start;
 }
+.cv-price-import {
+  display: grid;
+  gap: 13px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #dce5f0;
+  border-radius: 12px;
+  background: #fff;
+}
+.cv-price-import h3,
+.cv-price-import h4 {
+  margin: 0;
+  color: #1d3555;
+  font-size: 14px;
+}
+.cv-price-import p {
+  margin: 5px 0 0;
+  color: #526780;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.cv-price-import code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #eef3fa;
+  color: #24456f;
+  font-size: 10px;
+}
+.cv-price-import-fields {
+  align-items: start;
+}
+.cv-price-import-fields input[type="file"] {
+  min-height: auto;
+  padding: 9px;
+  background: #fff;
+}
+.cv-price-import-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.cv-price-import-actions > span {
+  color: #647991;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.cv-price-import-preview {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid #e3eaf2;
+}
+.cv-price-import-preview .cv-section-heading {
+  margin: 0;
+}
+.cv-price-import-preview .cv-section-heading p {
+  margin-top: 4px;
+}
+.cv-price-import-table-wrap {
+  max-height: 360px;
+  overflow: auto;
+}
+.cv-price-import-table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #eef3f8;
+}
+.cv-price-import-table-wrap td small {
+  display: block;
+  max-width: 420px;
+}
+.cv-price-import-preview > .cv-button {
+  justify-self: start;
+}
 @media (max-width: 900px) {
   .cv-procurement-guide {
     grid-template-columns: minmax(0, 1fr);
