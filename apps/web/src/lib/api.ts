@@ -1392,7 +1392,8 @@ export async function removeMonitoredPartsAddon(token: string) {
 
 export async function beginUsageOverageCheckout(
   token: string,
-  creditKind: "bom_analysis",
+  creditKind: "bom_analysis" | "ask_cadivor",
+  packId?: "ask_100" | "ask_500" | "ask_1500",
 ) {
   return apiJson<{
     ok: boolean;
@@ -1401,7 +1402,10 @@ export async function beginUsageOverageCheckout(
   }>("/billing/addons/usage-overage/checkout", {
     method: "POST",
     token,
-    body: JSON.stringify({ credit_kind: creditKind }),
+    body: JSON.stringify({
+      credit_kind: creditKind,
+      ...(packId ? { pack_id: packId } : {}),
+    }),
   });
 }
 

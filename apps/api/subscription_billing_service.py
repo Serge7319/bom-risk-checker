@@ -26,6 +26,9 @@ ALLOWED_ACTIONS = frozenset({
     "usage_overage_checkout",
     "reserve_usage_credit",
     "finish_usage_credit",
+    "ai_usage_balance",
+    "reserve_ai_question_credit",
+    "finish_ai_question_credit",
     "allocate_monitored_part_credits",
     "developer_api_keys_list",
     "developer_api_key_create",
@@ -49,6 +52,9 @@ INTERNAL_ACTIONS = frozenset({
     "developer_api_key_revoke",
     "reserve_usage_credit",
     "finish_usage_credit",
+    "ai_usage_balance",
+    "reserve_ai_question_credit",
+    "finish_ai_question_credit",
     "allocate_monitored_part_credits",
 })
 

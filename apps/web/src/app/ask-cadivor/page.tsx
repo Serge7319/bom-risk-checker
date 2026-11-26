@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, KeyboardEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatCadivorAnswer } from "@/components/AskCadivorPanel";
 import { EmptyState } from "@/components/EmptyState";
@@ -9,7 +9,15 @@ import { EvidenceNotice, LoadingCard } from "@/components/GapBanner";
 import { Icon } from "@/components/Icons";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import { Shell } from "@/components/Shell";
-import { askCadivor, fetchReport, listReports, type Report } from "@/lib/api";
+import {
+  askCadivor,
+  beginUsageOverageCheckout,
+  fetchBillingStatus,
+  fetchPlanUsage,
+  fetchReport,
+  listReports,
+  type Report,
+} from "@/lib/api";
 import { cleanUserText, userFacingLabel } from "@/lib/display";
 import { PAGE_META } from "@/lib/routes";
 import { useRequireSession } from "@/lib/session";
@@ -182,6 +190,18 @@ function conversationTitle(question: string): string {
   return singleLine.length > 64 ? singleLine.slice(0, 61) + "…" : singleLine;
 }
 
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function moneyLabel(minorAmount: unknown): string {
+  const amount = Number(minorAmount);
+  if (!Number.isFinite(amount) || amount < 0) return "Price unavailable";
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(amount / 100);
+}
+
 function AskCadivorPageInner() {
   const session = useRequireSession();
   const accessToken = session?.access_token || "";
@@ -199,6 +219,16 @@ function AskCadivorPageInner() {
   const [pendingQuestion, setPendingQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [aiUsage, setAiUsage] = useState<Record<string, unknown> | null>(null);
+  const [creditMeterLoaded, setCreditMeterLoaded] = useState(false);
+  const [creditMeterError, setCreditMeterError] = useState(false);
+  const [creditPackCatalogError, setCreditPackCatalogError] = useState(false);
+  const [askCreditPacks, setAskCreditPacks] = useState<Array<Record<string, unknown>>>([]);
+  const [canBuyAskCredits, setCanBuyAskCredits] = useState(false);
+  const [showAskCreditPacks, setShowAskCreditPacks] = useState(false);
+  const [creditCheckoutBusy, setCreditCheckoutBusy] = useState("");
+  const [creditCheckoutError, setCreditCheckoutError] = useState("");
+  const [creditNotice, setCreditNotice] = useState("");
   const [threadSnapshot, setThreadSnapshot] = useState<ThreadSnapshot>({
     key: "",
     loaded: false,
@@ -219,6 +249,62 @@ function AskCadivorPageInner() {
   const storageKey = storageIdentity
     ? "cadivor_ask_conversations_v1:" + encodeURIComponent(storageIdentity)
     : "";
+
+  const refreshCreditMeter = useCallback(async () => {
+    if (!accessToken) return;
+    const [usageResult, billingResult] = await Promise.allSettled([
+      fetchPlanUsage(accessToken),
+      fetchBillingStatus(accessToken),
+    ]);
+    if (usageResult.status === "fulfilled") {
+      const usage = objectValue(objectValue(usageResult.value).usage);
+      const credits = objectValue(usage.ai_credits);
+      setAiUsage(Object.keys(credits).length ? credits : null);
+      setCreditMeterError(Object.keys(credits).length === 0);
+    } else {
+      setAiUsage(null);
+      setCreditMeterError(true);
+    }
+    if (billingResult.status === "fulfilled") {
+      const billing = objectValue(billingResult.value);
+      const addons = objectValue(billing.addons);
+      const packCatalog = objectValue(addons.ask_cadivor_credits);
+      const packs = Array.isArray(packCatalog.packs)
+        ? (packCatalog.packs as Array<Record<string, unknown>>)
+        : [];
+      setAskCreditPacks(packs);
+      setCanBuyAskCredits(packCatalog.enabled === true && packs.length > 0);
+      setCreditPackCatalogError(false);
+    } else {
+      setAskCreditPacks([]);
+      setCanBuyAskCredits(false);
+      setCreditPackCatalogError(true);
+    }
+    setCreditMeterLoaded(true);
+  }, [accessToken]);
+
+  useEffect(() => {
+    void refreshCreditMeter();
+  }, [refreshCreditMeter]);
+
+  const billingReturn = searchParams.get("billing") || "";
+  useEffect(() => {
+    if (billingReturn === "usage-pack-success") {
+      setCreditNotice("Payment received. Your credit balance is updating.");
+      void refreshCreditMeter();
+      let attempts = 0;
+      const timer = window.setInterval(() => {
+        attempts += 1;
+        void refreshCreditMeter();
+        if (attempts >= 8) window.clearInterval(timer);
+      }, 1500);
+      return () => window.clearInterval(timer);
+    }
+    if (billingReturn === "usage-pack-cancel") {
+      setCreditNotice("Checkout was canceled. No credits were purchased.");
+    }
+    return undefined;
+  }, [billingReturn, refreshCreditMeter]);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -369,6 +455,40 @@ function AskCadivorPageInner() {
     (report as unknown as Record<string, unknown> | null) ||
       selectedReportRecord,
   );
+  const allowance = Math.max(0, Number(aiUsage?.allowance || 0));
+  const usedCredits = Math.max(0, Number(aiUsage?.used || 0));
+  const includedRemaining = aiUsage?.remaining == null
+    ? null
+    : Math.max(0, Number(aiUsage.remaining || 0));
+  const topupCredits = Math.max(0, Number(aiUsage?.topup_credits || 0));
+  const isCreditAdmin = aiUsage?.is_admin === true;
+  const usagePercent = allowance > 0
+    ? Math.min(100, Math.floor((usedCredits / allowance) * 100))
+    : 0;
+  const resetAt = aiUsage?.reset_at ? new Date(String(aiUsage.reset_at)) : null;
+  const resetLabel = resetAt && !Number.isNaN(resetAt.getTime())
+    ? resetAt.toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "the start of next month";
+  const monthlyExhausted = allowance > 0 && includedRemaining === 0;
+  const noCreditsAvailable = allowance === 0 && topupCredits === 0;
+  const creditWarning = !creditMeterLoaded || creditMeterError || isCreditAdmin
+    ? ""
+    : monthlyExhausted
+      ? (topupCredits > 0
+          ? `Monthly credits are used. ${topupCredits.toLocaleString()} prepaid credits remain; monthly credits reset ${resetLabel}.`
+          : `You’ve used all monthly credits. They reset ${resetLabel}. Add a one-time pack to keep asking.`)
+      : noCreditsAvailable
+        ? "This plan has no monthly Ask Cadivor credits. Add a one-time pack to start asking questions."
+        : allowance > 0 && usagePercent >= 80
+          ? `You’ve used ${usagePercent}% of monthly credits; ${includedRemaining?.toLocaleString() || 0} remain. They reset ${resetLabel}.`
+          : allowance > 0 && usagePercent >= 50
+            ? `You’ve used ${usagePercent}% of monthly credits; ${includedRemaining?.toLocaleString() || 0} remain. They reset ${resetLabel}.`
+            : "";
 
   useEffect(() => {
     if (messageListRef.current) {
@@ -457,6 +577,29 @@ function AskCadivorPageInner() {
     } finally {
       setPendingQuestion("");
       setBusy(false);
+      void refreshCreditMeter();
+    }
+  }
+
+  async function buyAskCreditPack(packId: string) {
+    if (!session || !canBuyAskCredits) return;
+    setCreditCheckoutBusy(packId);
+    setCreditCheckoutError("");
+    try {
+      const result = await beginUsageOverageCheckout(
+        session.access_token,
+        "ask_cadivor",
+        packId as "ask_100" | "ask_500" | "ask_1500",
+      );
+      const url = String(result.checkout?.url || "").trim();
+      if (!result.ok || !url) {
+        throw new Error(String(result.detail || "Credit checkout could not be opened."));
+      }
+      window.location.assign(url);
+    } catch (err) {
+      setCreditCheckoutError(err instanceof Error ? err.message : "Credit checkout could not be opened.");
+    } finally {
+      setCreditCheckoutBusy("");
     }
   }
 
@@ -628,6 +771,133 @@ function AskCadivorPageInner() {
                   Answers use the selected saved report. Supplier data is not refreshed by this chat.
                 </span>
               </div>
+
+              <section className={styles.creditMeter} aria-label="Ask Cadivor credit usage">
+                <div className={styles.creditMeterHeader}>
+                  <div className={styles.creditMeterTitle}>
+                    <strong>Ask Cadivor credits</strong>
+                    {!creditMeterLoaded ? (
+                      <span>Checking your credit balance…</span>
+                    ) : creditMeterError ? (
+                      <span>Credit balance could not be loaded. Refresh the page to try again.</span>
+                    ) : isCreditAdmin ? (
+                      <span>Administrator use is not metered.</span>
+                    ) : allowance > 0 ? (
+                      <span>{usedCredits.toLocaleString()} of {allowance.toLocaleString()} monthly credits used</span>
+                    ) : (
+                      <span>No monthly credits are included with this plan.</span>
+                    )}
+                  </div>
+                  {canBuyAskCredits ? (
+                    <button
+                      className={styles.creditPackToggle}
+                      type="button"
+                      onClick={() => {
+                        setShowAskCreditPacks((open) => !open);
+                        setCreditCheckoutError("");
+                      }}
+                      aria-expanded={showAskCreditPacks}
+                      disabled={!creditMeterLoaded}
+                    >
+                      {!creditMeterLoaded ? "Loading credits…" : showAskCreditPacks ? "Hide packs" : "Get more credits"}
+                    </button>
+                  ) : null}
+                </div>
+
+                {!isCreditAdmin && creditMeterLoaded && !creditMeterError && allowance > 0 ? (
+                  <div className={styles.creditMeterProgress}>
+                    <div className={styles.creditMeterCounts}>
+                      <span>{includedRemaining?.toLocaleString() || 0} monthly credits left</span>
+                      <span>{usagePercent}% used</span>
+                    </div>
+                    <div
+                      className={styles.creditMeterTrack}
+                      role="progressbar"
+                      aria-label="Monthly Ask Cadivor credit usage"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={usagePercent}
+                    >
+                      <span style={{ width: usagePercent + "%" }} />
+                    </div>
+                  </div>
+                ) : null}
+
+                {!isCreditAdmin && creditMeterLoaded && !creditMeterError ? (
+                  <div className={styles.creditMeterFoot}>
+                    <span>
+                      {topupCredits.toLocaleString()} prepaid credits
+                      {allowance > 0 ? " · monthly credits are used first" : ""}
+                    </span>
+                    {allowance > 0 ? <span>Resets {resetLabel}</span> : null}
+                  </div>
+                ) : null}
+
+                {creditWarning ? (
+                  <p
+                    className={styles.creditWarning}
+                    data-level={monthlyExhausted || noCreditsAvailable ? "exhausted" : usagePercent >= 80 ? "high" : "notice"}
+                    role={monthlyExhausted || noCreditsAvailable ? "alert" : "status"}
+                  >
+                    {creditWarning}
+                  </p>
+                ) : null}
+                {creditNotice ? <p className={styles.creditNotice} role="status">{creditNotice}</p> : null}
+
+                {showAskCreditPacks && canBuyAskCredits ? (
+                  <div className={styles.creditPackPanel}>
+                    <div className={styles.creditPackPanelHeading}>
+                      <strong>One-time credit packs</strong>
+                      <span>A credit is used when Cadivor answers successfully. Packs are one-time with no renewal; purchased credits don’t expire. Monthly credits are used first.</span>
+                    </div>
+                    <div className={styles.creditPackGrid}>
+                      {askCreditPacks.map((pack) => {
+                        const packId = String(pack.id || "");
+                        const credits = Math.max(0, Number(pack.credits || 0));
+                        const unitPrice = Number(pack.unit_price);
+                        const savings = Math.max(0, Number(pack.savings_percent || 0));
+                        return (
+                          <article className={styles.creditPack} key={packId}>
+                            <div className={styles.creditPackTop}>
+                              <strong>{String(pack.title || credits.toLocaleString() + " credits")}</strong>
+                              {savings > 0 ? <span>Save {savings}%</span> : null}
+                            </div>
+                            <strong className={styles.creditPackPrice}>{moneyLabel(pack.amount)}</strong>
+                            <small>
+                              {credits.toLocaleString()} questions
+                              {Number.isFinite(unitPrice) ? " · " + (unitPrice * 100).toFixed(2) + "¢ per question" : ""}
+                            </small>
+                            <button
+                              className="cv-button small"
+                              type="button"
+                              disabled={
+                                !canBuyAskCredits ||
+                                pack.enabled !== true ||
+                                Boolean(creditCheckoutBusy)
+                              }
+                              onClick={() => void buyAskCreditPack(packId)}
+                            >
+                              {creditCheckoutBusy === packId ? "Opening checkout…" : "Buy pack"}
+                            </button>
+                          </article>
+                        );
+                      })}
+                    </div>
+                    {creditPackCatalogError ? (
+                      <p className={styles.creditPackEligibility}>
+                        Credit packs could not load. Refresh this page to try again.
+                      </p>
+                    ) : askCreditPacks.length === 0 ? (
+                      <p className={styles.creditPackEligibility}>
+                        Credit packs are temporarily unavailable.
+                      </p>
+                    ) : null}
+                    {creditCheckoutError ? (
+                      <p className={styles.creditPackError} role="alert">{creditCheckoutError}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
 
               <div
                 className={styles.messages}

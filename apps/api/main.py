@@ -3073,14 +3073,22 @@ async def billing_usage_overage_checkout_post(request: Request) -> JSONResponse:
     if not isinstance(body, dict):
         return _json({"detail": "Invalid request"}, 400)
     kind = str(body.get("credit_kind") or "").strip()
-    if kind != "bom_analysis":
+    payload: dict[str, Any]
+    if kind == "bom_analysis":
+        payload = {"credit_kind": kind}
+    elif kind == "ask_cadivor":
+        pack_id = str(body.get("pack_id") or "").strip()
+        if pack_id not in {"ask_100", "ask_500", "ask_1500"}:
+            return _json({"detail": "Choose a supported Ask Cadivor credit pack."}, 400)
+        payload = {"credit_kind": kind, "pack_id": pack_id}
+    else:
         return _json({"detail": "Choose a supported usage pack."}, 400)
     token = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
     try:
         result, status = subscription_billing_service.request_action(
             access_token=token,
             action="usage_overage_checkout",
-            payload={"credit_kind": kind},
+            payload=payload,
             origin=request.headers.get("origin", ""),
         )
     except subscription_billing_service.SubscriptionBillingError as exc:

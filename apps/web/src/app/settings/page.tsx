@@ -623,6 +623,8 @@ export default function Page() {
   const addonBillingInterval = billing?.subscription_billing_interval === "year" ? "year" : "month";
   const monitoredOveragePrice = asRecord(monitoredOverage[addonBillingInterval === "year" ? "annual" : "monthly"]);
   const apiOverage = asRecord(billingAddons.professional_api);
+  const askCadivorOverage = asRecord(billingAddons.ask_cadivor_credits);
+  const askCadivorPacks = asRows(askCadivorOverage.packs);
   const usageCredits = asRecord(billing?.usage_credits);
   const hasProfessionalApiAddon = billing?.api_access_addon_active === true;
   const hasMonitoredPartsAddon = billing?.monitored_parts_addon_active === true;
@@ -2148,7 +2150,7 @@ export default function Page() {
               <section className="cv-card pad" style={{ marginBottom: 14 }}>
                 <h3 className="cv-card-title">Usage add-ons</h3>
                 <p className="cv-card-subtitle">
-                  Buy extra BOM analysis credits or monitored-parts capacity when you need it. Monitoring capacity renews with your plan; any prorated adjustment appears on your next subscription invoice.
+                  Buy one-time BOM analysis or Ask Cadivor credits, or add monitored-parts capacity. Purchased question credits do not expire; monitoring capacity renews with your plan.
                 </p>
                 <div className="cv-addon-grid">
                   <article className="cv-addon-card">
@@ -2158,6 +2160,18 @@ export default function Page() {
                     <button className="cv-button" type="button" disabled={!paidSubscription || analysisOverage.enabled !== true || Boolean(billingAction)} onClick={() => void openAddonCheckout("bom_analysis")}>
                       {billingAction === "addon-bom_analysis" ? "Opening checkout…" : "Buy analysis pack"}
                     </button>
+                  </article>
+                  <article className="cv-addon-card">
+                    <h4>Ask Cadivor credit packs</h4>
+                    <p>
+                      {askCadivorPacks.map((pack) =>
+                        `${Number(pack.credits || 0).toLocaleString()} for ${addonPriceLabel(pack, "")}`,
+                      ).join(" · ") || "Credit pack prices are loading."}
+                    </p>
+                    <p className="cv-small-note">
+                      Prepaid balance: {Number(usageCredits.ask_cadivor || 0).toLocaleString()} questions. Monthly credits are used first.
+                    </p>
+                    <Link className="cv-button" href="/ask-cadivor">View usage and buy credits</Link>
                   </article>
                   <article className="cv-addon-card">
                     <h4>Monitored-parts capacity</h4>

@@ -10,8 +10,8 @@ import { oneTimeBOMAction } from "./one_time_bom_event.ts";
 
 // Versioned webhook source. JWT verification is disabled in
 // supabase/config.toml because Stripe signs the raw request instead.
-// Apply both billing migrations and prove a sandbox destination before
-// replacing the live destination. The one-time product stays off until then.
+// Deploy this update to the existing function slug to preserve the live
+// webhook URL and signing secret. Apply the matching database migration first.
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2024-06-20",
@@ -21,6 +21,12 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
+
+const askCadivorCreditPacks = [
+  { id: "ask_100", credits: 100, amount: 999 },
+  { id: "ask_500", credits: 500, amount: 3999 },
+  { id: "ask_1500", credits: 1500, amount: 9999 },
+] as const;
 
 const LEASE_SECONDS = 120;
 
@@ -214,17 +220,22 @@ async function usageOverageEvent(event: Stripe.Event): Promise<{
   const kind = String(session.metadata?.cadivor_credit_kind || "").trim();
   const creditsRaw = String(session.metadata?.cadivor_credit_units || "").trim();
   const units = /^\d+$/.test(creditsRaw) ? Number(creditsRaw) : 0;
+  const packId = String(session.metadata?.cadivor_credit_pack_id || "").trim();
+  const askPack = kind === "ask_cadivor"
+    ? askCadivorCreditPacks.find((pack) => pack.id === packId)
+    : null;
   const env = kind === "bom_analysis"
     ? { price: "STRIPE_BOM_ANALYSIS_OVERAGE_PRICE_ID", credits: "CADIVOR_BOM_ANALYSIS_OVERAGE_CREDITS" }
     : kind === "monitored_part"
       ? { price: "STRIPE_MONITORED_PARTS_OVERAGE_PRICE_ID", credits: "CADIVOR_MONITORED_PARTS_OVERAGE_CREDITS" }
       : null;
-  if (!userId || !env || !Number.isSafeInteger(units) || units <= 0 ||
-      units !== Number(Deno.env.get(env.credits) || 0)) {
+  const expectedUnits = askPack ? askPack.credits : env ? Number(Deno.env.get(env.credits) || 0) : 0;
+  if (!userId || (!env && !askPack) || !Number.isSafeInteger(units) || units <= 0 ||
+      units !== expectedUnits) {
     throw new WebhookConfigurationError("Usage overage checkout metadata is invalid.");
   }
-  const expectedPriceId = String(Deno.env.get(env.price) || "").trim();
-  if (!expectedPriceId) throw new WebhookConfigurationError("Usage overage price is not configured.");
+  const expectedPriceId = env ? String(Deno.env.get(env.price) || "").trim() : "";
+  if (env && !expectedPriceId) throw new WebhookConfigurationError("Usage overage price is not configured.");
 
   if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
     return { userId, customerId: asId(session.customer), outcome: "closed" };
@@ -236,8 +247,16 @@ async function usageOverageEvent(event: Stripe.Event): Promise<{
   const items = await stripe.checkout.sessions.listLineItems(session.id, { limit: 2 });
   const item = items.data[0];
   const priceId = asId(item?.price);
-  if (!paymentIntent || items.data.length !== 1 || item?.quantity !== 1 || priceId !== expectedPriceId) {
+  if (!paymentIntent || items.data.length !== 1 || item?.quantity !== 1 ||
+      (expectedPriceId && priceId !== expectedPriceId)) {
     throw new WebhookConfigurationError("Usage overage checkout has invalid payment or line items.");
+  }
+  if (askPack) {
+    const price = priceId ? await stripe.prices.retrieve(priceId) : null;
+    if (!price || !price.active || price.currency !== "usd" || price.recurring ||
+        price.unit_amount !== askPack.amount || session.currency !== "usd") {
+      throw new WebhookConfigurationError("Ask Cadivor credit pack amount could not be verified.");
+    }
   }
   const { data, error } = await supabase.rpc("cadivor_grant_usage_credits", {
     p_checkout_session_id: session.id,

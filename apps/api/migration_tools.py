@@ -1685,27 +1685,27 @@ def ask_cadivor_payload(
             return {
                 "ok": False,
                 "status": STATUS_FAILED,
-                "detail": "Cadivor could not verify your monthly AI credit balance. Please try again.",
+                "detail": "Cadivor could not verify your Ask Cadivor credit balance. Please try again.",
                 "code": "ai_credits_unavailable",
             }
         if not credit_reservation.get("reserved"):
             usage = credit_reservation.get("usage") or {}
-            if credit_reservation.get("code") in {"missing_user", "usage_store_unavailable"}:
+            if credit_reservation.get("code") in {"missing_user", "usage_store_unavailable", "ai_credits_unavailable"}:
                 return {
                     "ok": False,
                     "status": STATUS_FAILED,
-                    "detail": "Cadivor could not verify your monthly AI credit balance. Please try again.",
+                    "detail": "Cadivor could not verify your Ask Cadivor credit balance. Please try again.",
                     "code": "ai_credits_unavailable",
                 }
             plan_name = str(usage.get("plan") or "current")
             allowance = max(0, int(usage.get("allowance") or 0))
             used = max(0, int(usage.get("used") or 0))
             if allowance < 1:
-                detail = f"Ask Cadivor questions are not included with the {plan_name} plan."
+                detail = f"Ask Cadivor questions are not included with the {plan_name} plan. You can add a one-time credit pack."
             else:
                 detail = (
-                    f"You have used {used} of {allowance} monthly Ask Cadivor AI credits "
-                    f"on the {plan_name} plan. Credits reset next month."
+                    f"You have used {used} of {allowance} monthly Ask Cadivor credits "
+                    f"on the {plan_name} plan. Remaining monthly credits reset at the start of next month."
                 )
             return {
                 "ok": False,
@@ -1732,6 +1732,10 @@ def ask_cadivor_payload(
                 user_context,
                 usage_month=str((credit_reservation.get("usage") or {}).get("month") or ""),
                 cost=int(credit_reservation.get("cost") or 1),
+
+                source=str(credit_reservation.get("source") or "monthly"),
+
+                reservation_id=str(credit_reservation.get("reservation_id") or ""),
             )
         return {
             "ok": False,
@@ -1744,11 +1748,22 @@ def ask_cadivor_payload(
     if credit_reservation and credit_reservation.get("reserved"):
         if response.provider == "openai":
             ai_usage = credit_reservation.get("usage")
+            if str(credit_reservation.get("source") or "") == "topup":
+                plan_limits_module.finish_ai_credit(
+                    user_context,
+                    reservation_id=str(credit_reservation.get("reservation_id") or ""),
+                    source="topup",
+                    commit=True,
+                )
         elif not (credit_reservation.get("usage") or {}).get("is_admin") and plan_limits_module is not None:
             plan_limits_module.release_ai_credit(
                 user_context,
                 usage_month=str((credit_reservation.get("usage") or {}).get("month") or ""),
                 cost=int(credit_reservation.get("cost") or 1),
+
+                source=str(credit_reservation.get("source") or "monthly"),
+
+                reservation_id=str(credit_reservation.get("reservation_id") or ""),
             )
 
     return _json_safe(
@@ -1763,17 +1778,9 @@ def ask_cadivor_payload(
             "grounded": bool(response.grounded),
             "ai_usage": ai_usage,
             "gap": (
-                (
-                    "This answer used one monthly Cadivor AI credit; "
-                    + str((ai_usage or {}).get("remaining") or 0)
-                    + " remain this month."
-                )
-                if response.provider == "openai" and not (ai_usage or {}).get("is_admin")
-                else (
-                    None
-                    if response.provider == "openai"
-                    else "The AI response service was unavailable; Cadivor used its saved report evidence and built-in review rules."
-                )
+                None
+                if response.provider == "openai"
+                else "The AI response service was unavailable; Cadivor used its saved report evidence and built-in review rules."
             ),
         }
     )
