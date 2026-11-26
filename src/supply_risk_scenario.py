@@ -448,6 +448,16 @@ def build_supply_scenario(
     ]
     known_stock = [row for row in normalized if row["Stock Recorded"]]
     known_source_rows = [row for row in normalized if row["Sources Recorded"]]
+    unknown_stock = [row for row in normalized if not row["Stock Recorded"]]
+    known_stock_count = len(known_stock)
+    unknown_stock_count = len(unknown_stock)
+    total_components = len(normalized)
+    if total_components == 0 or known_stock_count == 0:
+        stock_coverage = "absent"
+    elif unknown_stock_count == 0:
+        stock_coverage = "complete"
+    else:
+        stock_coverage = "partial"
     baseline_capacities = [
         int(row["Baseline Buildable Units"])
         for row in known_stock
@@ -546,16 +556,6 @@ def build_supply_scenario(
             f"A {stock_reduction_percent}% stock reduction is modeled. Review the components "
             f"with the lowest remaining coverage first."
         )
-    unknown_stock = [row for row in normalized if not row["Stock Recorded"]]
-    known_stock_count = len(known_stock)
-    unknown_stock_count = len(unknown_stock)
-    total_components = len(normalized)
-    if total_components == 0 or known_stock_count == 0:
-        stock_coverage = "absent"
-    elif unknown_stock_count == 0:
-        stock_coverage = "complete"
-    else:
-        stock_coverage = "partial"
 
     # Stock-based impact requires recorded stock. Independently evidenced
     # lifecycle / supplier-source risks stay visible even when stock is absent.

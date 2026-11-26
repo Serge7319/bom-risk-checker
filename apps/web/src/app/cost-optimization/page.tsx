@@ -469,6 +469,30 @@ function CostOptimizationInner() {
                 action={<PrimaryLink href={activeAnalysisId ? procurementFor("") : "/procurement"}>Add or refresh quotes</PrimaryLink>}
               />
             )}
+            {pricedCount === 0 && componentCount > 0 ? (
+              <div className="cv-card pad" style={{ marginTop: 12, background: "#f8fbff", borderStyle: "dashed" }} aria-label="Illustrative cost example">
+                <div className="cv-section-heading cv-section-heading--card">
+                  <div>
+                    <div className="cv-data-note" style={{ marginBottom: 5 }}>ILLUSTRATIVE EXAMPLE · NOT FROM THIS BOM</div>
+                    <h3 style={{ margin: 0 }}>What a priced BOM result looks like</h3>
+                    <p>Your selected analysis has no verified saved prices, so its actual total and savings cannot be calculated yet.</p>
+                  </div>
+                  <span className="cv-data-note">Example</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10, marginTop: 12 }}>
+                  <div style={{ border: "1px solid #dce6f3", borderRadius: 10, padding: 12, background: "#fff" }}>
+                    <div className="cv-small-note">Example BOM total</div><strong>$41,200</strong><div className="cv-small-note">1,000 units · $41.20 per unit</div>
+                  </div>
+                  <div style={{ border: "1px solid #dce6f3", borderRadius: 10, padding: 12, background: "#fff" }}>
+                    <div className="cv-small-note">Example price coverage</div><strong>9 of 10 parts</strong><div className="cv-small-note">One line still needs a quote</div>
+                  </div>
+                  <div style={{ border: "1px solid #dce6f3", borderRadius: 10, padding: 12, background: "#fff" }}>
+                    <div className="cv-small-note">Example net savings</div><strong>$380</strong><div className="cv-small-note">Price break, including extra units</div>
+                  </div>
+                </div>
+                <p className="cv-small-note" style={{ margin: "11px 0 0" }}>These sample figures demonstrate the calculation only; they are not prices, savings, or supplier evidence for your selected BOM.</p>
+              </div>
+            ) : null}
           </section>
 
           {decisionOpportunity ? (
