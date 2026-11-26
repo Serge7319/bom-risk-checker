@@ -30,6 +30,20 @@ class SubscriptionCheckoutContractTests(unittest.TestCase):
         self.assertNotIn("stripeSecret", log_block)
         self.assertNotIn("error_message", log_block)
 
+    def test_admin_smoke_checkout_allows_only_ask_credit_packs(self):
+        source = (ROOT / "supabase/functions/subscription-checkout/index.ts").read_text(encoding="utf-8")
+        gate_start = source.index("const isPlatformAdministrator")
+        gate_end = source.index('if (action === "portal")', gate_start)
+        admin_gate = source[gate_start:gate_end]
+        self.assertIn("const isAskCreditPackCheckout =", admin_gate)
+        self.assertIn('action === "usage_overage_checkout"', admin_gate)
+        self.assertIn('String(body.credit_kind || "").trim() === "ask_cadivor"', admin_gate)
+        self.assertIn("if (isPlatformAdministrator && !isAskCreditPackCheckout)", admin_gate)
+        self.assertIn(
+            'detail: "Workspace administrators cannot purchase an individual subscription."',
+            admin_gate,
+        )
+
     def test_settings_renders_nested_plan_usage_and_surfaces_support_reference(self):
         source = (ROOT / "apps/web/src/app/settings/page.tsx").read_text(encoding="utf-8")
         self.assertIn("function usageFacts(value: unknown)", source)
