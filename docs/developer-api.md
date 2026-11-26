@@ -53,6 +53,13 @@ Report reads are workspace-scoped. Keep API keys in an OS credential store or
 server-side secret manager; never embed one in public browser code or a shared
 KiCad project.
 
+## Export-based release review
+
+After uploading an Altium BOM export through POST /v1/analyses, call GET /v1/release-gate/{analysis_id} with the returned analysis ID. The same endpoint works with any saved BOM report in the API key's workspace.
+
+The response summarizes high-risk and unverified parts, decision records linked to those parts in that report, missing records, and pending approver responses. It is advisory only: it reads the saved report and decision history, does not refresh supplier data, does not block an Altium export, and does not authorize product release. A team must review the evidence and make its own release decision.
+
+
 ## Outgoing webhooks
 
 Workspace owners and admins with API access can add HTTPS destinations under

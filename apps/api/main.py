@@ -3441,6 +3441,162 @@ async def developer_api_report_get(request: Request) -> JSONResponse:
     )
 
 
+async def developer_api_release_gate_get(request: Request) -> JSONResponse:
+    """Return an advisory release review for one saved report and its decisions."""
+    ctx, denied = await _developer_api_key_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    analysis_id = str(request.path_params.get("analysis_id") or "").strip()
+    if not analysis_id or len(analysis_id) > 160:
+        return _json({"detail": "A valid saved analysis_id is required."}, 400)
+
+    try:
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
+    except PersistenceNotConfiguredError:
+        return _json({"detail": "Report storage is unavailable."}, 503)
+    except WorkspaceAccessError:
+        report = None
+    if not report:
+        return _json({"detail": "Report not found."}, 404)
+
+    try:
+        from src.normalizer import normalize_part_number
+
+        report = annotate_report_parts(report)
+        store = get_store()
+        records = await run_in_threadpool(
+            store.list_decision_records,
+            workspace_id=ctx["workspace_id"],
+            analysis_id=analysis_id,
+        )
+        approvals_by_record: dict[str, list[str]] = {}
+        for approval_status in ("pending", "approved", "rejected"):
+            approvals = await run_in_threadpool(
+                store.list_decision_record_approvers,
+                workspace_id=ctx["workspace_id"],
+                status=approval_status,
+            )
+            for approval in approvals:
+                record_id = str(approval.get("decision_record_id") or "").strip()
+                if record_id:
+                    statuses = approvals_by_record.setdefault(record_id, [])
+                    status = str(approval.get("status") or approval_status).strip().lower()
+                    if status and status not in statuses:
+                        statuses.append(status)
+    except PersistenceNotConfiguredError:
+        return _json({"detail": "Decision storage is unavailable."}, 503)
+    except Exception as exc:  # noqa: BLE001
+        logging.warning("developer_api_release_gate_failed exception=%s", type(exc).__name__)
+        return _json({"detail": "Release review is temporarily unavailable."}, 503)
+
+    def normalized_mpn(value: object) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        try:
+            return str(normalize_part_number(text) or "").casefold()
+        except Exception:  # noqa: BLE001
+            return text.casefold()
+
+    records_by_source_part: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        source_part_key = normalized_mpn(record.get("part_a"))
+        if not source_part_key:
+            continue
+        record_id = str(record.get("id") or record.get("decision_id") or "").strip()
+        records_by_source_part.setdefault(source_part_key, []).append({
+            "id": record_id,
+            "decision": str(record.get("decision") or ""),
+            "decision_label": str(record.get("decision_label") or ""),
+            "reviewer": str(record.get("reviewer") or ""),
+            "created_at": record.get("created_at"),
+            "validation_checks": [
+                str(item) for item in (record.get("validation_checks") or [])
+                if isinstance(item, str)
+            ],
+            "follow_up_action": str(record.get("follow_up_action") or ""),
+            "follow_up_owner": str(record.get("follow_up_owner") or ""),
+            "follow_up_due_date": record.get("follow_up_due_date"),
+            "approver_statuses": approvals_by_record.get(record_id, []),
+        })
+
+    review_findings: list[dict[str, Any]] = []
+    missing_decisions: list[dict[str, Any]] = []
+    pending_approval_record_ids: set[str] = set()
+    for part in report.get("parts") or []:
+        if not isinstance(part, dict):
+            continue
+        risk_level = str(part.get("risk_level") or part.get("Risk Level") or "Needs verification").strip()
+        normalized_risk = risk_level.casefold()
+        if normalized_risk not in {"high", "critical", "needs verification", "unknown", "not assessed"}:
+            continue
+        mpn = ""
+        for key in (
+            "manufacturer_part_number", "Manufacturer Part Number", "MPN", "mpn",
+            "Mfr Part Number", "Mfr. Part Number", "Part Number", "part_number",
+        ):
+            value = part.get(key)
+            if value is not None and str(value).strip():
+                mpn = str(value).strip()
+                break
+        part_records = records_by_source_part.get(normalized_mpn(mpn), []) if mpn else []
+        if not part_records:
+            missing_decisions.append({
+                "mpn": mpn or None,
+                "risk_level": risk_level,
+                "reason": "No decision record is linked to this part in the selected saved report.",
+            })
+        for record in part_records:
+            if "pending" in record["approver_statuses"] and record["id"]:
+                pending_approval_record_ids.add(record["id"])
+        review_findings.append({
+            "mpn": mpn or None,
+            "manufacturer": str(part.get("manufacturer") or part.get("Manufacturer") or ""),
+            "risk_level": risk_level,
+            "risk_reasons": [
+                str(item) for item in (part.get("risk_reasons") or [])
+                if isinstance(item, str)
+            ],
+            "decision_records": part_records,
+            "decision_record_missing": not bool(part_records),
+        })
+
+    needs_verification_count = sum(
+        1 for finding in review_findings
+        if str(finding.get("risk_level") or "").casefold() in {"needs verification", "unknown", "not assessed"}
+    )
+    status = "review_required" if review_findings else "no_high_or_unverified_findings"
+    return _json({
+        "ok": True,
+        "analysis_id": analysis_id,
+        "status": status,
+        "advisory_only": True,
+        "release_authorized": False,
+        "report": {
+            "project_name": report.get("project_name"),
+            "bom_name": report.get("bom_name") or report.get("filename"),
+            "revision": report.get("revision"),
+            "created_at": report.get("created_at"),
+            "mode": report.get("mode"),
+            "total_parts": report.get("total_parts") or len(report.get("parts") or []),
+        },
+        "summary": {
+            "high_risk_count": report.get("high_risk_count", 0),
+            "medium_risk_count": report.get("medium_risk_count", 0),
+            "needs_verification_count": needs_verification_count,
+            "review_finding_count": len(review_findings),
+            "missing_decision_record_count": len(missing_decisions),
+            "pending_approval_record_count": len(pending_approval_record_ids),
+        },
+        "review_findings": review_findings,
+        "missing_decision_records": missing_decisions,
+        "data_note": (
+            "This check uses the selected saved report and its linked decision records. "
+            "It does not refresh supplier data, block an Altium export, or authorize product release."
+        ),
+    }, 200)
+
+
 async def billing_portal_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -6054,6 +6210,7 @@ app = Starlette(
         Route("/v1/analyses", developer_api_analyze_post, methods=["POST"]),
         Route("/v1/reports", developer_api_reports_get, methods=["GET"]),
         Route("/v1/reports/{analysis_id}", developer_api_report_get, methods=["GET"]),
+        Route("/v1/release-gate/{analysis_id}", developer_api_release_gate_get, methods=["GET"]),
         Route("/billing/portal", billing_portal_post, methods=["POST"]),
         Route("/billing/public-catalog", billing_public_catalog_get, methods=["GET"]),
         Route("/billing/public-addons-catalog", billing_public_addons_catalog_get, methods=["GET"]),
