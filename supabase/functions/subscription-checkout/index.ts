@@ -1794,7 +1794,11 @@ serve(async (request) => {
       }, 200, origin);
     }
 
-    if (String(profile.role || "").toLowerCase() === "admin") {
+    const isPlatformAdministrator = String(profile.role || "").trim().toLowerCase() === "admin";
+    const isAskCreditPackCheckout =
+      action === "usage_overage_checkout" &&
+      String(body.credit_kind || "").trim() === "ask_cadivor";
+    if (isPlatformAdministrator && !isAskCreditPackCheckout) {
       return response({ ok: false, detail: "Workspace administrators cannot purchase an individual subscription." }, 403, origin);
     }
 
