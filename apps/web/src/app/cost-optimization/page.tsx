@@ -287,6 +287,38 @@ function CostOptimizationInner() {
         }
       />
       {data ? <EvidenceNotice gap={data.gap} /> : null}
+      {data && componentCount > 0 && pricedCount < componentCount ? (
+        <div className="cv-notice" role="status" style={{ marginBottom: 12 }}>
+          <strong>
+            {pricedCount === 0
+              ? "Next step: add supplier prices for this BOM."
+              : `Price coverage is ${pricedCount} of ${componentCount} BOM lines.`}
+          </strong>{" "}
+          {pricedCount === 0
+            ? "Changing build quantity alone will not produce a cost total. Add or refresh quotes in Procurement Advisor for this saved BOM, then return and select Recalculate."
+            : "Totals and savings are partial until prices are saved for the remaining BOM lines."}{" "}
+          <PrimaryLink href={procurementFor("")}>Add or refresh quotes</PrimaryLink>
+        </div>
+      ) : null}
+      {data && componentCount > 0 ? (
+        <details className="cv-card pad" style={{ marginBottom: 14 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>How Cost Optimization works</summary>
+          <div style={{ marginTop: 10 }}>
+            <p className="cv-small-note">
+              Cost Optimization uses supplier prices saved to the selected BOM analysis. Changing build quantity does not fetch prices from suppliers; it changes required order quantities and evaluates saved price breaks when you recalculate.
+            </p>
+            <ol style={{ margin: "8px 0 12px", paddingLeft: 22 }}>
+              <li>Add or refresh quotes in Procurement Advisor for this BOM. Quotes are saved as price evidence for the selected parts.</li>
+              <li>Return here, enter your build quantity and optional target cost per unit, then select <strong>Recalculate</strong>.</li>
+              <li>Review price coverage, the BOM subtotal, savings opportunities, and any parts still missing prices. Partial coverage produces a partial subtotal.</li>
+            </ol>
+            <p className="cv-small-note" style={{ margin: "0 0 10px" }}>
+              The illustrative example below is fixed sample data; it does not change with your inputs and is not evidence for this BOM. Saved prices are point-in-time indications, not live quotes or guarantees.
+            </p>
+            <PrimaryLink href={procurementFor("")}>Open Procurement Advisor for this BOM</PrimaryLink>
+          </div>
+        </details>
+      ) : null}
       <div className="cv-card pad" style={{ marginBottom: 14, display: "flex", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
         <div className="cv-field" style={{ minWidth: 260 }}>
           <label htmlFor="cost-analysis">Saved BOM analysis</label>
