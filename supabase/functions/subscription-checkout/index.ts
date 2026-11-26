@@ -1785,7 +1785,7 @@ serve(async (request) => {
         has_active_subscription: active,
         can_manage_billing: Boolean(active && (profile.stripe_customer_id || profile.stripe_subscription_id)),
         plans,
-        addons: await addonCatalog(String(profile.role || "").trim().toLowerCase() === "admin"),
+        addons: await addonCatalog(true),
         usage_credits: await usageCreditsFor(auth.user.id),
         api_access_addon_active: (await apiAddonFor(auth.user.id)).active,
         monitored_parts_addon_active: monitoredAddonCapacity > 0,
@@ -1991,15 +1991,8 @@ serve(async (request) => {
       if (kind !== "ask_cadivor" && kind !== "bom_analysis") {
         return response({ ok: false, detail: "Choose a supported usage pack." }, 400, origin);
       }
-      if (kind === "ask_cadivor" && String(profile.role || "").trim().toLowerCase() !== "admin") {
-        return response({
-          ok: false,
-          code: "ask_credit_packs_unavailable",
-          detail: "Ask Cadivor credit-pack purchases are temporarily unavailable.",
-        }, 403, origin);
-      }
-      // BOM analysis overage remains plan-gated. Ask Cadivor credit packs are
-      // restricted to the administrator during the production payment check.
+      // Ask Cadivor packs are available to any verified, non-suspended
+      // signed-in account. Monthly included credits still apply before top-ups.
       if (kind === "bom_analysis") {
         const currentPlan = effectivePlan(profile).plan;
         const trialEnd = profile.trial_ends_at ? new Date(String(profile.trial_ends_at)) : null;
