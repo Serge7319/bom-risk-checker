@@ -251,7 +251,6 @@ function CostOptimizationInner() {
   const drivers = (opt.top_cost_parts || []) as CostRow[];
   const missingRows = (opt.missing_price_rows || []) as CostRow[];
   const activeAnalysisId = String(data?.analysis_id || selectedAnalysisId || "").trim();
-  const context = reports.find((row) => String(row.id || "") === activeAnalysisId) || {};
   const componentCount = Number(opt.component_count || 0);
   const pricedCount = Number(opt.priced_component_count || 0);
   const coverage = componentCount ? Math.round((pricedCount / componentCount) * 100) : 0;
@@ -260,7 +259,6 @@ function CostOptimizationInner() {
   const partial = pricedCount < componentCount;
   const subtotalPerBoard = opt.current_cost_per_build;
   const runSubtotal = opt.production_run_cost;
-  const fullCost = opt.complete_cost_per_build;
   const targetGap = opt.target_cost_gap;
   const enteredTarget = Number(targetCost);
   const normalizedEnteredTarget =
