@@ -82,6 +82,28 @@ export type Report = AnalyzeSummary & {
   created_at: string;
   summary_message?: string;
   parts: Array<Record<string, unknown>>;
+  cost_decisions?: Array<{
+    id: string;
+    analysis_id: string;
+    created_at: string;
+    title?: string;
+    reviewer?: string;
+    rationale?: string;
+    status?: string;
+    part_number?: string;
+    current_supplier?: string;
+    recommended_supplier?: string;
+    currency?: string;
+    estimated_net_savings?: number;
+  }>;
+  supply_scenarios?: Array<{
+    id: string;
+    analysis_id: string;
+    created_at: string;
+    title?: string;
+    parameters?: Record<string, unknown>;
+    summary?: Record<string, unknown>;
+  }>;
   evidence_summary?: {
     live_count?: number;
     synthetic_count?: number;
@@ -1264,13 +1286,48 @@ export async function fetchDesignImpact(
 
 export async function fetchCostOptimization(
   token: string,
-  opts?: { analysisId?: string; buildQuantity?: number },
+  opts?: { analysisId?: string; buildQuantity?: number; targetUnitCost?: number },
 ) {
   const params = new URLSearchParams();
   if (opts?.analysisId) params.set("analysis_id", opts.analysisId);
   if (opts?.buildQuantity) params.set("build_quantity", String(opts.buildQuantity));
+  if (opts?.targetUnitCost) params.set("target_unit_cost", String(opts.targetUnitCost));
   const q = params.toString() ? `?${params}` : "";
   return apiJson<Record<string, unknown>>(`/tools/cost-optimization${q}`, { token });
+}
+
+export type CostOptimizationDecision = {
+  id: string;
+  analysis_id: string;
+  created_at: string;
+  title?: string;
+  reviewer?: string;
+  rationale?: string;
+  status?: string;
+  part_number?: string;
+  category?: string;
+  current_supplier?: string;
+  recommended_supplier?: string;
+  currency?: string;
+  estimated_net_savings?: number;
+};
+
+export async function listCostOptimizationDecisions(token: string, analysisId: string) {
+  const q = new URLSearchParams({ analysis_id: analysisId });
+  return apiJson<{ ok: boolean; decisions: CostOptimizationDecision[] }>(
+    `/tools/cost-optimization/decisions?${q}`,
+    { token },
+  );
+}
+
+export async function createCostOptimizationDecision(
+  token: string,
+  body: Record<string, unknown>,
+) {
+  return apiJson<{ ok: boolean; decision: CostOptimizationDecision }>(
+    "/tools/cost-optimization/decisions",
+    { method: "POST", token, body: JSON.stringify(body) },
+  );
 }
 
 export async function runSupplyRisk(
@@ -1282,6 +1339,35 @@ export async function runSupplyRisk(
     token,
     body: JSON.stringify(body),
   });
+}
+
+export type SavedSupplyScenario = {
+  id: string;
+  analysis_id: string;
+  created_at: string;
+  title: string;
+  mode?: string;
+  parameters?: Record<string, unknown>;
+  summary?: Record<string, unknown>;
+  scenario?: Record<string, unknown>;
+};
+
+export async function listSupplyRiskScenarios(token: string, analysisId: string) {
+  const q = new URLSearchParams({ analysis_id: analysisId });
+  return apiJson<{ ok: boolean; scenarios: SavedSupplyScenario[] }>(
+    `/tools/supply-risk/scenarios?${q}`,
+    { token },
+  );
+}
+
+export async function saveSupplyRiskScenario(
+  token: string,
+  body: Record<string, unknown>,
+) {
+  return apiJson<{ ok: boolean; scenario: SavedSupplyScenario }>(
+    "/tools/supply-risk/scenarios",
+    { method: "POST", token, body: JSON.stringify(body) },
+  );
 }
 
 export async function fetchPortfolio(token: string) {

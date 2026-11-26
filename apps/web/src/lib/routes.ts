@@ -158,7 +158,7 @@ export const PAGE_META: Record<string, PageMeta> = {
     title: "Cost Optimization",
     eyebrow: "Price harmonization",
     description:
-      "Review saved sample prices and model volume opportunities; supplier prices are not live quotes.",
+      "Find savings at your build volume while keeping sourcing risk visible.",
   },
   supply: {
     icon: "supply",

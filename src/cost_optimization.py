@@ -88,9 +88,12 @@ def build_cost_optimization(
     analyses: Iterable[Dict[str, Any]],
     parts: Iterable[Dict[str, Any]],
     build_quantity: int = 100,
+    target_unit_cost: float | None = None,
 ) -> Dict[str, Any]:
     analyses = list(analyses or [])
     parts = list(parts or [])
+    build_qty = max(1, int(build_quantity or 1))
+    target = _optional_number(target_unit_cost)
 
     analysis_lookup = {
         _text(row.get("id")): _text(
@@ -100,48 +103,92 @@ def build_cost_optimization(
         for row in analyses
     }
 
-    from src.saved_bom_cost import normalize_saved_offers, select_supplier_offer, distributor_comparison, extended_cost
+    from src.saved_bom_cost import normalize_saved_offers, select_supplier_offer
+    from src.normalizer import normalize_part_number
+
+    def identity(part_number: str, manufacturer: str, index: int) -> tuple[str, str]:
+        normalized_mpn = normalize_part_number(part_number)
+        if not normalized_mpn or normalized_mpn in {"UNKNOWN", "N/A"}:
+            normalized_mpn = f"__row_{index}"
+        return normalized_mpn, manufacturer.casefold()
+
+    demand_by_identity: Dict[tuple[str, str], int] = defaultdict(int)
+    for index, row in enumerate(parts):
+        part_number = _text(_first(row, "mpn", "MPN", "part_number"), "Unknown")
+        manufacturer = _text(row.get("manufacturer"), "Unknown")
+        qty = max(0, int(_number(_first(
+            row, "effective_quantity", "Effective Quantity", "quantity", "Quantity", "qty", "required_quantity"
+        ), 0)))
+        demand_by_identity[identity(part_number, manufacturer, index)] += qty * build_qty
 
     normalized: List[Dict[str, Any]] = []
-    for row in parts:
+    for index, row in enumerate(parts):
         analysis_id = _text(row.get("analysis_id"))
-        raw_qty = _number(_first(row, "effective_quantity", "Effective Quantity", "quantity", "Quantity", "qty", "required_quantity"), 0)
+        raw_qty = _number(_first(
+            row, "effective_quantity", "Effective Quantity", "quantity", "Quantity", "qty", "required_quantity"
+        ), 0)
         qty = max(0, int(raw_qty))
         part_number = _text(_first(row, "mpn", "MPN", "part_number"), "Unknown")
+        manufacturer = _text(row.get("manufacturer"), "Unknown")
+        order_qty = demand_by_identity[identity(part_number, manufacturer, index)]
         raw_offers = _first(row, "supplier_offers", "Supplier Offers", default=[])
         offers = normalize_saved_offers(raw_offers, mpn=part_number)
-        quantity_offers = []
+
+        all_verified_offers = []
         for offer in offers:
-            selected = select_supplier_offer(
+            verified = select_supplier_offer(
                 [offer],
                 mpn=part_number,
                 supplier=str(offer.get("distributor") or ""),
                 unit_price=offer.get("unit_price"),
                 currency=offer.get("currency"),
-                quantity=qty if qty > 0 else None,
+                quantity=None,
             )
-            if selected and selected.get("quantity_break_applies") is True:
-                quantity_offers.append(selected)
-        selected_supplier = _text(_first(row, "price_source", "Price Source", "primary_supplier", "supplier", "best_source"))
+            if verified:
+                all_verified_offers.append(verified)
+
+        quantity_offers = []
+        for offer in all_verified_offers:
+            applicable = select_supplier_offer(
+                [offer],
+                mpn=part_number,
+                supplier=str(offer.get("distributor") or ""),
+                unit_price=offer.get("unit_price"),
+                currency=offer.get("currency"),
+                quantity=order_qty if order_qty > 0 else None,
+            )
+            if applicable and applicable.get("quantity_break_applies") is True:
+                quantity_offers.append(applicable)
+
+        selected_supplier = _text(_first(
+            row, "price_source", "Price Source", "primary_supplier", "supplier", "best_source"
+        ))
         raw_price = _first(row, "unit_price", "Unit Price", "price", "best_price")
-        raw_currency = _text(_first(row, "unit_price_currency", "Unit Price Currency", "currency", "Currency")).upper()
-        matched_current = select_supplier_offer(
+        raw_currency = _text(_first(
+            row, "unit_price_currency", "Unit Price Currency", "currency", "Currency"
+        )).upper()
+        current_quote = select_supplier_offer(
             quantity_offers,
             mpn=part_number,
             supplier=selected_supplier,
-            unit_price=raw_price,
+            unit_price=raw_price if raw_price not in (None, "") else None,
             currency=raw_currency,
-            quantity=qty if qty > 0 else None,
-        ) if raw_price not in (None, "") else None
-        current_quote = matched_current or min(
-            quantity_offers,
-            key=lambda offer: float(offer["unit_price"]),
-            default=None,
+            quantity=order_qty if order_qty > 0 else None,
         )
+        if current_quote is None and not selected_supplier:
+            current_quote = min(
+                quantity_offers,
+                key=lambda offer: float(offer["unit_price"]),
+                default=None,
+            )
+
         unit_price = float(current_quote["unit_price"]) if current_quote else 0.0
         currency = str(current_quote.get("currency") or "") if current_quote else ""
         verified_supplier = str(current_quote.get("distributor") or "") if current_quote else ""
-        suppliers = len({str(offer.get("distributor") or "").casefold() for offer in quantity_offers})
+        suppliers = len({
+            str(offer.get("distributor") or "").casefold()
+            for offer in quantity_offers
+        })
         stock_value = _verified_stock(row, part_number)
         stock = int(stock_value) if stock_value is not None else None
         from src.risk_engine import calculate_risk
@@ -153,22 +200,10 @@ def build_cost_optimization(
             "",
         )
         category = _text(
-            _first(
-                row,
-                "category_raw",
-                "category",
-                "part_category",
-                "component_category",
-                "device_type",
-            ),
+            _first(row, "category_raw", "category", "part_category", "component_category", "device_type"),
             "",
         )
-        manufacturer = _text(row.get("manufacturer"), "Unknown")
-        image_context = {
-            "description": description,
-            "category": category,
-            "manufacturer": manufacturer,
-        }
+        image_context = {"description": description, "category": category, "manufacturer": manufacturer}
         for key in (
             "package", "package_type", "package type", "package_case",
             "case_package", "case", "mounting_type", "mounting type",
@@ -185,125 +220,293 @@ def build_cost_optimization(
             size=48,
             part=image_context,
         )
-        normalized.append(
-            {
-                "Analysis ID": analysis_id,
-                "Project": analysis_lookup.get(
-                    analysis_id,
-                    _text(row.get("project_name"), "Saved BOM"),
-                ),
-                "Part Number": part_number,
-                "Description": description,
-                "Component Category": category,
-                "Image URL": image_url,
-                "Image Context": image_context,
-                "Manufacturer": manufacturer,
-                "Supplier": verified_supplier or "Not recorded",
-                "Quantity per Build": qty,
-                "Unit Price": unit_price,
-                "Currency": currency,
-                "Extended Cost per Build": extended_cost(unit_price, qty),
-                "Supplier Sources": suppliers,
-                "Available Stock": stock,
-                "Lifecycle": _text(row.get("lifecycle_status"), "Unknown"),
-                "Risk Score": risk_score,
-                "Verified Offers": quantity_offers,
-            }
-        )
-    priced = [row for row in normalized if row["Unit Price"] > 0 and row["Currency"]]
+        normalized.append({
+            "Analysis ID": analysis_id,
+            "Project": analysis_lookup.get(analysis_id, _text(row.get("project_name"), "Saved BOM")),
+            "Part Number": part_number,
+            "Description": description,
+            "Component Category": category,
+            "Image URL": image_url,
+            "Image Context": image_context,
+            "Manufacturer": manufacturer,
+            "Supplier": verified_supplier or "Not verified",
+            "Price Source": verified_supplier or "",
+            "Price Retrieved At": str(current_quote.get("retrieved_at") or "") if current_quote else "",
+            "Price Source URL": str(current_quote.get("product_url") or "") if current_quote else "",
+            "Quantity per Build": qty,
+            "Order Quantity": order_qty,
+            "Unit Price": unit_price if current_quote else None,
+            "Currency": currency,
+            "Extended Cost per Build": unit_price * qty if current_quote else None,
+            "Extended Cost at Build Quantity": unit_price * qty * build_qty if current_quote else None,
+            "Supplier Sources": suppliers,
+            "Available Stock": stock,
+            "Lifecycle": _text(row.get("lifecycle_status"), "Unknown"),
+            "Risk Score": risk_score,
+            "Verified Offers": quantity_offers,
+            "All Verified Offers": all_verified_offers,
+            "_Identity": identity(part_number, manufacturer, index),
+        })
+
+    priced = [
+        row for row in normalized
+        if row["Unit Price"] is not None and row["Unit Price"] > 0 and row["Currency"]
+    ]
     missing_price = [row for row in normalized if row not in priced]
     currencies = {row["Currency"] for row in priced}
-    current_cost_per_build = (
-        sum(float(row["Extended Cost per Build"] or 0) for row in priced)
-        if (
-            priced
-            and len(priced) == len(normalized)
-            and len(currencies) == 1
-            and all(row["Extended Cost per Build"] is not None for row in priced)
-        )
+    priced_per_build = {
+        code: sum(float(row["Extended Cost per Build"] or 0) for row in priced if row["Currency"] == code)
+        for code in sorted(currencies)
+    }
+    priced_run_cost = {
+        code: total * build_qty for code, total in priced_per_build.items()
+    }
+    current_cost_per_build = next(iter(priced_per_build.values())) if len(priced_per_build) == 1 else None
+    production_run_cost = next(iter(priced_run_cost.values())) if len(priced_run_cost) == 1 else None
+    complete_cost_per_build = (
+        current_cost_per_build
+        if len(priced) == len(normalized) and len(currencies) == 1
         else None
     )
-    production_run_cost = current_cost_per_build * max(1, build_quantity) if current_cost_per_build is not None else None
-    pricing_coverage = (
-        round((len(priced) / max(1, len(normalized))) * 100)
-        if normalized else 0
-    )
+    pricing_coverage = round((len(priced) / max(1, len(normalized))) * 100) if normalized else 0
 
-    grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    grouped: Dict[tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
     for row in normalized:
-        grouped[row["Part Number"].upper()].append(row)
+        grouped[row["_Identity"]].append(row)
 
     opportunities: List[Dict[str, Any]] = []
-    for _, rows in grouped.items():
+    for rows in grouped.values():
         reference = rows[0]
-        project_count = len({row["Project"] for row in rows})
-        analysis_ids = {row["Analysis ID"] for row in rows if row["Analysis ID"]}
-        total_qty_per_build = sum(row["Quantity per Build"] for row in rows)
-        suppliers = max(row["Supplier Sources"] for row in rows)
-        risk_scores = [row["Risk Score"] for row in rows if row["Risk Score"] is not None]
+        required_qty = sum(int(row["Quantity per Build"]) for row in rows) * build_qty
+        if required_qty <= 0:
+            continue
+        valid_rows = [row for row in rows if row["Unit Price"] is not None and row["Currency"]]
+        if not valid_rows:
+            continue
+        quote_sources = {str(row["Supplier"]).casefold() for row in valid_rows if row["Supplier"] != "Not verified"}
+        quote_currencies = {str(row["Currency"]) for row in valid_rows}
+        if len(quote_sources) != 1 or len(quote_currencies) != 1 or len(valid_rows) != len(rows):
+            continue
+        current_sources = {str(row["Supplier"]).casefold() for row in valid_rows}
+        current_currencies = {str(row["Currency"]).upper() for row in valid_rows}
+        # A blended supplier/currency baseline is ambiguous. Do not imply a
+        # savings opportunity until those same-part BOM lines share one basis.
+        if len(current_sources) != 1 or len(current_currencies) != 1:
+            continue
+        current_source = valid_rows[0]["Supplier"]
+        current_currency = valid_rows[0]["Currency"]
+        current_offers = [offer for row in rows for offer in row["All Verified Offers"]]
+        risk_scores = [int(row["Risk Score"]) for row in rows if row["Risk Score"] is not None]
         risk_score = max(risk_scores) if risk_scores else None
-        stock_values = [row["Available Stock"] for row in rows if row["Available Stock"] is not None]
-        stock = min(stock_values) if stock_values else None
-        exact_offers = [offer for row in rows for offer in row["Verified Offers"]]
-        if total_qty_per_build <= 0 or len({str(offer.get("distributor") or "").casefold() for offer in exact_offers}) < 2:
-            continue
-        comparison_quantity = total_qty_per_build * max(1, build_quantity)
-        comparison = distributor_comparison(
-            exact_offers,
+        lifecycle_values = list(dict.fromkeys(str(row.get("Lifecycle") or "Unknown") for row in rows))
+        lifecycle_risk = any(
+            any(term in value.casefold() for term in ("obsolete", "replacement", "nrnd", "not recommended", "eol"))
+            for value in lifecycle_values
+        )
+        stock_values = [int(row["Available Stock"]) for row in rows if row["Available Stock"] is not None]
+        recorded_stock = min(stock_values) if stock_values else None
+        quote_source_count = max((int(row["Supplier Sources"] or 0) for row in rows), default=0)
+        risk_context_parts = []
+        if lifecycle_risk:
+            risk_context_parts.append("Lifecycle: " + ", ".join(lifecycle_values))
+        elif any(value.casefold() in {"", "unknown", "not reported", "n/a"} for value in lifecycle_values):
+            risk_context_parts.append("Lifecycle status unknown")
+        else:
+            risk_context_parts.append("Recorded lifecycle: " + ", ".join(lifecycle_values))
+        if recorded_stock is None:
+            risk_context_parts.append("Stock availability not verified")
+        elif recorded_stock < required_qty:
+            risk_context_parts.append(f"Recorded stock {recorded_stock:,} is below order quantity {required_qty:,}")
+        else:
+            risk_context_parts.append(f"Recorded stock {recorded_stock:,} covers order quantity")
+        risk_context_parts.append(f"{quote_source_count} current authorized price source(s) recorded")
+        if risk_score is not None:
+            risk_context_parts.append(f"Saved BOM risk score {risk_score}")
+        risk_context = "; ".join(risk_context_parts)
+        if lifecycle_risk or (risk_score is not None and risk_score >= 70):
+            risk_label = "High risk"
+        elif (
+            recorded_stock is None
+            or risk_score is None
+            or any(value.casefold() in {"", "unknown", "not reported", "n/a"} for value in lifecycle_values)
+        ):
+            risk_label = "Needs verification"
+        elif risk_score >= 40 or recorded_stock < required_qty:
+            risk_label = "Review"
+        else:
+            risk_label = "No elevated signal recorded"
+        def opportunity_risk(offer: Dict[str, Any], purchase_qty: int) -> tuple[str, str]:
+            """Add exact-source inventory/lead-time evidence to the BOM risk context."""
+            offer_stock = _optional_number(offer.get("stock"))
+            offer_lead = _optional_number(offer.get("lead_time_weeks"))
+            details = [risk_context]
+            if offer_stock is None:
+                details.append(f"{offer.get('distributor') or current_source} stock not recorded at this price snapshot")
+            elif offer_stock < purchase_qty:
+                details.append(
+                    f"{offer.get('distributor') or current_source} reported stock "
+                    f"{int(offer_stock):,} is below purchase quantity {purchase_qty:,}"
+                )
+            else:
+                details.append(
+                    f"{offer.get('distributor') or current_source} reported stock "
+                    f"{int(offer_stock):,} covers purchase quantity {purchase_qty:,}"
+                )
+            if offer_lead is not None:
+                details.append(f"Saved supplier lead time: {offer_lead:g} weeks")
+            if lifecycle_risk or (risk_score is not None and risk_score >= 70):
+                label = "High risk"
+            elif risk_label == "Needs verification" or offer_stock is None:
+                label = "Needs verification"
+            elif risk_label == "Review" or offer_stock < purchase_qty:
+                label = "Review"
+            else:
+                label = "No elevated signal recorded"
+            return label, "; ".join(details)
+
+        source_offer = select_supplier_offer(
+            current_offers,
             mpn=reference["Part Number"],
-            bom_quantity=comparison_quantity,
+            supplier=current_source,
+            currency=current_currency,
+            quantity=required_qty,
         )
-        if comparison.get("savings_per_unit") is None:
+        if not source_offer:
             continue
-        unit_price = float(comparison["higher_price"])
-        target_price = float(comparison["lower_price"])
-        currency = str(comparison.get("currency") or "")
-        estimated_savings = float(comparison["savings_per_unit"]) * comparison_quantity
-        savings_rate = (unit_price - target_price) / unit_price if unit_price > 0 else 0
-        category = "Comparable supplier quote"
-        reason = (
-            f"Exact-MPN snapshots from {comparison['higher_distributor']} and "
-            f"{comparison['lower_distributor']} differ by {currency} "
-            f"{float(comparison['savings_per_unit']):,.4g} per unit at quantity {comparison_quantity:,}. "
-            "Catalog snapshots are not checkout quotes; freight, tax, MOQ, and qualification are excluded."
-        )
-        opportunities.append(
-            {
+        baseline_price = float(source_offer["unit_price"])
+        baseline_total = baseline_price * required_qty
+        seen = set()
+
+        offers_by_source: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for offer in current_offers:
+            offers_by_source[str(offer.get("distributor") or "")].append(offer)
+
+        for supplier, supplier_offers in offers_by_source.items():
+            if supplier.casefold() == current_source.casefold():
+                continue
+            alternate_quote = select_supplier_offer(
+                supplier_offers,
+                mpn=reference["Part Number"],
+                supplier=supplier,
+                currency=current_currency,
+                quantity=required_qty,
+            )
+            if not alternate_quote or float(alternate_quote["unit_price"]) >= baseline_price:
+                continue
+            savings = baseline_total - float(alternate_quote["unit_price"]) * required_qty
+            if savings <= 0:
+                continue
+            alternate_risk_label, alternate_risk_context = opportunity_risk(alternate_quote, required_qty)
+            key = ("source", supplier.casefold(), float(alternate_quote["unit_price"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            opportunities.append({
                 "Part Number": reference["Part Number"],
-                "Analysis ID": reference["Analysis ID"] if len(analysis_ids) == 1 else "",
-                "Project": reference["Project"] if len(analysis_ids) == 1 else "",
+                "Analysis ID": reference["Analysis ID"],
+                "Project": reference["Project"],
                 "Description": reference["Description"],
                 "Component Category": reference["Component Category"],
                 "Image URL": reference["Image URL"],
                 "Image Context": reference["Image Context"],
                 "Manufacturer": reference["Manufacturer"],
-                "Category": category,
-                "Projects": project_count,
-                "Units per Build": total_qty_per_build,
-                "Current Unit Price": unit_price,
-                "Estimated Target Price": target_price,
-                "Estimated Run Savings": estimated_savings,
-                "Savings Rate": savings_rate,
-                "Currency": currency,
-                "Supplier Sources": suppliers,
-                "Lowest Stock": stock,
+                "Category": "Cheaper authorized source",
+                "Supplier": supplier,
+                "Current Supplier": current_source,
+                "Projects": 1,
+                "Units per Build": sum(int(row["Quantity per Build"]) for row in rows),
+                "Required Order Quantity": required_qty,
+                "Current Unit Price": baseline_price,
+                "Estimated Target Price": float(alternate_quote["unit_price"]),
+                "Estimated Run Savings": savings,
+                "Savings Rate": (baseline_price - float(alternate_quote["unit_price"])) / baseline_price if baseline_price else 0,
+                "Currency": current_currency,
+                "Current Price Retrieved At": source_offer.get("retrieved_at"),
+                "Target Price Retrieved At": alternate_quote.get("retrieved_at"),
+                "Price Source URL": alternate_quote.get("product_url"),
+                "Extra Quantity": 0,
                 "Risk Score": risk_score,
-                "Reason": reason,
-            }
-        )
+                "Risk Label": alternate_risk_label,
+                "Risk Context": alternate_risk_context,
+                "Reason": (
+                    f"{supplier} has a current exact-MPN saved price of {current_currency} "
+                    f"{float(alternate_quote['unit_price']):,.4g} at order quantity {required_qty:,}, "
+                    f"versus {current_source} at {current_currency} {baseline_price:,.4g}. "
+                    "Confirm the supplier quote, freight, tax, MOQ, and availability before acting."
+                ),
+            })
 
-    opportunities.sort(
-        key=lambda row: (
-            -row["Estimated Run Savings"],
-            -(row["Risk Score"] if row["Risk Score"] is not None else -1),
-        )
-    )
+        for offer in current_offers:
+            if str(offer.get("distributor") or "").casefold() != current_source.casefold():
+                continue
+            if str(offer.get("currency") or "").upper() != current_currency:
+                continue
+            threshold = offer.get("price_break_quantity")
+            if threshold is None:
+                continue
+            try:
+                purchase_qty = int(float(threshold))
+                tier_price = float(offer.get("unit_price") or 0)
+            except (TypeError, ValueError):
+                continue
+            if purchase_qty <= required_qty or tier_price <= 0 or tier_price >= baseline_price:
+                continue
+            savings = baseline_total - tier_price * purchase_qty
+            if savings <= 0:
+                continue
+            break_risk_label, break_risk_context = opportunity_risk(offer, purchase_qty)
+            key = ("break", current_source.casefold(), purchase_qty, tier_price)
+            if key in seen:
+                continue
+            seen.add(key)
+            opportunities.append({
+                "Part Number": reference["Part Number"],
+                "Analysis ID": reference["Analysis ID"],
+                "Project": reference["Project"],
+                "Description": reference["Description"],
+                "Component Category": reference["Component Category"],
+                "Image URL": reference["Image URL"],
+                "Image Context": reference["Image Context"],
+                "Manufacturer": reference["Manufacturer"],
+                "Category": "Price break",
+                "Supplier": current_source,
+                "Current Supplier": current_source,
+                "Projects": 1,
+                "Units per Build": sum(int(row["Quantity per Build"]) for row in rows),
+                "Required Order Quantity": required_qty,
+                "Current Unit Price": baseline_price,
+                "Estimated Target Price": tier_price,
+                "Estimated Run Savings": savings,
+                "Savings Rate": (baseline_price - tier_price) / baseline_price if baseline_price else 0,
+                "Currency": current_currency,
+                "Current Price Retrieved At": source_offer.get("retrieved_at"),
+                "Target Price Retrieved At": offer.get("retrieved_at"),
+                "Price Source URL": offer.get("product_url"),
+                "Extra Quantity": purchase_qty - required_qty,
+                "Recommended Purchase Quantity": purchase_qty,
+                "Risk Score": risk_score,
+                "Risk Label": break_risk_label,
+                "Risk Context": break_risk_context,
+                "Reason": (
+                    f"Ordering {purchase_qty:,} units from {current_source} reaches a saved exact-MPN "
+                    f"price break of {current_currency} {tier_price:,.4g}; after the extra "
+                    f"{purchase_qty - required_qty:,} units, estimated net savings are "
+                    f"{current_currency} {savings:,.2f}. Confirm the break and inventory with the supplier."
+                ),
+            })
 
-    savings_currencies = {row["Currency"] for row in opportunities}
+    opportunities.sort(key=lambda row: (-row["Estimated Run Savings"], row["Part Number"]))
+    best_by_part: Dict[tuple[str, str], Dict[str, Any]] = {}
+    for row in opportunities:
+        key = identity(str(row["Part Number"]), str(row.get("Manufacturer") or ""), len(best_by_part))
+        if key not in best_by_part:
+            best_by_part[key] = row
+    savings_currencies = {row["Currency"] for row in best_by_part.values()}
     estimated_savings = (
-        sum(row["Estimated Run Savings"] for row in opportunities)
-        if opportunities and len(savings_currencies) == 1
-        else 0.0 if not opportunities else None
+        sum(float(row["Estimated Run Savings"]) for row in best_by_part.values())
+        if best_by_part and len(savings_currencies) == 1
+        else 0.0 if not best_by_part
+        else None
     )
     estimated_optimized_cost = (
         max(0.0, production_run_cost - estimated_savings)
@@ -312,71 +515,97 @@ def build_cost_optimization(
         else None
     )
 
+    drivers: Dict[tuple[str, str, str], Dict[str, Any]] = {}
+    for row in priced:
+        key = (row["Part Number"].casefold(), row["Manufacturer"].casefold(), row["Currency"])
+        driver = drivers.get(key)
+        if driver is None:
+            driver = {
+                **{name: value for name, value in row.items() if name not in {"Verified Offers", "All Verified Offers", "_Identity"}},
+                "Quantity per Build": 0,
+                "Extended Cost per Build": 0.0,
+                "Extended Cost at Build Quantity": 0.0,
+                "Supplier Sources": 0,
+            }
+            drivers[key] = driver
+        driver["Quantity per Build"] += int(row["Quantity per Build"])
+        driver["Extended Cost per Build"] += float(row["Extended Cost per Build"] or 0)
+        driver["Extended Cost at Build Quantity"] += float(row["Extended Cost at Build Quantity"] or 0)
+        driver["Supplier Sources"] = max(driver["Supplier Sources"], int(row["Supplier Sources"] or 0))
     top_cost_parts = []
     for currency_code in sorted(currencies):
-        top_cost_parts.extend(
-            sorted(
-                [
-                    row for row in priced
-                    if row["Currency"] == currency_code
-                    and row["Extended Cost per Build"] is not None
-                ],
-                key=lambda row: -row["Extended Cost per Build"],
-            )[:10]
-        )
+        top_cost_parts.extend(sorted(
+            [row for row in drivers.values() if row["Currency"] == currency_code],
+            key=lambda row: -float(row["Extended Cost at Build Quantity"] or 0),
+        )[:5])
 
     sourcing_risk_cost = sum(
-        float(row["Extended Cost per Build"] or 0) * max(1, build_quantity)
+        float(row["Extended Cost at Build Quantity"] or 0)
         for row in priced
-        if row["Extended Cost per Build"] is not None
-        and (row["Supplier Sources"] <= 1 or (row["Available Stock"] is not None and row["Available Stock"] <= 0))
+        if row["Supplier Sources"] <= 1
+        or (row["Available Stock"] is not None and row["Available Stock"] <= 0)
     ) if len(currencies) == 1 else None
 
     recommendations = []
     if opportunities:
         top = opportunities[0]
         recommendations.append(
-            f"Start with {top['Part Number']}: the estimated production-run savings opportunity "
-            f"is {_format_money(top['Estimated Run Savings'], top['Currency'])} based on saved distributor snapshots, not a confirmed checkout quote."
+            f"Review {top['Part Number']}: the best estimated saving is "
+            f"{_format_money(top['Estimated Run Savings'], top['Currency'])} at the stated build quantity."
         )
     if missing_price:
         recommendations.append(
-            f"Add current pricing for {len(missing_price)} component record(s) to improve "
-            "cost-analysis coverage."
+            f"Add current pricing for {len(missing_price)} component line(s); the subtotal is partial until these are priced."
         )
     if sourcing_risk_cost is not None and sourcing_risk_cost > 0:
         recommendations.append(
-            f"{_format_money(sourcing_risk_cost, next(iter(currencies)))} of recorded production-run spend is attached to "
+            f"{_format_money(sourcing_risk_cost, next(iter(currencies)))} of priced production spend is attached to "
             "single-source or no-stock records."
         )
     if not recommendations:
-        recommendations.append(
-            "No clear cost-reduction opportunity is available from the currently recorded pricing."
-        )
+        recommendations.append("No verified price reduction is available from the saved supplier evidence.")
 
     return {
-        "rows": normalized,
-        "priced_rows": priced,
-        "missing_price_rows": missing_price,
+        "rows": [{key: value for key, value in row.items() if not key.startswith("_")} for row in normalized],
+        "priced_rows": [{key: value for key, value in row.items() if not key.startswith("_")} for row in priced],
+        "missing_price_rows": [{key: value for key, value in row.items() if not key.startswith("_")} for row in missing_price],
         "opportunities": opportunities,
         "top_cost_parts": top_cost_parts,
-        "build_quantity": max(1, build_quantity),
+        "build_quantity": build_qty,
+        "target_unit_cost": target,
+        "target_cost_gap": (
+            current_cost_per_build - target
+            if target is not None and complete_cost_per_build is not None
+            else None
+        ),
         "current_cost_per_build": current_cost_per_build,
+        "complete_cost_per_build": complete_cost_per_build,
         "production_run_cost": production_run_cost,
         "estimated_savings": estimated_savings,
         "estimated_optimized_cost": estimated_optimized_cost,
         "currency": next(iter(currencies)) if len(currencies) == 1 else "",
         "currencies": sorted(currencies),
-        "mixed_currency_totals": {
-            code: sum(float(row["Extended Cost per Build"] or 0) for row in priced if row["Currency"] == code) * max(1, build_quantity)
-            for code in sorted(currencies)
-        },
+        "priced_subtotals_per_build": priced_per_build,
+        "priced_subtotals_at_build_quantity": priced_run_cost,
+        "mixed_currency_totals": priced_run_cost,
         "pricing_coverage": pricing_coverage,
+        "priced_component_count": len(priced),
+        "missing_component_count": len(missing_price),
         "sourcing_risk_cost": sourcing_risk_cost,
         "recommendations": recommendations[:4],
         "project_count": len(analyses),
         "component_count": len(normalized),
     }
+
+
+def _optional_number(value: Any) -> float | None:
+    if value is None or str(value).strip().casefold() in {"", "nan", "none", "<na>"}:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if pd.notna(number) else None
 
 
 def _css() -> None:

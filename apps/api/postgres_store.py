@@ -80,7 +80,7 @@ class PostgresWorkspaceStore:
         with _LOCK:
             with self._connect() as conn:
                 conn.execute(
-                    "TRUNCATE migration_procurement_quotes, migration_decision_records, migration_reports, migration_analyses, "
+                    "TRUNCATE migration_cost_decisions, migration_supply_scenarios, migration_procurement_quotes, migration_decision_records, migration_reports, migration_analyses, "
                     "migration_revisions, migration_boms, migration_projects, migration_ai_credit_usage "
                     "CASCADE"
                 )
@@ -610,6 +610,114 @@ class PostgresWorkspaceStore:
             "record": dict(record) if isinstance(record, dict) else {},
             "expires_at": expires.isoformat() if hasattr(expires, "isoformat") else expires,
         }
+
+    def create_cost_decision(
+        self, decision: dict[str, Any], *, workspace_id: str
+    ) -> dict[str, Any]:
+        """Persist a cost/sourcing decision snapshot against its saved BOM."""
+        wid = self._require_workspace(workspace_id)
+        analysis_id = str(decision.get("analysis_id") or "").strip()
+        if not analysis_id or not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id or 'unknown'} was not found")
+        saved = dict(json_safe(decision))
+        decision_id = str(saved.get("id") or uuid.uuid4())
+        created_at = str(saved.get("created_at") or _now())
+        saved.update({
+            "id": decision_id,
+            "analysis_id": analysis_id,
+            "workspace_id": wid,
+            "created_at": created_at,
+        })
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO migration_cost_decisions
+                  (id, workspace_id, analysis_id, created_at, payload)
+                VALUES (%s, %s, %s, %s, %s::jsonb)
+                """,
+                (decision_id, wid, analysis_id, created_at, json.dumps(saved)),
+            )
+            conn.commit()
+        return saved
+
+    def list_cost_decisions(
+        self, *, workspace_id: str, analysis_id: str
+    ) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        aid = str(analysis_id or "").strip()
+        if not aid or not self.get_report(aid, workspace_id=wid):
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT payload FROM migration_cost_decisions
+                WHERE workspace_id = %s AND analysis_id = %s
+                ORDER BY created_at DESC
+                """,
+                (wid, aid),
+            ).fetchall()
+        records = []
+        for row in rows:
+            payload = row["payload"]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            if isinstance(payload, dict):
+                records.append(dict(payload))
+        return records
+
+    def create_supply_scenario(
+        self, scenario: dict[str, Any], *, workspace_id: str
+    ) -> dict[str, Any]:
+        """Persist an immutable supply scenario linked to its saved BOM report."""
+        wid = self._require_workspace(workspace_id)
+        analysis_id = str(scenario.get("analysis_id") or "").strip()
+        if not analysis_id or not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id or 'unknown'} was not found")
+        saved = dict(json_safe(scenario))
+        scenario_id = str(saved.get("id") or uuid.uuid4())
+        created_at = str(saved.get("created_at") or _now())
+        saved.update({
+            "id": scenario_id,
+            "analysis_id": analysis_id,
+            "workspace_id": wid,
+            "created_at": created_at,
+        })
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO migration_supply_scenarios
+                  (id, workspace_id, analysis_id, created_at, payload)
+                VALUES (%s, %s, %s, %s, %s::jsonb)
+                """,
+                (scenario_id, wid, analysis_id, created_at, json.dumps(saved)),
+            )
+            conn.commit()
+        return saved
+
+    def list_supply_scenarios(
+        self, *, workspace_id: str, analysis_id: str
+    ) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        aid = str(analysis_id or "").strip()
+        if not aid or not self.get_report(aid, workspace_id=wid):
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT payload FROM migration_supply_scenarios
+                WHERE workspace_id = %s AND analysis_id = %s
+                ORDER BY created_at DESC
+                """,
+                (wid, aid),
+            ).fetchall()
+        records = []
+        for row in rows:
+            payload = row["payload"]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            if isinstance(payload, dict):
+                records.append(dict(payload))
+        return records
 
     def create_developer_webhook(self, row: dict[str, Any]) -> dict[str, Any]:
         wid = self._require_workspace(str(row.get("workspace_id") or ""))
