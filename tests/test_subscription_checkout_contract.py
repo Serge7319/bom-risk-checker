@@ -44,6 +44,16 @@ class SubscriptionCheckoutContractTests(unittest.TestCase):
             admin_gate,
         )
 
+    def test_ask_credit_packs_are_available_to_all_signed_in_accounts(self):
+        source = (ROOT / "supabase/functions/subscription-checkout/index.ts").read_text(encoding="utf-8")
+        self.assertIn("addons: await addonCatalog(true)", source)
+        self.assertIn('action === "usage_overage_checkout"', source)
+        self.assertIn('String(body.credit_kind || "").trim() === "ask_cadivor"', source)
+        self.assertNotIn('code: "ask_credit_packs_unavailable"', source)
+        self.assertNotIn("Ask Cadivor credit-pack purchases are temporarily unavailable.", source)
+        # Admins remain barred from individual subscription and other add-on checkout.
+        self.assertIn("if (isPlatformAdministrator && !isAskCreditPackCheckout)", source)
+
     def test_settings_renders_nested_plan_usage_and_surfaces_support_reference(self):
         source = (ROOT / "apps/web/src/app/settings/page.tsx").read_text(encoding="utf-8")
         self.assertIn("function usageFacts(value: unknown)", source)
