@@ -261,7 +261,10 @@ function CostOptimizationInner() {
   const currency = String(opt.currency || "");
   const partial = pricedCount < componentCount;
   const subtotalPerBoard = opt.current_cost_per_build;
-  const runSubtotal = opt.production_run_cost;
+  const partialRunSubtotals = (opt.priced_subtotals_at_build_quantity || {}) as Record<string, unknown>;
+  const runSubtotal = partial
+    ? currency ? partialRunSubtotals[currency] : null
+    : opt.production_run_cost;
   const targetGap = opt.target_cost_gap;
   const enteredTarget = Number(targetCost);
   const normalizedEnteredTarget =

@@ -47,6 +47,7 @@ function SupplyRiskInner() {
     () => (searchParams.get("analysis_id") || "").trim(),
     [searchParams],
   );
+  const requestedPortfolioScope = searchParams.get("scope") === "portfolio";
   const [stockReduction, setStockReduction] = useState(25);
   const [buildQty, setBuildQty] = useState(100);
   const [data, setData] = useState<Row | null>(null);
@@ -58,9 +59,15 @@ function SupplyRiskInner() {
   const [busy, setBusy] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeAnalysisId, setActiveAnalysisId] = useState("");
+  const [scopeSource, setScopeSource] = useState<"session" | "url">("session");
 
-  async function runScenario(analysisId: string, build = buildQty, reduction = stockReduction) {
-    if (!session || !analysisId) {
+  async function runScenario(
+    analysisId: string,
+    build = buildQty,
+    reduction = stockReduction,
+    portfolioScope = false,
+  ) {
+    if (!session || (!analysisId && !portfolioScope)) {
       setData(null);
       setBusy(false);
       return;
@@ -70,7 +77,7 @@ function SupplyRiskInner() {
     setSavedMessage("");
     try {
       const payload = await runSupplyRisk(session.access_token, {
-        analysis_id: analysisId,
+        ...(analysisId ? { analysis_id: analysisId } : {}),
         build_quantity: build,
         stock_reduction_percent: reduction,
         supplier_loss: 0,
@@ -79,10 +86,14 @@ function SupplyRiskInner() {
       });
       setData(payload);
       setActiveAnalysisId(String(payload.analysis_id || analysisId));
-      try {
-        const saved = await listSupplyRiskScenarios(session.access_token, analysisId);
-        setSavedScenarios(saved.scenarios || []);
-      } catch {
+      if (analysisId) {
+        try {
+          const saved = await listSupplyRiskScenarios(session.access_token, analysisId);
+          setSavedScenarios(saved.scenarios || []);
+        } catch {
+          setSavedScenarios([]);
+        }
+      } else {
         setSavedScenarios([]);
       }
     } catch (err) {
@@ -108,11 +119,15 @@ function SupplyRiskInner() {
             return bTime - aTime;
           });
         setReports(available);
-        const chosen = available.some((row) => String(row.id) === requestedAnalysisId)
-          ? requestedAnalysisId
-          : String(available[0]?.id || "");
+        const chosen = requestedPortfolioScope
+          ? ""
+          : available.some((row) => String(row.id) === requestedAnalysisId)
+            ? requestedAnalysisId
+            : String(available[0]?.id || "");
+        const chosenFromUrl = requestedPortfolioScope || Boolean(chosen && chosen === requestedAnalysisId);
+        setScopeSource(chosenFromUrl ? "url" : "session");
         setActiveAnalysisId(chosen);
-        if (!chosen) {
+        if (!chosen && !requestedPortfolioScope) {
           setData(null);
           setSavedScenarios([]);
           setBusy(false);
@@ -120,7 +135,7 @@ function SupplyRiskInner() {
         }
         try {
           const payload = await runSupplyRisk(session.access_token, {
-            analysis_id: chosen,
+            ...(chosen ? { analysis_id: chosen } : {}),
             build_quantity: buildQty,
             stock_reduction_percent: stockReduction,
             supplier_loss: 0,
@@ -131,14 +146,17 @@ function SupplyRiskInner() {
         } catch (err) {
           if (active) setError(err instanceof Error ? err.message : "The scenario could not be calculated.");
         }
-        try {
-          const saved = await listSupplyRiskScenarios(session.access_token, chosen);
-          if (active) setSavedScenarios(saved.scenarios || []);
-        } catch {
+        if (chosen) {
+          try {
+            const saved = await listSupplyRiskScenarios(session.access_token, chosen);
+            if (active) setSavedScenarios(saved.scenarios || []);
+          } catch {
+            if (active) setSavedScenarios([]);
+          }
+        } else {
           if (active) setSavedScenarios([]);
-        } finally {
-          if (active) setBusy(false);
         }
+        if (active) setBusy(false);
       })
       .catch((err) => {
         if (active) {
@@ -149,7 +167,7 @@ function SupplyRiskInner() {
       });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, requestedAnalysisId]);
+  }, [session, requestedAnalysisId, requestedPortfolioScope]);
 
   if (!session) return null;
   const scenario = (data?.scenario || {}) as Row;
@@ -174,7 +192,10 @@ function SupplyRiskInner() {
   const limiting = (scenario.limiting_part || null) as Row | null;
   const status = String(scenario.buildability_status || (inventoryAbsent ? "Unknown" : "At risk"));
   const report = reports.find((row) => String(row.id || "") === activeAnalysisId) || {};
-  const reportTitle = analysisLabel(report);
+  const portfolioScope = requestedPortfolioScope && !activeAnalysisId;
+  const scopeTitle = activeAnalysisId
+    ? scopeSource === "session" ? "Using the selected saved BOM" : "Scoped to selected analysis"
+    : "Portfolio-wide across saved analyses in this workspace";
   const replacementHref = (mpn: unknown, manufacturer: unknown) => {
     const query = new URLSearchParams({ analysis_id: activeAnalysisId, mpn: String(mpn || "") });
     if (manufacturer) query.set("manufacturer", String(manufacturer));
@@ -194,6 +215,14 @@ function SupplyRiskInner() {
   const scenarioMatchesInputs =
     Number(scenario.build_quantity) === buildQty &&
     Number(scenario.stock_reduction_percent) === stockReduction;
+
+  function clearAnalysisScope() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("analysis_id");
+    params.set("scope", "portfolio");
+    setScopeSource("url");
+    router.replace(`/supply-risk?${params.toString()}`, { scroll: false });
+  }
 
   async function onSaveScenario(event: FormEvent) {
     event.preventDefault();
@@ -220,12 +249,19 @@ function SupplyRiskInner() {
     <Shell session={session}>
       <PageHeader
         meta={PAGE_META.supply}
-        actions={activeAnalysisId ? <PrimaryLink href={`/reports/${encodeURIComponent(activeAnalysisId)}`}>Open selected report</PrimaryLink> : null}
+        actions={activeAnalysisId ? (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <PrimaryLink href={`/reports/${encodeURIComponent(activeAnalysisId)}`}>Open selected report</PrimaryLink>
+            <button type="button" className="cv-button" onClick={clearAnalysisScope}>
+              Clear analysis scope (portfolio-wide)
+            </button>
+          </div>
+        ) : null}
       />
       {data ? <EvidenceNotice gap={data.gap} /> : null}
       <form className="cv-card pad" style={{ marginBottom: 14 }} onSubmit={(event) => {
         event.preventDefault();
-        void runScenario(activeAnalysisId, buildQty, stockReduction);
+        void runScenario(activeAnalysisId, buildQty, stockReduction, portfolioScope);
       }}>
         <div className="cv-form-grid">
           <div className="cv-field">
@@ -237,17 +273,20 @@ function SupplyRiskInner() {
               onChange={(event) => {
                 const nextId = event.target.value;
                 setActiveAnalysisId(nextId);
+                setScopeSource("url");
                 setData(null);
                 setSavedScenarios([]);
                 setBusy(true);
                 setError("");
-                router.replace(
-                  nextId ? `/supply-risk?analysis_id=${encodeURIComponent(nextId)}` : "/supply-risk",
-                  { scroll: false },
-                );
+                const params = new URLSearchParams(searchParams.toString());
+                params.delete("analysis_id");
+                params.delete("scope");
+                if (nextId) params.set("analysis_id", nextId);
+                else params.set("scope", "portfolio");
+                router.replace(`/supply-risk?${params.toString()}`, { scroll: false });
               }}
             >
-              <option value="">Select a saved analysis</option>
+              <option value="">Portfolio-wide across saved analyses in this workspace</option>
               {reports.map((row) => {
                 const id = String(row.id || "");
                 return id ? <option key={id} value={id}>{analysisLabel(row)}</option> : null;
@@ -264,10 +303,10 @@ function SupplyRiskInner() {
           </div>
         </div>
         <p className="cv-small-note" style={{ marginTop: 10 }}>
-          {reportTitle} · Stock values come from the saved analysis fields; they are indicative and are not live supplier inventory or a guarantee. Stock source and observation date appear by part when recorded.
+          <strong>{scopeTitle}</strong> · {activeAnalysisId ? analysisLabel(report) : "Portfolio-wide across saved analyses in this workspace"} · Stock values come from saved analysis fields; they are indicative, not live supplier inventory or a guarantee. Stock source and observation date appear by part when recorded.
         </p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-          <button className="cv-button primary" type="submit" disabled={busy || !activeAnalysisId}>
+          <button className="cv-button primary" type="submit" disabled={busy || (!activeAnalysisId && !portfolioScope)}>
             {busy ? "Modeling…" : "Run scenario"}
           </button>
         </div>
@@ -283,7 +322,7 @@ function SupplyRiskInner() {
       {!busy && !reports.length ? (
         <EmptyState icon="risk" title="Analyze a BOM to start" body="Supply scenarios need one saved BOM to calculate part quantities and build capacity. Run a BOM analysis first." action={<PrimaryLink href="/bom-analyzer">Start BOM analysis</PrimaryLink>} />
       ) : null}
-      {!busy && reports.length > 0 && !activeAnalysisId ? (
+      {!busy && reports.length > 0 && !activeAnalysisId && !portfolioScope ? (
         <EmptyState icon="risk" title="Select a saved analysis" body="Choose the BOM to model before running a supply scenario." />
       ) : null}
 
@@ -309,8 +348,9 @@ function SupplyRiskInner() {
 
           {coverage !== "complete" ? (
             <div className="cv-notice" role="status" style={{ marginBottom: 14 }}>
+              <strong>Stock coverage gap — impact not fully established.</strong>{" "}
               {cleanUserText(String(coverageGap.message || "Stock evidence is incomplete."))}
-              {" "}Unknown stock is not treated as zero. The displayed ceiling uses only parts with recorded stock; missing stock could lower the actual build capacity.
+              {" "}Missing stock is not treated as zero. The displayed ceiling uses only parts with recorded stock; missing stock could lower the actual build capacity.
             </div>
           ) : null}
 
@@ -390,7 +430,7 @@ function SupplyRiskInner() {
             ) : <p className="cv-small-note">No BOM component records were found in the selected analysis.</p>}
           </section>
 
-          <section className="cv-card pad" style={{ marginBottom: 14 }}>
+          {activeAnalysisId ? <section className="cv-card pad" style={{ marginBottom: 14 }}>
             <div className="cv-section-heading cv-section-heading--card">
               <div><h2>Save scenario to this report</h2><p>Saved scenarios keep the input assumptions and result snapshot linked to the selected BOM.</p></div>
             </div>
@@ -426,7 +466,7 @@ function SupplyRiskInner() {
                 </div>
               </div>
             ) : null}
-          </section>
+          </section> : null}
         </>
       ) : null}
     </Shell>

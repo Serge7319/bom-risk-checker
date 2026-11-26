@@ -21,6 +21,10 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
             "description": "Ceramic capacitor",
             "category": "Ceramic capacitor",
             "package": "Radial through-hole",
+            "price_source": "Mouser",
+            "Best Source": "Mouser",
+            "Unit Price": 1.3125,
+            "unit_price": 1.3125,
         })
         intelligence = build_cost_optimization(
             [{"id": "analysis-1", "project_name": "Motor controller"}],
@@ -28,7 +32,7 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
             build_quantity=100,
         )
 
-        self.assertEqual(intelligence["production_run_cost"], 1250)
+        self.assertEqual(intelligence["production_run_cost"], 1312.5)
         self.assertEqual(intelligence["estimated_savings"], 62.5)
         self.assertEqual(intelligence["opportunities"][0]["Description"], "Ceramic capacitor")
         self.assertEqual(intelligence["opportunities"][0]["Component Category"], "Ceramic capacitor")
@@ -58,7 +62,7 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
         self.assertIn("CAP-100", markup)
         self.assertIn("$1.31", markup)
         self.assertIn("$62.50", markup)
-        self.assertIn("Comparable supplier quote", markup)
+        self.assertIn("Cheaper authorized source", markup)
         self.assertIn("Review status", markup)
         self.assertIn("Confirm quote", markup)
         self.assertIn("Find alternatives", markup)
@@ -81,7 +85,7 @@ class CostOptimizationWorkspaceTests(unittest.TestCase):
 
         self.assertIsNone(intelligence["production_run_cost"])
         self.assertEqual(intelligence["pricing_coverage"], 0)
-        self.assertEqual(intelligence["rows"][0]["Unit Price"], 0.0)
+        self.assertIsNone(intelligence["rows"][0]["Unit Price"])
         self.assertIsNone(intelligence["rows"][0]["Risk Score"])
 
     def test_partial_price_coverage_does_not_report_a_full_bom_run_cost(self):

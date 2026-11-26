@@ -421,9 +421,13 @@ def build_cost_optimization(
         code: total * build_qty for code, total in priced_per_build.items()
     }
     current_cost_per_build = next(iter(priced_per_build.values())) if len(priced_per_build) == 1 else None
-    production_run_cost = next(iter(priced_run_cost.values())) if len(priced_run_cost) == 1 else None
     complete_cost_per_build = (
         current_cost_per_build
+        if len(priced) == len(normalized) and len(currencies) == 1
+        else None
+    )
+    production_run_cost = (
+        next(iter(priced_run_cost.values()))
         if len(priced) == len(normalized) and len(currencies) == 1
         else None
     )
