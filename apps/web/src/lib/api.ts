@@ -1229,6 +1229,7 @@ export type ProcurementQuote = {
   stock?: number | null;
   lead_time_weeks?: number | null;
   valid_until?: string;
+  price_date?: string;
   source_url?: string;
   notes?: string;
   created_at: string;
@@ -1246,30 +1247,51 @@ export async function listProcurementQuotes(
   );
 }
 
-export async function createProcurementQuote(
-  token: string,
-  payload: {
-    analysis_id: string;
-    requested_mpn: string;
-    requested_manufacturer?: string;
-    supplier: string;
-    quote_reference?: string;
-    offered_mpn: string;
-    offered_manufacturer?: string;
-    currency?: string;
-    price_breaks?: Array<{ quantity: number; unit_price: number }>;
-    minimum_order_quantity?: number | null;
-    pack_quantity?: number | null;
-    stock?: number | null;
-    lead_time_weeks?: number | null;
-    valid_until?: string;
-    source_url?: string;
-    notes?: string;
-  },
-) {
+export type ProcurementQuoteInput = {
+  analysis_id: string;
+  requested_mpn: string;
+  requested_manufacturer?: string;
+  supplier: string;
+  quote_reference?: string;
+  offered_mpn: string;
+  offered_manufacturer?: string;
+  currency?: string;
+  price_breaks?: Array<{ quantity: number; unit_price: number }>;
+  minimum_order_quantity?: number | null;
+  pack_quantity?: number | null;
+  stock?: number | null;
+  lead_time_weeks?: number | null;
+  valid_until?: string;
+  price_date?: string;
+  source_url?: string;
+  notes?: string;
+};
+
+export async function createProcurementQuote(token: string, payload: ProcurementQuoteInput) {
   return apiJson<{ ok: boolean; quote: ProcurementQuote }>(
     "/tools/procurement/quotes",
     { method: "POST", token, body: JSON.stringify(payload) },
+  );
+}
+
+export async function createProcurementQuotesBulk(
+  token: string,
+  analysisId: string,
+  importBatchId: string,
+  quotes: Array<Omit<ProcurementQuoteInput, "analysis_id"> & { import_row_number: number }>,
+) {
+  return apiJson<{
+    ok: boolean;
+    analysis_id: string;
+    saved_count: number;
+    quotes: ProcurementQuote[];
+  }>(
+    "/tools/procurement/quotes/bulk",
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify({ analysis_id: analysisId, import_batch_id: importBatchId, quotes }),
+    },
   );
 }
 

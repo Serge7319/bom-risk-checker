@@ -867,6 +867,37 @@ class WorkspaceStore:
             self.save()
             return dict(saved)
 
+    def create_procurement_quotes(
+        self, quotes: list[dict[str, Any]], *, workspace_id: str
+    ) -> list[dict[str, Any]]:
+        """Save a validated quote batch with one durable file write."""
+        wid = self._require_workspace(workspace_id)
+        if not quotes:
+            return []
+        analysis_id = str(quotes[0].get("analysis_id") or "").strip()
+        if not analysis_id or not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id} was not found")
+        if any(str(quote.get("analysis_id") or "").strip() != analysis_id for quote in quotes):
+            raise ValueError("A quote batch must belong to one saved analysis.")
+        saved_rows: list[dict[str, Any]] = []
+        with _LOCK:
+            for quote in quotes:
+                saved = dict(quote)
+                quote_id = str(saved.get("quote_id") or uuid.uuid4())
+                saved.update(
+                    {
+                        "id": quote_id,
+                        "quote_id": quote_id,
+                        "workspace_id": wid,
+                        "created_at": str(saved.get("created_at") or _now()),
+                    }
+                )
+                saved_rows.append(saved)
+            procurement_quotes = self._data.setdefault("procurement_quotes", {})
+            procurement_quotes.update({str(row["quote_id"]): row for row in saved_rows})
+            self.save()
+        return [dict(row) for row in saved_rows]
+
     def list_procurement_quotes(
         self,
         *,

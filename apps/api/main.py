@@ -2403,6 +2403,114 @@ async def procurement_quotes_get(request: Request) -> JSONResponse:
     return _json({"ok": True, "analysis_id": analysis_id, "quotes": quotes})
 
 
+class ProcurementQuoteIdentityError(ValueError):
+    """A quote's requested MPN cannot be safely resolved against the saved BOM."""
+
+
+def _prepare_procurement_quote_record(
+    body: dict[str, Any],
+    *,
+    report: dict[str, Any],
+    ctx: dict[str, Any],
+    analysis_id: str,
+) -> dict[str, Any]:
+    """Validate and canonicalize one user-entered quote for a saved BOM."""
+    body_analysis_id = str(body.get("analysis_id") or analysis_id).strip()
+    requested_mpn = str(body.get("requested_mpn") or "").strip()
+    requested_manufacturer = str(body.get("requested_manufacturer") or "").strip()
+    supplier = str(body.get("supplier") or "").strip()
+    offered_mpn = str(body.get("offered_mpn") or "").strip()
+    offered_manufacturer = str(body.get("offered_manufacturer") or "").strip()
+    currency = str(body.get("currency") or "").strip().upper()
+    quote_reference = str(body.get("quote_reference") or "").strip()
+    notes = str(body.get("notes") or "").strip()
+    if body_analysis_id != analysis_id:
+        raise ValueError("All quote rows must belong to the selected saved BOM revision.")
+    if not analysis_id or not requested_mpn:
+        raise ValueError("Select a saved BOM analysis and part.")
+    if len(requested_mpn) > 160 or len(requested_manufacturer) > 160:
+        raise ValueError("Requested part identity is too long.")
+    if not supplier or len(supplier) > 120:
+        raise ValueError("Enter a supplier name (up to 120 characters).")
+    if not offered_mpn or len(offered_mpn) > 160 or len(offered_manufacturer) > 160:
+        raise ValueError("Enter the quoted MPN and a manufacturer of 160 characters or fewer.")
+    if len(quote_reference) > 160 or len(notes) > 3000:
+        raise ValueError("Quote reference or notes exceed the allowed length.")
+    if currency and not re.fullmatch(r"[A-Z]{3}", currency):
+        raise ValueError("Currency must be a three-letter code such as USD.")
+
+    price_breaks = _normalized_price_breaks(body)
+    if price_breaks and not currency:
+        raise ValueError("Choose a currency for the quoted prices.")
+    minimum_order_quantity = _quote_number(
+        body.get("minimum_order_quantity"), "Minimum order quantity", integer=True
+    )
+    pack_quantity = _quote_number(body.get("pack_quantity"), "Pack quantity", integer=True)
+    stock = _quote_number(body.get("stock"), "Available stock", positive=False, integer=True)
+    lead_time_weeks = _quote_number(body.get("lead_time_weeks"), "Lead time", positive=False)
+    valid_until = str(body.get("valid_until") or "").strip()
+    price_date = str(body.get("price_date") or "").strip()
+    if valid_until:
+        from datetime import date
+
+        date.fromisoformat(valid_until)
+    if price_date:
+        from datetime import date
+
+        date.fromisoformat(price_date)
+    source_url = _valid_quote_url(body.get("source_url"))
+    try:
+        requested_part = _quote_report_part(report, requested_mpn, requested_manufacturer)
+    except ValueError as exc:
+        raise ProcurementQuoteIdentityError(str(exc)) from exc
+    if not requested_part:
+        raise ValueError("Requested part does not match a part in this saved BOM revision.")
+    canonical_mpn = str(
+        requested_part.get("MPN") or requested_part.get("mpn") or requested_part.get("Part Number") or requested_mpn
+    ).strip()
+    canonical_manufacturer = str(
+        requested_part.get("Manufacturer") or requested_part.get("manufacturer") or ""
+    ).strip()
+    exact_mpn = offered_mpn.casefold() == canonical_mpn.casefold()
+    exact_manufacturer = bool(canonical_manufacturer) and (
+        offered_manufacturer.casefold() == canonical_manufacturer.casefold()
+    )
+    if exact_mpn and exact_manufacturer:
+        identity_status = "exact_part"
+    elif exact_mpn and (not canonical_manufacturer or not offered_manufacturer):
+        identity_status = "manufacturer_unconfirmed"
+    else:
+        identity_status = "alternate_candidate"
+    return {
+        "analysis_id": analysis_id,
+        "project_name": report.get("project_name"),
+        "bom_name": report.get("bom_name") or report.get("filename"),
+        "revision": report.get("revision"),
+        "requested_mpn": canonical_mpn,
+        "requested_manufacturer": canonical_manufacturer,
+        "supplier": supplier,
+        "quote_reference": quote_reference,
+        "offered_mpn": offered_mpn,
+        "offered_manufacturer": offered_manufacturer,
+        "identity_status": identity_status,
+        "requires_engineering_review": identity_status != "exact_part",
+        "currency": currency,
+        "unit_price": price_breaks[0]["unit_price"] if price_breaks else None,
+        "price_break_quantity": price_breaks[0]["quantity"] if price_breaks else None,
+        "price_breaks": price_breaks,
+        "minimum_order_quantity": minimum_order_quantity,
+        "pack_quantity": pack_quantity,
+        "stock": stock,
+        "lead_time_weeks": lead_time_weeks,
+        "price_date": price_date,
+        "valid_until": valid_until,
+        "source_url": source_url,
+        "notes": notes,
+        "recorded_by": str(ctx.get("user_id") or ""),
+        "evidence_kind": "user_entered_supplier_quote",
+    }
+
+
 async def procurement_quotes_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -2415,107 +2523,95 @@ async def procurement_quotes_post(request: Request) -> JSONResponse:
         return _json({"detail": "Quote payload must be an object."}, 400)
 
     analysis_id = str(body.get("analysis_id") or "").strip()
-    requested_mpn = str(body.get("requested_mpn") or "").strip()
-    requested_manufacturer = str(body.get("requested_manufacturer") or "").strip()
-    supplier = str(body.get("supplier") or "").strip()
-    offered_mpn = str(body.get("offered_mpn") or "").strip()
-    offered_manufacturer = str(body.get("offered_manufacturer") or "").strip()
-    currency = str(body.get("currency") or "").strip().upper()
-    quote_reference = str(body.get("quote_reference") or "").strip()
-    notes = str(body.get("notes") or "").strip()
-    if not analysis_id or not requested_mpn:
+    if not analysis_id:
         return _json({"detail": "Select a saved BOM analysis and part."}, 400)
-    if len(requested_mpn) > 160 or len(requested_manufacturer) > 160:
-        return _json({"detail": "Requested part identity is too long."}, 400)
-    if not supplier or len(supplier) > 120:
-        return _json({"detail": "Enter a supplier name (up to 120 characters)."}, 400)
-    if not offered_mpn or len(offered_mpn) > 160 or len(offered_manufacturer) > 160:
-        return _json({"detail": "Enter the quoted MPN and a manufacturer of 160 characters or fewer."}, 400)
-    if len(quote_reference) > 160 or len(notes) > 3000:
-        return _json({"detail": "Quote reference or notes exceed the allowed length."}, 400)
-    if currency and not re.fullmatch(r"[A-Z]{3}", currency):
-        return _json({"detail": "Currency must be a three-letter code such as USD."}, 400)
-
-    try:
-        price_breaks = _normalized_price_breaks(body)
-        if price_breaks and not currency:
-            raise ValueError("Choose a currency for the quoted prices.")
-        minimum_order_quantity = _quote_number(
-            body.get("minimum_order_quantity"), "Minimum order quantity", integer=True
-        )
-        pack_quantity = _quote_number(body.get("pack_quantity"), "Pack quantity", integer=True)
-        stock = _quote_number(body.get("stock"), "Available stock", positive=False, integer=True)
-        lead_time_weeks = _quote_number(body.get("lead_time_weeks"), "Lead time", positive=False)
-        valid_until = str(body.get("valid_until") or "").strip()
-        if valid_until:
-            from datetime import date
-
-            date.fromisoformat(valid_until)
-        source_url = _valid_quote_url(body.get("source_url"))
-    except ValueError as exc:
-        return _json({"detail": str(exc)}, 400)
-
     try:
         report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
         if not report:
             return _json({"detail": "Report not found"}, 404)
-        try:
-            requested_part = _quote_report_part(report, requested_mpn, requested_manufacturer)
-        except ValueError as exc:
-            return _json({"detail": str(exc)}, 409)
-        if not requested_part:
-            return _json({"detail": "Requested part does not match a part in this saved BOM revision."}, 400)
-        canonical_mpn = str(
-            requested_part.get("MPN") or requested_part.get("mpn") or requested_part.get("Part Number") or requested_mpn
-        ).strip()
-        canonical_manufacturer = str(
-            requested_part.get("Manufacturer") or requested_part.get("manufacturer") or ""
-        ).strip()
-        exact_mpn = offered_mpn.casefold() == canonical_mpn.casefold()
-        exact_manufacturer = bool(canonical_manufacturer) and (
-            offered_manufacturer.casefold() == canonical_manufacturer.casefold()
-        )
-        if exact_mpn and exact_manufacturer:
-            identity_status = "exact_part"
-        elif exact_mpn and (not canonical_manufacturer or not offered_manufacturer):
-            identity_status = "manufacturer_unconfirmed"
-        else:
-            identity_status = "alternate_candidate"
-        record = {
-            "analysis_id": analysis_id,
-            "project_name": report.get("project_name"),
-            "bom_name": report.get("bom_name") or report.get("filename"),
-            "revision": report.get("revision"),
-            "requested_mpn": canonical_mpn,
-            "requested_manufacturer": canonical_manufacturer,
-            "supplier": supplier,
-            "quote_reference": quote_reference,
-            "offered_mpn": offered_mpn,
-            "offered_manufacturer": offered_manufacturer,
-            "identity_status": identity_status,
-            "requires_engineering_review": identity_status != "exact_part",
-            "currency": currency,
-            "unit_price": price_breaks[0]["unit_price"] if price_breaks else None,
-            "price_break_quantity": price_breaks[0]["quantity"] if price_breaks else None,
-            "price_breaks": price_breaks,
-            "minimum_order_quantity": minimum_order_quantity,
-            "pack_quantity": pack_quantity,
-            "stock": stock,
-            "lead_time_weeks": lead_time_weeks,
-            "valid_until": valid_until,
-            "source_url": source_url,
-            "notes": notes,
-            "recorded_by": str(ctx.get("user_id") or ""),
-            "evidence_kind": "user_entered_supplier_quote",
-        }
+        record = _prepare_procurement_quote_record(body, report=report, ctx=ctx, analysis_id=analysis_id)
         saved = get_store().create_procurement_quote(
             record, workspace_id=ctx["workspace_id"]
         )
+    except ProcurementQuoteIdentityError as exc:
+        return _json({"detail": str(exc)}, 409)
+    except ValueError as exc:
+        return _json({"detail": str(exc)}, 400)
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
     return _json({"ok": True, "quote": saved}, 201)
+
+
+async def procurement_quotes_bulk_post(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Quote import payload must be an object."}, 400)
+    analysis_id = str(body.get("analysis_id") or "").strip()
+    batch_id = str(body.get("import_batch_id") or "").strip()
+    raw_quotes = body.get("quotes")
+    if not analysis_id:
+        return _json({"detail": "Select a saved BOM analysis before importing prices."}, 400)
+    try:
+        uuid.UUID(batch_id)
+    except (ValueError, AttributeError):
+        return _json({"detail": "Import batch identifier is invalid. Choose the file again and retry."}, 400)
+    if not isinstance(raw_quotes, list) or not raw_quotes or len(raw_quotes) > 1000:
+        return _json({"detail": "Import between 1 and 1,000 price rows at a time."}, 400)
+    try:
+        report = _get_visible_report(analysis_id, workspace_id=ctx["workspace_id"])
+        if not report:
+            return _json({"detail": "Report not found"}, 404)
+        records = []
+        for index, raw in enumerate(raw_quotes, start=1):
+            if not isinstance(raw, dict):
+                return _json({"detail": f"Row {index}: quote row must be an object."}, 400)
+            try:
+                record = _prepare_procurement_quote_record(
+                    raw, report=report, ctx=ctx, analysis_id=analysis_id
+                )
+                row_number = int(raw.get("import_row_number") or index)
+                if row_number < 1:
+                    raise ValueError("Source row number must be positive.")
+            except (ValueError, TypeError) as exc:
+                return _json({"detail": f"Row {index}: {exc}"}, 400)
+            record["import_batch_id"] = batch_id
+            record["import_row_number"] = row_number
+            records.append(record)
+        fingerprint = hashlib.sha256(
+            json.dumps(records, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        for record in records:
+            record["import_batch_fingerprint"] = fingerprint
+
+        store = get_store()
+        existing = [
+            quote for quote in store.list_procurement_quotes(
+                workspace_id=ctx["workspace_id"], analysis_id=analysis_id
+            )
+            if quote.get("import_batch_id") == batch_id
+        ]
+        if existing:
+            if len(existing) == len(records) and all(
+                quote.get("import_batch_fingerprint") == fingerprint for quote in existing
+            ):
+                saved = sorted(existing, key=lambda quote: int(quote.get("import_row_number") or 0))
+            else:
+                return _json({"detail": "This import ID was already used with different rows. Choose the file again to create a new import."}, 409)
+        else:
+            saved = store.create_procurement_quotes(records, workspace_id=ctx["workspace_id"])
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found"}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "analysis_id": analysis_id, "quotes": saved, "saved_count": len(saved)}, 201)
 
 
 async def design_impact_get(request: Request) -> JSONResponse:
@@ -6395,6 +6491,7 @@ app = Starlette(
         Route("/tools/procurement", procurement_get, methods=["GET"]),
         Route("/tools/procurement/quotes", procurement_quotes_get, methods=["GET"]),
         Route("/tools/procurement/quotes", procurement_quotes_post, methods=["POST"]),
+        Route("/tools/procurement/quotes/bulk", procurement_quotes_bulk_post, methods=["POST"]),
         Route("/tools/design-impact", design_impact_get, methods=["GET"]),
         Route("/tools/cost-optimization", cost_optimization_get, methods=["GET"]),
         Route("/tools/cost-optimization/decisions", cost_optimization_decisions, methods=["GET", "POST"]),

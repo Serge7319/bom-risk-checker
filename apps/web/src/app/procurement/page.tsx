@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Shell } from "@/components/Shell";
@@ -11,6 +11,7 @@ import { PartThumbnail } from "@/components/PartThumbnail";
 import { PageHeader, PrimaryLink, SecondaryLink } from "@/components/PageHeader";
 import {
   createProcurementQuote,
+  createProcurementQuotesBulk,
   fetchProcurement,
   listProcurementQuotes,
   listReports,
@@ -103,8 +104,32 @@ type ComparisonRow = {
   canPriceCompare: boolean;
 };
 
+type PriceImportSourceRow = {
+  line: number;
+  partNumber: string;
+  unitPrice: string;
+  minimumQuantity: string;
+  supplier: string;
+  manufacturer: string;
+  currency: string;
+  quoteReference: string;
+  priceDate: string;
+  validUntil: string;
+  sourceUrl: string;
+};
+
+type PriceImportRow = PriceImportSourceRow & {
+  matchedPart: Record<string, unknown> | null;
+  unitPriceValue: number | null;
+  minimumQuantityValue: number | null;
+  supplierValue: string;
+  currencyValue: string;
+  status: "ready" | "issue" | "saved" | "failed";
+  message: string;
+};
+
 function partKey(part: Record<string, unknown>) {
-  return `${String(part.mpn || "").trim().toLowerCase()}\u0000${String(part.manufacturer || "").trim().toLowerCase()}`;
+  return `${String(part.mpn || part.MPN || "").trim().toLowerCase()}\u0000${String(part.manufacturer || "").trim().toLowerCase()}`;
 }
 
 function optionalNumber(value: unknown): number | null {
@@ -158,6 +183,204 @@ function emptyQuoteForm(mpn = ""): QuoteFormState {
   };
 }
 
+function parseDelimitedRows(text: string): string[][] {
+  const source = text.replace(/^\uFEFF/, "");
+  const firstLine = source.split(/\r\n|\n|\r/, 1)[0] || "";
+  const delimiters = [",", ";", "\t"];
+  const counts = delimiters.map((delimiter) => {
+    let count = 0;
+    let quoted = false;
+    for (let index = 0; index < firstLine.length; index += 1) {
+      const character = firstLine[index];
+      if (character === '"') {
+        if (quoted && firstLine[index + 1] === '"') index += 1;
+        else quoted = !quoted;
+      } else if (character === delimiter && !quoted) count += 1;
+    }
+    return count;
+  });
+  const delimiter = delimiters[counts.indexOf(Math.max(...counts))] || ",";
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '"') {
+      if (quoted && source[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (character === delimiter && !quoted) {
+      row.push(cell);
+      cell = "";
+    } else if ((character === "\n" || character === "\r") && !quoted) {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      if (character === "\r" && source[index + 1] === "\n") index += 1;
+    } else {
+      cell += character;
+    }
+  }
+  row.push(cell);
+  if (row.length || cell.length) rows.push(row);
+  return rows;
+}
+
+function importHeaderKind(value: unknown): string {
+  const header = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const aliases: Record<string, string[]> = {
+    partNumber: ["partnumber", "partno", "mpn", "manufacturerpartnumber", "manufacturerpartno", "catalognumber"],
+    unitPrice: ["unitprice", "priceperunit", "unitcost", "price"],
+    minimumQuantity: ["minimumquantity", "minquantity", "minqty", "minimumorderquantity", "minimumorderqty", "moq", "pricebreakquantity"],
+    supplier: ["supplier", "vendor", "distributor"],
+    manufacturer: ["manufacturer", "mfr", "make"],
+    currency: ["currency", "currencycode", "ccy"],
+    quoteReference: ["quotereference", "quoteref", "reference", "quoteid"],
+    priceDate: ["pricedate", "quotedate", "datequoted", "priceasof"],
+    validUntil: ["validuntil", "expirationdate", "expires", "expiry"],
+    sourceUrl: ["sourceurl", "quoteurl", "listingurl", "supplierurl"],
+  };
+  return Object.entries(aliases).find(([, names]) => names.includes(header))?.[0] || "";
+}
+
+function spreadsheetCellText(value: unknown): string {
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString().slice(0, 10);
+  return value === null || value === undefined ? "" : String(value).trim();
+}
+
+function parsePriceImportTable(table: unknown[][]): PriceImportSourceRow[] {
+  const headerRowIndex = table.findIndex((row) => row.some((value) => spreadsheetCellText(value)));
+  if (headerRowIndex < 0) throw new Error("The file needs a header row and at least one price row.");
+  const headers = table[headerRowIndex].map(importHeaderKind);
+  const indexes = new Map<string, number>();
+  headers.forEach((header, index) => {
+    if (header && !indexes.has(header)) indexes.set(header, index);
+  });
+  if (!indexes.has("partNumber") || !indexes.has("unitPrice")) {
+    throw new Error("Add part_number and unit_price columns to the first row. Download the template for the supported columns.");
+  }
+  const dataRows = table
+    .slice(headerRowIndex + 1)
+    .map((row, offset) => ({ row, line: headerRowIndex + offset + 2 }))
+    .filter(({ row }) => row.some((value) => spreadsheetCellText(value)));
+  if (dataRows.length > 1000) throw new Error("This import supports up to 1,000 price rows at a time.");
+  const get = (row: unknown[], name: string) => {
+    const column = indexes.get(name);
+    return column === undefined ? "" : spreadsheetCellText(row[column]);
+  };
+  return dataRows.map(({ row, line }) => ({
+    line,
+    partNumber: get(row, "partNumber"),
+    unitPrice: get(row, "unitPrice"),
+    minimumQuantity: get(row, "minimumQuantity"),
+    supplier: get(row, "supplier"),
+    manufacturer: get(row, "manufacturer"),
+    currency: get(row, "currency"),
+    quoteReference: get(row, "quoteReference"),
+    priceDate: get(row, "priceDate"),
+    validUntil: get(row, "validUntil"),
+    sourceUrl: get(row, "sourceUrl"),
+  }));
+}
+
+function parseImportedPrice(value: string): number | null {
+  let normalized = value.trim().replace(/^(USD|CAD|AUD|EUR|GBP|JPY)\s*/i, "").replace(/[$€£¥\s]/g, "");
+  if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(normalized)) normalized = normalized.replace(/,/g, "");
+  if (!/^(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(normalized)) return null;
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function parseImportedPositiveInteger(value: string): number | null {
+  if (!value.trim()) return 1;
+  const normalized = value.trim();
+  const grouped = /^\d{1,3}(,\d{3})+$/.test(normalized) ? normalized.replace(/,/g, "") : normalized;
+  if (!/^\d+$/.test(grouped)) return null;
+  const quantity = Number(grouped);
+  return Number.isSafeInteger(quantity) && quantity > 0 ? quantity : null;
+}
+
+function parseImportedDate(value: string): string | null {
+  if (!value.trim()) return "";
+  const dateOnly = value.trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (dateOnly) {
+    const year = Number(dateOnly[1]);
+    const month = Number(dateOnly[2]);
+    const day = Number(dateOnly[3]);
+    const check = new Date(Date.UTC(year, month - 1, day));
+    if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return null;
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString().slice(0, 10) : null;
+}
+
+function preparePriceImport(
+  sourceRows: PriceImportSourceRow[],
+  parts: Array<Record<string, unknown>>,
+  defaultSupplier: string,
+  defaultCurrency: string,
+): PriceImportRow[] {
+  return sourceRows.map((row) => {
+    const issues: string[] = [];
+    const warnings: string[] = [];
+    const unitPriceValue = parseImportedPrice(row.unitPrice);
+    const minimumQuantityValue = parseImportedPositiveInteger(row.minimumQuantity);
+    const supplierValue = row.supplier.trim() || defaultSupplier.trim();
+    const symbolCurrency = row.unitPrice.includes("€") ? "EUR"
+      : row.unitPrice.includes("£") ? "GBP"
+        : row.unitPrice.includes("¥") ? "JPY"
+          : "";
+    const currencyValue = (row.currency.trim() || symbolCurrency || defaultCurrency.trim() || "USD").toUpperCase();
+    const partMatches = parts.filter((part) =>
+      String(part.mpn || part.MPN || "").trim().toLowerCase() === row.partNumber.trim().toLowerCase(),
+    );
+    const manufacturerMatches = row.manufacturer.trim()
+      ? partMatches.filter((part) => String(part.manufacturer || "").trim().toLowerCase() === row.manufacturer.trim().toLowerCase())
+      : partMatches;
+    const uniqueMatches = Array.from(new Map(manufacturerMatches.map((part) => [partKey(part), part])).values());
+    const matchedPart: Record<string, unknown> | null = uniqueMatches.length === 1
+      ? uniqueMatches[0]
+      : null;
+
+    if (!row.partNumber.trim()) issues.push("Part number is blank.");
+    else if (!partMatches.length) issues.push("Part number is not in this saved BOM.");
+    else if (!manufacturerMatches.length) issues.push("Manufacturer does not match this saved BOM.");
+    else if (uniqueMatches.length > 1) issues.push("Part number is ambiguous; add a manufacturer column.");
+    if (unitPriceValue === null) issues.push("Enter a unit price greater than zero.");
+    if (!supplierValue) issues.push("Enter a default supplier or add a supplier column.");
+    if (!/^[A-Z]{3}$/.test(currencyValue)) issues.push("Currency must be a three-letter code, such as USD.");
+    if (minimumQuantityValue === null) issues.push("Minimum quantity must be a positive whole number.");
+    const validUntil = parseImportedDate(row.validUntil);
+    if (validUntil === null) issues.push("Valid-until date could not be read.");
+    if (row.sourceUrl && !/^https?:\/\//i.test(row.sourceUrl.trim())) issues.push("Source URL must start with http:// or https://.");
+    if (!row.manufacturer.trim() && matchedPart) {
+      warnings.push("Manufacturer comes from the matched BOM row; confirm the supplier listing is for that maker.");
+    }
+    if (!row.minimumQuantity.trim() && unitPriceValue !== null) {
+      warnings.push("No minimum quantity supplied; this price tier starts at quantity 1.");
+    }
+    const priceDate = parseImportedDate(row.priceDate);
+    if (priceDate === null) issues.push("Price date could not be read.");
+    else if (!row.priceDate.trim()) warnings.push("No source price date supplied; Cadivor will show when this row was imported.");
+    return {
+      ...row,
+      matchedPart,
+      unitPriceValue,
+      minimumQuantityValue,
+      supplierValue,
+      currencyValue,
+      status: issues.length ? "issue" : "ready",
+      message: issues.length ? issues.join(" ") : warnings.join(" "),
+    };
+  });
+}
+
 function ProcurementPageInner() {
   const session = useRequireSession();
   const router = useRouter();
@@ -176,6 +399,15 @@ function ProcurementPageInner() {
   const [quoteSaving, setQuoteSaving] = useState(false);
   const [quoteError, setQuoteError] = useState("");
   const [quoteSaved, setQuoteSaved] = useState("");
+  const [bulkDefaultSupplier, setBulkDefaultSupplier] = useState("User price sheet");
+  const [bulkDefaultCurrency, setBulkDefaultCurrency] = useState("USD");
+  const [bulkFileName, setBulkFileName] = useState("");
+  const [bulkImportBatchId, setBulkImportBatchId] = useState("");
+  const [bulkSourceRows, setBulkSourceRows] = useState<PriceImportSourceRow[]>([]);
+  const [bulkPreviewRows, setBulkPreviewRows] = useState<PriceImportRow[]>([]);
+  const [bulkImportError, setBulkImportError] = useState("");
+  const [bulkImportResult, setBulkImportResult] = useState("");
+  const [bulkImportBusy, setBulkImportBusy] = useState(false);
   const [offersDialogPart, setOffersDialogPart] = useState<Record<string, unknown> | null>(null);
   const procurementCacheRef = useRef(new Map<string, Record<string, unknown>>());
 
@@ -606,6 +838,124 @@ function ProcurementPageInner() {
       setQuoteError(err instanceof Error ? err.message : "Unable to save this quote.");
     } finally {
       setQuoteSaving(false);
+    }
+  }
+
+  async function handlePriceImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    setBulkImportError("");
+    setBulkImportResult("");
+    setBulkSourceRows([]);
+    setBulkPreviewRows([]);
+    setBulkFileName("");
+    setBulkImportBatchId("");
+    try {
+      const lowerName = file.name.toLowerCase();
+      if (!lowerName.endsWith(".csv") && !lowerName.endsWith(".xlsx")) {
+        throw new Error("Choose a .csv or .xlsx file. Save older .xls workbooks as .xlsx first.");
+      }
+      if (file.size > 5 * 1024 * 1024) throw new Error("Price files must be 5 MB or smaller.");
+      let table: unknown[][];
+      if (lowerName.endsWith(".csv")) {
+        table = parseDelimitedRows(await file.text());
+      } else {
+        const { readSheet } = await import("read-excel-file/browser");
+        table = await readSheet(file);
+      }
+      const sourceRows = parsePriceImportTable(table);
+      if (!sourceRows.length) throw new Error("No price rows were found below the header.");
+      setBulkSourceRows(sourceRows);
+      setBulkFileName(file.name);
+      setBulkImportBatchId(window.crypto.randomUUID());
+      setBulkImportResult(`${sourceRows.length} rows loaded from the first worksheet. Review the defaults, then preview the matches.`);
+    } catch (err) {
+      setBulkImportError(err instanceof Error ? err.message : "This file could not be read.");
+    }
+  }
+
+  function downloadPriceImportTemplate() {
+    const csv = "part_number,unit_price,minimum_quantity,currency,supplier,manufacturer,quote_reference,price_date,valid_until,source_url\r\n";
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "cadivor-price-import-template.csv";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function previewPriceImport() {
+    if (!bulkSourceRows.length) return;
+    setBulkPreviewRows(preparePriceImport(bulkSourceRows, allParts, bulkDefaultSupplier, bulkDefaultCurrency));
+    setBulkImportError("");
+    setBulkImportResult("");
+  }
+
+  async function saveBulkPriceImport() {
+    if (!session || !activeAnalysisId || !bulkImportBatchId || bulkImportBusy) return;
+    const rowsToSave = bulkPreviewRows.filter((row) => row.status === "ready" || row.status === "failed");
+    if (!rowsToSave.length) return;
+    setBulkImportBusy(true);
+    setBulkImportError("");
+    setBulkImportResult(`Saving ${rowsToSave.length} quote${rowsToSave.length === 1 ? "" : "s"} to this BOM revision…`);
+    try {
+      const quoteInputs = rowsToSave.flatMap((row) => {
+        const matchedPart = row.matchedPart;
+        if (!matchedPart || row.unitPriceValue === null || row.minimumQuantityValue === null) return [];
+        const bomMpn = String(matchedPart.mpn || matchedPart.MPN || row.partNumber).trim();
+        const bomManufacturer = String(matchedPart.manufacturer || "").trim();
+        const parsedValidUntil = parseImportedDate(row.validUntil);
+        const notes = [
+          `Imported from ${bulkFileName}, row ${row.line}.`,
+          !row.manufacturer.trim() ? "The uploaded row omitted the quoted manufacturer; verify that the supplier listing is for the saved BOM manufacturer." : "",
+          !row.minimumQuantity.trim() ? "Minimum price-tier quantity defaulted to 1 from the upload." : "",
+          !row.priceDate.trim() ? "The source sheet did not provide a price date; the import date is shown as the record date." : "",
+        ].filter(Boolean).join(" ");
+        return [{
+          import_row_number: row.line,
+          requested_mpn: bomMpn,
+          requested_manufacturer: bomManufacturer,
+          supplier: row.supplierValue,
+          quote_reference: row.quoteReference.trim(),
+          offered_mpn: bomMpn,
+          offered_manufacturer: row.manufacturer.trim(),
+          currency: row.currencyValue,
+          price_breaks: [{ quantity: row.minimumQuantityValue, unit_price: row.unitPriceValue }],
+          price_date: parseImportedDate(row.priceDate) || "",
+          minimum_order_quantity: null,
+          pack_quantity: null,
+          valid_until: parsedValidUntil || "",
+          source_url: row.sourceUrl.trim(),
+          notes,
+        }];
+      });
+      if (!quoteInputs.length) throw new Error("No valid matched rows are ready to import.");
+      const result = await createProcurementQuotesBulk(
+        session.access_token,
+        activeAnalysisId,
+        bulkImportBatchId,
+        quoteInputs,
+      );
+      const savedLineNumbers = new Set(result.quotes.map((quote) => Number((quote as ProcurementQuote & { import_row_number?: number }).import_row_number)));
+      setSavedQuotes((current) => [...result.quotes, ...current]);
+      setBulkPreviewRows((current) => current.map((row) => savedLineNumbers.has(row.line)
+        ? { ...row, status: "saved", message: "Saved to this BOM revision." }
+        : row));
+      setBulkImportResult(`${result.saved_count} quote${result.saved_count === 1 ? "" : "s"} saved to this BOM revision. Open Cost Optimization and select Recalculate to use these prices.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to save this price import.";
+      setBulkImportError(message);
+      const pendingLines = new Set(rowsToSave.map((row) => row.line));
+      setBulkPreviewRows((current) => current.map((row) => pendingLines.has(row.line)
+        ? { ...row, status: "failed", message }
+        : row));
+      setBulkImportResult("No rows were saved. Resolve the issue or retry the same import.");
+    } finally {
+      setBulkImportBusy(false);
     }
   }
 
@@ -1060,6 +1410,117 @@ function ProcurementPageInner() {
                   </table>
                 </div>
                 {quotesBusy ? <p className="cv-small-note" aria-live="polite">Loading saved quotes…</p> : null}
+
+                <section className="cv-price-import" aria-labelledby="cv-price-import-title">
+                  <div>
+                    <h3 id="cv-price-import-title">Import prices for this BOM</h3>
+                    <p>
+                      Upload one CSV or Excel workbook (.xlsx) to add prices for as many as 1,000 BOM parts in one import. Excel imports use the first worksheet. The first row must contain <code>part_number</code> and <code>unit_price</code>. Optional columns: <code>minimum_quantity</code>, <code>supplier</code>, <code>manufacturer</code>, <code>currency</code>, <code>quote_reference</code>, <code>price_date</code>, <code>valid_until</code>, and <code>source_url</code>.
+                    </p>
+                    <p className="cv-small-note">
+                      Rows without a supplier are labeled “User price sheet” by default; enter a supplier name below or include a <code>supplier</code> column when you know it. Each accepted row becomes a quote record for this saved BOM revision. Uploading a newer sheet adds new records; it does not overwrite older quote history. Cadivor records the supplied prices but does not verify them with the supplier.
+                    </p>
+                    <p className="cv-small-note">
+                      Cadivor matches part numbers to this saved BOM and uses the BOM manufacturer to identify the target part. If the file omits <code>manufacturer</code>, the saved quote is marked manufacturer unconfirmed so you can verify the supplier listing. Ambiguous part numbers are blocked. Include <code>manufacturer</code> to help resolve those matches. If <code>minimum_quantity</code> is omitted, the price tier starts at 1; include it when the price only applies above a specific order quantity. In Excel, format part-number cells as text to preserve leading zeros.
+                    </p>
+                  </div>
+
+                  <div className="cv-quote-form-grid cv-price-import-fields">
+                    <label>
+                      <span>Default supplier (used when a row has none)</span>
+                      <input
+                        maxLength={120}
+                        value={bulkDefaultSupplier}
+                        onChange={(event) => setBulkDefaultSupplier(event.target.value)}
+                        disabled={bulkImportBusy}
+                        placeholder="e.g. DigiKey or Acme Electronics"
+                      />
+                    </label>
+                    <label>
+                      <span>Default currency</span>
+                      <input
+                        maxLength={3}
+                        value={bulkDefaultCurrency}
+                        onChange={(event) => setBulkDefaultCurrency(event.target.value.toUpperCase())}
+                        disabled={bulkImportBusy}
+                        placeholder="USD"
+                      />
+                    </label>
+                    <label className="cv-quote-wide">
+                      <span>Price file (.csv or .xlsx, up to 5 MB)</span>
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        onChange={handlePriceImportFile}
+                        disabled={bulkImportBusy}
+                        aria-label="Choose a CSV or Excel price file"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="cv-price-import-actions">
+                    <button type="button" className="cv-quote-add-break" onClick={downloadPriceImportTemplate}>
+                      Download CSV template
+                    </button>
+                    {bulkSourceRows.length ? (
+                      <button type="button" className="cv-button" onClick={previewPriceImport} disabled={bulkImportBusy}>
+                        {bulkPreviewRows.length ? "Refresh preview" : "Preview import"}
+                      </button>
+                    ) : null}
+                    {bulkFileName ? <span>{bulkFileName}</span> : null}
+                  </div>
+
+                  {bulkImportError ? <div className="cv-error" role="alert">{bulkImportError}</div> : null}
+                  {bulkImportResult ? <div className="cv-success" role="status" aria-live="polite">{bulkImportResult}</div> : null}
+
+                  {bulkPreviewRows.length ? (
+                    <div className="cv-price-import-preview">
+                      <div className="cv-section-heading">
+                        <div>
+                          <h4>Review rows before saving</h4>
+                          <p>
+                            {bulkPreviewRows.filter((row) => row.status === "ready" || row.status === "saved" || row.status === "failed").length} matched rows · {bulkPreviewRows.filter((row) => row.status === "issue").length} rows need correction.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="cv-table-wrap cv-price-import-table-wrap">
+                        <table className="cv-table">
+                          <thead>
+                            <tr><th>File row</th><th>BOM part</th><th>Unit price</th><th>Supplier</th><th>Status / note</th></tr>
+                          </thead>
+                          <tbody>
+                            {bulkPreviewRows.map((row) => (
+                              <tr key={`import-row-${row.line}`}>
+                                <td>{row.line}</td>
+                                <td>{row.partNumber || "—"}{row.manufacturer ? <small className="cv-procurement-description">{row.manufacturer}</small> : null}</td>
+                                <td>{row.unitPrice || "—"} {row.currencyValue || row.currency || bulkDefaultCurrency}</td>
+                                <td>{row.supplierValue || row.supplier || "Supplier required"}</td>
+                                <td>
+                                  <span className={"cv-badge " + (row.status === "ready" || row.status === "saved" ? "green" : row.status === "failed" ? "red" : "amber")}>
+                                    {row.status === "ready" ? "Ready" : row.status === "saved" ? "Saved" : row.status === "failed" ? "Retry needed" : "Not imported"}
+                                  </span>
+                                  {row.message ? <small className="cv-procurement-description">{row.message}</small> : null}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <button
+                        type="button"
+                        className="cv-button primary"
+                        onClick={saveBulkPriceImport}
+                        disabled={bulkImportBusy || !bulkPreviewRows.some((row) => row.status === "ready" || row.status === "failed")}
+                      >
+                        {bulkImportBusy
+                          ? "Saving prices…"
+                          : bulkPreviewRows.some((row) => row.status === "failed")
+                            ? `Retry ${bulkPreviewRows.filter((row) => row.status === "failed").length} failed row${bulkPreviewRows.filter((row) => row.status === "failed").length === 1 ? "" : "s"}`
+                            : `Save ${bulkPreviewRows.filter((row) => row.status === "ready").length} quotes to this BOM revision`}
+                      </button>
+                    </div>
+                  ) : null}
+                </section>
 
                 <form className="cv-quote-entry" onSubmit={saveQuote}>
                   <div>
