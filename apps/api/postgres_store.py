@@ -1207,7 +1207,7 @@ class PostgresWorkspaceStore:
                             json.dumps(saved),
                         )
                     )
-                conn.executemany(
+                conn.cursor().executemany(
                     """
                     INSERT INTO migration_procurement_quotes
                       (id, workspace_id, analysis_id, requested_mpn,

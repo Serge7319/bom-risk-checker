@@ -216,3 +216,55 @@ def test_project_and_bom_renames_preserve_reports_and_delete_bom_cascades(tmp_pa
         for project in remaining_projects
         for bom in project["boms"]
     )
+
+def test_postgres_bulk_procurement_quotes_use_cursor_executemany():
+    from apps.api.postgres_store import PostgresWorkspaceStore
+
+    class FakeCursor:
+        def __init__(self):
+            self.executemany_calls = []
+
+        def executemany(self, query, values):
+            self.executemany_calls.append((query, values))
+
+    class FakeConnection:
+        def __init__(self):
+            self.cursor_instance = FakeCursor()
+            self.committed = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def cursor(self):
+            return self.cursor_instance
+
+        def commit(self):
+            self.committed = True
+
+    connection = FakeConnection()
+    store = PostgresWorkspaceStore.__new__(PostgresWorkspaceStore)
+    store._require_workspace = lambda workspace_id: workspace_id
+    store.get_report = lambda analysis_id, *, workspace_id: {"id": analysis_id}
+    store._connect = lambda: connection
+
+    saved = store.create_procurement_quotes(
+        [
+            {
+                "analysis_id": "analysis-1",
+                "requested_mpn": "STM32F103C8T6",
+                "requested_manufacturer": "STMicroelectronics",
+            }
+        ],
+        workspace_id="workspace-1",
+    )
+
+    assert len(saved) == 1
+    assert saved[0]["requested_mpn"] == "STM32F103C8T6"
+    assert connection.committed is True
+    assert len(connection.cursor_instance.executemany_calls) == 1
+    query, values = connection.cursor_instance.executemany_calls[0]
+    assert "INSERT INTO migration_procurement_quotes" in query
+    assert values[0][1:4] == ("workspace-1", "analysis-1", "STM32F103C8T6")
