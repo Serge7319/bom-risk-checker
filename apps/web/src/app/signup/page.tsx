@@ -136,7 +136,9 @@ export default function SignupPage() {
                 {passwordCharacterCount}/{MIN_PASSWORD_LENGTH}
               </span>
               <span role="status" aria-live="polite" style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", border: 0 }}>
-                {passwordMeetsMinimum ? "Password meets the 12-character minimum." : "Password does not yet meet the 12-character minimum."}
+                {passwordMeetsMinimum
+                  ? `Password meets the ${MIN_PASSWORD_LENGTH}-character minimum.`
+                  : `Password does not yet meet the ${MIN_PASSWORD_LENGTH}-character minimum.`}
               </span>
             </div>
             <label htmlFor="confirm-password">Confirm password</label>
