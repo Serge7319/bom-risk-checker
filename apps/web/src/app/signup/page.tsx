@@ -9,6 +9,8 @@ import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legalTerms";
 import { cleanUserText } from "@/lib/display";
 import { captureMarketingAttribution, trackMarketingEvent } from "@/lib/marketingAnalytics";
 
+const MIN_PASSWORD_LENGTH = 12;
+
 export default function SignupPage() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [workspaceName, setWorkspaceName] = useState("");
@@ -19,6 +21,8 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const passwordCharacterCount = Array.from(password).length;
+  const passwordMeetsMinimum = passwordCharacterCount >= MIN_PASSWORD_LENGTH;
 
   useEffect(() => {
     fetchAuthConfig()
@@ -30,6 +34,10 @@ export default function SignupPage() {
     event.preventDefault();
     setError("");
     setMessage("");
+    if (!passwordMeetsMinimum) {
+      setError(`Use a password with at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
     if (password !== confirmPassword) {
       setError("The passwords do not match.");
       return;
@@ -106,19 +114,43 @@ export default function SignupPage() {
               id="signup-password"
               type="password"
               autoComplete="new-password"
-              minLength={12}
+              minLength={MIN_PASSWORD_LENGTH}
+              aria-describedby="signup-password-requirements"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setError("");
+              }}
               required
             />
+            <div
+              id="signup-password-requirements"
+              className="cv-small-note"
+              style={{ display: "flex", alignItems: "center", gap: 8, marginTop: -5, marginBottom: 14 }}
+            >
+              <span aria-hidden="true" style={{ color: passwordMeetsMinimum ? "#0f9f6e" : "#8291a7", fontWeight: 800 }}>
+                {passwordMeetsMinimum ? "✓" : "○"}
+              </span>
+              <span>At least {MIN_PASSWORD_LENGTH} characters</span>
+              <span aria-hidden="true" style={{ marginLeft: "auto" }}>
+                {passwordCharacterCount}/{MIN_PASSWORD_LENGTH}
+              </span>
+              <span role="status" aria-live="polite" style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", whiteSpace: "nowrap", border: 0 }}>
+                {passwordMeetsMinimum
+                  ? `Password meets the ${MIN_PASSWORD_LENGTH}-character minimum.`
+                  : `Password does not yet meet the ${MIN_PASSWORD_LENGTH}-character minimum.`}
+              </span>
+            </div>
             <label htmlFor="confirm-password">Confirm password</label>
             <input
               id="confirm-password"
               type="password"
               autoComplete="new-password"
-              minLength={12}
               value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
+              onChange={(event) => {
+                setConfirmPassword(event.target.value);
+                setError("");
+              }}
               required
             />
             <TermsAcceptance
