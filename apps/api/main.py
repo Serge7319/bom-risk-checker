@@ -6210,6 +6210,7 @@ app = Starlette(
         Route("/v1/analyses", developer_api_analyze_post, methods=["POST"]),
         Route("/v1/reports", developer_api_reports_get, methods=["GET"]),
         Route("/v1/reports/{analysis_id}", developer_api_report_get, methods=["GET"]),
+        Route("/v1/release-gate/{analysis_id}", developer_api_release_gate_get, methods=["GET"]),
         Route("/billing/portal", billing_portal_post, methods=["POST"]),
         Route("/billing/public-catalog", billing_public_catalog_get, methods=["GET"]),
         Route("/billing/public-addons-catalog", billing_public_addons_catalog_get, methods=["GET"]),
