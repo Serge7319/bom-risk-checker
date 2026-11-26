@@ -1437,7 +1437,18 @@ async def reports_get(request: Request) -> JSONResponse:
         return _json({"detail": str(exc)}, 503)
     if not report:
         return _json({"detail": "Report not found"}, 404)
-    return _json(annotate_report_parts(report))
+    enriched = annotate_report_parts(report)
+    try:
+        workspace_store = get_store()
+        enriched["supply_scenarios"] = workspace_store.list_supply_scenarios(
+            workspace_id=ctx["workspace_id"], analysis_id=analysis_id
+        )
+        enriched["cost_decisions"] = workspace_store.list_cost_decisions(
+            workspace_id=ctx["workspace_id"], analysis_id=analysis_id
+        )
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json(enriched)
 
 
 async def reports_export(request: Request) -> Response:
@@ -2531,17 +2542,141 @@ async def cost_optimization_get(request: Request) -> JSONResponse:
     try:
         build_quantity = int(qty)
     except ValueError:
-        build_quantity = 100
+        return _json({"detail": "Build quantity must be a whole number."}, 400)
+    if build_quantity < 1 or build_quantity > 10_000_000:
+        return _json({"detail": "Build quantity must be between 1 and 10,000,000."}, 400)
+    target_raw = request.query_params.get("target_unit_cost")
+    try:
+        target_unit_cost = float(target_raw) if target_raw not in (None, "") else None
+    except (TypeError, ValueError):
+        return _json({"detail": "Target unit cost must be a valid number."}, 400)
+    if target_unit_cost is not None and (not math.isfinite(target_unit_cost) or target_unit_cost <= 0):
+        return _json({"detail": "Target unit cost must be greater than zero."}, 400)
     try:
         return _json(
             migration_tools.cost_optimization_payload(
                 workspace_id=ctx["workspace_id"],
                 analysis_id=request.query_params.get("analysis_id") or None,
                 build_quantity=build_quantity,
+                target_unit_cost=target_unit_cost,
             )
         )
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
+
+
+async def cost_optimization_decisions(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        workspace_store = get_store()
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+
+    if request.method == "GET":
+        analysis_id = str(request.query_params.get("analysis_id") or "").strip()
+        if not analysis_id:
+            return _json({"detail": "analysis_id is required."}, 400)
+        try:
+            decisions = workspace_store.list_cost_decisions(
+                workspace_id=ctx["workspace_id"], analysis_id=analysis_id
+            )
+        except WorkspaceAccessError:
+            return _json({"detail": "Report not found."}, 404)
+        return _json({"ok": True, "decisions": decisions})
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Decision payload must be an object."}, 400)
+    analysis_id = str(body.get("analysis_id") or "").strip()
+    part_number = str(body.get("part_number") or "").strip()
+    manufacturer = str(body.get("manufacturer") or "").strip()
+    category = str(body.get("category") or "").strip()
+    supplier = str(body.get("supplier") or "").strip()
+    reviewer = str(body.get("reviewer") or "").strip()
+    rationale = str(body.get("rationale") or "").strip()
+    if not analysis_id or not part_number or not manufacturer or not category or not supplier:
+        return _json({"detail": "Select a saved BOM and a current savings opportunity."}, 400)
+    if not reviewer or len(reviewer) > 120:
+        return _json({"detail": "Enter a reviewer name (up to 120 characters)."}, 400)
+    if not rationale or len(rationale) > 3000:
+        return _json({"detail": "Enter a rationale (up to 3,000 characters)."}, 400)
+    try:
+        build_quantity = int(body.get("build_quantity") or 0)
+        target_raw = body.get("target_unit_cost")
+        target_unit_cost = float(target_raw) if target_raw not in (None, "") else None
+        purchase_quantity = int(body.get("recommended_purchase_quantity") or 0)
+        target_unit_price = float(body.get("target_unit_price") or 0)
+    except (TypeError, ValueError):
+        return _json({"detail": "Cost decision inputs must be valid numbers."}, 400)
+    if build_quantity < 1 or build_quantity > 10_000_000:
+        return _json({"detail": "Build quantity must be between 1 and 10,000,000."}, 400)
+    if target_unit_cost is not None and (not math.isfinite(target_unit_cost) or target_unit_cost <= 0):
+        return _json({"detail": "Target cost must be greater than zero."}, 400)
+    try:
+        current = migration_tools.cost_optimization_payload(
+            workspace_id=ctx["workspace_id"],
+            analysis_id=analysis_id,
+            build_quantity=build_quantity,
+            target_unit_cost=target_unit_cost,
+        )
+        optimization = current.get("optimization") or {}
+        candidate = next(
+            (
+                row for row in optimization.get("opportunities", [])
+                if str(row.get("Part Number") or "").strip().casefold() == part_number.casefold()
+                and str(row.get("Manufacturer") or "").strip().casefold() == manufacturer.casefold()
+                and str(row.get("Category") or "").strip().casefold() == category.casefold()
+                and str(row.get("Supplier") or "").strip().casefold() == supplier.casefold()
+                and int(row.get("Recommended Purchase Quantity") or row.get("Required Order Quantity") or 0) == purchase_quantity
+                and math.isclose(float(row.get("Estimated Target Price") or 0), target_unit_price, rel_tol=1e-8, abs_tol=1e-8)
+            ),
+            None,
+        )
+        if not candidate:
+            return _json(
+                {"detail": "This savings option is no longer verified for the selected report and quantity. Recalculate the page and review current evidence."},
+                409,
+            )
+        saved = workspace_store.create_cost_decision(
+            {
+                "analysis_id": analysis_id,
+                "created_by": str(ctx.get("user_id") or ""),
+                "reviewer": reviewer,
+                "rationale": rationale,
+                "status": "Pending review",
+                "decision_type": (
+                    "supplier_selection"
+                    if category.casefold() == "cheaper authorized source"
+                    else "price_break"
+                ),
+                "title": f"{part_number} · {category}",
+                "part_number": part_number,
+                "manufacturer": str(candidate.get("Manufacturer") or ""),
+                "current_supplier": str(candidate.get("Current Supplier") or ""),
+                "recommended_supplier": supplier,
+                "currency": str(candidate.get("Currency") or ""),
+                "build_quantity": build_quantity,
+                "required_order_quantity": candidate.get("Required Order Quantity"),
+                "recommended_purchase_quantity": candidate.get("Recommended Purchase Quantity") or candidate.get("Required Order Quantity"),
+                "estimated_extra_quantity": candidate.get("Extra Quantity") or 0,
+                "current_unit_price": candidate.get("Current Unit Price"),
+                "recommended_unit_price": candidate.get("Estimated Target Price"),
+                "estimated_net_savings": candidate.get("Estimated Run Savings"),
+                "evidence_snapshot": candidate,
+                "target_unit_cost": target_unit_cost,
+            },
+            workspace_id=ctx["workspace_id"],
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found."}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "decision": saved}, 201)
 
 
 async def supply_risk_post(request: Request) -> JSONResponse:
@@ -2566,6 +2701,92 @@ async def supply_risk_post(request: Request) -> JSONResponse:
         )
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
+
+
+async def supply_risk_scenarios(request: Request) -> JSONResponse:
+    ctx, denied = _auth_context(request)
+    if denied or not ctx:
+        return denied or _json({"detail": "Unauthorized"}, 401)
+    try:
+        store = get_store()
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    if request.method == "GET":
+        analysis_id = str(request.query_params.get("analysis_id") or "").strip()
+        if not analysis_id:
+            return _json({"detail": "analysis_id is required."}, 400)
+        try:
+            scenarios = store.list_supply_scenarios(
+                workspace_id=ctx["workspace_id"], analysis_id=analysis_id
+            )
+        except WorkspaceAccessError:
+            return _json({"detail": "Report not found."}, 404)
+        except PersistenceNotConfiguredError as exc:
+            return _json({"detail": str(exc)}, 503)
+        return _json({"ok": True, "scenarios": scenarios})
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"detail": "Invalid JSON"}, 400)
+    if not isinstance(body, dict):
+        return _json({"detail": "Scenario payload must be an object."}, 400)
+    analysis_id = str(body.get("analysis_id") or "").strip()
+    if not analysis_id:
+        return _json({"detail": "Select a saved analysis before saving a scenario."}, 400)
+    try:
+        build_quantity = int(body.get("build_quantity") or 0)
+        stock_reduction_percent = int(body.get("stock_reduction_percent") or 0)
+        supplier_loss = int(body.get("supplier_loss") or 0)
+        demand_growth_percent = int(body.get("demand_growth_percent") or 0)
+    except (TypeError, ValueError):
+        return _json({"detail": "Scenario inputs must be whole numbers."}, 400)
+    if build_quantity < 1 or build_quantity > 10_000_000:
+        return _json({"detail": "Build quantity must be between 1 and 10,000,000."}, 400)
+    if not 0 <= stock_reduction_percent <= 100:
+        return _json({"detail": "Stock reduction must be between 0 and 100 percent."}, 400)
+    if supplier_loss < 0 or demand_growth_percent < 0:
+        return _json({"detail": "Supplier loss and demand growth cannot be negative."}, 400)
+    include_lifecycle_event = bool(body.get("include_lifecycle_event"))
+    try:
+        payload = migration_tools.supply_risk_payload(
+            workspace_id=ctx["workspace_id"],
+            analysis_id=analysis_id,
+            build_quantity=build_quantity,
+            stock_reduction_percent=stock_reduction_percent,
+            supplier_loss=supplier_loss,
+            demand_growth_percent=demand_growth_percent,
+            include_lifecycle_event=include_lifecycle_event,
+        )
+        if payload.get("scope") != "analysis" or not payload.get("scenario"):
+            return _json({"detail": "A saved BOM analysis is required."}, 400)
+        scenario = payload["scenario"]
+        saved = store.create_supply_scenario(
+            {
+                "analysis_id": analysis_id,
+                "created_by": str(ctx.get("user_id") or ""),
+                "title": str(body.get("title") or "").strip()[:120]
+                or f"Stock reduction {stock_reduction_percent}% · build {build_quantity}",
+                "mode": payload.get("mode"),
+                "parameters": payload.get("parameters") or {},
+                "summary": {
+                    "buildable_units": scenario.get("buildable_units"),
+                    "baseline_buildable_units": scenario.get("baseline_buildable_units"),
+                    "buildability_status": scenario.get("buildability_status"),
+                    "limiting_part": scenario.get("limiting_part"),
+                    "shortage_components": scenario.get("shortage_components"),
+                    "stock_coverage": payload.get("stock_coverage"),
+                    "stock_coverage_gap": payload.get("stock_coverage_gap"),
+                },
+                "scenario": scenario,
+            },
+            workspace_id=ctx["workspace_id"],
+        )
+    except WorkspaceAccessError:
+        return _json({"detail": "Report not found."}, 404)
+    except PersistenceNotConfiguredError as exc:
+        return _json({"detail": str(exc)}, 503)
+    return _json({"ok": True, "scenario": saved}, 201)
 
 
 async def portfolio_get(request: Request) -> JSONResponse:
@@ -6176,7 +6397,9 @@ app = Starlette(
         Route("/tools/procurement/quotes", procurement_quotes_post, methods=["POST"]),
         Route("/tools/design-impact", design_impact_get, methods=["GET"]),
         Route("/tools/cost-optimization", cost_optimization_get, methods=["GET"]),
+        Route("/tools/cost-optimization/decisions", cost_optimization_decisions, methods=["GET", "POST"]),
         Route("/tools/supply-risk", supply_risk_post, methods=["POST"]),
+        Route("/tools/supply-risk/scenarios", supply_risk_scenarios, methods=["GET", "POST"]),
         Route("/tools/portfolio", portfolio_get, methods=["GET"]),
         Route("/tools/portfolio/recalculate-health", portfolio_health_recalculate_post, methods=["POST"]),
         Route("/tools/detailed-risk", detailed_risk_get, methods=["GET"]),

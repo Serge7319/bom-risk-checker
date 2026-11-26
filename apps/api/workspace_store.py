@@ -59,6 +59,8 @@ def _empty() -> dict[str, Any]:
         "analyses": {},
         "reports": {},
         "decision_records": {},
+        "cost_decisions": {},
+        "supply_scenarios": {},
         "decision_record_shares": {},
         "decision_record_approvers": {},
         "developer_webhooks": {},
@@ -420,6 +422,80 @@ class WorkspaceStore:
             return sorted(
                 rows, key=lambda row: str(row.get("created_at") or ""), reverse=True
             )
+
+    def create_cost_decision(
+        self, decision: dict[str, Any], *, workspace_id: str
+    ) -> dict[str, Any]:
+        """Persist a cost/sourcing decision snapshot against its saved BOM."""
+        wid = self._require_workspace(workspace_id)
+        analysis_id = str(decision.get("analysis_id") or "").strip()
+        if not analysis_id or not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id or 'unknown'} was not found")
+        with _LOCK:
+            saved = dict(json_safe(decision))
+            decision_id = str(saved.get("id") or uuid.uuid4())
+            saved.update({
+                "id": decision_id,
+                "analysis_id": analysis_id,
+                "workspace_id": wid,
+                "created_at": str(saved.get("created_at") or _now()),
+            })
+            self._data.setdefault("cost_decisions", {})[decision_id] = saved
+            self.save()
+            return dict(saved)
+
+    def list_cost_decisions(
+        self, *, workspace_id: str, analysis_id: str
+    ) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        aid = str(analysis_id or "").strip()
+        if not aid or not self.get_report(aid, workspace_id=wid):
+            return []
+        with _LOCK:
+            rows = [
+                dict(row)
+                for row in self._data.setdefault("cost_decisions", {}).values()
+                if row.get("workspace_id") == wid and str(row.get("analysis_id") or "") == aid
+            ]
+        return sorted(rows, key=lambda row: str(row.get("created_at") or ""), reverse=True)
+
+    def create_supply_scenario(
+        self, scenario: dict[str, Any], *, workspace_id: str
+    ) -> dict[str, Any]:
+        """Persist an immutable supply scenario linked to its saved BOM report."""
+        wid = self._require_workspace(workspace_id)
+        analysis_id = str(scenario.get("analysis_id") or "").strip()
+        if not analysis_id or not self.get_report(analysis_id, workspace_id=wid):
+            raise WorkspaceAccessError(f"analysis {analysis_id or 'unknown'} was not found")
+        with _LOCK:
+            saved = dict(json_safe(scenario))
+            scenario_id = str(saved.get("id") or uuid.uuid4())
+            saved.update({
+                "id": scenario_id,
+                "analysis_id": analysis_id,
+                "workspace_id": wid,
+                "created_at": str(saved.get("created_at") or _now()),
+            })
+            self._data.setdefault("supply_scenarios", {})[scenario_id] = saved
+            self.save()
+            return dict(saved)
+
+    def list_supply_scenarios(
+        self, *, workspace_id: str, analysis_id: str
+    ) -> list[dict[str, Any]]:
+        wid = self._require_workspace(workspace_id)
+        aid = str(analysis_id or "").strip()
+        if not aid:
+            return []
+        if not self.get_report(aid, workspace_id=wid):
+            return []
+        with _LOCK:
+            rows = [
+                dict(row)
+                for row in self._data.setdefault("supply_scenarios", {}).values()
+                if row.get("workspace_id") == wid and str(row.get("analysis_id") or "") == aid
+            ]
+        return sorted(rows, key=lambda row: str(row.get("created_at") or ""), reverse=True)
 
     def create_developer_webhook(self, row: dict[str, Any]) -> dict[str, Any]:
         wid = self._require_workspace(str(row.get("workspace_id") or ""))

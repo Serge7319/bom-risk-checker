@@ -156,6 +156,30 @@ CREATE TABLE IF NOT EXISTS migration_reports (
 CREATE INDEX IF NOT EXISTS migration_reports_ws_idx
   ON migration_reports (workspace_id);
 
+-- Immutable stock-loss scenario snapshots linked to the report they model.
+CREATE TABLE IF NOT EXISTS migration_supply_scenarios (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  analysis_id TEXT NOT NULL REFERENCES migration_reports(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  payload JSONB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS migration_supply_scenarios_ws_analysis_created_idx
+  ON migration_supply_scenarios (workspace_id, analysis_id, created_at DESC);
+
+-- Sourcing decisions preserve the price and supplier evidence reviewed by a user.
+CREATE TABLE IF NOT EXISTS migration_cost_decisions (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  analysis_id TEXT NOT NULL REFERENCES migration_reports(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  payload JSONB NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS migration_cost_decisions_ws_analysis_created_idx
+  ON migration_cost_decisions (workspace_id, analysis_id, created_at DESC);
+
 -- Human-authored, tenant-scoped decisions from the Next.js workspace.
 -- The payload retains the comparison evidence as it appeared when recorded.
 CREATE TABLE IF NOT EXISTS migration_decision_records (

@@ -2279,7 +2279,11 @@ def design_impact_payload(
 
 
 def cost_optimization_payload(
-    *, workspace_id: str, analysis_id: str | None = None, build_quantity: int = 100
+    *,
+    workspace_id: str,
+    analysis_id: str | None = None,
+    build_quantity: int = 100,
+    target_unit_cost: float | None = None,
 ) -> dict[str, Any]:
     analyses, parts = analyses_and_parts(workspace_id=workspace_id, analysis_id=analysis_id)
     if not analyses:
@@ -2290,7 +2294,10 @@ def cost_optimization_payload(
             "optimization": {},
         }
     optimization = build_cost_optimization(
-        analyses, parts, build_quantity=max(1, int(build_quantity or 100))
+        analyses,
+        parts,
+        build_quantity=max(1, int(build_quantity or 100)),
+        target_unit_cost=target_unit_cost,
     )
     annotated = annotate_report_parts({"parts": list(parts or []), "mode": (analyses[0] or {}).get("mode")})
     summary = annotated.get("evidence_summary") or {}

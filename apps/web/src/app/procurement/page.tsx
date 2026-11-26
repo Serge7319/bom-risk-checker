@@ -183,6 +183,10 @@ function ProcurementPageInner() {
     () => (searchParams.get("analysis_id") || "").trim(),
     [searchParams],
   );
+  const requestedPartNumber = useMemo(
+    () => (searchParams.get("part_number") || searchParams.get("mpn") || "").trim(),
+    [searchParams],
+  );
 
   useEffect(() => {
     if (!session) return;
@@ -323,12 +327,17 @@ function ProcurementPageInner() {
       setSelectedPartKey("");
       return;
     }
-    if (!allParts.some((part) => partKey(part) === selectedPartKey)) {
-      setSelectedPartKey(partKey(allParts[0]));
-      setQuoteForm(emptyQuoteForm(String(allParts[0].mpn || "")));
+    const requestedKey = requestedPartNumber.trim().toLowerCase();
+    const requestedPart = requestedKey
+      ? allParts.find((part) => String(part.mpn || part.MPN || "").trim().toLowerCase() === requestedKey)
+      : undefined;
+    const chosen = requestedPart || allParts.find((part) => partKey(part) === selectedPartKey) || allParts[0];
+    if (partKey(chosen) !== selectedPartKey) {
+      setSelectedPartKey(partKey(chosen));
+      setQuoteForm(emptyQuoteForm(String(chosen.mpn || chosen.MPN || "")));
       setComparisonQuantity("");
     }
-  }, [allParts, selectedPartKey]);
+  }, [allParts, selectedPartKey, requestedPartNumber]);
 
   const quoteAnalysisId = requestedAnalysisId || selectedAnalysisId;
 

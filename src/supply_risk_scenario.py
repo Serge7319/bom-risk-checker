@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections import defaultdict
 import hashlib
 import html
+import math
 from typing import Any, Callable, Dict, Iterable, List
 
 import pandas as pd
@@ -90,7 +91,7 @@ def build_supply_scenario(
     normalized: List[Dict[str, Any]] = []
     for part_index, row in enumerate(parts):
         analysis_id = _text(row.get("analysis_id"))
-        qty = max(1, int(_number(_first(row, "quantity", "qty", "required_quantity"), 1)))
+        qty = max(0, int(_number(_first(row, "quantity_per_parent", "Quantity per Parent", "effective_quantity", "quantity", "qty", "required_quantity"), 1)))
         raw_stock = _first(row, "stock_available", "stock", default=None)
         stock_value = _optional_number(raw_stock)
         stock_recorded = stock_value is not None
@@ -123,10 +124,8 @@ def build_supply_scenario(
             if sources_recorded
             else None
         )
-        adjusted_quantity = max(
-            1,
-            int(round(qty * max(1, build_quantity) * (1 + max(0, demand_growth_percent) / 100))),
-        )
+        scenario_units_per_build = qty * (1 + max(0, demand_growth_percent) / 100)
+        adjusted_quantity = int(math.ceil(scenario_units_per_build * max(1, build_quantity)))
         shortage = (
             max(0, adjusted_quantity - adjusted_stock)
             if adjusted_stock is not None
@@ -180,11 +179,28 @@ def build_supply_scenario(
                 "Lifecycle": lifecycle,
                 "Original Stock": stock,
                 "Scenario Stock": adjusted_stock,
+                "Stock Source": _text(_first(row, "stock_source", "inventory_source", "stock_supplier"), "Saved analysis stock field"),
+                "Stock Retrieved At": _first(row, "stock_retrieved_at", "stock_updated_at", "inventory_retrieved_at", "stock_as_of", "inventory_as_of"),
                 "Stock Recorded": stock_recorded,
                 "Original Sources": suppliers,
                 "Scenario Sources": adjusted_suppliers,
                 "Sources Recorded": sources_recorded,
+                "Quantity per Build": qty,
+                "Scenario Units per Build": scenario_units_per_build,
                 "Required Units": adjusted_quantity,
+                "Baseline Required Units": qty * max(1, build_quantity),
+                "Baseline Shortage Units": (
+                    max(0, qty * max(1, build_quantity) - stock)
+                    if stock is not None else None
+                ),
+                "Baseline Buildable Units": (
+                    int(stock // qty) if stock is not None and qty > 0 else None
+                ),
+                "Scenario Buildable Units": (
+                    int(adjusted_stock // scenario_units_per_build)
+                    if adjusted_stock is not None and scenario_units_per_build > 0
+                    else None
+                ),
                 "Shortage Units": shortage,
                 "Unit Price": unit_price,
                 "Price Recorded": price_recorded,
@@ -229,6 +245,13 @@ def build_supply_scenario(
         ))
         stock_values = [row["Original Stock"] for row in group if row["Stock Recorded"]]
         supplier_values = [row["Original Sources"] for row in group if row["Sources Recorded"]]
+        stock_sources = list(dict.fromkeys(
+            str(row["Stock Source"]) for row in group if row.get("Stock Source")
+        ))
+        stock_dates = list(dict.fromkeys(
+            str(row["Stock Retrieved At"]) for row in group
+            if row.get("Stock Retrieved At") not in (None, "")
+        ))
         price_values = [row["Unit Price"] for row in group if row["Price Recorded"]]
         base_stock = min(stock_values) if stock_values else None
         base_sources = min(supplier_values) if supplier_values else None
@@ -241,8 +264,34 @@ def build_supply_scenario(
         scenario_sources = (
             max(0, base_sources - max(0, supplier_loss)) if sources_recorded else None
         )
-        required_units = sum(row["Required Units"] for row in group)
+        units_per_build = sum(row["Quantity per Build"] for row in group)
+        scenario_units_per_build = units_per_build * (1 + max(0, demand_growth_percent) / 100)
+        required_units = int(math.ceil(scenario_units_per_build * max(1, build_quantity)))
+        baseline_required_units = units_per_build * max(1, build_quantity)
         shortage = max(0, required_units - scenario_stock) if scenario_stock is not None else None
+        baseline_shortage = (
+            max(0, baseline_required_units - base_stock) if base_stock is not None else None
+        )
+        baseline_buildable_units = (
+            int(base_stock // units_per_build)
+            if base_stock is not None and units_per_build > 0 else None
+        )
+        scenario_buildable_units = (
+            int(scenario_stock // scenario_units_per_build)
+            if scenario_stock is not None and scenario_units_per_build > 0 else None
+        )
+        coverage_ratio = (
+            scenario_stock / required_units if scenario_stock is not None and required_units > 0 else None
+        )
+        part_status = (
+            "Unknown"
+            if coverage_ratio is None
+            else "Short"
+            if coverage_ratio < 1
+            else "At risk"
+            if coverage_ratio < 1.25
+            else "Covered"
+        )
         price_recorded = bool(price_values)
         unit_price = max(price_values) if price_values else 0.0
         raw_score_values = [row["Current Risk"] for row in group if row["Risk Score Recorded"]]
@@ -286,11 +335,22 @@ def build_supply_scenario(
             "Project Health": min((row["Project Health"] for row in group), default=0),
             "Original Stock": base_stock,
             "Scenario Stock": scenario_stock,
+            "Stock Source": "; ".join(stock_sources) if stock_sources else "Saved analysis stock field",
+            "Stock Retrieved At": stock_dates[0] if len(stock_dates) == 1 else None,
+            "Stock Observation Dates": stock_dates,
             "Stock Recorded": stock_recorded,
             "Original Sources": base_sources,
             "Scenario Sources": scenario_sources,
             "Sources Recorded": sources_recorded,
+            "Quantity per Build": units_per_build,
+            "Scenario Units per Build": scenario_units_per_build,
             "Required Units": required_units,
+            "Baseline Required Units": baseline_required_units,
+            "Baseline Shortage Units": baseline_shortage,
+            "Baseline Buildable Units": baseline_buildable_units,
+            "Scenario Buildable Units": scenario_buildable_units,
+            "Coverage Ratio": coverage_ratio,
+            "Status": part_status,
             "Shortage Units": shortage,
             "Unit Price": unit_price,
             "Price Recorded": price_recorded,
@@ -388,6 +448,40 @@ def build_supply_scenario(
     ]
     known_stock = [row for row in normalized if row["Stock Recorded"]]
     known_source_rows = [row for row in normalized if row["Sources Recorded"]]
+    baseline_capacities = [
+        int(row["Baseline Buildable Units"])
+        for row in known_stock
+        if row["Baseline Buildable Units"] is not None
+    ]
+    scenario_capacities = [
+        int(row["Scenario Buildable Units"])
+        for row in known_stock
+        if row["Scenario Buildable Units"] is not None
+    ]
+    baseline_buildable_units = min(baseline_capacities) if baseline_capacities else None
+    scenario_buildable_units = min(scenario_capacities) if scenario_capacities else None
+    limiting_part = min(
+        (
+            row for row in known_stock
+            if row["Scenario Buildable Units"] is not None
+        ),
+        key=lambda row: int(row["Scenario Buildable Units"]),
+        default=None,
+    )
+    shortfall_rows = sorted(
+        [row for row in known_stock if (row["Shortage Units"] or 0) > 0],
+        key=lambda row: (-(row["Shortage Units"] or 0), row["Part Number"]),
+    )
+    if stock_coverage == "absent":
+        buildability_status = "Unknown"
+    elif shortfall_rows:
+        buildability_status = "Short"
+    elif stock_coverage == "partial":
+        buildability_status = "At risk"
+    elif any(row.get("Status") == "At risk" for row in known_stock):
+        buildability_status = "At risk"
+    else:
+        buildability_status = "Covered"
     known_stock_required_units = sum(
         row["Required Units"] for row in known_stock
     )
@@ -574,6 +668,13 @@ def build_supply_scenario(
         "recorded_stock_total": sum(row["Original Stock"] or 0 for row in known_stock),
         "scenario_stock_total": sum(row["Scenario Stock"] or 0 for row in known_stock),
         "required_units_total": sum(row["Required Units"] for row in normalized),
+        "baseline_buildable_units": baseline_buildable_units,
+        "buildable_units": scenario_buildable_units,
+        "buildability_status": buildability_status,
+        "limiting_part": limiting_part,
+        "shortfall_rows": shortfall_rows,
+        "baseline_build_quantity": max(1, build_quantity),
+        "scenario_build_quantity": max(1, build_quantity),
         "required_units_known_stock_total": known_stock_required_units,
         "lead_time_increase_weeks": (
             sum(lead_time_deltas) / len(lead_time_deltas) if lead_time_deltas else None

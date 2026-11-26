@@ -850,6 +850,97 @@ function ReportPageInner() {
 
           <ReportOverview report={report} />
 
+          <section className="cv-card pad" style={{ marginBottom: 14 }} data-testid="saved-supply-scenarios">
+            <div className="cv-section-heading cv-section-heading--card">
+              <div>
+                <h2>Supply risk scenarios</h2>
+                <p>Saved what-if snapshots linked to this BOM revision.</p>
+              </div>
+              <Link className="cv-button secondary" href={`/supply-risk?analysis_id=${encodeURIComponent(String(report.analysis_id || report.id))}`}>
+                Run a scenario
+              </Link>
+            </div>
+            {report.supply_scenarios?.length ? (
+              <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                <table className="cv-table">
+                  <thead>
+                    <tr><th>Saved</th><th>Scenario</th><th>Build ceiling</th><th>Status</th><th>Stock coverage</th></tr>
+                  </thead>
+                  <tbody>
+                    {report.supply_scenarios.map((saved) => {
+                      const summary = saved.summary || {};
+                      const parameters = saved.parameters || {};
+                      const savedDate = new Date(saved.created_at);
+                      return (
+                        <tr key={saved.id}>
+                          <td>{Number.isNaN(savedDate.getTime()) ? "Date unavailable" : savedDate.toLocaleString()}</td>
+                          <td>{cleanUserText(saved.title || `Stock reduction ${String(parameters.stock_reduction_percent ?? "—")}% · build ${String(parameters.build_quantity ?? "—")}`)}</td>
+                          <td>{summary.buildable_units == null ? "Unknown" : String(summary.buildable_units)}</td>
+                          <td>{cleanUserText(String(summary.buildability_status || "Unknown"))}</td>
+                          <td>{cleanUserText(String(summary.stock_coverage || "Unknown"))}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="cv-small-note" style={{ marginTop: 10 }}>
+                No scenario has been saved for this report yet. Run a stock reduction scenario to compare build capacity and add its evidence snapshot here.
+              </p>
+            )}
+          </section>
+
+          {report.cost_decisions?.length ? (
+            <section className="cv-card pad" style={{ marginBottom: 14 }} data-testid="saved-cost-decisions">
+              <div className="cv-section-heading cv-section-heading--card">
+                <div>
+                  <h2>Cost and sourcing decisions</h2>
+                  <p>Pending review records preserve the selected supplier or price break and the evidence snapshot.</p>
+                </div>
+                <Link className="cv-button secondary" href={`/cost-optimization?analysis_id=${encodeURIComponent(String(report.analysis_id || report.id))}`}>
+                  Review cost plan
+                </Link>
+              </div>
+              <div className="cv-table-wrap" style={{ marginTop: 12 }}>
+                <table className="cv-table">
+                  <thead>
+                    <tr><th>Saved</th><th>Part / option</th><th>Supplier choice</th><th>Estimated savings</th><th>Status</th><th>Reviewer / rationale</th></tr>
+                  </thead>
+                  <tbody>
+                    {report.cost_decisions.map((decision) => {
+                      const savedDate = new Date(decision.created_at);
+                      const savings = decision.estimated_net_savings;
+                      const currency = String(decision.currency || "");
+                      let savingsLabel = "—";
+                      if (savings != null && Number.isFinite(Number(savings))) {
+                        try {
+                          savingsLabel = new Intl.NumberFormat("en-US", {
+                            style: "currency",
+                            currency: /^[A-Z]{3}$/.test(currency) ? currency : "USD",
+                            maximumFractionDigits: 2,
+                          }).format(Number(savings));
+                        } catch {
+                          savingsLabel = `${currency || "Currency"} ${Number(savings).toFixed(2)}`;
+                        }
+                      }
+                      return (
+                        <tr key={decision.id}>
+                          <td>{Number.isNaN(savedDate.getTime()) ? "Date unavailable" : savedDate.toLocaleString()}</td>
+                          <td><strong>{cleanUserText(decision.part_number || "Part")}</strong><div className="cv-small-note">{cleanUserText(decision.title || "")}</div></td>
+                          <td>{cleanUserText(decision.current_supplier || "Current")} → {cleanUserText(decision.recommended_supplier || "Suggested")}</td>
+                          <td>{savingsLabel}</td>
+                          <td>{cleanUserText(decision.status || "Pending review")}</td>
+                          <td>{cleanUserText(decision.reviewer || "Reviewer")}<div className="cv-small-note">{cleanUserText(decision.rationale || "")}</div></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
+
           <RevisionDiff report={report} token={session.access_token} />
 
           {report.derived_from_analysis_id ? (
