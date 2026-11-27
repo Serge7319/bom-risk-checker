@@ -301,8 +301,8 @@ def test_notification_preferences_round_trip(client: TestClient):
     assert prefs["notification_preferences"]["marketing_emails"] is True
 
 
-def test_security_status_marks_two_factor_as_planned(client: TestClient):
+def test_security_status_marks_sandbox_two_factor_unavailable(client: TestClient):
     owner = _login(client, SMOKE_EMAIL, SMOKE_PASSWORD)
     res = client.get("/security/status", headers=_headers(owner))
     assert res.status_code == 200, res.text
-    assert res.json()["two_factor"]["status"] == "planned"
+    assert res.json()["two_factor"]["status"] == "unavailable"

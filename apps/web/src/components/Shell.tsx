@@ -17,9 +17,15 @@ import {
 import { workspaceDisplayName } from "@/lib/display";
 import { NAV_GROUPS } from "@/lib/routes";
 
-// Each page mounts its own Shell. Keep the last account-scoped status so
-// soft navigation doesn't flash the full-screen gate during revalidation.
-const runtimeMaintenanceByUser = new Map<string, RuntimeMaintenanceStatus>();
+// Each page mounts its own Shell. Keep short-lived account-scoped snapshots so
+// soft navigation does not repeat the same status requests on every route.
+const MAINTENANCE_CACHE_MS = 5_000;
+const PLAN_CACHE_MS = 15_000;
+const runtimeMaintenanceByUser = new Map<
+  string,
+  { status: RuntimeMaintenanceStatus; fetchedAt: number }
+>();
+const planByWorkspace = new Map<string, { plan: string; fetchedAt: number }>();
 
 function crumbTitle(pathname: string): string {
   if (pathname === "/") return "Home";
@@ -50,13 +56,17 @@ export function Shell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const maintenanceCacheKey = session.user_id || session.email.trim().toLowerCase();
+  const planCacheKey = `${maintenanceCacheKey}:${session.workspace_id || session.workspace}`;
   const [navOpen, setNavOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [verifiedPlan, setVerifiedPlan] = useState<string | null>(null);
-  const maintenanceCacheKey = session.user_id || session.email.trim().toLowerCase();
+  const [verifiedPlan, setVerifiedPlan] = useState<string | null>(() =>
+    planByWorkspace.get(planCacheKey)?.plan || null,
+  );
+  const cachedMaintenance = runtimeMaintenanceByUser.get(maintenanceCacheKey);
   const [maintenanceSnapshot, setMaintenanceSnapshot] = useState(() => ({
     userKey: maintenanceCacheKey,
-    status: runtimeMaintenanceByUser.get(maintenanceCacheKey) ?? null,
+    status: cachedMaintenance?.status ?? null,
   }));
   const maintenanceStatus = maintenanceSnapshot.userKey === maintenanceCacheKey
     ? maintenanceSnapshot.status
@@ -91,10 +101,18 @@ export function Shell({
   useEffect(() => {
     let current = true;
     const refreshAvailability = () => {
+      const cached = runtimeMaintenanceByUser.get(maintenanceCacheKey);
+      if (cached && Date.now() - cached.fetchedAt < MAINTENANCE_CACHE_MS) {
+        setMaintenanceSnapshot({ userKey: maintenanceCacheKey, status: cached.status });
+        return;
+      }
       void fetchRuntimeMaintenance(session.access_token)
         .then((status) => {
           if (current) {
-            runtimeMaintenanceByUser.set(maintenanceCacheKey, status);
+            runtimeMaintenanceByUser.set(maintenanceCacheKey, {
+              status,
+              fetchedAt: Date.now(),
+            });
             setMaintenanceSnapshot({ userKey: maintenanceCacheKey, status });
           }
         })
@@ -110,7 +128,10 @@ export function Shell({
               planned_maintenance_starts_at: null,
               planned_maintenance_ends_at: null,
             };
-            runtimeMaintenanceByUser.set(maintenanceCacheKey, fallbackStatus);
+            runtimeMaintenanceByUser.set(maintenanceCacheKey, {
+              status: fallbackStatus,
+              fetchedAt: Date.now(),
+            });
             setMaintenanceSnapshot({ userKey: maintenanceCacheKey, status: fallbackStatus });
           }
         });
@@ -125,11 +146,21 @@ export function Shell({
 
   useEffect(() => {
     let current = true;
-    setVerifiedPlan(null);
+    const cached = planByWorkspace.get(planCacheKey);
+    if (!cached) setVerifiedPlan(null);
+    else setVerifiedPlan(cached.plan);
+    if (cached && Date.now() - cached.fetchedAt < PLAN_CACHE_MS) {
+      return () => {
+        current = false;
+      };
+    }
     void fetchPlanUsage(session.access_token)
       .then((usage) => {
         const plan = String(usage.plan || "").trim();
-        if (current && plan) setVerifiedPlan(plan);
+        if (current && plan) {
+          planByWorkspace.set(planCacheKey, { plan, fetchedAt: Date.now() });
+          setVerifiedPlan(plan);
+        }
       })
       .catch(() => {
         // Keep the sign-in snapshot if the usage endpoint is temporarily unavailable.
@@ -137,7 +168,7 @@ export function Shell({
     return () => {
       current = false;
     };
-  }, [session.access_token, session.user_id]);
+  }, [session.access_token, planCacheKey]);
 
   if (session.platform_role !== "admin" && maintenanceStatus?.maintenance_mode) {
     return (

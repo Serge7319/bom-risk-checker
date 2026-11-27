@@ -43,7 +43,7 @@ def test_shared_portfolio_signals_drop_legacy_scores_without_current_evidence(mo
     assert shared["Highest Risk Score"] is None
     assert shared["Lifecycle"] == "Needs verification"
     assert shared["Reported Lifecycle"] == "Obsolete"
-    assert shared["Lifecycle Evidence"] == "unverified"
+    assert shared["Lifecycle Evidence"] == "reported-unverified"
 
 
 def test_partial_risk_points_remain_unassessed_not_low():

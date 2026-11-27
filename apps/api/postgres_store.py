@@ -1346,10 +1346,21 @@ class PostgresWorkspaceStore:
                 ).fetchone()["c"]
                 or 0
             )
+            hierarchy_rows = conn.execute(
+                "SELECT id, payload->'hierarchy' AS hierarchy "
+                "FROM migration_reports WHERE workspace_id = %s",
+                (wid,),
+            ).fetchall()
+        hierarchy_by_analysis: dict[str, dict[str, Any]] = {}
+        for row in hierarchy_rows:
+            hierarchy = row["hierarchy"]
+            if isinstance(hierarchy, str):
+                hierarchy = json.loads(hierarchy)
+            if isinstance(hierarchy, dict):
+                hierarchy_by_analysis[str(row["id"])] = hierarchy
         priority: list[dict[str, Any]] = []
         for analysis in analyses[:8]:
-            report = self.get_report(analysis["id"], workspace_id=wid) or {}
-            hierarchy = report.get("hierarchy") or {}
+            hierarchy = hierarchy_by_analysis.get(str(analysis["id"])) or {}
             contributors = hierarchy.get("priority_contributors") or []
             if contributors:
                 for item in contributors[:3]:
@@ -1453,37 +1464,66 @@ class PostgresWorkspaceStore:
         self, *, workspace_id: str, analysis_id: str | None = None
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         wid = self._require_workspace(workspace_id)
+        summary_rows = self.list_reports(workspace_id=wid)
+        summaries = {str(row.get("id") or ""): row for row in summary_rows}
+        fallback_report: dict[str, Any] | None = None
         if analysis_id:
-            report = self.get_report(analysis_id, workspace_id=wid)
-            if not report:
-                return [], []
             selected_ids = [analysis_id]
+            if analysis_id not in summaries:
+                # Preserve the existing cross-workspace check and support any
+                # legacy report that is missing its analysis summary row.
+                fallback_report = self.get_report(analysis_id, workspace_id=wid)
+                if not fallback_report:
+                    return [], []
         else:
-            selected_ids = [row["id"] for row in self.list_reports(workspace_id=wid)]
+            selected_ids = [str(row.get("id") or "") for row in summary_rows]
+
+        if not selected_ids:
+            return [], []
+
+        with self._connect() as conn:
+            if analysis_id:
+                report_rows = conn.execute(
+                    "SELECT id, payload FROM migration_reports WHERE workspace_id = %s AND id = %s",
+                    (wid, analysis_id),
+                ).fetchall()
+            else:
+                report_rows = conn.execute(
+                    "SELECT id, payload FROM migration_reports WHERE workspace_id = %s",
+                    (wid,),
+                ).fetchall()
+
+        reports_by_id: dict[str, dict[str, Any]] = {}
+        for row in report_rows:
+            payload = row["payload"]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            if isinstance(payload, dict):
+                reports_by_id[str(row["id"])] = payload
+        if fallback_report and analysis_id:
+            reports_by_id.setdefault(analysis_id, fallback_report)
+
         analyses: list[dict[str, Any]] = []
         parts: list[dict[str, Any]] = []
-        summaries = {row["id"]: row for row in self.list_reports(workspace_id=wid)}
         for aid in selected_ids:
-            report = self.get_report(aid, workspace_id=wid)
+            report = reports_by_id.get(aid)
             if not report:
                 continue
-            analyses.append(
-                summaries.get(aid)
-                or {
-                    "id": report["id"],
-                    "workspace_id": wid,
-                    "filename": report.get("filename"),
-                    "project_name": report.get("project_name"),
-                    "created_at": report.get("created_at"),
-                    "health_score": report.get("health_score"),
-                    "high_risk_count": report.get("high_risk_count"),
-                    "total_parts": report.get("total_parts"),
-                    "mode": report.get("mode"),
-                }
-            )
+            summary = summaries.get(aid) or {
+                "id": report["id"],
+                "workspace_id": wid,
+                "filename": report.get("filename"),
+                "project_name": report.get("project_name"),
+                "created_at": report.get("created_at"),
+                "health_score": report.get("health_score"),
+                "high_risk_count": report.get("high_risk_count"),
+                "total_parts": report.get("total_parts"),
+                "mode": report.get("mode"),
+            }
+            analyses.append(summary)
             for part in report.get("parts") or []:
                 enriched = dict(part)
-                enriched["analysis_id"] = report["id"]
+                enriched["analysis_id"] = str(report.get("id") or aid)
                 enriched["workspace_id"] = wid
                 enriched.setdefault("filename", report.get("filename") or "bom.csv")
                 parts.append(enriched)

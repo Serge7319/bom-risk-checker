@@ -194,6 +194,7 @@ def test_production_home_uses_production_visibility(monkeypatch):
 
     monkeypatch.setattr(main, "_auth_context", lambda _request: ({"workspace_id": "w"}, None))
     monkeypatch.setattr(main, "get_store", lambda: Store())
+    monkeypatch.setattr(main, "list_reports_with_parts", lambda *, workspace_id: ([], []))
     monkeypatch.setattr(main, "is_production_runtime", lambda: True)
 
     response = asyncio.run(main.workspace_home(None))

@@ -98,8 +98,6 @@ def list_reports(*, workspace_id: str) -> list[dict[str, Any]]:
 def analyses_and_parts(
     *, workspace_id: str, analysis_id: str | None = None
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    if analysis_id and not get_report(analysis_id, workspace_id=workspace_id):
-        return [], []
     analyses, parts = _stored_analyses_and_parts(
         workspace_id=workspace_id, analysis_id=analysis_id
     )
@@ -2489,7 +2487,9 @@ def supply_risk_payload(
 
 
 def _portfolio_parts_with_current_evidence(
-    analyses: list[dict[str, Any]], *, workspace_id: str
+    analyses: list[dict[str, Any]], *,
+    workspace_id: str | None = None,
+    parts: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Use current field-level evidence for portfolio component signals.
 
@@ -2499,14 +2499,35 @@ def _portfolio_parts_with_current_evidence(
     unverified before aggregating shared-component signals.
     """
     current_parts: list[dict[str, Any]] = []
+    parts_by_analysis: dict[str, list[dict[str, Any]]] = {}
+    for part in parts or []:
+        if not isinstance(part, dict):
+            continue
+        analysis_id = str(part.get("analysis_id") or "").strip()
+        if analysis_id:
+            parts_by_analysis.setdefault(analysis_id, []).append(part)
+
     for analysis in analyses:
         analysis_id = str(analysis.get("id") or analysis.get("analysis_id") or "").strip()
         if not analysis_id:
             continue
-        report = get_report(analysis_id, workspace_id=workspace_id)
-        if not report:
-            continue
-        annotated = annotate_report_parts(report)
+        if parts is None:
+            # Keep the helper's standalone behavior for callers that do not
+            # already have the bulk rows.
+            report = get_report(analysis_id, workspace_id=workspace_id or "")
+            if not report:
+                continue
+            report_mode = report.get("mode")
+            source_parts = report.get("parts") or []
+        else:
+            # analyses_and_parts already retrieved each saved report's rows.
+            # Reuse them instead of fetching every report a second time.
+            report_mode = analysis.get("mode")
+            source_parts = parts_by_analysis.get(analysis_id, [])
+        annotated = annotate_report_parts({
+            "mode": report_mode,
+            "parts": source_parts,
+        })
         for saved_part in annotated.get("parts") or []:
             if not isinstance(saved_part, dict):
                 continue
@@ -2608,7 +2629,9 @@ def portfolio_payload(*, workspace_id: str) -> dict[str, Any]:
             "leadership_metrics": leadership_metrics,
             "reports": [],
         }
-    current_parts = _portfolio_parts_with_current_evidence(analyses, workspace_id=workspace_id)
+    current_parts = _portfolio_parts_with_current_evidence(
+        analyses, workspace_id=workspace_id, parts=parts
+    )
     intelligence = build_portfolio_intelligence(analyses, current_parts, alerts)
     return _json_safe(
         {
