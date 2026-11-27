@@ -52,7 +52,16 @@ function formatMoney(value: unknown, currency: unknown, digits = 2) {
 }
 
 function formatDate(value: unknown) {
-  const date = new Date(String(value || ""));
+  const raw = String(value || "").trim();
+  const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})$/);
+  if (dateOnly) {
+    const date = new Date(`${dateOnly[1]}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== dateOnly[1]) {
+      return "Date unavailable";
+    }
+    return date.toLocaleDateString(undefined, { timeZone: "UTC" });
+  }
+  const date = new Date(raw);
   return Number.isNaN(date.getTime()) ? "Date unavailable" : date.toLocaleDateString();
 }
 
