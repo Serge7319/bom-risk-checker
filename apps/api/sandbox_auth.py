@@ -350,6 +350,7 @@ MEMBERSHIP_PK_UPGRADE_SQL = """
 
 
 class _FileAuthStore:
+    backend = "file"
     def __init__(self, path: Path | None = None) -> None:
         self.path = Path(path) if path else _DEFAULT_FILE
         self._data = _empty_auth_data()
@@ -745,6 +746,7 @@ class _FileAuthStore:
 
 
 class _PostgresAuthStore:
+    backend = "postgres"
     def __init__(self, database_url: str) -> None:
         self.database_url = database_url
         self._ready = False
