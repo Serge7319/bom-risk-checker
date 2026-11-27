@@ -1318,6 +1318,10 @@ class WorkspaceStore:
                 raise WorkspaceAccessError(
                     f"analysis {analysis_id} is not in workspace {wid}"
                 )
+            metadata = analysis or report or {}
+            bom_id = str(metadata.get("bom_id") or "")
+            revision_id = str(metadata.get("revision_id") or "")
+            revision = str(metadata.get("revision") or "")
             self._data["reports"].pop(analysis_id, None)
             self._data["analyses"].pop(analysis_id, None)
             self._data["decision_records"] = {
@@ -1331,16 +1335,54 @@ class WorkspaceStore:
             for quote_id, quote in list(self._data.setdefault("procurement_quotes", {}).items()):
                 if quote.get("analysis_id") == analysis_id and quote.get("workspace_id") == wid:
                     self._data["procurement_quotes"].pop(quote_id, None)
-            for bom in self._data["boms"].values():
-                if bom.get("latest_analysis_id") == analysis_id and bom.get(
-                    "workspace_id"
-                ) == wid:
-                    bom["latest_analysis_id"] = None
-            for rev in self._data["revisions"].values():
-                if rev.get("latest_analysis_id") == analysis_id and rev.get(
-                    "workspace_id"
-                ) == wid:
-                    rev["latest_analysis_id"] = None
+
+            remaining_bom = [
+                (item_id, row)
+                for item_id, row in self._data["analyses"].items()
+                if row.get("workspace_id") == wid and str(row.get("bom_id") or "") == bom_id
+            ]
+            latest_bom_id = max(
+                remaining_bom,
+                key=lambda item: (str(item[1].get("created_at") or ""), item[0]),
+            )[0] if remaining_bom else None
+            for current_bom in self._data["boms"].values():
+                if current_bom.get("id") == bom_id and current_bom.get("workspace_id") == wid:
+                    if current_bom.get("latest_analysis_id") == analysis_id:
+                        current_bom["latest_analysis_id"] = latest_bom_id
+                        current_bom["updated_at"] = _now()
+
+            for current_revision_id, current_revision in list(self._data["revisions"].items()):
+                is_target_revision = (
+                    (revision_id and current_revision_id == revision_id)
+                    or (
+                        not revision_id
+                        and current_revision.get("bom_id") == bom_id
+                        and str(current_revision.get("revision") or "") == revision
+                        and current_revision.get("workspace_id") == wid
+                    )
+                )
+                if not is_target_revision or current_revision.get("workspace_id") != wid:
+                    continue
+                remaining_revision = [
+                    (item_id, row)
+                    for item_id, row in self._data["analyses"].items()
+                    if row.get("workspace_id") == wid
+                    and str(row.get("bom_id") or "") == bom_id
+                    and (
+                        str(row.get("revision_id") or "") == current_revision_id
+                        if revision_id
+                        else str(row.get("revision") or "") == revision
+                    )
+                ]
+                if remaining_revision:
+                    latest_revision_id = max(
+                        remaining_revision,
+                        key=lambda item: (str(item[1].get("created_at") or ""), item[0]),
+                    )[0]
+                    current_revision["latest_analysis_id"] = latest_revision_id
+                    current_revision["updated_at"] = _now()
+                else:
+                    self._data["revisions"].pop(current_revision_id, None)
             self.save()
             return True
 
