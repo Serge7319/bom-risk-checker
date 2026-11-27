@@ -21,6 +21,16 @@ ROOT = Path(__file__).resolve().parents[1]
 CSV = ROOT / "tests" / "fixtures" / "synthetic_bom_25parts.csv"
 
 
+def test_auth_store_backend_markers_match_storage(tmp_path: Path):
+    """CI regression: migration preflight must recognize both auth store backends."""
+    from apps.api.sandbox_auth import _FileAuthStore, _PostgresAuthStore
+
+    file_store = _FileAuthStore(tmp_path / "auth.json")
+    postgres_store = _PostgresAuthStore("postgresql://localhost/cadivor_test")
+    assert file_store.backend == "file"
+    assert postgres_store.backend == "postgres"
+
+
 @pytest.fixture(autouse=True)
 def _sandbox_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("CADIVOR_SANDBOX_AUTH_SECRET", "test-sandbox-auth-secret-key")
