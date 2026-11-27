@@ -298,6 +298,120 @@ def test_saved_bom_management_moves_preserves_and_deletes_scoped_history(cutover
     assert client.get(f"/reports/{destination['analysis_id']}", headers=headers_a).status_code == 200
 
 
+
+def test_single_saved_report_delete_preserves_sibling_and_cleans_history(cutover_env):
+    from apps.api.main import app
+    from apps.api import monitoring_store, workspace_store
+    import psycopg
+
+    client = TestClient(app)
+    account = SANDBOX_SEED_USERS[0]
+    headers = _login(client, account["email"], account["password"])
+    workspace_id = account["workspace_id"]
+
+    def analyze(revision: str) -> dict:
+        payload = b"MPN,Quantity\nTPS5430,1\n"
+        response = client.post(
+            "/boms/analyze",
+            headers=headers,
+            files={"file": (f"Controller-{revision}.csv", payload, "text/csv")},
+            data={"project_name": "Drone", "bom_name": "Controller", "revision": revision},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    saved_a = analyze("A")
+    saved_b = analyze("B")
+    assert saved_a["bom_id"] == saved_b["bom_id"]
+    deleted_id = saved_b["analysis_id"]
+    bom_id = saved_a["bom_id"]
+    store = workspace_store.get_store()
+    store.create_decision_record(
+        {
+            "analysis_id": deleted_id,
+            "part_a": "TPS5430",
+            "part_b": "TPS5431",
+            "decision": "approve_alternate",
+        },
+        workspace_id=workspace_id,
+    )
+    store.create_procurement_quote(
+        {
+            "analysis_id": deleted_id,
+            "requested_mpn": "TPS5430",
+            "requested_manufacturer": "Texas Instruments",
+            "supplier": "Test Distributor",
+        },
+        workspace_id=workspace_id,
+    )
+    alert_rows = monitoring_store.persist_alerts(
+        workspace_id,
+        [{
+            "analysis_id": deleted_id,
+            "part_number": "TPS5430",
+            "alert_type": "lifecycle-change",
+            "severity": "high",
+            "message": "Lifecycle changed",
+        }],
+    )
+    assert alert_rows
+    alert = alert_rows[0]
+    user_id = client.get("/auth/me", headers=headers).json()["user_id"]
+    assert monitoring_store.claim_scheduled_alert_email(workspace_id, user_id, alert)
+    monitoring_store.save_live_snapshot({
+        "workspace_id": workspace_id,
+        "analysis_id": deleted_id,
+        "part_number": "TPS5430",
+        "stock": 0,
+    })
+    monitoring_store.record_refresh(
+        workspace_id, analysis_id=deleted_id, alert_count=1, mode="test"
+    )
+    with psycopg.connect(cutover_env["uri"]) as conn:
+        conn.execute(
+            """
+            INSERT INTO migration_monitoring_slack_deliveries
+                (workspace_id, alert_id, status) VALUES (%s, %s, 'sent')
+            """,
+            (workspace_id, alert["id"]),
+        )
+
+    response = client.delete(f"/reports/{deleted_id}", headers=headers)
+    assert response.status_code == 200, response.text
+    assert client.get(f"/reports/{deleted_id}", headers=headers).status_code == 404
+    assert client.get(f"/reports/{saved_a['analysis_id']}", headers=headers).status_code == 200
+    assert store.list_decision_records(workspace_id=workspace_id, analysis_id=deleted_id) == []
+    assert store.list_procurement_quotes(workspace_id=workspace_id, analysis_id=deleted_id) == []
+    assert monitoring_store.list_alerts(workspace_id, analysis_id=deleted_id) == []
+    assert monitoring_store.get_live_snapshot(workspace_id, deleted_id, "TPS5430") is None
+    assert all(
+        row.get("analysis_id") != deleted_id
+        for row in monitoring_store.list_refresh_history(workspace_id)
+    )
+    with psycopg.connect(cutover_env["uri"]) as conn:
+        assert conn.execute(
+            "SELECT latest_analysis_id FROM migration_boms WHERE id = %s", (bom_id,)
+        ).fetchone()[0] == saved_a["analysis_id"]
+        assert conn.execute(
+            """
+            SELECT latest_analysis_id FROM migration_revisions
+            WHERE bom_id = %s AND revision = 'A'
+            """,
+            (bom_id,),
+        ).fetchone()[0] == saved_a["analysis_id"]
+        assert conn.execute(
+            "SELECT COUNT(*) FROM migration_revisions WHERE bom_id = %s AND revision = 'B'",
+            (bom_id,),
+        ).fetchone()[0] == 0
+        for table in (
+            "migration_monitoring_email_deliveries",
+            "migration_monitoring_slack_deliveries",
+        ):
+            assert conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE workspace_id = %s AND alert_id = %s",
+                (workspace_id, alert["id"]),
+            ).fetchone()[0] == 0
+
 def test_backup_restore_and_recovery(cutover_env, tmp_path):
     from apps.api.main import app
     from apps.api import workspace_store

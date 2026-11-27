@@ -1808,7 +1808,10 @@ class PostgresWorkspaceStore:
         with _LOCK:
             with self._connect() as conn:
                 row = conn.execute(
-                    "SELECT workspace_id FROM migration_analyses WHERE id = %s",
+                    """
+                    SELECT workspace_id, bom_id, revision_id
+                    FROM migration_analyses WHERE id = %s
+                    """,
                     (analysis_id,),
                 ).fetchone()
                 if not row:
@@ -1817,33 +1820,83 @@ class PostgresWorkspaceStore:
                     raise WorkspaceAccessError(
                         f"analysis {analysis_id} is not in workspace {wid}"
                     )
+
+                alert_rows = conn.execute(
+                    """
+                    SELECT id FROM migration_monitoring_alerts
+                    WHERE workspace_id = %s AND analysis_id = %s
+                    """,
+                    (wid, analysis_id),
+                ).fetchall()
+                alert_ids = [str(item["id"]) for item in alert_rows]
+                if alert_ids:
+                    conn.execute(
+                        "DELETE FROM migration_monitoring_email_deliveries WHERE workspace_id = %s AND alert_id = ANY(%s)",
+                        (wid, alert_ids),
+                    )
+                    conn.execute(
+                        "DELETE FROM migration_monitoring_slack_deliveries WHERE workspace_id = %s AND alert_id = ANY(%s)",
+                        (wid, alert_ids),
+                    )
+                    conn.execute(
+                        "DELETE FROM migration_monitoring_alerts WHERE workspace_id = %s AND id = ANY(%s)",
+                        (wid, alert_ids),
+                    )
                 conn.execute(
-                    "DELETE FROM migration_reports WHERE id = %s AND workspace_id = %s",
-                    (analysis_id, wid),
+                    "DELETE FROM migration_monitoring_snapshots WHERE workspace_id = %s AND analysis_id = %s",
+                    (wid, analysis_id),
+                )
+                conn.execute(
+                    "DELETE FROM migration_monitoring_refresh_history WHERE workspace_id = %s AND analysis_id = %s",
+                    (wid, analysis_id),
                 )
                 conn.execute(
                     "DELETE FROM migration_decision_records WHERE analysis_id = %s AND workspace_id = %s",
                     (analysis_id, wid),
                 )
                 conn.execute(
+                    "DELETE FROM migration_reports WHERE id = %s AND workspace_id = %s",
+                    (analysis_id, wid),
+                )
+                conn.execute(
                     "DELETE FROM migration_analyses WHERE id = %s AND workspace_id = %s",
                     (analysis_id, wid),
                 )
+
+                revision_latest = conn.execute(
+                    """
+                    SELECT id FROM migration_analyses
+                    WHERE workspace_id = %s AND revision_id = %s
+                    ORDER BY created_at DESC, id DESC LIMIT 1
+                    """,
+                    (wid, row["revision_id"]),
+                ).fetchone()
+                if revision_latest:
+                    conn.execute(
+                        """
+                        UPDATE migration_revisions
+                        SET latest_analysis_id = %s, updated_at = NOW()
+                        WHERE id = %s AND workspace_id = %s
+                        """,
+                        (revision_latest["id"], row["revision_id"], wid),
+                    )
+                else:
+                    conn.execute(
+                        "DELETE FROM migration_revisions WHERE id = %s AND workspace_id = %s",
+                        (row["revision_id"], wid),
+                    )
+
                 conn.execute(
                     """
                     UPDATE migration_boms
-                    SET latest_analysis_id = NULL
-                    WHERE latest_analysis_id = %s AND workspace_id = %s
+                    SET latest_analysis_id = (
+                        SELECT id FROM migration_analyses
+                        WHERE workspace_id = %s AND bom_id = %s
+                        ORDER BY created_at DESC, id DESC LIMIT 1
+                    ), updated_at = NOW()
+                    WHERE id = %s AND workspace_id = %s AND latest_analysis_id = %s
                     """,
-                    (analysis_id, wid),
-                )
-                conn.execute(
-                    """
-                    UPDATE migration_revisions
-                    SET latest_analysis_id = NULL
-                    WHERE latest_analysis_id = %s AND workspace_id = %s
-                    """,
-                    (analysis_id, wid),
+                    (wid, row["bom_id"], row["bom_id"], wid, analysis_id),
                 )
                 conn.commit()
                 return True

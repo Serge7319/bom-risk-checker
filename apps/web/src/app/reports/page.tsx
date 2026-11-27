@@ -9,6 +9,7 @@ import { PageHeader, PrimaryLink } from "@/components/PageHeader";
 import { Shell } from "@/components/Shell";
 import {
   deleteBom,
+  deleteReport,
   listProjects,
   listReports,
   moveBom,
@@ -227,6 +228,31 @@ function ReportsInner() {
     }
   }
 
+  async function onDeleteSavedReport(savedReport: Record<string, unknown>, bomName: string) {
+    if (!session) return;
+    const savedId = reportRecordId(savedReport);
+    if (!savedId) return;
+    const revisionLabel = reportRevisionLabel(savedReport);
+    const savedAt = reportSavedDate(savedReport);
+    const confirmed = window.confirm(
+      `Delete the ${revisionLabel} snapshot saved ${savedAt} from “${bomName}”? The snapshot’s decisions, quotes, and monitoring history will also be deleted. The BOM and its other saved snapshots will remain. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    const busyKey = `report:${savedId}`;
+    setManagementBusy(busyKey);
+    setManagementError("");
+    setManagementNotice("");
+    try {
+      await deleteReport(session.access_token, savedId);
+      await reloadSavedBoms();
+      setManagementNotice(`Deleted ${revisionLabel} from ${bomName}. Other saved report snapshots remain.`);
+    } catch (err) {
+      setManagementError(err instanceof Error ? err.message : "Saved report snapshot could not be deleted.");
+    } finally {
+      setManagementBusy("");
+    }
+  }
+
   useEffect(() => {
     if (!session) return;
     const identity = session.user_id || session.email;
@@ -389,16 +415,28 @@ function ReportsInner() {
                               {bomReports.map((savedReport) => {
                                 const savedId = reportRecordId(savedReport);
                                 const revisionLabel = reportRevisionLabel(savedReport);
+                                const savedAt = reportSavedDate(savedReport);
+                                const deleteBusy = managementBusy === `report:${savedId}`;
                                 return (
-                                  <Link
-                                    key={savedId}
-                                    className="cv-revision-link"
-                                    href={`/reports/${encodeURIComponent(savedId)}`}
-                                    aria-label={`Open ${revisionLabel} of ${bomName}, saved ${reportSavedDate(savedReport)}`}
-                                  >
-                                    <strong>{revisionLabel}</strong>
-                                    <span>{reportSavedDate(savedReport)}</span>
-                                  </Link>
+                                  <div className="cv-revision-item" key={savedId}>
+                                    <Link
+                                      className="cv-revision-link"
+                                      href={`/reports/${encodeURIComponent(savedId)}`}
+                                      aria-label={`Open ${revisionLabel} of ${bomName}, saved ${savedAt}`}
+                                    >
+                                      <strong>{revisionLabel}</strong>
+                                      <span>{savedAt}</span>
+                                    </Link>
+                                    <button
+                                      type="button"
+                                      className="cv-button cv-button-danger cv-revision-delete"
+                                      disabled={managementBusy !== ""}
+                                      aria-label={`Delete ${revisionLabel} snapshot of ${bomName}, saved ${savedAt}`}
+                                      onClick={() => void onDeleteSavedReport(savedReport, bomName)}
+                                    >
+                                      {deleteBusy ? "Deleting…" : "Delete snapshot"}
+                                    </button>
+                                  </div>
                                 );
                               })}
                             </div>
