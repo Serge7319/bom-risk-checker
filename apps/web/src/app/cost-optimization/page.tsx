@@ -153,8 +153,19 @@ function CostOptimizationInner() {
     let active = true;
     setBusy(true);
     setError("");
-    listReports(session.access_token)
-      .then(async ({ reports: reportRows }) => {
+    const requestedOptimization = requestedAnalysisId
+      ? fetchCostOptimization(session.access_token, {
+          analysisId: requestedAnalysisId,
+          buildQuantity: qty,
+          targetUnitCost: Number.isFinite(Number(targetCost)) && Number(targetCost) > 0
+            ? Number(targetCost)
+            : undefined,
+        })
+          .then((result) => ({ ok: true as const, result }))
+          .catch((error) => ({ ok: false as const, error }))
+      : Promise.resolve(null);
+    Promise.all([listReports(session.access_token), requestedOptimization])
+      .then(async ([{ reports: reportRows }, prefetched]) => {
         if (!active) return;
         const available = ((reportRows || []) as CostRow[])
           .filter((row) => String(row.id || "").trim())
@@ -170,6 +181,17 @@ function CostOptimizationInner() {
         setSelectedAnalysisId(chosen);
         if (!chosen) {
           setData(null);
+          setBusy(false);
+          return;
+        }
+        if (chosen === requestedAnalysisId && prefetched) {
+          if (prefetched.ok) {
+            setData(prefetched.result);
+          } else {
+            setError(prefetched.error instanceof Error
+              ? prefetched.error.message
+              : "Cost analysis could not load.");
+          }
           setBusy(false);
           return;
         }

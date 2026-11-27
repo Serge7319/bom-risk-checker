@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { Shell } from "@/components/Shell";
 import { LoadingCard } from "@/components/GapBanner";
@@ -209,6 +209,10 @@ export default function Page() {
   const [developerWebhookSecret, setDeveloperWebhookSecret] = useState("");
   const [developerWebhookError, setDeveloperWebhookError] = useState("");
   const [developerWebhookNotice, setDeveloperWebhookNotice] = useState("");
+  const [developerWebhooksLoading, setDeveloperWebhooksLoading] = useState(false);
+  const loadedSettingsTabs = useRef<Set<TabId>>(new Set());
+  const loadedSettingsOwner = useRef<string | null>(null);
+  const settingsReloadVersion = useRef(0);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("engineer");
@@ -244,123 +248,162 @@ export default function Page() {
     ["Generated at", compliance?.generated_at],
   ];
 
-  async function reload(active = session) {
+  async function reload(active = session, targetTab: TabId = tab, force = false) {
     if (!active) return;
+    const owner = `${active.user_id || active.email}:${active.workspace_id || active.workspace}`;
+    if (loadedSettingsOwner.current !== owner) {
+      loadedSettingsTabs.current.clear();
+      loadedSettingsOwner.current = owner;
+    }
+    const requestVersion = ++settingsReloadVersion.current;
+    const isCurrentRequest = () => requestVersion === settingsReloadVersion.current;
+    if (force) loadedSettingsTabs.current.delete(targetTab);
+    if (!force && loadedSettingsTabs.current.has(targetTab)) {
+      setBusy(false);
+      return;
+    }
     setBusy(true);
     setError("");
+    setDeveloperWebhooksLoading(false);
     const token = active.access_token;
-    const coreErrors: string[] = [];
 
-    // Core account data must succeed independently of workspace/billing extras.
-    const [profileRes, prefsRes, securityRes] = await Promise.all([
-      settledValue(fetchProfile(token)),
-      settledValue(fetchPreferences(token)),
-      settledValue(fetchSecurityStatus(token)),
-    ]);
-    if (profileRes) {
-      setProfile(asRecord(profileRes.profile || profileRes));
-    } else {
-      coreErrors.push("profile");
-    }
-    if (prefsRes) {
-      setPreferences(asRecord(prefsRes.preferences || prefsRes));
-    } else {
-      coreErrors.push("preferences");
-    }
-    if (securityRes) {
-      setSecurity(securityRes);
-    } else {
-      coreErrors.push("security");
-    }
+    try {
+      if (targetTab === "profile") {
+        const profileRes = await settledValue(fetchProfile(token));
+        if (!isCurrentRequest()) return;
+        if (profileRes) {
+          setProfile(asRecord(profileRes.profile || profileRes));
+          loadedSettingsTabs.current.add("profile");
+        } else {
+          setError("Profile could not be loaded. You can still try saving again.");
+        }
+        return;
+      }
 
-    const [workspaceRes, workspacesRes, membersRes, activityRes, invitesRes] =
-      await Promise.all([
-        settledValue(fetchWorkspaceSettings(token)),
-        settledValue(listWorkspaces(token)),
-        settledValue(listWorkspaceMembers(token)),
-        settledValue(listWorkspaceActivity(token)),
-        settledValue(listWorkspaceInvitations(token)),
-      ]);
-    if (workspaceRes) {
-      setWorkspace(asRecord(workspaceRes.workspace || workspaceRes));
-    }
-    if (workspacesRes) {
-      setWorkspaces(asRows(workspacesRes.workspaces || workspacesRes.items));
-    }
-    if (membersRes) {
-      setMembers(asRows(membersRes.members));
-    }
-    if (activityRes) {
-      setActivity(asRows(activityRes.activity || activityRes.items));
-      setActivityAuditDetail(activityRes.audit_detail === true);
-    }
-    setInvites(asRows(invitesRes?.invitations));
+      if (targetTab === "preferences") {
+        const prefsRes = await settledValue(fetchPreferences(token));
+        if (!isCurrentRequest()) return;
+        if (prefsRes) {
+          setPreferences(asRecord(prefsRes.preferences || prefsRes));
+          loadedSettingsTabs.current.add("preferences");
+        } else {
+          setError("Preferences could not be loaded. Check your connection and try again.");
+        }
+        return;
+      }
 
-    const [usageRes, billingRes, connectorsRes, complianceRes, readinessRes] =
-      await Promise.all([
+      if (targetTab === "security") {
+        const securityRes = await settledValue(fetchSecurityStatus(token));
+        if (!isCurrentRequest()) return;
+        if (securityRes) {
+          setSecurity(securityRes);
+          loadedSettingsTabs.current.add("security");
+        } else {
+          setError("Security settings could not be loaded. Check your connection and try again.");
+        }
+        return;
+      }
+
+      if (targetTab === "workspace") {
+        const [workspaceRes, workspacesRes, membersRes, activityRes, invitesRes] = await Promise.all([
+          settledValue(fetchWorkspaceSettings(token)),
+          settledValue(listWorkspaces(token)),
+          settledValue(listWorkspaceMembers(token)),
+          settledValue(listWorkspaceActivity(token)),
+          settledValue(listWorkspaceInvitations(token)),
+        ]);
+        if (!isCurrentRequest()) return;
+        if (workspaceRes) setWorkspace(asRecord(workspaceRes.workspace || workspaceRes));
+        if (workspacesRes) setWorkspaces(asRows(workspacesRes.workspaces || workspacesRes.items));
+        if (membersRes) setMembers(asRows(membersRes.members));
+        if (activityRes) {
+          setActivity(asRows(activityRes.activity || activityRes.items));
+          setActivityAuditDetail(activityRes.audit_detail === true);
+        }
+        setInvites(asRows(invitesRes?.invitations));
+        if ([workspaceRes, workspacesRes, membersRes, activityRes, invitesRes].some(Boolean)) {
+          loadedSettingsTabs.current.add("workspace");
+        } else {
+          setError("Workspace settings could not be loaded. Check your connection and try again.");
+        }
+        return;
+      }
+
+      const [usageRes, billingRes, connectorsRes, complianceRes, readinessRes] = await Promise.all([
         settledValue(fetchPlanUsage(token)),
         settledValue(fetchBillingStatus(token)),
         settledValue(fetchConnectors(token)),
         settledValue(fetchCompliancePack(token, "rohs")),
         settledValue(fetchServiceReadiness(token)),
       ]);
-    if (usageRes) setUsage(usageRes);
-    if (billingRes) {
-      setBilling(billingRes);
-      if (billingRes.subscription_billing_interval === "year" || billingRes.subscription_billing_interval === "month") {
-        setBillingInterval(billingRes.subscription_billing_interval);
+      if (!isCurrentRequest()) return;
+      if (usageRes) setUsage(usageRes);
+      if (billingRes) {
+        setBilling(billingRes);
+        if (billingRes.subscription_billing_interval === "year" || billingRes.subscription_billing_interval === "month") {
+          setBillingInterval(billingRes.subscription_billing_interval);
+        }
       }
-    }
-    const usageLimits = asRecord(usageRes?.limits);
-    const apiAccessAvailable = usageLimits.api_access === true || billingRes?.api_access_addon_active === true;
-    if (apiAccessAvailable) {
+      if (connectorsRes) setConnectors(connectorsRes);
+      if (complianceRes) setCompliance(complianceRes);
+      if (readinessRes && readinessRes.ok !== false) {
+        setReadiness(readinessRes);
+        setReadinessUnknown(false);
+        if (readinessRes.connectors) {
+          setConnectors({
+            ...(connectorsRes || {}),
+            ...readinessRes.connectors,
+            connectors:
+              readinessRes.connectors.connectors ||
+              asRows(
+                (connectorsRes as Record<string, unknown> | null)?.connectors ||
+                  (connectorsRes as Record<string, unknown> | null)?.items,
+              ),
+          });
+        }
+      } else {
+        setReadiness(null);
+        setReadinessUnknown(true);
+      }
+      const hasBillingData = [usageRes, billingRes, connectorsRes, complianceRes, readinessRes].some(Boolean);
+      if (!hasBillingData) {
+        setError("Billing and service details could not be loaded. Check your connection and try again.");
+      }
+
+      const usageLimits = asRecord(usageRes?.limits);
+      const apiAccessAvailable = usageLimits.api_access === true || billingRes?.api_access_addon_active === true;
+      setDeveloperWebhooksLoading(apiAccessAvailable);
+      if (!apiAccessAvailable) {
+        if (hasBillingData) loadedSettingsTabs.current.add("billing");
+        setDeveloperWebhooks([]);
+        setDeveloperWebhookDeliveries([]);
+        setDeveloperWebhookError("");
+        setDeveloperWebhookSecret("");
+        return;
+      }
+
+      // Webhook details are only needed on Billing. Render the settings page
+      // as soon as its primary data is ready, then finish this optional fetch.
+      setBusy(false);
       const webhooksRes = await settledValue(fetchDeveloperWebhooks(token));
+      if (!isCurrentRequest()) return;
       if (webhooksRes?.ok) {
         setDeveloperWebhooks(webhooksRes.webhooks || []);
         setDeveloperWebhookDeliveries(webhooksRes.deliveries || []);
         setDeveloperWebhookEvents(webhooksRes.allowed_event_types || []);
         setDeveloperWebhookEncryptionReady(webhooksRes.encryption_configured === true);
         setDeveloperWebhookError("");
+        if (hasBillingData) loadedSettingsTabs.current.add("billing");
       } else {
         setDeveloperWebhooks([]);
         setDeveloperWebhookDeliveries([]);
         setDeveloperWebhookEncryptionReady(false);
         setDeveloperWebhookError("Webhook settings could not be loaded.");
       }
-    } else {
-      setDeveloperWebhooks([]);
-      setDeveloperWebhookDeliveries([]);
-      setDeveloperWebhookError("");
-      setDeveloperWebhookSecret("");
+      setDeveloperWebhooksLoading(false);
+    } finally {
+      if (isCurrentRequest()) setBusy(false);
     }
-    if (connectorsRes) setConnectors(connectorsRes);
-    if (complianceRes) setCompliance(complianceRes);
-    if (readinessRes && readinessRes.ok !== false) {
-      setReadiness(readinessRes);
-      setReadinessUnknown(false);
-      if (readinessRes.connectors) {
-        setConnectors({
-          ...(connectorsRes || {}),
-          ...readinessRes.connectors,
-          connectors:
-            readinessRes.connectors.connectors ||
-            asRows(
-              (connectorsRes as Record<string, unknown> | null)?.connectors ||
-                (connectorsRes as Record<string, unknown> | null)?.items,
-            ),
-        });
-      }
-    } else {
-      setReadiness(null);
-      setReadinessUnknown(true);
-    }
-
-    if (coreErrors.length === 3) {
-      setError("Could not reach Cadivor. Check your connection and try again.");
-    } else if (coreErrors.includes("profile")) {
-      setError("Profile could not be loaded. You can still try saving again.");
-    }
-    setBusy(false);
   }
 
   async function refreshSecurityStatus() {
@@ -598,9 +641,9 @@ export default function Page() {
 
   useEffect(() => {
     if (!session) return;
-    void reload(session);
+    void reload(session, tab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, [session, tab]);
 
   if (!session) return null;
 
@@ -1012,7 +1055,7 @@ export default function Page() {
         </aside>
 
         <div className="cv-settings-main">
-          {busy ? <LoadingCard label="Loading account and workspace settings…" /> : null}
+          {busy ? <LoadingCard label={`Loading ${TABS.find((item) => item.id === tab)?.label.toLowerCase() || "account"} settings…`} /> : null}
           {error ? <div className="cv-error" role="alert">{error}</div> : null}
           {notice ? (
             <div className="cv-card pad" role="status" style={{ marginBottom: 14, padding: 12 }}>
@@ -1422,7 +1465,7 @@ export default function Page() {
                                               String(row.id),
                                             );
                                             setNotice("Invitation resent.");
-                                            await reload(session);
+                                            await reload(session, "workspace", true);
                                           } catch (err) {
                                             setError(
                                               err instanceof Error
@@ -1447,7 +1490,7 @@ export default function Page() {
                                               String(row.id),
                                             );
                                             setNotice("Invitation cancelled.");
-                                            await reload(session);
+                                            await reload(session, "workspace", true);
                                           } catch (err) {
                                             setError(
                                               err instanceof Error
@@ -2112,7 +2155,9 @@ export default function Page() {
                     ) : null}
                     {developerWebhookError ? <div className="cv-error" role="alert" style={{ marginTop: 12 }}>{developerWebhookError}</div> : null}
                     {developerWebhookNotice ? <p className="cv-small-note" role="status" style={{ marginTop: 10 }}>{developerWebhookNotice}</p> : null}
-                    {developerWebhooks.length ? (
+                    {developerWebhooksLoading ? (
+                      <p className="cv-small-note" role="status" style={{ marginTop: 12 }}>Loading outgoing webhooks…</p>
+                    ) : developerWebhooks.length ? (
                       <ul className="cv-api-key-list">
                         {developerWebhooks.map((hook) => (
                           <li key={hook.id}>

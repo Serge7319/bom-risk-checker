@@ -17,9 +17,11 @@ import sys
 import threading
 import time
 import uuid
+from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta, timezone
+from functools import wraps
 from pathlib import Path
-from typing import Any
+from typing import Any, ParamSpec, TypeVar
 from urllib.parse import urlsplit
 
 from starlette.applications import Starlette
@@ -49,6 +51,7 @@ from apps.api.synthetic_analyze import (  # noqa: E402
     delete_report,
     get_report,
     list_reports,
+    list_reports_with_parts,
     parse_bom_bytes,
     recalculate_report_health,
 )
@@ -73,7 +76,6 @@ from apps.api.workspace_store import (  # noqa: E402
     get_store,
 )
 from src.saved_bom_project import split_project_and_bom  # noqa: E402
-
 from apps.api import billing_prep  # noqa: E402
 from apps.api import compliance_packs  # noqa: E402
 from apps.api import decision_record_exports  # noqa: E402
@@ -106,6 +108,22 @@ from apps.api.report_exports import (  # noqa: E402
     safe_download_stem,
 )
 from src.datasheet_comparison import MAX_DATASHEET_BYTES  # noqa: E402
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def offload_sync_handler(
+    handler: Callable[P, R],
+) -> Callable[P, Coroutine[Any, Any, R]]:
+    """Run a synchronous route body in Starlette's bounded worker pool."""
+
+    @wraps(handler)
+    async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+        return await run_in_threadpool(handler, *args, **kwargs)
+
+    return wrapped
 
 
 def _get_visible_report(analysis_id: str, *, workspace_id: str) -> dict[str, Any] | None:
@@ -241,6 +259,15 @@ def _auth_context(
     return payload, None
 
 
+
+async def _auth_context_async(
+    request: Request, *, enforce_maintenance: bool = True
+) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+    """Resolve user/workspace auth without blocking concurrent API requests."""
+    return await run_in_threadpool(
+        _auth_context, request, enforce_maintenance=enforce_maintenance
+    )
+
 def _require_smoke_token(request: Request) -> JSONResponse | None:
     """Back-compat wrapper — prefer _auth_context for workspace scoping."""
     _ctx, err = _auth_context(request)
@@ -267,7 +294,8 @@ def _release_one_time_credit_if_report_was_not_saved(
         pass
 
 
-async def health(_: Request) -> JSONResponse:
+@offload_sync_handler
+def health(_: Request) -> JSONResponse:
     persistence = describe_persistence()
     store_path_basename = None
     try:
@@ -461,7 +489,8 @@ def _record_legal_acceptance(**kwargs):
     return legal_acceptance.record_acceptance(**kwargs)
 
 
-async def auth_signup_config(_: Request) -> JSONResponse:
+@offload_sync_handler
+def auth_signup_config(_: Request) -> JSONResponse:
     """Expose public onboarding availability without exposing auth configuration."""
     enabled = bool(_use_supabase_auth() and supabase_auth.signup_enabled())
     return _json(
@@ -550,7 +579,8 @@ async def auth_signup(request: Request) -> JSONResponse:
     )
 
 
-async def auth_logout(request: Request) -> JSONResponse:
+@offload_sync_handler
+def auth_logout(request: Request) -> JSONResponse:
     authorization = request.headers.get("authorization") or ""
     if not authorization.startswith("Bearer "):
         return _json({"detail": "Missing bearer token"}, 401)
@@ -567,7 +597,8 @@ async def auth_logout(request: Request) -> JSONResponse:
     return _json({"ok": True, "logged_out": True})
 
 
-async def auth_me(request: Request) -> JSONResponse:
+@offload_sync_handler
+def auth_me(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -590,7 +621,8 @@ async def auth_me(request: Request) -> JSONResponse:
     )
 
 
-async def smoke_login(request: Request) -> JSONResponse:
+@offload_sync_handler
+def smoke_login(request: Request) -> JSONResponse:
     """Removed as the auth path — returns 410. Use POST /auth/login."""
     return _json(
         {
@@ -661,7 +693,7 @@ def _intake_options_from_form(form: Any) -> tuple[dict[str, Any], JSONResponse |
 
 async def boms_validate(request: Request) -> JSONResponse:
     """Validate a BOM upload without running the analysis engine."""
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     form = await request.form()
@@ -691,7 +723,7 @@ async def boms_validate(request: Request) -> JSONResponse:
 
 
 async def boms_analyze(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     form = await request.form()
@@ -1139,7 +1171,8 @@ async def _analyze_bom_form(
     )
 
 
-async def reports_list(request: Request) -> JSONResponse:
+@offload_sync_handler
+def reports_list(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1165,7 +1198,8 @@ async def reports_list(request: Request) -> JSONResponse:
     )
 
 
-async def reports_delete(request: Request) -> JSONResponse:
+@offload_sync_handler
+def reports_delete(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1181,7 +1215,8 @@ async def reports_delete(request: Request) -> JSONResponse:
     return _json({"ok": True, "deleted": analysis_id, "workspace_id": ctx["workspace_id"]})
 
 
-async def projects_list(request: Request) -> JSONResponse:
+@offload_sync_handler
+def projects_list(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1211,7 +1246,7 @@ async def projects_list(request: Request) -> JSONResponse:
 
 
 async def boms_update(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     bom_id = request.path_params["bom_id"]
@@ -1241,7 +1276,8 @@ async def boms_update(request: Request) -> JSONResponse:
     return _json({"ok": True, "bom": updated, "workspace_id": ctx["workspace_id"]})
 
 
-async def boms_delete(request: Request) -> JSONResponse:
+@offload_sync_handler
+def boms_delete(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1270,7 +1306,7 @@ async def boms_delete(request: Request) -> JSONResponse:
 
 
 async def projects_update(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     project_id = request.path_params["project_id"]
@@ -1295,7 +1331,8 @@ async def projects_update(request: Request) -> JSONResponse:
     return _json({"ok": True, "project": updated, "workspace_id": ctx["workspace_id"]})
 
 
-async def projects_delete(request: Request) -> JSONResponse:
+@offload_sync_handler
+def projects_delete(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1311,7 +1348,8 @@ async def projects_delete(request: Request) -> JSONResponse:
     return _json({"ok": True, "deleted": project_id, "workspace_id": ctx["workspace_id"]})
 
 
-async def workspace_home(request: Request) -> JSONResponse:
+@offload_sync_handler
+def workspace_home(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1322,21 +1360,31 @@ async def workspace_home(request: Request) -> JSONResponse:
             workspace_id=workspace_id,
             production=is_production_runtime(),
         )
+        report_rows, saved_parts = list_reports_with_parts(workspace_id=workspace_id)
         reports = customer_visible_analyses(
-            list_reports(workspace_id=workspace_id),
-            production=is_production_runtime(),
+            report_rows, production=is_production_runtime()
         )
         payload = dict(payload)
         payload["projects"] = _refresh_project_report_summaries(
             list(payload.get("projects") or []), reports
         )
         payload["recent_analyses"] = reports[:12]
+        parts_by_analysis: dict[str, list[dict[str, Any]]] = {}
+        for part in saved_parts:
+            if not isinstance(part, dict):
+                continue
+            part_analysis_id = str(part.get("analysis_id") or "").strip()
+            if part_analysis_id:
+                parts_by_analysis.setdefault(part_analysis_id, []).append(part)
         current_priorities = []
         for summary in reports[:8]:
             analysis_id = str(summary.get("id") or summary.get("analysis_id") or "")
-            report = get_report(analysis_id, workspace_id=workspace_id) if analysis_id else None
-            if report:
-                current_priorities.extend(current_priority_items(report, summary)[:3])
+            if analysis_id:
+                current_priorities.extend(
+                    current_priority_items(
+                        {"parts": parts_by_analysis.get(analysis_id, [])}, summary
+                    )[:3]
+                )
         payload["priority_risks"] = current_priorities
         counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "needs_verification": 0}
         for item in current_priorities:
@@ -1357,7 +1405,8 @@ async def workspace_home(request: Request) -> JSONResponse:
         return _json({"detail": str(exc)}, 503)
 
 
-async def workspace_priority_queue(request: Request) -> JSONResponse:
+@offload_sync_handler
+def workspace_priority_queue(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1400,7 +1449,8 @@ async def workspace_priority_queue(request: Request) -> JSONResponse:
         return _json({"detail": str(exc)}, 503)
 
 
-async def reports_csv_get(request: Request) -> Response:
+@offload_sync_handler
+def reports_csv_get(request: Request) -> Response:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1424,7 +1474,8 @@ async def reports_csv_get(request: Request) -> Response:
     )
 
 
-async def reports_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def reports_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1451,7 +1502,8 @@ async def reports_get(request: Request) -> JSONResponse:
     return _json(enriched)
 
 
-async def reports_export(request: Request) -> Response:
+@offload_sync_handler
+def reports_export(request: Request) -> Response:
     """Export one saved report, scoped to the authenticated workspace."""
     ctx, denied = _auth_context(request)
     if denied or not ctx:
@@ -1486,7 +1538,8 @@ async def reports_export(request: Request) -> Response:
     )
 
 
-async def monitoring_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def monitoring_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1506,7 +1559,7 @@ async def monitoring_get(request: Request) -> JSONResponse:
 
 
 async def compare_parts_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if not plan_limits.effective_plan(ctx).get("datasheet_comparison"):
@@ -1593,7 +1646,8 @@ _DECISION_VALIDATION_CHECKS = {
 _DECISION_RISK_LEVELS = {"unknown", "low", "medium", "high"}
 
 
-async def decision_records_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def decision_records_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -1627,7 +1681,7 @@ async def decision_records_get(request: Request) -> JSONResponse:
 
 async def decision_records_export_get(request: Request) -> Response:
     """Export workspace decisions using an explicitly review-required layout."""
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     template = str(request.path_params.get("template") or "").strip().lower()
@@ -1673,7 +1727,7 @@ async def decision_records_export_get(request: Request) -> Response:
 
 async def decision_record_share_post(request: Request) -> JSONResponse:
     """Create a short-lived, read-only link for one workspace decision record."""
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -1770,7 +1824,7 @@ async def decision_record_share_get(request: Request) -> JSONResponse:
 
 async def decision_record_approver_post(request: Request) -> JSONResponse:
     """Email a bearer link that can review exactly one decision record."""
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if _throttled(
@@ -1930,7 +1984,7 @@ async def decision_record_approver_respond(request: Request) -> JSONResponse:
 
 
 async def decision_records_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     datasheet_uploads: dict[str, Any] = {}
@@ -2237,7 +2291,7 @@ async def decision_records_post(request: Request) -> JSONResponse:
 
 
 async def datasheet_qa_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if not plan_limits.effective_plan(ctx).get("datasheet_comparison"):
@@ -2270,7 +2324,8 @@ async def datasheet_qa_post(request: Request) -> JSONResponse:
     return _json(result, status)
 
 
-async def procurement_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def procurement_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -2370,7 +2425,8 @@ def _valid_quote_url(value: Any) -> str:
     return url
 
 
-async def procurement_quotes_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def procurement_quotes_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -2512,7 +2568,7 @@ def _prepare_procurement_quote_record(
 
 
 async def procurement_quotes_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -2545,7 +2601,7 @@ async def procurement_quotes_post(request: Request) -> JSONResponse:
 
 
 async def procurement_quotes_bulk_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -2614,7 +2670,8 @@ async def procurement_quotes_bulk_post(request: Request) -> JSONResponse:
     return _json({"ok": True, "analysis_id": analysis_id, "quotes": saved, "saved_count": len(saved)}, 201)
 
 
-async def design_impact_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def design_impact_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -2630,7 +2687,8 @@ async def design_impact_get(request: Request) -> JSONResponse:
         return _json({"detail": "Report not found"}, 404)
 
 
-async def cost_optimization_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def cost_optimization_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -2662,7 +2720,7 @@ async def cost_optimization_get(request: Request) -> JSONResponse:
 
 
 async def cost_optimization_decisions(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -2776,7 +2834,7 @@ async def cost_optimization_decisions(request: Request) -> JSONResponse:
 
 
 async def supply_risk_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -2800,7 +2858,7 @@ async def supply_risk_post(request: Request) -> JSONResponse:
 
 
 async def supply_risk_scenarios(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -2885,7 +2943,8 @@ async def supply_risk_scenarios(request: Request) -> JSONResponse:
     return _json({"ok": True, "scenario": saved}, 201)
 
 
-async def portfolio_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def portfolio_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -2893,7 +2952,7 @@ async def portfolio_get(request: Request) -> JSONResponse:
 
 
 async def portfolio_health_recalculate_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -2915,7 +2974,8 @@ async def portfolio_health_recalculate_post(request: Request) -> JSONResponse:
     return _json(result)
 
 
-async def detailed_risk_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def detailed_risk_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -2932,7 +2992,7 @@ async def detailed_risk_get(request: Request) -> JSONResponse:
 
 
 async def supplier_lookup_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -2944,7 +3004,7 @@ async def supplier_lookup_post(request: Request) -> JSONResponse:
 
 
 async def find_replacement_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -2964,7 +3024,7 @@ async def find_replacement_post(request: Request) -> JSONResponse:
 
 
 async def ask_cadivor_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -3001,7 +3061,8 @@ async def ask_cadivor_post(request: Request) -> JSONResponse:
     return _json(result, status)
 
 
-async def monitoring_preferences_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def monitoring_preferences_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -3014,7 +3075,7 @@ async def monitoring_preferences_get(request: Request) -> JSONResponse:
 
 
 async def monitoring_preferences_put(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -3087,7 +3148,8 @@ async def monitoring_preferences_put(request: Request) -> JSONResponse:
     return _json({"ok": True, "preferences": prefs})
 
 
-async def monitoring_slack_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def monitoring_slack_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -3106,7 +3168,7 @@ async def monitoring_slack_get(request: Request) -> JSONResponse:
 
 
 async def monitoring_slack_put(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -3149,7 +3211,8 @@ async def monitoring_slack_put(request: Request) -> JSONResponse:
     return _json({"ok": True, "integration": {**integration, "can_manage": True}})
 
 
-async def monitoring_alerts_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def monitoring_alerts_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -3170,7 +3233,7 @@ async def monitoring_alerts_get(request: Request) -> JSONResponse:
 
 
 async def monitoring_acknowledge_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -3189,7 +3252,7 @@ async def monitoring_notify_post(request: Request) -> JSONResponse:
     Requires a specific ``alert_id`` owned by the caller's workspace. Delivery
     still respects preference and ``CADIVOR_MONITORING_EMAIL_ENABLED`` gates.
     """
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -3222,7 +3285,8 @@ async def monitoring_notify_post(request: Request) -> JSONResponse:
     return _json({**result, "explicit_notify": True, "alert_id": alert_id})
 
 
-async def plan_usage_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def plan_usage_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -3242,7 +3306,8 @@ def _sync_workspace_monitoring_entitlement(
     )
 
 
-async def billing_status_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def billing_status_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -3271,7 +3336,7 @@ async def billing_status_get(request: Request) -> JSONResponse:
 
 
 async def billing_checkout_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -3294,7 +3359,8 @@ async def billing_checkout_post(request: Request) -> JSONResponse:
     return _json(result, status)
 
 
-async def billing_professional_api_addon_checkout_post(request: Request) -> JSONResponse:
+@offload_sync_handler
+def billing_professional_api_addon_checkout_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -3311,7 +3377,7 @@ async def billing_professional_api_addon_checkout_post(request: Request) -> JSON
 
 
 async def billing_monitored_parts_addon_checkout_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -3351,7 +3417,8 @@ async def billing_monitored_parts_addon_checkout_post(request: Request) -> JSONR
     return _json(result, status)
 
 
-async def billing_monitored_parts_addon_remove_post(request: Request) -> JSONResponse:
+@offload_sync_handler
+def billing_monitored_parts_addon_remove_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -3380,7 +3447,7 @@ async def billing_monitored_parts_addon_remove_post(request: Request) -> JSONRes
 
 
 async def billing_usage_overage_checkout_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -3417,7 +3484,8 @@ def _developer_api_entitled(ctx: dict[str, Any]) -> bool:
     return bool(plan_limits.effective_plan(ctx).get("api_access"))
 
 
-async def developer_api_keys_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def developer_api_keys_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -3448,7 +3516,7 @@ async def developer_api_keys_get(request: Request) -> JSONResponse:
 
 
 async def developer_api_keys_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if not _developer_api_entitled(ctx):
@@ -3486,7 +3554,8 @@ async def developer_api_keys_post(request: Request) -> JSONResponse:
     )
 
 
-async def developer_api_key_delete(request: Request) -> JSONResponse:
+@offload_sync_handler
+def developer_api_key_delete(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -3645,7 +3714,8 @@ async def developer_webhook_test_post(request: Request) -> JSONResponse:
     })
 
 
-async def _developer_api_key_context(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
+@offload_sync_handler
+def _developer_api_key_context(request: Request) -> tuple[dict[str, Any] | None, JSONResponse | None]:
     authorization = str(request.headers.get("authorization") or "")
     candidate = authorization.removeprefix("Bearer ").strip() if authorization.startswith("Bearer ") else ""
     api_key = candidate or str(request.headers.get("x-api-key") or "").strip()
@@ -3914,7 +3984,8 @@ async def developer_api_release_gate_get(request: Request) -> JSONResponse:
     }, 200)
 
 
-async def billing_portal_post(request: Request) -> JSONResponse:
+@offload_sync_handler
+def billing_portal_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -3931,7 +4002,7 @@ async def billing_portal_post(request: Request) -> JSONResponse:
 
 
 async def billing_checkout_prep_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -3947,7 +4018,8 @@ async def billing_checkout_prep_post(request: Request) -> JSONResponse:
     return _json(result, status)
 
 
-async def billing_public_catalog_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def billing_public_catalog_get(request: Request) -> JSONResponse:
     """Expose only public plan prices for the marketing pricing page."""
     try:
         result, status = subscription_billing_service.request_public_catalog()
@@ -3988,7 +4060,8 @@ async def billing_public_catalog_get(request: Request) -> JSONResponse:
     return response
 
 
-async def billing_public_addons_catalog_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def billing_public_addons_catalog_get(request: Request) -> JSONResponse:
     """Expose configured add-on amounts without Stripe identifiers."""
     try:
         result, status = subscription_billing_service.request_public_action(
@@ -4024,7 +4097,8 @@ async def billing_public_addons_catalog_get(request: Request) -> JSONResponse:
     return response
 
 
-async def one_time_report_status_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def one_time_report_status_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -4038,7 +4112,8 @@ async def one_time_report_status_get(request: Request) -> JSONResponse:
     return _json(result, status)
 
 
-async def one_time_report_checkout_post(request: Request) -> JSONResponse:
+@offload_sync_handler
+def one_time_report_checkout_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -4052,7 +4127,8 @@ async def one_time_report_checkout_post(request: Request) -> JSONResponse:
     return _json(result, status)
 
 
-async def connectors_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def connectors_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -4112,7 +4188,8 @@ def _subscription_billing_readiness(
     }
 
 
-async def service_readiness_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def service_readiness_get(request: Request) -> JSONResponse:
     """Authenticated readiness for Settings: email, scheduler, connectors, billing.
 
     Status values reflect operational capability, not enable flags alone.
@@ -4183,7 +4260,7 @@ async def service_readiness_get(request: Request) -> JSONResponse:
 
 
 async def connectors_sync_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -4205,7 +4282,8 @@ async def connectors_sync_post(request: Request) -> JSONResponse:
     return _json(payload, 200 if result.ok else 400)
 
 
-async def compliance_pack_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def compliance_pack_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -4228,7 +4306,8 @@ def _visitor_header(request: Request) -> str:
     return ""
 
 
-async def public_bom_stress_status(request: Request) -> JSONResponse:
+@offload_sync_handler
+def public_bom_stress_status(request: Request) -> JSONResponse:
     """Feature flag for the marketing free audit; optional bearer for QA verify.
 
     ``qa_verified`` is set only after server-side allowlist + confirmed-email
@@ -4597,7 +4676,7 @@ async def public_marketing_analytics_post(request: Request) -> JSONResponse:
 
 async def marketing_analytics_admin_get(request: Request) -> JSONResponse:
     """Show aggregated funnel counts to verified platform admins only."""
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -4615,7 +4694,8 @@ async def marketing_analytics_admin_get(request: Request) -> JSONResponse:
         return _json({"detail": "Marketing analytics summary is unavailable."}, 503)
 
 
-async def runtime_maintenance_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def runtime_maintenance_get(request: Request) -> JSONResponse:
     """Return the maintenance notice so signed-in users can see a branded screen."""
     ctx, denied = _auth_context(request, enforce_maintenance=False)
     if denied or not ctx:
@@ -4663,7 +4743,7 @@ async def public_service_status_get(request: Request) -> JSONResponse:
 
 
 async def admin_platform_settings_get(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request, enforce_maintenance=False)
+    ctx, denied = await _auth_context_async(request, enforce_maintenance=False)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -4684,7 +4764,7 @@ async def admin_platform_settings_get(request: Request) -> JSONResponse:
 
 
 async def admin_platform_maintenance_put(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request, enforce_maintenance=False)
+    ctx, denied = await _auth_context_async(request, enforce_maintenance=False)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -4733,7 +4813,7 @@ async def admin_platform_maintenance_put(request: Request) -> JSONResponse:
 
 
 async def admin_platform_planned_maintenance_put(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request, enforce_maintenance=False)
+    ctx, denied = await _auth_context_async(request, enforce_maintenance=False)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -4796,7 +4876,7 @@ async def admin_platform_planned_maintenance_put(request: Request) -> JSONRespon
 
 
 async def account_entitlements_admin_get(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -4822,7 +4902,7 @@ async def account_entitlements_admin_get(request: Request) -> JSONResponse:
 
 
 async def account_entitlements_admin_put(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -4877,7 +4957,7 @@ async def account_entitlements_admin_put(request: Request) -> JSONResponse:
 
 
 async def admin_users_get(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -4895,7 +4975,7 @@ async def admin_users_get(request: Request) -> JSONResponse:
 
 
 async def admin_user_profile_get(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -4921,7 +5001,7 @@ async def admin_user_profile_get(request: Request) -> JSONResponse:
 
 
 async def admin_user_billing_get(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -4945,7 +5025,7 @@ async def admin_user_billing_get(request: Request) -> JSONResponse:
 
 
 async def admin_user_billing_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -4997,7 +5077,7 @@ async def admin_user_billing_post(request: Request) -> JSONResponse:
 
 
 async def admin_user_status_patch(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -5052,7 +5132,7 @@ async def admin_user_status_patch(request: Request) -> JSONResponse:
 
 
 async def admin_user_delete(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if ctx.get("platform_role") != "admin":
@@ -5182,7 +5262,7 @@ async def public_bom_stress_verified_get(request: Request) -> JSONResponse:
     Authorization uses the bearer JWT → Supabase user email (via
     ``verified_report``). Caller-supplied email query/body values are ignored.
     """
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     token = _bearer_token(request)
@@ -5223,7 +5303,7 @@ async def public_bom_stress_complete_post(request: Request) -> JSONResponse:
             {"detail": "The free BOM stress test is being prepared. Please check back soon."},
             503,
         )
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     token = _bearer_token(request)
@@ -5273,7 +5353,7 @@ async def public_bom_stress_verified_export_get(request: Request) -> Response:
             {"detail": "The free BOM stress test is being prepared. Please check back soon."},
             503,
         )
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     token = _bearer_token(request)
@@ -5315,7 +5395,7 @@ async def monitoring_refresh_post(request: Request) -> JSONResponse:
     """
     cron_header = request.headers.get("x-cadivor-cron-token")
     cron_ok = monitoring_scheduler.authorize_cron(cron_header)
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied and not cron_ok:
         return denied or _json({"detail": "Unauthorized"}, 401)
     body: dict[str, Any] = {}
@@ -5372,7 +5452,7 @@ async def monitoring_refresh_post(request: Request) -> JSONResponse:
 
 async def monitoring_live_refresh_post(request: Request) -> JSONResponse:
     """Explicit live supplier poll for one saved analysis or exact MPN."""
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5505,7 +5585,8 @@ def _team_error(exc: TeamError) -> JSONResponse:
     return _json(payload, exc.status_code)
 
 
-async def invitations_lookup_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def invitations_lookup_get(request: Request) -> JSONResponse:
     token = str(request.query_params.get("token") or "").strip()
     preview = team_service.lookup_invitation(token)
     if not preview:
@@ -5612,7 +5693,7 @@ async def invitations_register_post(request: Request) -> JSONResponse:
 
 
 async def workspace_invitations_get(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5622,7 +5703,7 @@ async def workspace_invitations_get(request: Request) -> JSONResponse:
 
 
 async def workspace_invitations_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5642,7 +5723,8 @@ async def workspace_invitations_post(request: Request) -> JSONResponse:
     return _json(result, 201)
 
 
-async def workspace_invitation_resend_post(request: Request) -> JSONResponse:
+@offload_sync_handler
+def workspace_invitation_resend_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -5657,7 +5739,8 @@ async def workspace_invitation_resend_post(request: Request) -> JSONResponse:
         return _team_error(exc)
 
 
-async def workspace_invitation_cancel_post(request: Request) -> JSONResponse:
+@offload_sync_handler
+def workspace_invitation_cancel_post(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -5669,7 +5752,7 @@ async def workspace_invitation_cancel_post(request: Request) -> JSONResponse:
 
 
 async def workspace_members_get(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5679,7 +5762,7 @@ async def workspace_members_get(request: Request) -> JSONResponse:
 
 
 async def workspace_activity_get(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5693,7 +5776,7 @@ async def workspace_activity_get(request: Request) -> JSONResponse:
 
 
 async def workspace_activity_export_get(request: Request) -> Response:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5715,7 +5798,7 @@ async def workspace_activity_export_get(request: Request) -> Response:
 
 
 async def workspace_settings_get(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5725,7 +5808,7 @@ async def workspace_settings_get(request: Request) -> JSONResponse:
 
 
 async def workspace_settings_patch(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5738,7 +5821,8 @@ async def workspace_settings_patch(request: Request) -> JSONResponse:
         return _team_error(exc)
 
 
-async def workspaces_list_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def workspaces_list_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -5749,7 +5833,7 @@ async def workspaces_list_get(request: Request) -> JSONResponse:
 
 
 async def workspaces_create_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5766,7 +5850,7 @@ async def workspaces_create_post(request: Request) -> JSONResponse:
 
 
 async def workspaces_switch_post(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5781,7 +5865,8 @@ async def workspaces_switch_post(request: Request) -> JSONResponse:
         return _team_error(exc)
 
 
-async def settings_profile_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def settings_profile_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -5792,7 +5877,7 @@ async def settings_profile_get(request: Request) -> JSONResponse:
 
 
 async def settings_profile_patch(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5805,7 +5890,8 @@ async def settings_profile_patch(request: Request) -> JSONResponse:
         return _team_error(exc)
 
 
-async def settings_preferences_get(request: Request) -> JSONResponse:
+@offload_sync_handler
+def settings_preferences_get(request: Request) -> JSONResponse:
     ctx, denied = _auth_context(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
@@ -5816,7 +5902,7 @@ async def settings_preferences_get(request: Request) -> JSONResponse:
 
 
 async def settings_preferences_patch(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     try:
@@ -5830,7 +5916,7 @@ async def settings_preferences_patch(request: Request) -> JSONResponse:
 
 
 async def settings_security_get(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     supabase = _use_supabase_auth()
@@ -5929,7 +6015,7 @@ async def _team_endpoint(
     status_code: int = 200,
 ) -> JSONResponse:
     """Authenticate, run ``action(ctx, payload)`` off the event loop, map errors."""
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     payload: dict[str, Any] = {}
@@ -6095,7 +6181,7 @@ async def auth_password_reset_complete(request: Request) -> JSONResponse:
 
 
 async def auth_password_change(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if not _use_supabase_auth():
@@ -6120,7 +6206,7 @@ async def auth_password_change(request: Request) -> JSONResponse:
 
 
 async def auth_sessions_revoke_others(request: Request) -> JSONResponse:
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     if not _use_supabase_auth():
@@ -6136,7 +6222,7 @@ async def auth_sessions_revoke_others(request: Request) -> JSONResponse:
 
 async def security_status_get(request: Request) -> JSONResponse:
     """Accurate account-security status; unavailable features are labelled."""
-    ctx, denied = _auth_context(request)
+    ctx, denied = await _auth_context_async(request)
     if denied or not ctx:
         return denied or _json({"detail": "Unauthorized"}, 401)
     managed = _use_supabase_auth()

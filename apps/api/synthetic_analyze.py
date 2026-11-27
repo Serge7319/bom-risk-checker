@@ -446,16 +446,20 @@ def delete_project(project_id: str, *, workspace_id: str) -> bool:
     return deleted
 
 
-def list_reports(*, workspace_id: str) -> list[dict[str, Any]]:
-    """Newest-first summaries for one workspace only."""
+def list_reports_with_parts(
+    *, workspace_id: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return current report summaries and bulk-loaded rows for one workspace."""
     store = get_store()
     reports = store.list_reports(workspace_id=workspace_id)
     # Fetch rows in one store operation so all report summaries are recalculated
     # from row-level provenance without N+1 detail requests.
     try:
         _analyses, saved_parts = store.analyses_and_parts(workspace_id=workspace_id)
+        saved_parts_loaded = True
     except Exception:  # noqa: BLE001 - fall back to workspace-scoped report reads below
         saved_parts = []
+        saved_parts_loaded = False
     parts_by_analysis: dict[str, list[dict[str, Any]]] = {}
     for part in saved_parts:
         if not isinstance(part, dict):
@@ -468,7 +472,7 @@ def list_reports(*, workspace_id: str) -> list[dict[str, Any]]:
     for row in reports:
         analysis_key = str(row.get("id") or row.get("analysis_id") or "")
         detail = _REPORTS.get(analysis_key) or {}
-        if not detail.get("parts") and analysis_key:
+        if not detail.get("parts") and analysis_key and not saved_parts_loaded:
             try:
                 detail = store.get_report(analysis_key, workspace_id=workspace_id) or {}
             except Exception:  # noqa: BLE001
@@ -501,11 +505,20 @@ def list_reports(*, workspace_id: str) -> list[dict[str, Any]]:
                 "has_hierarchy": bool((report.get("hierarchy") or {}).get("has_hierarchy")),
             },
         )
-    return sorted(
-        stored.values(),
-        key=lambda row: str(row.get("created_at") or ""),
-        reverse=True,
+    return (
+        sorted(
+            stored.values(),
+            key=lambda row: str(row.get("created_at") or ""),
+            reverse=True,
+        ),
+        saved_parts,
     )
+
+
+def list_reports(*, workspace_id: str) -> list[dict[str, Any]]:
+    """Newest-first summaries for one workspace only."""
+    reports, _parts = list_reports_with_parts(workspace_id=workspace_id)
+    return reports
 
 
 def analyses_and_parts(

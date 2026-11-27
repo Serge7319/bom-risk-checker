@@ -221,11 +221,13 @@ class PublicBomNextWiringTests(unittest.TestCase):
             self.assertIn(f'Route("{path}"', main)
         # Handlers must not call the authenticated workspace gate.
         for handler in (
-            "async def public_bom_stress_status",
-            "async def public_bom_stress_audit",
-            "async def public_bom_stress_lead",
+            "public_bom_stress_status",
+            "public_bom_stress_audit",
+            "public_bom_stress_lead",
         ):
-            start = main.index(handler)
+            # Read routes may be regular functions run through Starlette's
+            # bounded worker pool; async request-body routes remain async.
+            start = main.index(f"def {handler}(")
             chunk = main[start : start + 1800]
             self.assertNotIn("_auth_context", chunk)
         # Failure logs stay message-only (no BOM/token interpolation).

@@ -25,7 +25,7 @@ def test_classifier_distinguishes_critical_context_and_service_gaps():
 
 def test_reports_list_does_not_reuse_persistence_service_blurb_as_gap():
     main = (ROOT / "apps/api/main.py").read_text(encoding="utf-8")
-    block = main.split("async def reports_list", 1)[1].split("async def reports_delete", 1)[0]
+    block = main.split("def reports_list", 1)[1].split("def reports_delete", 1)[0]
     assert '"gap": None' in block or '"gap":None' in block.replace(" ", "")
     assert "persistence[\"label\"]" not in block
 

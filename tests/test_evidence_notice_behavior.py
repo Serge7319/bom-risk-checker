@@ -80,7 +80,7 @@ def test_settings_service_readiness_uses_dedicated_endpoint():
     assert "usage?.monitoring_email_enabled" not in settings
     main = (ROOT / "apps/api/main.py").read_text(encoding="utf-8")
     assert "/integrations/service-readiness" in main
-    assert "async def service_readiness_get" in main
+    assert "@offload_sync_handler\ndef service_readiness_get" in main
 
 
 def test_globals_css_does_not_hide_page_overflow_on_html_body():
