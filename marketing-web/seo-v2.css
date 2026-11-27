@@ -4,6 +4,25 @@
 @media(max-width:560px){.seo-header-inner,.seo-main,.seo-footer-inner{width:min(100% - 28px,1160px)}.seo-nav{font-size:13px}.seo-main{padding-bottom:46px}.seo-hero{padding:22px 0 30px}.seo-hero h1{font-size:40px}.seo-lede{font-size:17px}.seo-section{padding:22px 18px}.seo-section h2{font-size:23px}.seo-grid,.seo-grid-two{grid-template-columns:1fr}.seo-actions{display:grid}.seo-button{width:100%}.seo-callout{padding:22px 18px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.seo-button{transition:none}}
 
+.kicad-help-panel{margin:22px 0 0;padding:clamp(20px,3vw,30px);border:1px solid #c8d9f1;border-left:4px solid #3976e8;border-radius:18px;background:linear-gradient(145deg,#f3f7ff 0%,#fff 70%);box-shadow:0 14px 34px rgba(16,40,75,.08)}
+.kicad-help-panel__heading{max-width:900px}
+.kicad-help-panel__heading h4{margin:2px 0 8px;color:var(--navy);font-size:21px;line-height:1.3;letter-spacing:-.02em}
+.kicad-help-panel__heading p{margin:0;color:#425a78;font-size:16px;line-height:1.7}
+.kicad-help-panel code{padding:2px 6px;border:1px solid #dbe5f2;border-radius:6px;background:#f4f7fb;color:#263b58;font-size:.9em;overflow-wrap:anywhere}
+.kicad-help-panel__details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}
+.kicad-help-panel details{min-width:0;overflow:hidden;border:1px solid #d7e2f0;border-radius:13px;background:rgba(255,255,255,.9);transition:border-color .18s ease,box-shadow .18s ease}
+.kicad-help-panel details[open]{border-color:#a9c2eb;box-shadow:0 8px 24px rgba(16,40,75,.07)}
+.kicad-help-panel summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:54px;padding:13px 16px;color:#18375f;font-size:15px;font-weight:800;line-height:1.4;cursor:pointer;list-style:none}
+.kicad-help-panel summary:focus-visible{outline:3px solid #91b4ff;outline-offset:-3px;border-radius:10px}
+.kicad-help-panel summary::-webkit-details-marker{display:none}
+.kicad-help-panel summary::after{content:"+";display:grid;flex:0 0 24px;place-items:center;width:24px;height:24px;border-radius:50%;background:#edf3ff;color:#2d64c8;font-size:18px;font-weight:600;line-height:1}
+.kicad-help-panel details[open] summary::after{content:"−"}
+.kicad-help-panel details>div{padding:0 16px 16px;color:#4d617b;font-size:16px;line-height:1.65}
+.kicad-help-panel details p{margin:0}
+.kicad-help-panel details p+p{margin-top:10px}
+@media(max-width:680px){.kicad-help-panel__details{grid-template-columns:1fr}.kicad-help-panel{padding:20px 16px}.kicad-help-panel__heading h4{font-size:19px}}
+@media(prefers-reduced-motion:reduce){.kicad-help-panel details{transition:none}}
+
 .seo-analytics-consent{position:fixed;z-index:1200;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;justify-content:space-between;gap:20px;width:min(760px,calc(100vw - 28px));padding:16px 18px;border:1px solid #c9d8eb;border-radius:16px;background:#fff;color:#1a2d49;box-shadow:0 16px 44px rgba(15,35,64,.2)}.seo-analytics-consent[hidden],.seo-privacy-choice[hidden]{display:none!important}.seo-analytics-consent strong{color:#10284b;font-size:14px}.seo-analytics-consent p{margin:4px 0 0;color:#536987;font-size:12px;line-height:1.45}.seo-analytics-actions{display:flex;flex:0 0 auto;gap:8px}.seo-analytics-actions button,.seo-privacy-choice{min-height:38px;padding:8px 11px;border:1px solid #cedaea;border-radius:9px;background:#fff;color:#1d3557;font:inherit;font-size:12px;font-weight:750;cursor:pointer}.seo-analytics-actions button.primary{border-color:#2563eb;background:#2563eb;color:#fff}.seo-privacy-choice{position:fixed;z-index:1199;right:12px;bottom:12px}@media(max-width:620px){.seo-analytics-consent{align-items:stretch;flex-direction:column;gap:12px}.seo-analytics-actions{justify-content:flex-end}}
 
 
