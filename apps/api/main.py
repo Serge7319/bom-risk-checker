@@ -1205,13 +1205,16 @@ def reports_delete(request: Request) -> JSONResponse:
         return denied or _json({"detail": "Unauthorized"}, 401)
     analysis_id = request.path_params["analysis_id"]
     try:
+        store = get_store()
         deleted = delete_report(analysis_id, workspace_id=ctx["workspace_id"])
+        if not deleted:
+            return _json({"detail": "Report not found"}, 404)
+        if getattr(store, "backend", "file") != "postgres":
+            monitoring_store.delete_analysis_scopes(ctx["workspace_id"], [analysis_id])
     except WorkspaceAccessError:
         return _json({"detail": "Report not found"}, 404)
     except PersistenceNotConfiguredError as exc:
         return _json({"detail": str(exc)}, 503)
-    if not deleted:
-        return _json({"detail": "Report not found"}, 404)
     return _json({"ok": True, "deleted": analysis_id, "workspace_id": ctx["workspace_id"]})
 
 
