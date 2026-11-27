@@ -635,3 +635,68 @@ def test_ledger_reconcile_inserts_marker_without_rerunning_production_sql(
         raw.execute(
             f"DELETE FROM {ledger.DEFAULT_LEDGER_TABLE} WHERE version = %s", (version,)
         )
+
+
+def test_workspace_audit_helper_skips_workspace_less_rows(disposable_pg):
+    """Workspace-less account cleanup must not violate the audit table contract."""
+    import psycopg
+
+    root = Path(__file__).resolve().parents[1]
+    migration_sql = (
+        root / "supabase" / "migrations"
+        / "20261127140000_workspace_audit_null_context.sql"
+    ).read_text(encoding="utf-8")
+    conn = psycopg.connect(disposable_pg["uri"])
+    try:
+        conn.execute(
+            "CREATE TABLE public.workspaces (id uuid PRIMARY KEY)"
+        )
+        conn.execute(
+            "CREATE TABLE public.workspace_members ("
+            "workspace_id uuid NOT NULL, user_id uuid NOT NULL, "
+            "display_name text, email text, joined_at timestamptz)"
+        )
+        conn.execute(
+            "CREATE TABLE public.workspace_audit_log ("
+            "id uuid PRIMARY KEY DEFAULT gen_random_uuid(), "
+            "workspace_id uuid NOT NULL REFERENCES public.workspaces(id), "
+            "actor_user_id uuid, actor_name text NOT NULL, actor_email text NOT NULL, "
+            "action_type text NOT NULL, object_type text NOT NULL, "
+            "object_id text NOT NULL, object_label text NOT NULL, "
+            "summary text NOT NULL, metadata jsonb NOT NULL DEFAULT '{}'::jsonb, "
+            "search_text text NOT NULL, created_at timestamptz NOT NULL DEFAULT now())"
+        )
+        conn.execute(migration_sql, prepare=False)
+
+        actor_id = "00000000-0000-0000-0000-000000000001"
+        conn.execute(
+            "SELECT public.cadivor_write_audit_event("
+            "NULL, %s::uuid, 'analysis.update', 'analyses', 'private-1', "
+            "'Private analysis', 'Private analysis updated', '{}'::jsonb)",
+            (actor_id,),
+        )
+        assert conn.execute(
+            "SELECT count(*) FROM public.workspace_audit_log"
+        ).fetchone()[0] == 0
+
+        workspace_id = "00000000-0000-0000-0000-000000000002"
+        conn.execute(
+            "INSERT INTO public.workspaces (id) VALUES (%s::uuid)", (workspace_id,)
+        )
+        # A missing membership row must still produce non-NULL audit fields.
+        conn.execute(
+            "SELECT public.cadivor_write_audit_event("
+            "%s::uuid, %s::uuid, 'analysis.update', 'analyses', 'shared-1', "
+            "'Shared analysis', 'Shared analysis updated', '{}'::jsonb)",
+            (workspace_id, actor_id),
+        )
+        audit = conn.execute(
+            "SELECT workspace_id, actor_name, actor_email "
+            "FROM public.workspace_audit_log"
+        ).fetchone()
+        assert str(audit[0]) == workspace_id
+        assert audit[1:] == ("", "")
+    finally:
+        # The disposable DB is shared by this module's fixtures; leave no test schema behind.
+        conn.rollback()
+        conn.close()
