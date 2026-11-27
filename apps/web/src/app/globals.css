@@ -5180,6 +5180,24 @@ button {
   gap: 8px;
 }
 
+.cv-revision-item {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.cv-revision-item .cv-revision-link {
+  min-height: 58px;
+}
+
+.cv-revision-delete {
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 10px;
+}
+
 .cv-revision-link {
   display: grid;
   gap: 4px;
