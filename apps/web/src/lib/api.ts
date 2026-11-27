@@ -745,6 +745,13 @@ export async function deleteBom(token: string, bomId: string) {
   }>(`/boms/${encodeURIComponent(bomId)}`, { method: "DELETE", token });
 }
 
+export async function deleteReport(token: string, analysisId: string) {
+  return apiJson<{ ok: boolean; deleted: string }>(
+    `/reports/${encodeURIComponent(analysisId)}`,
+    { method: "DELETE", token },
+  );
+}
+
 export async function fetchReport(analysisId: string, token: string): Promise<Report> {
   return apiJson(`/reports/${analysisId}`, { token });
 }
